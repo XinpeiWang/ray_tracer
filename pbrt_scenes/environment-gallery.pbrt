@@ -1,0 +1,37 @@
+# environment-gallery.pbrt -- migration of the native "H9 Gallery" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/gallery.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: emissive=1 (of 1 shapes)
+# Requires models/gallery.obj and models/gallery_textures/ (registry requires_files=true).
+
+LookAt  0 2.2 -5    0 2.2 0    0 1 0
+Camera "perspective" "float fov" [ 55 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 300 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 3 3.2 3.6 ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate 0.6 -0.06 1.33
+
+  AttributeBegin
+    # gallery_161122_HWY_Galleri_Material_u1_v1
+    AreaLightSource "diffuse" "string filename" [ "../models/gallery_textures/gallery.jpg" ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/gallery.obj#gallery_161122_HWY_Galleri_Material_u1_v1" ]
+  AttributeEnd
+AttributeEnd

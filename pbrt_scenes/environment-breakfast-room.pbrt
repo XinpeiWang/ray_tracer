@@ -1,0 +1,123 @@
+# environment-breakfast-room.pbrt -- migration of the native "H7 Breakfast Room" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/breakfast_room.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: textured=2, flat=13 (of 15 shapes)
+# Requires models/breakfast_room.obj and models/breakfast_room_textures/ (registry requires_files=true).
+
+LookAt  -3 1.5 3    2.5 1.3 0    0 1 0
+Camera "perspective" "float fov" [ 70 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 300 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 1.1 1.2 1.35 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/breakfast_room_textures/tiles.png" ]
+Texture "c1" "spectrum" "imagemap" "string filename" [ "../models/breakfast_room_textures/picture3.jpg" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate 0.54 1.42 -2.67
+
+  AttributeBegin
+    # breakfast_room:Frosted_Glass
+    Material "diffuse" "rgb reflectance" [ 0.9 0.08 0.01 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Frosted_Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:White_Plastic
+    Material "diffuse" "rgb reflectance" [ 1 1 1 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:White_Plastic" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Paint___Black_Satin
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Paint___Black_Satin" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Ceramic_001
+    Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Ceramic_001" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Gold_Paint
+    Material "diffuse" "rgb reflectance" [ 0.2 0.1 0 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Gold_Paint" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Material_005
+    Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Material_005" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Material_002
+    Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Material_002" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Ceramic
+    Material "diffuse" "rgb reflectance" [ 1 1 1 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Ceramic" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Chrome
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Chrome" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Black_Rubber
+    Material "diffuse" "rgb reflectance" [ 0.64 0.64 0.64 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Black_Rubber" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:White_Marble
+    Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:White_Marble" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Floor_Tiles
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Floor_Tiles" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Paint___White_Matt
+    Material "diffuse" "rgb reflectance" [ 0.9 0.9 0.9 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Paint___White_Matt" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Artwork
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Artwork" ]
+  AttributeEnd
+
+  AttributeBegin
+    # breakfast_room:Paint___White_Gloss
+    Material "diffuse" "rgb reflectance" [ 1 1 1 ]
+    Shape "plymesh" "string filename" [ "../models/breakfast_room.obj#breakfast_room:Paint___White_Gloss" ]
+  AttributeEnd
+AttributeEnd

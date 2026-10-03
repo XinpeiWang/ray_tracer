@@ -20,6 +20,10 @@
 // See parseObj() for what is and is not read (positions, texture coordinates,
 // normals, faces of any arity as a fan; NOT .mtl materials).
 //
+// A path written "file.obj#name" loads only the faces under `usemtl name` (and
+// "file.obj#" the faces before the first usemtl), so a scene can give each of an
+// OBJ's materials its own Shape/Material without splitting the file on disk.
+//
 // Deliberately handles elements and properties it does NOT care about, rather
 // than assuming a layout. A PLY may carry per-vertex colour, confidence,
 // material indices, or whole extra elements, in any order. Skipping them
@@ -40,6 +44,7 @@
 #include <cstdlib>
 #include <cstring>
 #include <fstream>
+#include <mutex>
 #include <sstream>
 #include <string>
 #include <unordered_map>
@@ -370,8 +375,20 @@ inline LoadResult parse(const std::string &data) {
 //  - Everything else (`o`, `g`, `s`, `usemtl`, `mtllib`, comments) is ignored:
 //    one mesh, one material, set by the scene file's own Material directive.
 // Out-of-range references fail the load with the line named, like the PLY path.
-inline LoadResult parseObj(const std::string &data) {
-	LoadResult r;
+// One `usemtl` group of an OBJ: its own compacted vertex set and triangle list.
+struct ObjGroup {
+	std::string name;   // the usemtl name; "" for faces before the first usemtl
+	Mesh mesh;
+};
+
+// The OBJ reader proper. With splitByMaterial false every face lands in ONE
+// group (index 0) regardless of `usemtl`, which is what parseObj() wants; with
+// it true each distinct `usemtl` name gets its own group (faces before the
+// first `usemtl` go to the "" group) and each group's vertices are compacted
+// independently, so a group costs only what its own faces reference. Empty
+// groups are dropped (a `usemtl` that no face follows).
+inline bool parseObjGroups(const std::string &data, bool splitByMaterial,
+						   std::vector<ObjGroup> &out, std::string &error) {
 	std::vector<float> pos;     // 3 per `v`
 	std::vector<float> uv;      // 2 per `vt`
 	std::vector<float> nrm;     // 3 per `vn`
@@ -414,9 +431,11 @@ inline LoadResult parseObj(const std::string &data) {
 		}
 	}
 	const bool expand = needUv || needN;
+	// A plain load of a position-only OBJ keeps vertices 1:1 with the file's `v`
+	// records (no corner table, no hashing) - the common case for big scans.
+	const bool plain = !expand && !splitByMaterial;
 
 	struct Corner { int v, t, n; };
-	std::vector<Corner> corners;
 	struct Key {
 		int v, t, n;
 		bool operator==(const Key &o) const { return v == o.v && t == o.t && n == o.n; }
@@ -429,7 +448,18 @@ inline LoadResult parseObj(const std::string &data) {
 			return h;
 		}
 	};
-	std::unordered_map<Key, int, KeyHash> corner;
+	// Per-group build state: the (position,uv,normal) -> compacted-vertex table
+	// and the triangle list, indexed in that group's own vertex numbering.
+	struct Group {
+		std::string name;
+		std::vector<Corner> corners;
+		std::unordered_map<Key, int, KeyHash> corner;
+		std::vector<int> indices;
+	};
+	std::vector<Group> groups(1);
+	std::unordered_map<std::string, int> groupByName;
+	groupByName.emplace(std::string(), 0);
+	int cur = 0;
 
 	std::size_t lineNo = 0, i = 0;
 	const std::size_t n = data.size();
@@ -474,7 +504,22 @@ inline LoadResult parseObj(const std::string &data) {
 			float y = std::strtof(next, &next);
 			float z = std::strtof(next, &next);
 			nrm.push_back(x); nrm.push_back(y); nrm.push_back(z);
+		} else if (splitByMaterial && end - c > 7 && std::strncmp(c, "usemtl", 6) == 0 &&
+				   (c[6] == ' ' || c[6] == '\t')) {
+			const char *q = c + 6;
+			while (q < end && (*q == ' ' || *q == '\t')) ++q;
+			const char *qe = end;
+			while (qe > q && (qe[-1] == ' ' || qe[-1] == '\t' || qe[-1] == '\r')) --qe;
+			const std::string name(q, qe);
+			auto it = groupByName.find(name);
+			if (it == groupByName.end()) {
+				it = groupByName.emplace(name, static_cast<int>(groups.size())).first;
+				groups.emplace_back();
+				groups.back().name = name;
+			}
+			cur = it->second;
 		} else if (c[0] == 'f' && c + 1 < end && (c[1] == ' ' || c[1] == '\t')) {
+			Group &g = groups[cur];
 			std::vector<int> face;
 			const char *q = c + 1;
 			while (q < end) {
@@ -495,116 +540,209 @@ inline LoadResult parseObj(const std::string &data) {
 				while (q < end && *q != ' ' && *q != '\t' && *q != '\r') ++q;
 				const std::string at = "OBJ line " + std::to_string(lineNo) + ": ";
 				if (!havePos) {
-					r.error = at + "face vertex has no position index";
-					return r;
+					error = at + "face vertex has no position index";
+					return false;
 				}
 				if (vi < 0 || static_cast<std::size_t>(vi) >= pos.size() / 3) {
-					r.error = at + "face index " + std::to_string(vi + 1) + " is outside the " +
-							  std::to_string(pos.size() / 3) + " vertices declared so far";
-					return r;
+					error = at + "face index " + std::to_string(vi + 1) + " is outside the " +
+							std::to_string(pos.size() / 3) + " vertices declared so far";
+					return false;
 				}
 				int useUv = -1, useN = -1;
 				if (needUv && haveUv) {
 					if (ti < 0 || static_cast<std::size_t>(ti) >= uv.size() / 2) {
-						r.error = at + "texture index " + std::to_string(ti + 1) + " is outside the " +
-								  std::to_string(uv.size() / 2) + " texture coordinates declared so far";
-						return r;
+						error = at + "texture index " + std::to_string(ti + 1) + " is outside the " +
+								std::to_string(uv.size() / 2) + " texture coordinates declared so far";
+						return false;
 					}
 					useUv = ti;
 				}
 				if (needN && haveN) {
 					if (ni < 0 || static_cast<std::size_t>(ni) >= nrm.size() / 3) {
-						r.error = at + "normal index " + std::to_string(ni + 1) + " is outside the " +
-								  std::to_string(nrm.size() / 3) + " normals declared so far";
-						return r;
+						error = at + "normal index " + std::to_string(ni + 1) + " is outside the " +
+								std::to_string(nrm.size() / 3) + " normals declared so far";
+						return false;
 					}
 					useN = ni;
 				}
-				if (!expand) {
+				if (plain) {
 					face.push_back(vi);
 				} else {
+					// Each group compacts through its own corner table, so a group
+					// costs only the vertices its faces reference.
 					const Key key{vi, useUv, useN};
-					auto it = corner.find(key);
-					if (it == corner.end()) {
-						it = corner.emplace(key, static_cast<int>(corners.size())).first;
-						corners.push_back({vi, useUv, useN});
+					auto it = g.corner.find(key);
+					if (it == g.corner.end()) {
+						it = g.corner.emplace(key, static_cast<int>(g.corners.size())).first;
+						g.corners.push_back({vi, useUv, useN});
 					}
 					face.push_back(it->second);
 				}
 			}
 			for (std::size_t k = 2; k < face.size(); ++k) {
-				r.mesh.indices.push_back(face[0]);
-				r.mesh.indices.push_back(face[k - 1]);
-				r.mesh.indices.push_back(face[k]);
+				g.indices.push_back(face[0]);
+				g.indices.push_back(face[k - 1]);
+				g.indices.push_back(face[k]);
 			}
 		}
 	}
 
-	if (pos.empty()) { r.error = "OBJ has no vertices"; return r; }
-	if (expand) {
-		r.mesh.positions.reserve(corners.size() * 3);
-		if (needUv) r.mesh.uvs.reserve(corners.size() * 2);
-		if (needN) r.mesh.normals.reserve(corners.size() * 3);
-		for (const Corner &cv : corners) {
-			r.mesh.positions.push_back(pos[cv.v * 3 + 0]);
-			r.mesh.positions.push_back(pos[cv.v * 3 + 1]);
-			r.mesh.positions.push_back(pos[cv.v * 3 + 2]);
+	if (pos.empty()) { error = "OBJ has no vertices"; return false; }
+	if (plain) {
+		out.emplace_back();
+		out.back().mesh.positions = std::move(pos);
+		out.back().mesh.indices = std::move(groups[0].indices);
+		return true;
+	}
+	for (Group &g : groups) {
+		if (g.indices.empty()) continue;
+		ObjGroup og;
+		og.name = std::move(g.name);
+		Mesh &m = og.mesh;
+		m.positions.reserve(g.corners.size() * 3);
+		if (expand && needUv) m.uvs.reserve(g.corners.size() * 2);
+		if (expand && needN) m.normals.reserve(g.corners.size() * 3);
+		for (const Corner &cv : g.corners) {
+			m.positions.push_back(pos[cv.v * 3 + 0]);
+			m.positions.push_back(pos[cv.v * 3 + 1]);
+			m.positions.push_back(pos[cv.v * 3 + 2]);
 			if (needUv) {
-				r.mesh.uvs.push_back(cv.t >= 0 ? uv[cv.t * 2 + 0] : 0.0f);
-				r.mesh.uvs.push_back(cv.t >= 0 ? uv[cv.t * 2 + 1] : 0.0f);
+				m.uvs.push_back(cv.t >= 0 ? uv[cv.t * 2 + 0] : 0.0f);
+				m.uvs.push_back(cv.t >= 0 ? uv[cv.t * 2 + 1] : 0.0f);
 			}
 			if (needN) {
 				// A corner with no normal (mixed file) gets +Z rather than garbage.
-				r.mesh.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 0] : 0.0f);
-				r.mesh.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 1] : 0.0f);
-				r.mesh.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 2] : 1.0f);
+				m.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 0] : 0.0f);
+				m.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 1] : 0.0f);
+				m.normals.push_back(cv.n >= 0 ? nrm[cv.n * 3 + 2] : 1.0f);
 			}
 		}
-	} else {
-		r.mesh.positions = std::move(pos);
+		m.indices = std::move(g.indices);
+		g.corner.clear();
+		g.corners.clear();
+		out.push_back(std::move(og));
 	}
+	if (out.empty()) {
+		// Vertices but no faces: an empty group, as a plain load returns.
+		out.emplace_back();
+		out.back().mesh.positions = std::move(pos);
+	}
+	return true;
+}
+
+inline LoadResult parseObj(const std::string &data) {
+	LoadResult r;
+	std::vector<ObjGroup> groups;
+	if (!parseObjGroups(data, /*splitByMaterial=*/false, groups, r.error)) return r;
+	r.mesh = std::move(groups.front().mesh);
 	r.ok = true;
 	return r;
 }
 
-// Convenience wrapper. Binary mode matters: on Windows a text-mode read would
-// eat 0x0D bytes inside binary vertex data.
-inline LoadResult loadFile(const std::string &path) {
-	LoadResult r;
+// Reads `path` into `bytes` and inflates it when gzipped. Binary mode matters:
+// on Windows a text-mode read would eat 0x0D bytes inside binary vertex data.
+inline bool readFileBytes(const std::string &path, std::string &bytes, std::string &error) {
 	std::ifstream in(path, std::ios::binary);
 	if (!in) {
-		r.error = "cannot open PLY file: " + path;
-		return r;
+		error = "cannot open PLY file: " + path;
+		return false;
 	}
 	std::ostringstream ss;
 	ss << in.rdbuf();
-	std::string bytes = ss.str();
+	bytes = ss.str();
 
 	// Detected from the content, not the extension. Most published pbrt
 	// geometry is gzipped, and a scene is free to name a compressed file .ply
 	// - sniffing the magic bytes is right in both directions, where trusting
 	// the name is wrong in both.
 	if (gzip::looksGzipped(bytes)) {
-		std::string inflated, error;
-		if (!gzip::inflate(bytes, inflated, error)) {
-			r.error = path + ": " + error;
-			return r;
+		std::string inflated, inflateError;
+		if (!gzip::inflate(bytes, inflated, inflateError)) {
+			error = path + ": " + inflateError;
+			return false;
 		}
 		bytes.swap(inflated);
 	}
+	return true;
+}
+
+inline bool hasObjExtension(const std::string &path) {
+	const std::size_t dot = path.find_last_of('.');
+	if (dot == std::string::npos) return false;
+	std::string ext = path.substr(dot);
+	for (char &ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
+	return ext == ".obj";
+}
+
+// Per-file cache of an OBJ's usemtl groups, for `file.obj#material` paths (see
+// loadFile()). A scene that draws an OBJ as one Shape per material names the
+// same file once per material - hundreds of times for a hacienda - and
+// re-parsing a gigabyte per Shape would never finish, so the first request
+// splits the whole file into groups and the rest copy theirs out. The cache is
+// process-global and holds a full extra copy of the mesh, so whoever drives a
+// scene load calls clearObjGroupCache() when it is done (pbrt_load::loadFile()
+// does).
+struct ObjGroupCache {
+	std::mutex mutex;
+	std::unordered_map<std::string, std::unordered_map<std::string, Mesh>> files;
+};
+inline ObjGroupCache &objGroupCache() {
+	static ObjGroupCache cache;
+	return cache;
+}
+inline void clearObjGroupCache() {
+	ObjGroupCache &c = objGroupCache();
+	std::lock_guard<std::mutex> lock(c.mutex);
+	c.files.clear();
+}
+
+inline LoadResult loadObjGroup(const std::string &path, const std::string &group) {
+	LoadResult r;
+	ObjGroupCache &c = objGroupCache();
+	std::lock_guard<std::mutex> lock(c.mutex);
+	auto it = c.files.find(path);
+	if (it == c.files.end()) {
+		std::string bytes;
+		if (!readFileBytes(path, bytes, r.error)) return r;
+		std::vector<ObjGroup> groups;
+		std::string error;
+		if (!parseObjGroups(bytes, /*splitByMaterial=*/true, groups, error)) {
+			r.error = path + ": " + error;
+			return r;
+		}
+		std::unordered_map<std::string, Mesh> byName;
+		for (ObjGroup &g : groups) byName.emplace(std::move(g.name), std::move(g.mesh));
+		it = c.files.emplace(path, std::move(byName)).first;
+	}
+	auto g = it->second.find(group);
+	if (g == it->second.end()) {
+		r.error = path + ": no faces use material '" + group + "'";
+		return r;
+	}
+	r.mesh = g->second;   // a copy: the same group may be asked for again (CPU then GPU build)
+	r.ok = true;
+	return r;
+}
+
+// Convenience wrapper. A path of the form "file.obj#name" (non-standard, like
+// the OBJ support itself) loads only the faces under `usemtl name` ("file.obj#"
+// is the faces before the first usemtl); see ObjGroupCache above.
+inline LoadResult loadFile(const std::string &path) {
+	const std::size_t hash = path.find_last_of('#');
+	if (hash != std::string::npos && hasObjExtension(path.substr(0, hash)))
+		return loadObjGroup(path.substr(0, hash), path.substr(hash + 1));
+
+	LoadResult r;
+	std::string bytes;
+	if (!readFileBytes(path, bytes, r.error)) return r;
 
 	// .obj goes through parseObj() (see the OBJ SUPPORT note at the top of this
 	// file); everything else is PLY. By extension, case-insensitively: unlike a
 	// gzip wrapper, an OBJ has no magic bytes to sniff.
-	const std::size_t dot = path.find_last_of('.');
-	if (dot != std::string::npos) {
-		std::string ext = path.substr(dot);
-		for (char &ch : ext) ch = static_cast<char>(std::tolower(static_cast<unsigned char>(ch)));
-		if (ext == ".obj") {
-			LoadResult objParsed = parseObj(bytes);
-			if (!objParsed.ok) objParsed.error = path + ": " + objParsed.error;
-			return objParsed;
-		}
+	if (hasObjExtension(path)) {
+		LoadResult objParsed = parseObj(bytes);
+		if (!objParsed.ok) objParsed.error = path + ": " + objParsed.error;
+		return objParsed;
 	}
 
 	LoadResult parsed = parse(bytes);

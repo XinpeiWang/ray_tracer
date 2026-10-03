@@ -139,8 +139,7 @@ struct SceneData {
 	// geometry upload is ALREADY skipped a few lines further down the same
 	// call chain (see g_uploaded_scene_id's own comment) and this call's own
 	// `scene.triangles`/etc. would be built only to be thrown away
-	// unused. load_obj_triangles_gpu()/load_obj_triangles_mtl_gpu()/
-	// build_loaded_pbrt_scene() check this and return immediately without
+	// unused. build_loaded_pbrt_scene() checks this and return immediately without
 	// doing their own expensive per-triangle work (file cache lookups,
 	// transform, and - even fully cached - the O(triangle count) bulk copy
 	// into `scene.triangles`, measured directly at ~64ms/frame for a

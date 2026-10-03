@@ -1,0 +1,1819 @@
+# environment-san-miguel.pbrt -- migration of the native "H5 San Miguel" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/san_miguel.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: emissive=1, glass=3, metal=260, textured=20, flat=3, bump=1, normal=56 (of 287 shapes)
+# Requires models/san_miguel.obj and models/san_miguel_textures/ (registry requires_files=true).
+
+LookAt  10 3 5    0 3 0    0 1 0
+Camera "perspective" "float fov" [ 45 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 1.4 1.68 2 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_PITTED.png" ]
+Texture "c1" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_HP11stm.png" ]
+Texture "c2" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_sm_tronco_bump.png" ]
+Texture "c3" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_l37-upper.png" ]
+Texture "c4" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/HP11lef2.png" ]
+Texture "c5" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_hp13lef1_bump.png" ]
+Texture "c6" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_bark06mi.png" ]
+Texture "c7" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_sm_leaf_02_bump.png" ]
+Texture "c8" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/rust_a1.png" ]
+Texture "c9" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/Forja_Macetas.png" ]
+Texture "c10" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_Forja_Macetas_bump.png" ]
+Texture "c11" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_Maceta_A_Bump.png" ]
+Texture "c12" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/madera_marcos.png" ]
+Texture "c13" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_l04-upper.png" ]
+Texture "c14" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/rust_detalle.png" ]
+Texture "c15" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_rust_detalle_bump.png" ]
+Texture "c16" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_l33-upper.png" ]
+Texture "c17" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/madera_barandal_esc_2.png" ]
+Texture "c18" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_Maceta_B_Bump.png" ]
+Texture "c19" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_postes_barandal_bump.png" ]
+Texture "c20" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_jardinera_1_displacement_2.png" ]
+Texture "c21" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_Maceta_D_Bump_0.png" ]
+Texture "c22" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_Maceta_C_Bump.png" ]
+Texture "c23" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/madera_triplay_01.png" ]
+Texture "c24" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/puerta.png" ]
+Texture "c25" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_puerta_bump.png" ]
+Texture "c26" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_columna_b_displacement_3_inv.png" ]
+Texture "c27" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_detmoldura_03_bump.png" ]
+Texture "c28" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_detmoldura_02_bump.png" ]
+Texture "c29" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_detmoldura_06_bump.png" ]
+Texture "c30" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_muros_b1.png" ]
+Texture "c31" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/madera_rustica_2.png" ]
+Texture "c32" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_madera_barandal_esc_2_bump.png" ]
+Texture "c33" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_molduraterraza_bump.png" ]
+Texture "c34" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_detmoldura_04_bump.png" ]
+Texture "c35" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_moldura_techo_bump.png" ]
+Texture "c36" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_piso_rustico_displace2.png" ]
+Texture "c37" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_escalera_bump.png" ]
+Texture "c38" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_moldura2piso_bump.png" ]
+Texture "c39" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_arcos_lisos_3_bump_1.png" ]
+Texture "c40" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_vigas_a2_bump.png" ]
+Texture "c41" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_arcos_lisos_2_bump.png" ]
+Texture "f42" "float" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/Maceta_D_Bump_0.png" ]
+Texture "c43" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_piso_patio_exterior_displace_inv.png" ]
+Texture "c44" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_arco_frente_displace_inv.png" ]
+Texture "c45" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_escurridera_bump.png" ]
+Texture "c46" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_detmoldura_01_bump.png" ]
+Texture "c47" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_marco_puerta_1_bump.png" ]
+Texture "c48" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_mold_arco_01_bump.png" ]
+Texture "c49" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_detmoldura_05_bump.png" ]
+Texture "c50" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_Fierro_A_Bump.png" ]
+Texture "c51" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/silla_d_piel.png" ]
+Texture "c52" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_silla_d_piel_bump.png" ]
+Texture "c53" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_WOOD08_Bump.png" ]
+Texture "c54" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_Finishes.Flooring.Carpet.Loop.5.png" ]
+Texture "c55" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/tapa_talabera.png" ]
+Texture "c56" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_bwk_1024_Bump.png" ]
+Texture "c57" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/individual_b.png" ]
+Texture "c58" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/fierro_b.png" ]
+Texture "c59" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/candil_madera.png" ]
+Texture "c60" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/fuente_azulejo.png" ]
+Texture "c61" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/metal_viejo_2.png" ]
+Texture "c62" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_metal_viejo_2.png" ]
+Texture "c63" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/N_tela_blanca.png" ]
+Texture "c64" "spectrum" "imagemap" "string filename" [ "../models/san_miguel_textures/textures/tela_silla_b.png" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate -12.25 0.463 -1.4475
+
+  AttributeBegin
+    # material_287
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_287" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_033
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_033" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_035
+    Material "diffuse" "rgb reflectance" [ 0.776471 0.756863 0.721569 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_035" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_036
+    Material "conductor" "rgb reflectance" [ 0.121569 0.113726 0.101961 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_036" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_034
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_034" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_041
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_041" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_039
+    Material "conductor" "rgb reflectance" [ 0.776471 0.74902 0.709804 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_039" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_038
+    Material "conductor" "rgb reflectance" [ 0.086274 0.082353 0.07451 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_038" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_042
+    Material "conductor" "rgb reflectance" [ 0.142338 0.462081 0.235328 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_042" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_040
+    Material "conductor" "rgb reflectance" [ 0.30195 0.875973 0.726676 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_040" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_163
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_163" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_166
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_166" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_161
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_161" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_175
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_175" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_176
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_176" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_164
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_164" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_169
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_169" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_170
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_170" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_173
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_173" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_174
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_174" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_165
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_165" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_168
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_168" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_172
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_172" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_181
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_181" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_218
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_218" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_186
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_186" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_212
+    Material "conductor" "rgb reflectance" [ 0.341 0.3972 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_212" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_209
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_209" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_210
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_210" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_205
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_205" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_202
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_202" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_201
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_201" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_185
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_185" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_177
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_177" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_215
+    Material "conductor" "rgb reflectance" [ 0.8588 0.8039 0.1412 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_215" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_211
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_211" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_213
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_213" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_250
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_250" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_236
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_236" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_262
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_262" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_255
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_255" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_258
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_258" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_214
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_214" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_194
+    Material "conductor" "rgb reflectance" [ 0.571184 0.601764 0.607166 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_194" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_259
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_259" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_222
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_222" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_196
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_196" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_200
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_200" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_227
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_227" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_247
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_247" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_246
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_246" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_190
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_190" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_254
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_254" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_256
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_256" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_238
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_238" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_197
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_197" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_220
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_220" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_261
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_261" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_240
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_240" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materials
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c2" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materials" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_260
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_260" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_183
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_183" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialy
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c3" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialy" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_147
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_147" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_182
+    Material "diffuse" "texture reflectance" [ "c4" ] "texture displacement" [ "c5" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_182" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_184
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_184" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_187
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_187" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_143
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_143" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_188
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_188" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_134
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_134" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_145
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_145" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_131
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_131" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_142
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_142" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_135
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_135" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_150
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_150" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialw
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c6" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialw" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_138
+    Material "conductor" "rgb reflectance" [ 0.147313 0.165899 0.988525 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_138" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_162
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_162" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_132
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_132" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_179
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_179" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_149
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_149" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_178
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_178" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_151
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_151" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_193
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_193" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_198
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_198" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_195
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_195" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_216
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_216" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_219
+    Material "conductor" "rgb reflectance" [ 0.05491 0.1519 0.05235 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_219" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_226
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_226" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_233
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_233" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_199
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_199" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_217
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_217" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_192
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_192" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_234
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_234" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_242
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_242" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_249
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_249" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_251
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_251" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_252
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_252" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_253
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_253" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_257
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_257" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_263
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_263" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_191
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_191" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_189
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_189" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_94
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_94" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialt
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c7" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialt" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_72
+    Material "diffuse" "texture reflectance" [ "c8" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_72" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_36
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_36" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_123
+    Material "diffuse" "texture reflectance" [ "c9" ] "texture displacement" [ "c10" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_123" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_125
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c11" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_125" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_93
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_93" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_67
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_67" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_57
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_57" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_59
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_59" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_60
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_60" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_62
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_62" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_61
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_61" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_65
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_65" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_63
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_63" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_66
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_66" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_53
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_53" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_56
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_56" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_55
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_55" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_58
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_58" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_64
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_64" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_54
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_54" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_68
+    Material "diffuse" "texture reflectance" [ "c12" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_68" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialz
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c13" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialz" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_92
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_92" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_73
+    Material "diffuse" "texture reflectance" [ "c14" ] "texture displacement" [ "c15" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_73" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialx
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c16" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialx" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_74
+    Material "diffuse" "texture reflectance" [ "c17" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_74" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_49
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_49" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_126
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c18" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_126" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialv
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c7" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialv" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialu
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c7" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialu" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_264
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_264" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_69
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c19" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_69" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_1
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c20" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_267
+    Material "conductor" "rgb reflectance" [ 0.48 0.48 0.48 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_267" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_266
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_266" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_130
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c21" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_130" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_129
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c22" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_129" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_128
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c22" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_128" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_127
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c18" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_127" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_141
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_141" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_146
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_146" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_180
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_180" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_139
+    Material "diffuse" "rgb reflectance" [ 0.445692 0.119083 0.004669 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_139" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_136
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_136" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_137
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_137" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_0
+    Material "conductor" "rgb reflectance" [ 0.1 0.1 0.1 ] "float roughness" [ 0.0220916941 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_52
+    Material "conductor" "rgb reflectance" [ 0.337255 0.286275 0.223529 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_52" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_16
+    Material "diffuse" "texture reflectance" [ "c8" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_16" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_15
+    Material "diffuse" "texture reflectance" [ "c23" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_15" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materiald
+    Material "diffuse" "texture reflectance" [ "c24" ] "texture displacement" [ "c25" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materiald" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materiali
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c26" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materiali" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_20
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_20" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_10
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_10" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_26
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_26" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_27
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_27" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_87
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c27" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_87" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_88
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c28" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_88" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_84
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c29" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_84" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_47
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_47" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_2
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_7
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_7" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_35
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_35" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_18
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c30" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_18" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_25
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_25" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_28
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_28" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_6
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_6" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_34
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_34" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_91
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_91" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_42
+    Material "diffuse" "texture reflectance" [ "c31" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_42" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_96
+    Material "diffuse" "texture reflectance" [ "c17" ] "texture displacement" [ "c32" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_96" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_43
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_43" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_41
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_41" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materiale
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materiale" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_98
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c33" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_98" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_8
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_8" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_86
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c34" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_86" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_4
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c35" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_4" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_12
+    Material "conductor" "rgb reflectance" [ 0.75 0.75 0.75 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_12" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_14
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c36" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_14" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_5
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c37" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_5" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_9
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_9" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_11
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c38" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_11" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_13
+    Material "conductor" "rgb reflectance" [ 0.54902 0.54902 0.54902 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_13" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_3
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_29
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_29" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_24
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_24" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_19
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_19" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_22
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_22" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_31
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_31" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_21
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_21" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_23
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_23" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_32
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_32" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_30
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_30" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_17
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_17" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_40
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c39" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_40" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_46
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c40" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_46" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_37
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_37" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_39
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c41" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_39" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_44
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.632455532 ] "texture displacement" [ "f42" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_44" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_33
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_33" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_45
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_45" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_48
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c43" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_48" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_51
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c44" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_51" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_70
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_70" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_90
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c45" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_90" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_89
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c46" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_89" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_75
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_75" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_95
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c47" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_95" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_97
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c48" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_97" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_85
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c49" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_85" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_144
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_144" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_153
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_153" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_154
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_154" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_157
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_157" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_159
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_159" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_167
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_167" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_160
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_160" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_203
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_203" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_204
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_204" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_171
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_171" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_229
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_229" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_241
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_241" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_156
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_156" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_155
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_155" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_206
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_206" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_237
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_237" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_248
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_248" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_245
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_245" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_124
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c11" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_124" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_140
+    Material "conductor" "rgb reflectance" [ 0.008911 0.37788 0.531663 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_140" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_207
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_207" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_148
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_148" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_152
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_152" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_158
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_158" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_208
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_208" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_221
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_221" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_223
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_223" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_224
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_224" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_231
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_231" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_239
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_239" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_225
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_225" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_232
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_232" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_243
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_243" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_230
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_230" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_235
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_235" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_228
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_228" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_244
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_244" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_265
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_265" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_133
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_133" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_268
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c50" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_268" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_269
+    Material "diffuse" "texture reflectance" [ "c51" ] "texture displacement" [ "c52" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_269" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_270
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c53" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_270" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_277
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c54" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_277" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_276
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c53" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_276" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_271
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c53" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_271" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_275
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_275" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_272
+    Material "diffuse" "texture reflectance" [ "c55" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_272" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_274
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_274" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_273
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c53" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_273" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_278
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c56" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_278" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_032
+    Material "diffuse" "texture reflectance" [ "c57" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_032" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_76
+    Material "diffuse" "texture reflectance" [ "c58" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_76" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_80
+    Material "diffuse" "texture reflectance" [ "c59" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_80" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_79
+    Material "dielectric" "float eta" [ 1.5 ] "rgb tf" [ 0.1 0.1 0.1 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_79" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_77
+    Material "diffuse" "texture reflectance" [ "c58" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_77" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_78
+    Material "conductor" "rgb reflectance" [ 0.80874 0.585009 0.479873 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_78" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialq
+    Material "diffuse" "texture reflectance" [ "c60" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialq" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialr
+    Material "conductor" "rgb reflectance" [ 0.75 0.75 0.75 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialr" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialp
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialp" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_83
+    AreaLightSource "diffuse" "rgb L" [ 1 1 1 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_83" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_82
+    Material "diffuse" "rgb reflectance" [ 0.058823 0.058823 0.058823 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_82" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_81
+    Material "diffuse" "texture reflectance" [ "c61" ] "texture displacement" [ "c62" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_81" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialn
+    Material "dielectric" "float eta" [ 1.5 ] "rgb tf" [ 0.3 0.3 0.3 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialn" ]
+  AttributeEnd
+
+  AttributeBegin
+    # materialo
+    Material "dielectric" "float eta" [ 1 ] "rgb tf" [ 0.5 0.4 0.2 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#materialo" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_284
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_284" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_279
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ] "texture displacement" [ "c63" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_279" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_280
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.577350269 ] "texture displacement" [ "c50" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_280" ]
+  AttributeEnd
+
+  AttributeBegin
+    # CafeChair_Metal
+    Material "conductor" "rgb reflectance" [ 0.48 0.48 0.48 ] "float roughness" [ 0.0880450906 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#CafeChair_Metal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_285
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_285" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_286
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_286" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_282
+    Material "diffuse" "texture reflectance" [ "c64" ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_282" ]
+  AttributeEnd
+
+  AttributeBegin
+    # material_281
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 0.333333333 ]
+    Shape "plymesh" "string filename" [ "../models/san_miguel.obj#material_281" ]
+  AttributeEnd
+AttributeEnd

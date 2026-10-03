@@ -5,11 +5,8 @@
 // Split into two halves: this file holds the hand-authored demo scenes,
 // each built to exercise one specific technique (principled BSDF, hair
 // shading, subsurface, DoF, bilinear patches, media, cameras, measured
-// BRDFs, portal lights, procedural mesh geometry...). scenes_mesh_gallery.h
-// (#include'd at the bottom of this file) holds the imported third-party
-// mesh gallery (Stanford models onward) -- a much more rigid, repetitive
-// template of "load an external asset, put it under a light" that doesn't
-// share this half's per-scene variety.
+// BRDFs, portal lights, procedural mesh geometry...). The imported third-party
+// mesh gallery (scenes_mesh_gallery.h) is gone: its scenes are pbrt-backed now.
 
 #include "hittable_list.h"
 #include "sphere.h"
@@ -329,8 +326,6 @@ inline std::shared_ptr<punctual_light_list> build_point_light_punct() {
 // entry. No other consumer.
 
 
-// ============================================================================
-// Imported third-party mesh gallery (Stanford models onward) -- see this
-// file's own header comment above for why it's split out.
-// ============================================================================
-#include "scenes_mesh_gallery.h"
+// scenes_mesh_gallery.h (the imported third-party mesh gallery, G1-G24 and the
+// H1-H12 environment scenes) deleted - every scene in it is pbrt-backed now, see
+// pbrt_scenes/mesh-*.pbrt and pbrt_scenes/environment-*.pbrt.

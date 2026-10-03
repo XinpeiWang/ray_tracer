@@ -1,0 +1,307 @@
+# environment-lost-empire.pbrt -- migration of the native "H10 Lost Empire" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/lost_empire.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: emissive=4, textured=41 (of 45 shapes)
+# Requires models/lost_empire.obj and models/lost_empire_textures/ (registry requires_files=true).
+
+LookAt  0 60 100    0 10 0    0 1 0
+Camera "perspective" "float fov" [ 55 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 0.5 0.6 0.8 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/lost_empire_textures/lost_empire-RGB.png" ]
+Texture "c1" "spectrum" "imagemap" "string filename" [ "../models/lost_empire_textures/lost_empire-RGBA.png" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate -0.51 0 -0.56
+
+  AttributeBegin
+    # Stone
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Stone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Grass_Block
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Grass_Block" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dirt
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Dirt" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cobblestone
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Cobblestone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Oak_Planks
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Oak_Planks" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stationary_Water
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Stationary_Water" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stationary_Lava
+    AreaLightSource "diffuse" "rgb L" [ 1 1 1 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Stationary_Lava" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sand
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Sand" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gravel
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Gravel" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Ore
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Iron_Ore" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Coal_Ore
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Coal_Ore" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Oak_Log
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Oak_Log" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Oak_Leaves
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Oak_Leaves" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bed
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Bed" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Powered_Rail
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Powered_Rail" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Detector_Rail
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Detector_Rail" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sticky_Piston
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Sticky_Piston" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dandelion
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Dandelion" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Poppy
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Poppy" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brown_Mushroom
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Brown_Mushroom" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Double_Stone_Slab
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Double_Stone_Slab" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Slab
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Stone_Slab" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Obsidian
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Obsidian" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Torch
+    AreaLightSource "diffuse" "rgb L" [ 1 1 1 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Torch" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Oak_Stairs
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Oak_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Chest
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Chest" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Wire
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Redstone_Wire" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Block_of_Diamond
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Block_of_Diamond" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Crafting_Table
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Crafting_Table" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Furnace
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Furnace" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Standing_Sign
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Standing_Sign" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Ladder
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Ladder" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Rail
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Rail" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cobblestone_Stairs
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Cobblestone_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wall_Sign
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Wall_Sign" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Lever
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Lever" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Door
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Iron_Door" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Torch_(inactive)
+    Material "diffuse" "texture reflectance" [ "c1" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Redstone_Torch_(inactive)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Torch_(active)
+    AreaLightSource "diffuse" "rgb L" [ 1 1 1 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Redstone_Torch_(active)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Button
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Stone_Button" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Fence
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Fence" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Nether_Portal
+    AreaLightSource "diffuse" "rgb L" [ 1 1 1 ]
+    Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Nether_Portal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Repeater_(inactive)
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Redstone_Repeater_(inactive)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Repeater_(active)
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/lost_empire.obj#Redstone_Repeater_(active)" ]
+  AttributeEnd
+AttributeEnd

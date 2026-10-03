@@ -262,8 +262,8 @@ struct CylinderData {
 // uv0/uv1/uv2: per-vertex texture coordinates ("vt" data), barycentric-
 // interpolated the same way as n0/n1/n2 when hasUVs is set (see
 // optix_intersection_triangle.h) - feeds MaterialData::textureIdx image
-// sampling for meshes with a real map_Kd texture (scenes 62/63's Sponza/
-// Bistro; see scene_builder.cpp's load_obj_triangles_mtl_gpu()). Meshes
+// sampling for meshes with a real map_Kd texture (pbrt_scenes/environment-*.pbrt
+// reading a models/*.obj through Shape "plymesh"). Meshes
 // with no "vt" data (or whose material has no textureIdx) leave hasUVs
 // false and uv0-2 unused, matching hasNormals' same opt-in pattern.
 struct TriangleData {

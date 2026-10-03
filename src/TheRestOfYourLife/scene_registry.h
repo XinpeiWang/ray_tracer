@@ -938,7 +938,16 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             std::error_code ec;
             if (!std::filesystem::equivalent(existing_path, d.path, ec) || ec) continue;
             for (const SceneDescriptor& existing : registry) {
-                if (existing.id == existing_id) { s.recommended_exposure = existing.recommended_exposure; break; }
+                if (existing.id == existing_id) {
+                    s.recommended_exposure = existing.recommended_exposure;
+                    // A curated entry that declares its assets external (the H1-H12
+                    // environment scenes: gigabyte OBJs + texture folders) makes its
+                    // twin external too - pbrt_discover only sees a flat file in
+                    // pbrt_scenes/ and calls it self-contained, which would send every
+                    // registry-wide render test off to load San Miguel.
+                    s.requires_files = s.requires_files || existing.requires_files;
+                    break;
+                }
             }
             break;
         }

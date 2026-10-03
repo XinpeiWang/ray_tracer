@@ -33,6 +33,7 @@
 #include "hair_material.h"
 #include "hittable_list.h"
 #include "material.h"
+#include "mesh_mtl.h"        // is_grayscale_image() - see the displacement-map bump-vs-normal dispatch
 #include "principled_material.h"
 #include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
 #include "scenes_advanced.h"   // bilinear_patch_hittable
@@ -263,6 +264,8 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		}
 		if (m.abbeNumber > 0.0)
 			return dielectric::make_dispersive(m.ior, m.abbeNumber);
+		if (m.transmissionFilter[0] != 1.0 || m.transmissionFilter[1] != 1.0 || m.transmissionFilter[2] != 1.0)
+			return std::make_shared<dielectric>(m.ior, color(m.transmissionFilter[0], m.transmissionFilter[1], m.transmissionFilter[2]));
 		return std::make_shared<dielectric>(m.ior);
 	case pbrt_flatten::MaterialKind::ThinDielectric:
 		// A zero-thickness slab (thin_dielectric, material_pbrt.h) is NOT the

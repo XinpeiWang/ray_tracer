@@ -912,6 +912,14 @@ struct Material {
 	// src/shared/fresnel.h) - not a new rendering feature, purely new pbrt-
 	// file reachability for an existing one.
 	double abbeNumber = 0.0;
+	// Dielectric only - "tf", a non-standard "rgb" parameter: the OBJ/.mtl
+	// "Tf" transmission filter (stained glass, tinted windows). Multiplies the
+	// transmitted contribution only, leaving reflection clear - what the native
+	// dielectric(ior, Tf) / MaterialData::transmission_filter always did; the
+	// environment scenes migrated from .mtl assets (pbrt_scenes/environment-*.pbrt)
+	// are the only users. White (the default) is a no-op, and a rough or
+	// dispersive dielectric ignores it, as the native glass did.
+	double transmissionFilter[3] = {1.0, 1.0, 1.0};
 	// DiffuseTransmission only: the light that passes through rather than
 	// reflects. pbrt-v4's own default (0.25) is closer to that material's
 	// intent than reusing `color`'s 0.5 default would be - a
@@ -1796,6 +1804,9 @@ struct FlatScene {
 	// would want to casually override between a preview and a final
 	// render.
 	bool regularize = false;
+	// Integrator "float shadowrayepsilon" - see pbrt_scene::Scene::shadowRayEpsilon's
+	// own comment. 0 means "use the renderer's default".
+	double shadowRayEpsilon = 0.0;
 	// Accelerator "bvh"/"kdtree" - see pbrt_scene::Scene::acceleratorType's
 	// own comment. Applied unconditionally like PixelFilter/regularize
 	// above (not CLI-overridable): which acceleration structure/build
@@ -3062,6 +3073,8 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 		// scalar params just above.
 		if (m.kind == MaterialKind::Dielectric) {
 			m.abbeNumber = md.params.getFloat("abbenumber", 0.0);
+			const pbrt_scene::Vec3 tf = md.params.getVec3("tf", pbrt_scene::Vec3{1.0, 1.0, 1.0});
+			m.transmissionFilter[0] = tf.x; m.transmissionFilter[1] = tf.y; m.transmissionFilter[2] = tf.z;
 		}
 
 		// Conductor OR CoatedConductor: pbrt describes a conductor's complex
@@ -5272,6 +5285,7 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 	out.acceleratorMaxNodePrims = scene.acceleratorMaxNodePrims;
 	out.acceleratorKdParams = scene.acceleratorKdParams;
 	out.maxComponentValue = scene.maxComponentValue;
+	out.shadowRayEpsilon = scene.shadowRayEpsilon;
 
 	// Film "float[4] cropwindow" / "integer[4] pixelbounds" -> a single
 	// NDC-fraction rectangle. pbrt-v4's own rule: start from the full

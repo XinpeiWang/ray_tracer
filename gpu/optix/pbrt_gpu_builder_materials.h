@@ -859,7 +859,9 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// Dielectric specifically, so reset it to the neutral/no-op value
         // here rather than accidentally tinting every pbrt-loaded glass
         // material by whatever m.color happened to default to.
-		d.transmission_filter = make_float3(1.0f, 1.0f, 1.0f);
+		d.transmission_filter = make_float3(static_cast<float>(m.transmissionFilter[0]),
+		                                    static_cast<float>(m.transmissionFilter[1]),
+		                                    static_cast<float>(m.transmissionFilter[2]));
 		// "abbenumber" - mirrors add_dispersive_dielectric()'s own Cauchy
 		// derivation exactly, see the rough branch above for the full
 		// rationale.

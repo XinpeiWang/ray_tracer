@@ -2,8 +2,7 @@
 //
 // Regression test for SceneData::skipExpensiveGeometryLoad (scene_builder.h)
 // - the optimization that lets prepareSceneAndCamera() (optix_interface.cpp)
-// skip load_obj_triangles_gpu()/load_obj_triangles_mtl_gpu()/
-// build_loaded_pbrt_scene()'s own expensive per-triangle work entirely on a
+// skip build_loaded_pbrt_scene()'s own expensive per-triangle work entirely on a
 // pure camera-move Live Preview frame (scene_id unchanged, only cam_x/y/z/
 // lookat differ), since the GPU already has this scene_id's correct geometry
 // uploaded (g_uploaded_scene_id's own skip a few lines further down the same

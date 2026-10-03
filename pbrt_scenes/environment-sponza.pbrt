@@ -1,0 +1,218 @@
+# environment-sponza.pbrt -- migration of the native "H1 Crytek Sponza" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/sponza.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: textured=24, flat=1, bump=10, alpha=3 (of 25 shapes)
+# Requires models/sponza.obj and models/sponza_textures/ (registry requires_files=true).
+
+LookAt  -800 300 0    800 300 0    0 1 0
+Camera "perspective" "float fov" [ 70 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 1.3 1.56 1.9 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_thorn_diff.png" ]
+Texture "f1" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_thorn_bump.png" ]
+Texture "f2" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_thorn_mask.png" ]
+Texture "c3" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/vase_plant.png" ]
+Texture "f4" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/vase_plant_mask.png" ]
+Texture "c5" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/vase_round.png" ]
+Texture "f6" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/vase_round_bump.png" ]
+Texture "c7" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/background.png" ]
+Texture "f8" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/background_bump.png" ]
+Texture "c9" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/spnza_bricks_a_diff.png" ]
+Texture "f10" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/spnza_bricks_a_bump.png" ]
+Texture "c11" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_arch_diff.png" ]
+Texture "c12" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_ceiling_a_diff.png" ]
+Texture "c13" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_column_a_diff.png" ]
+Texture "f14" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_column_a_bump.png" ]
+Texture "c15" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_floor_a_diff.png" ]
+Texture "c16" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_column_c_diff.png" ]
+Texture "f17" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_column_c_bump.png" ]
+Texture "c18" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_details_diff.png" ]
+Texture "c19" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_column_b_diff.png" ]
+Texture "f20" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_column_b_bump.png" ]
+Texture "c21" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_flagpole_diff.png" ]
+Texture "c22" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_fabric_green_diff.png" ]
+Texture "c23" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_fabric_blue_diff.png" ]
+Texture "c24" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_fabric_diff.png" ]
+Texture "c25" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_curtain_blue_diff.png" ]
+Texture "c26" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_curtain_diff.png" ]
+Texture "c27" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_curtain_green_diff.png" ]
+Texture "c28" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/chain_texture.png" ]
+Texture "f29" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/chain_texture_bump.png" ]
+Texture "f30" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/chain_texture_mask.png" ]
+Texture "c31" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/vase_hanging.png" ]
+Texture "c32" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/vase_dif.png" ]
+Texture "f33" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/vase_bump.png" ]
+Texture "c34" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/lion.png" ]
+Texture "f35" "float" "imagemap" "string filename" [ "../models/sponza_textures/textures/lion_bump.png" ]
+Texture "c36" "spectrum" "imagemap" "string filename" [ "../models/sponza_textures/textures/sponza_roof_diff.png" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate 60.52 126.44 38.69
+
+  AttributeBegin
+    # leaf
+    Material "diffuse" "texture reflectance" [ "c0" ] "texture displacement" [ "f1" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#leaf" ] "texture alpha" [ "f2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Material__57
+    Material "diffuse" "texture reflectance" [ "c3" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#Material__57" ] "texture alpha" [ "f4" ]
+  AttributeEnd
+
+  AttributeBegin
+    # vase_round
+    Material "diffuse" "texture reflectance" [ "c5" ] "texture displacement" [ "f6" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#vase_round" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Material__298
+    Material "diffuse" "texture reflectance" [ "c7" ] "texture displacement" [ "f8" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#Material__298" ]
+  AttributeEnd
+
+  AttributeBegin
+    # bricks
+    Material "diffuse" "texture reflectance" [ "c9" ] "texture displacement" [ "f10" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#bricks" ]
+  AttributeEnd
+
+  AttributeBegin
+    # arch
+    Material "diffuse" "texture reflectance" [ "c11" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#arch" ]
+  AttributeEnd
+
+  AttributeBegin
+    # ceiling
+    Material "diffuse" "texture reflectance" [ "c12" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#ceiling" ]
+  AttributeEnd
+
+  AttributeBegin
+    # column_a
+    Material "diffuse" "texture reflectance" [ "c13" ] "texture displacement" [ "f14" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#column_a" ]
+  AttributeEnd
+
+  AttributeBegin
+    # floor
+    Material "diffuse" "texture reflectance" [ "c15" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#floor" ]
+  AttributeEnd
+
+  AttributeBegin
+    # column_c
+    Material "diffuse" "texture reflectance" [ "c16" ] "texture displacement" [ "f17" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#column_c" ]
+  AttributeEnd
+
+  AttributeBegin
+    # details
+    Material "diffuse" "texture reflectance" [ "c18" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#details" ]
+  AttributeEnd
+
+  AttributeBegin
+    # column_b
+    Material "diffuse" "texture reflectance" [ "c19" ] "texture displacement" [ "f20" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#column_b" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Material__47
+    Material "diffuse" "rgb reflectance" [ 0.588 0.588 0.588 ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#Material__47" ]
+  AttributeEnd
+
+  AttributeBegin
+    # flagpole
+    Material "diffuse" "texture reflectance" [ "c21" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#flagpole" ]
+  AttributeEnd
+
+  AttributeBegin
+    # fabric_e
+    Material "diffuse" "texture reflectance" [ "c22" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#fabric_e" ]
+  AttributeEnd
+
+  AttributeBegin
+    # fabric_d
+    Material "diffuse" "texture reflectance" [ "c23" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#fabric_d" ]
+  AttributeEnd
+
+  AttributeBegin
+    # fabric_a
+    Material "diffuse" "texture reflectance" [ "c24" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#fabric_a" ]
+  AttributeEnd
+
+  AttributeBegin
+    # fabric_g
+    Material "diffuse" "texture reflectance" [ "c25" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#fabric_g" ]
+  AttributeEnd
+
+  AttributeBegin
+    # fabric_c
+    Material "diffuse" "texture reflectance" [ "c26" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#fabric_c" ]
+  AttributeEnd
+
+  AttributeBegin
+    # fabric_f
+    Material "diffuse" "texture reflectance" [ "c27" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#fabric_f" ]
+  AttributeEnd
+
+  AttributeBegin
+    # chain
+    Material "diffuse" "texture reflectance" [ "c28" ] "texture displacement" [ "f29" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#chain" ] "texture alpha" [ "f30" ]
+  AttributeEnd
+
+  AttributeBegin
+    # vase_hanging
+    Material "diffuse" "texture reflectance" [ "c31" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#vase_hanging" ]
+  AttributeEnd
+
+  AttributeBegin
+    # vase
+    Material "diffuse" "texture reflectance" [ "c32" ] "texture displacement" [ "f33" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#vase" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Material__25
+    Material "diffuse" "texture reflectance" [ "c34" ] "texture displacement" [ "f35" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#Material__25" ]
+  AttributeEnd
+
+  AttributeBegin
+    # roof
+    Material "diffuse" "texture reflectance" [ "c36" ]
+    Shape "plymesh" "string filename" [ "../models/sponza.obj#roof" ]
+  AttributeEnd
+AttributeEnd

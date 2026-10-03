@@ -1,0 +1,367 @@
+# environment-power-plant.pbrt -- migration of the native "H12 Power Plant" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/powerplant.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: metal=56 (of 56 shapes)
+# Requires models/powerplant.obj (registry requires_files=true).
+
+LookAt  130 85 130    -55 40 -35    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 150 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 0.5 0.6 0.8 ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate -40.267 0 -26.8903
+  Scale 0.0004 0.0004 0.0004
+
+  AttributeBegin
+    # sec1_material_1
+    Material "conductor" "rgb reflectance" [ 0.333333 0.45098 0.45098 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec1_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec1_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec1_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec2_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec2_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec2_material_1
+    Material "conductor" "rgb reflectance" [ 0.305882 0.305882 0.352941 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec2_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec2_material_2
+    Material "conductor" "rgb reflectance" [ 0.784314 0.705882 0.470588 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec2_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec3_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec3_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec3_material_1
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec3_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec3_material_2
+    Material "conductor" "rgb reflectance" [ 0.545098 0.45098 0.333333 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec3_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec3_material_3
+    Material "conductor" "rgb reflectance" [ 0.313726 0.568627 0.941176 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec3_material_3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec4_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec4_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec4_material_1
+    Material "conductor" "rgb reflectance" [ 0.45098 0.372549 0.431373 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec4_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec4_material_2
+    Material "conductor" "rgb reflectance" [ 0.305882 0.305882 0.352941 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec4_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec5_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec5_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec5_material_1
+    Material "conductor" "rgb reflectance" [ 0.45098 0.372549 0.431373 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec5_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec6_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec6_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec6_material_1
+    Material "conductor" "rgb reflectance" [ 0.305882 0.305882 0.352941 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec6_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec6_material_2
+    Material "conductor" "rgb reflectance" [ 0.45098 0.372549 0.431373 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec6_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec6_material_3
+    Material "conductor" "rgb reflectance" [ 0.784314 0.705882 0.470588 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec6_material_3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec6_material_4
+    Material "conductor" "rgb reflectance" [ 0.607843 0.490196 0.411765 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec6_material_4" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec7_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec7_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec7_material_1
+    Material "conductor" "rgb reflectance" [ 0.784314 0.603922 0.270588 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec7_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec8_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec8_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec8_material_5
+    Material "conductor" "rgb reflectance" [ 0.654902 0.443137 0.372549 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec8_material_5" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec8_material_2
+    Material "conductor" "rgb reflectance" [ 0.313726 0.568627 0.941176 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec8_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec8_material_3
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec8_material_3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec8_material_4
+    Material "conductor" "rgb reflectance" [ 0.705882 0.698039 0.490196 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec8_material_4" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec9_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec9_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec9_material_1
+    Material "conductor" "rgb reflectance" [ 0.305882 0.305882 0.352941 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec9_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec9_material_2
+    Material "conductor" "rgb reflectance" [ 0.705882 0.698039 0.490196 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec9_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec9_material_3
+    Material "conductor" "rgb reflectance" [ 0.784314 0.705882 0.470588 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec9_material_3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec9_material_4
+    Material "conductor" "rgb reflectance" [ 0.313726 0.568627 0.941176 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec9_material_4" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec10_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec10_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec10_material_1
+    Material "conductor" "rgb reflectance" [ 0.45098 0.372549 0.431373 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec10_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec11_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec11_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec11_material_1
+    Material "conductor" "rgb reflectance" [ 0.694118 0.443137 0.313726 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec11_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec12_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec12_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec13_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec13_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec14_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec14_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec14_material_1
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec14_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec14_material_2
+    Material "conductor" "rgb reflectance" [ 0.305882 0.305882 0.352941 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec14_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec15_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec15_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec15_material_1
+    Material "conductor" "rgb reflectance" [ 0.45098 0.372549 0.431373 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec15_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec15_material_2
+    Material "conductor" "rgb reflectance" [ 1 1 1 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec15_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec16_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec16_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec16_material_1
+    Material "conductor" "rgb reflectance" [ 0.756863 0.756863 0.756863 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec16_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec16_material_2
+    Material "conductor" "rgb reflectance" [ 0.45098 0.372549 0.431373 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec16_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec17_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec17_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec18_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec18_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec19_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec19_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec20_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec20_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec21_material_0
+    Material "conductor" "rgb reflectance" [ 0 0 0.501961 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec21_material_0" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec21_material_1
+    Material "conductor" "rgb reflectance" [ 0.45098 0.372549 0.431373 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec21_material_1" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec21_material_2
+    Material "conductor" "rgb reflectance" [ 0.305882 0.305882 0.352941 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec21_material_2" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec21_material_3
+    Material "conductor" "rgb reflectance" [ 0.705882 0.313726 0.313726 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec21_material_3" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec21_material_4
+    Material "conductor" "rgb reflectance" [ 0.705882 0.698039 0.490196 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec21_material_4" ]
+  AttributeEnd
+
+  AttributeBegin
+    # sec21_material_5
+    Material "conductor" "rgb reflectance" [ 1 0.603922 0 ] "float roughness" [ 1 ]
+    Shape "plymesh" "string filename" [ "../models/powerplant.obj#sec21_material_5" ]
+  AttributeEnd
+AttributeEnd

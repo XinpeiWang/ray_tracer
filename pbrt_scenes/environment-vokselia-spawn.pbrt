@@ -1,0 +1,626 @@
+# environment-vokselia-spawn.pbrt -- migration of the native "H11 Vokselia Spawn" environment scene (scenes_mesh_gallery.h's build_*()
+# + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Generated, not retyped:
+# a one-off script ported load_obj_mtl()'s per-material rules (mesh_mtl.h) to explicit pbrt directives.
+#
+# The mesh is models/vokselia_spawn.obj, named once per .mtl material as Shape "plymesh" "file.obj#material"
+# (ply_mesh.h's OBJ group paths), so the multi-megabyte asset stays where it is. Per material: Ke -> an
+# area light; illum 7 (or illum 4/6 with a real Tf and no map_Kd) -> dielectric ("rgb tf" is the .mtl
+# transmission filter); illum 2/3 with a real Ks -> conductor; map_Kd -> a diffuse imagemap; else Kd;
+# map_Bump -> a displacement texture (a float imagemap for a grayscale bump, a spectrum one for a
+# tangent-space normal map); map_d -> the Shape's alpha cutout. Faces whose material the .mtl does not
+# define use the native scene's fallback colour.
+#
+# Materials: textured=99 (of 99 shapes)
+# Requires models/vokselia_spawn.obj and models/vokselia_spawn_textures/ (registry requires_files=true).
+
+LookAt  4.5 0.9 4.5    0 0.25 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 600 ] "integer yresolution" [ 600 ]
+Sampler "halton" "integer pixelsamples" [ 100 ]
+
+WorldBegin
+
+# Flat sky = the native scene's constant sky_light colour.
+LightSource "infinite" "rgb L" [ 0.5 0.6 0.8 ]
+
+Texture "c0" "spectrum" "imagemap" "string filename" [ "../models/vokselia_spawn_textures/vokselia_spawn.png" ]
+
+# The native loader applied x*scale + offset: Translate then Scale.
+AttributeBegin
+  Translate 0 0 0
+
+  AttributeBegin
+    # Stone
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Stone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Grass
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Grass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dirt
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Dirt" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cobblestone
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Cobblestone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Plank
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Wooden_Plank" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Water
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Water" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stationary_Water
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Stationary_Water" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Lava
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Lava" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stationary_Lava
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Stationary_Lava" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sand
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Sand" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gravel
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Gravel" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gold_Ore
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Gold_Ore" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Ore
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Iron_Ore" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Coal_Ore
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Coal_Ore" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Log
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Log" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Leaves
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Leaves" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Glass
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Glass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dispenser
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Dispenser" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sandstone
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Sandstone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bed
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Bed" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Powered_Rail
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Powered_Rail" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Detector_Rail
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Detector_Rail" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sticky_Piston
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Sticky_Piston" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Tall_Grass
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Tall_Grass" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Piston
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Piston" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Piston_Head
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Piston_Head" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Dandelion
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Dandelion" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Rose
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Rose" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brown_Mushroom
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Brown_Mushroom" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Red_Mushroom
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Red_Mushroom" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gold_Block
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Gold_Block" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Block
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Iron_Block" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Double_Slab
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Double_Slab" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Slab
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Stone_Slab" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brick
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Brick" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Bookshelf
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Bookshelf" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Moss_Stone
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Moss_Stone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Obsidian
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Obsidian" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Torch
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Torch" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Fire
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Fire" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Monster_Spawner
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Monster_Spawner" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Stairs
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Wooden_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Chest
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Chest" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Wire
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Redstone_Wire" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Diamond_Block
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Diamond_Block" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Crafting_Table
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Crafting_Table" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Crops
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Crops" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Farmland
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Farmland" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Furnace
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Furnace" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sign_Post
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Sign_Post" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Door
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Wooden_Door" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Ladder
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Ladder" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Rail
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Rail" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cobblestone_Stairs
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Cobblestone_Stairs" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wall_Sign
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Wall_Sign" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Lever
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Lever" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Plate
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Stone_Plate" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Iron_Door
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Iron_Door" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Wooden_Plate
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Wooden_Plate" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Torch_(off)
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Redstone_Torch_(off)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Redstone_Torch_(on)
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Redstone_Torch_(on)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Stone_Button
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Stone_Button" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Snow_Block
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Snow_Block" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cactus
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Cactus" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Clay
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Clay" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Sugar_Cane
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Sugar_Cane" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Jukebox
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Jukebox" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Fence
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Fence" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pumpkin
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Pumpkin" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Netherrack
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Netherrack" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Soul_Sand
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Soul_Sand" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Glowstone
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Glowstone" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Portal
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Portal" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Jack-O-Lantern
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Jack-O-Lantern" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cake
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Cake" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Repeater_(off)
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Repeater_(off)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Repeater_(on)
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Repeater_(on)" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Trapdoor
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Trapdoor" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Glass_Pane
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Glass_Pane" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Melon
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Melon" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pumpkin_Stem
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Pumpkin_Stem" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Melon_Stem
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Melon_Stem" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Fence_Gate
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Fence_Gate" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Nether_Brick
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Nether_Brick" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Nether_Wart
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Nether_Wart" ]
+  AttributeEnd
+
+  AttributeBegin
+    # White_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#White_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Orange_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Orange_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Light_Blue_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Light_Blue_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Yellow_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Yellow_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Pink_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Pink_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Gray_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Gray_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Light_Gray_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Light_Gray_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Cyan_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Cyan_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Purple_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Purple_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Blue_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Blue_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Brown_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Brown_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Green_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Green_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Red_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Red_Wool" ]
+  AttributeEnd
+
+  AttributeBegin
+    # Black_Wool
+    Material "diffuse" "texture reflectance" [ "c0" ]
+    Shape "plymesh" "string filename" [ "../models/vokselia_spawn.obj#Black_Wool" ]
+  AttributeEnd
+AttributeEnd
