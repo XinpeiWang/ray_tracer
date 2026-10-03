@@ -12,6 +12,7 @@
 #include <cstdint>    // std::int64_t - see addMediumIfPresent()'s nanovdb voxel-count overflow guard
 #include <iostream>   // std::cerr - see addMediumIfPresent()'s nanovdb read-failure diagnostic, this file's one deliberate exception to its own no-console-output convention
 #include <map>
+#include <mutex>
 #include <memory>
 #include <tuple>
 #include <vector>
@@ -68,6 +69,27 @@ inline color reflectanceToConductorK(const color& r) {
 	return color(k1(r.x()), k1(r.y()), k1(r.z()));
 }
 
+// One decoded mipmap per (file, options), shared by every material that names it.
+// A scene that gives each material of one .mtl/OBJ its own Material directive (the
+// environment-*.pbrt scenes: Lost Empire's 45 materials all read the same three
+// 8192x8192 atlases) would otherwise decode and keep a private copy per material -
+// tens of gigabytes. Weak references, so the pixels still go away with the last
+// material that uses them (a later scene load does not inherit a stale gigabyte).
+inline std::shared_ptr<mipmap_texture> sharedMipmapTexture(const char *filename,
+														   MipMapOptions opts = MipMapOptions{}) {
+	static std::mutex mutex;
+	static std::map<std::string, std::weak_ptr<mipmap_texture>> cache;
+	std::string key = filename;
+	key += '|' + std::to_string(static_cast<int>(opts.filter)) + '|' + std::to_string(opts.max_anisotropy) +
+		   '|' + std::to_string(static_cast<int>(opts.wrap)) + '|' + std::to_string(opts.invert ? 1 : 0) +
+		   '|' + std::to_string(opts.gamma);
+	std::lock_guard<std::mutex> lock(mutex);
+	if (auto hit = cache[key].lock()) return hit;
+	auto fresh = std::make_shared<mipmap_texture>(filename, opts);
+	cache[key] = fresh;
+	return fresh;
+}
+
 // Forward declaration - checkerOrMixSlot (full comment below, at its actual
 // definition) and buildNestedProceduralTexture() are mutually referential (a
 // nested checkerboard/mix's own tex1/tex2 go back through checkerOrMixSlot).
@@ -87,7 +109,7 @@ inline shared_ptr<texture> buildNestedProceduralTexture(const pbrt_flatten::Nest
 	// "mix"
 	if (!n.amountFilename.empty())
 		return std::make_shared<mix_texture>(
-			tex1, tex2, std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(n.amountFilename.c_str())));
+			tex1, tex2, std::static_pointer_cast<texture>(sharedMipmapTexture(n.amountFilename.c_str())));
 	return std::make_shared<mix_texture>(tex1, tex2, n.amount);
 }
 
@@ -107,7 +129,7 @@ inline shared_ptr<texture> checkerOrMixSlot(const std::string &filename, const d
 		return buildNestedProceduralTexture(*nested);
 	return filename.empty()
 		? std::static_pointer_cast<texture>(std::make_shared<solid_color>(color(color3[0], color3[1], color3[2])))
-		: std::static_pointer_cast<texture>(std::make_shared<mipmap_texture>(filename.c_str()));
+		: std::static_pointer_cast<texture>(sharedMipmapTexture(filename.c_str()));
 }
 
 // A resolved "checkerboard" Texture's own top-level pattern class -
@@ -192,7 +214,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// own plain (non-EWA) image emission lookup - see diffuse_light's
 		// own comment on that flag.
 		if (!emission->filename.empty()) {
-			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(emission->filename.c_str());
+			shared_ptr<texture> tex = sharedMipmapTexture(emission->filename.c_str());
 			if (emission->scale != 1.0)
 				tex = std::make_shared<scaled_texture>(tex, emission->scale);
 			return std::make_shared<diffuse_light>(tex, emission->twoSided, /*point_sample=*/true);
@@ -238,7 +260,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// instead of a flat number - see flatten()'s own resolution).
 		if (!m.roughnessTextureFilename.empty())
 			return std::make_shared<rough_dielectric>(m.ior,
-				std::make_shared<mipmap_texture>(m.roughnessTextureFilename.c_str(),
+				sharedMipmapTexture(m.roughnessTextureFilename.c_str(),
 					toMipMapOptions(m.roughnessTextureOptions)), m.remapRoughness);
 		// A nonzero "roughness"/"uroughness"/"vroughness" (m.roughness_u/
 		// m.roughness_v - see flatten()'s own fallback-chain comment) means
@@ -289,7 +311,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// real mip-level filtering under minification, not just its
 		// original AreaLightSource caller's point-sampled use.
 		if (!m.textureFilename.empty()) {
-			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str(), imageMapOptionsFor(m));
+			shared_ptr<texture> tex = sharedMipmapTexture(m.textureFilename.c_str(), imageMapOptionsFor(m));
 			if (m.textureScale != 1.0)
 				tex = std::make_shared<scaled_texture>(tex, m.textureScale);
 			return std::make_shared<coated_diffuse>(tex, m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
@@ -385,11 +407,11 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		if (m.textureFilename.empty() && m.transmittanceTextureFilename.empty())
 			return std::make_shared<diffuse_transmission>(albedo, transmittance);
 		shared_ptr<texture> rTex = m.textureFilename.empty()
-			? nullptr : std::make_shared<mipmap_texture>(m.textureFilename.c_str(), imageMapOptionsFor(m));
+			? nullptr : sharedMipmapTexture(m.textureFilename.c_str(), imageMapOptionsFor(m));
 		if (rTex && m.textureScale != 1.0)
 			rTex = std::make_shared<scaled_texture>(rTex, m.textureScale);
 		shared_ptr<texture> tTex = m.transmittanceTextureFilename.empty()
-			? nullptr : std::make_shared<mipmap_texture>(m.transmittanceTextureFilename.c_str(),
+			? nullptr : sharedMipmapTexture(m.transmittanceTextureFilename.c_str(),
 				toMipMapOptions(m.transmittanceTextureOptions));
 		if (tTex && m.transmittanceTextureScale != 1.0)
 			tTex = std::make_shared<scaled_texture>(tTex, m.transmittanceTextureScale);
@@ -480,7 +502,7 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// (barcelona-pavilion's own dominant pattern, same as CoatedDiffuse's
 		// identical-shape case below).
 		if (!m.textureFilename.empty()) {
-			shared_ptr<texture> tex = std::make_shared<mipmap_texture>(m.textureFilename.c_str(), imageMapOptionsFor(m));
+			shared_ptr<texture> tex = sharedMipmapTexture(m.textureFilename.c_str(), imageMapOptionsFor(m));
 			if (m.textureScale != 1.0)
 				tex = std::make_shared<scaled_texture>(tex, m.textureScale);
 			return std::make_shared<lambertian>(tex);
@@ -1051,7 +1073,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// forCurve: see makeMaterial's own comment - only affects the Hair case,
 	// picked by the one caller (the curve loop below) that actually has real
 	// curve geometry under the resolved material.
-	const auto materialFor = [&scene](int materialIndex, int areaLightIndex,
+	// Displacement images decoded once per file (bump vs normal map decided by pixel
+	// content, once), shared by every material that names the same file - see
+	// sharedMipmapTexture()'s comment for why per-material copies are not affordable.
+	struct DispEntry { std::shared_ptr<image_texture> tex; bool grayscale = false; };
+	std::map<std::string, DispEntry> dispCache;
+	const auto materialFor = [&scene, &dispCache](int materialIndex, int areaLightIndex,
 									   bool forCurve = false)
 			-> std::shared_ptr<material> {
 		const pbrt_flatten::Emission *em =
@@ -1075,10 +1102,19 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// either, even though every bundled pbrt scene's own "*bump*.png"
 		// naming is grayscale in practice.
 		if (base && !em && !m.displacementTextureFilename.empty()) {
-			rtw_image disp_probe(m.displacementTextureFilename.c_str());
-			if (disp_probe.height() > 0) {
-				const bool grayscale = is_grayscale_image(disp_probe);
-				auto disp_tex = std::make_shared<image_texture>(std::move(disp_probe));
+			auto disp = dispCache.find(m.displacementTextureFilename);
+			if (disp == dispCache.end()) {
+				rtw_image disp_probe(m.displacementTextureFilename.c_str());
+				DispEntry entry;
+				if (disp_probe.height() > 0) {
+					entry.grayscale = is_grayscale_image(disp_probe);
+					entry.tex = std::make_shared<image_texture>(std::move(disp_probe));
+				}
+				disp = dispCache.emplace(m.displacementTextureFilename, std::move(entry)).first;
+			}
+			if (disp->second.tex) {
+				const bool grayscale = disp->second.grayscale;
+				auto disp_tex = disp->second.tex;
 				base = grayscale
 					? std::static_pointer_cast<material>(
 						  std::make_shared<bump_map_material>(disp_tex, base, m.displacementScale))
@@ -1128,6 +1164,9 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// is fed into rtw_image's raw-pixel constructor (already used elsewhere
 	// for pre-decoded HDR data) rather than rtw_image::load().
 	std::map<int, std::shared_ptr<texture>> alphaMaskCache;
+	// Decoded masks by file as well: each is width*height*3 floats (8192x8192 is
+	// ~800 MB), and many materials of one asset name the same mask.
+	std::map<std::string, std::shared_ptr<texture>> alphaMaskByFile;
 	const auto alphaMaskFor = [&](int mi) -> std::shared_ptr<texture> {
 		if (mi < 0 || static_cast<std::size_t>(mi) >= scene.materials.size()) return nullptr;
 		const auto it = alphaMaskCache.find(mi);
@@ -1135,13 +1174,19 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		std::shared_ptr<texture> mask;
 		const std::string &fn = scene.materials[static_cast<std::size_t>(mi)].alphaTextureFilename;
 		if (!fn.empty()) {
-			int w = 0, h = 0, channels = 0;
-			unsigned char *bdata = stbi_load(fn.c_str(), &w, &h, &channels, 3);
-			if (bdata) {
-				std::vector<float> pixels(static_cast<std::size_t>(w) * h * 3);
-				for (std::size_t i = 0; i < pixels.size(); ++i) pixels[i] = bdata[i] / 255.0f;
-				stbi_image_free(bdata);
-				mask = std::make_shared<image_texture>(rtw_image(w, h, pixels.data()));
+			const auto byFile = alphaMaskByFile.find(fn);
+			if (byFile != alphaMaskByFile.end()) {
+				mask = byFile->second;
+			} else {
+				int w = 0, h = 0, channels = 0;
+				unsigned char *bdata = stbi_load(fn.c_str(), &w, &h, &channels, 3);
+				if (bdata) {
+					std::vector<float> pixels(static_cast<std::size_t>(w) * h * 3);
+					for (std::size_t i = 0; i < pixels.size(); ++i) pixels[i] = bdata[i] / 255.0f;
+					stbi_image_free(bdata);
+					mask = std::make_shared<image_texture>(rtw_image(w, h, pixels.data()));
+				}
+				alphaMaskByFile.emplace(fn, mask);
 			}
 		}
 		alphaMaskCache.emplace(mi, mask);

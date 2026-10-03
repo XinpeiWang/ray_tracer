@@ -567,3 +567,26 @@ TEST(ObjGroupTest, AGroupCanBeLoadedTwiceWhileTheCacheIsLive) {
 	EXPECT_EQ(a.mesh.indices, b.mesh.indices);
 	EXPECT_EQ(a.mesh.positions, b.mesh.positions);
 }
+
+TEST(ObjGroupTest, TheCacheSurvivesUntilTheLastLeaseIsReleased) {
+	// Two scene loads overlapping (CPU and GPU builds of one scene): the first to finish
+	// must not empty the cache under the second.
+	const std::string path = "ply_mesh_tests_tmp_groups_lease.obj";
+	{
+		std::ofstream out(path, std::ios::binary);
+		out << kGroupedObj;
+	}
+	{
+		ObjGroupCacheLease outer;
+		{
+			ObjGroupCacheLease inner;
+			ASSERT_TRUE(loadFile(path + "#red").ok);
+		}
+		std::remove(path.c_str());   // only the cache can serve this now
+		const LoadResult stillServed = loadFile(path + "#blue");
+		EXPECT_TRUE(stillServed.ok) << stillServed.error;
+	}
+	const LoadResult cleared = loadFile(path + "#blue");
+	EXPECT_FALSE(cleared.ok) << "the last lease should have freed the cache";
+}
+

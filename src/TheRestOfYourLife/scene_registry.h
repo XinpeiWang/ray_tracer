@@ -940,12 +940,16 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             for (const SceneDescriptor& existing : registry) {
                 if (existing.id == existing_id) {
                     s.recommended_exposure = existing.recommended_exposure;
-                    // A curated entry that declares its assets external (the H1-H12
-                    // environment scenes: gigabyte OBJs + texture folders) makes its
-                    // twin external too - pbrt_discover only sees a flat file in
-                    // pbrt_scenes/ and calls it self-contained, which would send every
-                    // registry-wide render test off to load San Miguel.
-                    s.requires_files = s.requires_files || existing.requires_files;
+                    // The Large Scenes category (H1-H12 environment scenes: gigabyte
+                    // OBJs + texture folders) declares its assets external, and so must
+                    // its twin - pbrt_discover only sees a flat file in pbrt_scenes/ and
+                    // calls it self-contained, which would send every registry-wide
+                    // render test off to load San Miguel. Deliberately NOT every curated
+                    // requires_files entry: the Models (G1-G24) twins are cheap and
+                    // their registry-wide tests keep running. See
+                    // FindSceneTest.LargeSceneTwinsInheritRequiresFiles.
+                    if (existing.category == SceneCategories::LargeScene && existing.requires_files)
+                        s.requires_files = true;
                     break;
                 }
             }

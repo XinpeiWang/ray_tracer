@@ -680,11 +680,12 @@ inline bool hasObjExtension(const std::string &path) {
 // re-parsing a gigabyte per Shape would never finish, so the first request
 // splits the whole file into groups and the rest copy theirs out. The cache is
 // process-global and holds a full extra copy of the mesh, so whoever drives a
-// scene load calls clearObjGroupCache() when it is done (pbrt_load::loadFile()
-// does).
+// scene load holds an ObjGroupCacheLease for its length (pbrt_load::loadFile()
+// does) and the cache is freed when the last lease goes.
 struct ObjGroupCache {
 	std::mutex mutex;
 	std::unordered_map<std::string, std::unordered_map<std::string, Mesh>> files;
+	int activeLeases = 0;   // scene loads currently using the cache - see ObjGroupCacheLease
 };
 inline ObjGroupCache &objGroupCache() {
 	static ObjGroupCache cache;
@@ -695,6 +696,25 @@ inline void clearObjGroupCache() {
 	std::lock_guard<std::mutex> lock(c.mutex);
 	c.files.clear();
 }
+
+// Held for the length of one scene load. The cache is cleared when the LAST lease
+// is released, not when any one is: two scenes loading on different threads (CPU and
+// GPU builds of one scene, Live Preview beside a render) must not empty the cache
+// under each other, or every remaining "#material" Shape re-parses the whole OBJ.
+struct ObjGroupCacheLease {
+	ObjGroupCacheLease() {
+		ObjGroupCache &c = objGroupCache();
+		std::lock_guard<std::mutex> lock(c.mutex);
+		++c.activeLeases;
+	}
+	~ObjGroupCacheLease() {
+		ObjGroupCache &c = objGroupCache();
+		std::lock_guard<std::mutex> lock(c.mutex);
+		if (--c.activeLeases <= 0) { c.activeLeases = 0; c.files.clear(); }
+	}
+	ObjGroupCacheLease(const ObjGroupCacheLease &) = delete;
+	ObjGroupCacheLease &operator=(const ObjGroupCacheLease &) = delete;
+};
 
 inline LoadResult loadObjGroup(const std::string &path, const std::string &group) {
 	LoadResult r;

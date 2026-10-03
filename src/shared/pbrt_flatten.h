@@ -3075,6 +3075,12 @@ inline FlatScene flatten(const pbrt_scene::Scene &scene,
 			m.abbeNumber = md.params.getFloat("abbenumber", 0.0);
 			const pbrt_scene::Vec3 tf = md.params.getVec3("tf", pbrt_scene::Vec3{1.0, 1.0, 1.0});
 			m.transmissionFilter[0] = tf.x; m.transmissionFilter[1] = tf.y; m.transmissionFilter[2] = tf.z;
+			// Only the smooth, non-dispersive glass applies it (both builders) - say so
+			// rather than silently rendering clear glass for a rough/dispersive one.
+			if ((tf.x != 1.0 || tf.y != 1.0 || tf.z != 1.0) &&
+				(m.roughness_u > 0.0 || m.roughness_v > 0.0 || m.abbeNumber > 0.0))
+				warn("Material \"dielectric\" \"rgb tf\" is ignored on a rough or dispersive "
+					 "dielectric (only smooth, non-dispersive glass applies the transmission filter)");
 		}
 
 		// Conductor OR CoatedConductor: pbrt describes a conductor's complex

@@ -3264,6 +3264,22 @@ TEST(FlattenMaterialTest, DielectricTransmissionFilterIsReadFromRgbTf) {
 		"Material \"diffuse\" \"rgb tf\" [ 0.1 0.1 0.1 ]\n" + std::string(kQuadMesh));
 	ASSERT_EQ(diffuse.materials.size(), 1u);
 	for (int c = 0; c < 3; ++c) EXPECT_DOUBLE_EQ(diffuse.materials[0].transmissionFilter[c], 1.0);
+	EXPECT_FALSE(warnedAbout(tinted, "rgb tf"));
+}
+
+TEST(FlattenMaterialTest, DielectricTransmissionFilterOnRoughOrDispersiveGlassWarns) {
+	const FlatScene rough = flattenSource(
+		"Material \"dielectric\" \"float roughness\" [ 0.2 ] \"rgb tf\" [ 0.5 0.5 0.5 ]\n"
+		+ std::string(kQuadMesh));
+	EXPECT_TRUE(warnedAbout(rough, "rgb tf"));
+	const FlatScene dispersive = flattenSource(
+		"Material \"dielectric\" \"float abbenumber\" [ 40 ] \"rgb tf\" [ 0.5 0.5 0.5 ]\n"
+		+ std::string(kQuadMesh));
+	EXPECT_TRUE(warnedAbout(dispersive, "rgb tf"));
+	// A white filter on rough glass is a no-op, so nothing to warn about.
+	const FlatScene white = flattenSource(
+		"Material \"dielectric\" \"float roughness\" [ 0.2 ]\n" + std::string(kQuadMesh));
+	EXPECT_FALSE(warnedAbout(white, "rgb tf"));
 }
 
 TEST(FlattenMaterialTest, DielectricRoughnessEncodingWrapInvertAreNowResolved) {

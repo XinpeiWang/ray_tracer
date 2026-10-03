@@ -12,6 +12,7 @@
  */
 
 #include <gtest/gtest.h>
+#include <filesystem>
 #include <string>
 #include <set>
 
@@ -441,6 +442,29 @@ TEST(FindSceneTest, EarthSceneRequiresFiles) {
 	const SceneDescriptor* s = find_scene("A4");
 	ASSERT_NE(s, nullptr);
 	EXPECT_TRUE(s->requires_files);
+}
+
+TEST(FindSceneTest, LargeSceneTwinsInheritRequiresFiles) {
+	// Every pbrt file in pbrt_scenes/ also auto-registers as an "I<N>" twin, and
+	// pbrt_discover calls a flat file self-contained. The H1-H12 environment scenes read
+	// gigabyte OBJs, so their twins must report requires_files too or every registry-wide
+	// render test tries to load San Miguel.
+	int checked = 0;
+	for (const SceneDescriptor& curated : get_builtin_scene_registry()) {
+		if (curated.category != SceneCategories::LargeScene || !curated.requires_files) continue;
+		const auto curatedPath = pbrt_scene_registry::paths().find(curated.id);
+		if (curatedPath == pbrt_scene_registry::paths().end()) continue;
+		for (const SceneDescriptor& twin : get_scene_registry()) {
+			if (twin.id == curated.id) continue;
+			const auto twinPath = pbrt_scene_registry::paths().find(twin.id);
+			if (twinPath == pbrt_scene_registry::paths().end()) continue;
+			std::error_code ec;
+			if (!std::filesystem::equivalent(curatedPath->second, twinPath->second, ec) || ec) continue;
+			EXPECT_TRUE(twin.requires_files) << twin.id << " is the twin of " << curated.id;
+			++checked;
+		}
+	}
+	EXPECT_GT(checked, 0) << "no Large Scenes twin found - the test is not exercising anything";
 }
 
 TEST(FindSceneTest, CornellBoxIsGpuCompatible) {
