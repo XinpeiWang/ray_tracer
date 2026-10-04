@@ -57,6 +57,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.t           = payload.t;
 		h.materialIdx = payload.materialIdx;
 		h.geomType    = payload.geomType;
+		h.primIdx     = payload.primIdx;
 		h.mediumTFar  = payload.mediumTFar;
 		h.frontFace   = payload.frontFace;
 		h.objDpdu     = payload.objDpdu;

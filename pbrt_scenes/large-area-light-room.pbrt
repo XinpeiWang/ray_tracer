@@ -1,0 +1,35 @@
+# large-area-light-room.pbrt -- regression scene for the GPU wavefront backend's missing BSDF-hit MIS.
+#
+# A closed 5-unit room of bright (0.8) diffuse walls lit by one 4.6x4.6 ceiling light that covers most of the
+# ceiling, so light reaches every surface after several bounces and each bounce sits close to a large emitter.
+# That is where multiple importance sampling matters: next-event estimation at a vertex is weighted
+# pl^2/(pb^2+pl^2), and the other share of the lamp's light has to come from the bounce ray that happens to
+# hit the lamp. The wavefront backend dropped that share for every non-specular bounce, so it rendered this
+# room at 81% of the CPU's brightness and Fireplace Room (two big window lights close to the walls) at 83%. A
+# small or distant light, which is what every earlier scene used, loses almost nothing and hid the bug.
+# See tests/unit/pbrt_example_scenes_tests.cpp (LargeAreaLightRoomAgreesAcrossBackends).
+#
+# The light quad is wound so it faces down (-y).
+
+LookAt 0 2.25 2.375  0 2 0  0 1 0
+Camera "perspective" "float fov" [ 70 ]
+Film "rgb" "integer xresolution" [ 200 ] "integer yresolution" [ 200 ]
+Sampler "halton" "integer pixelsamples" [ 100 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0 0 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.8 0.8 0.8 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -2.5 0 -2.5   2.5 0 -2.5   2.5 0 2.5   -2.5 0 2.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -2.5 5 2.5   2.5 5 2.5   2.5 5 -2.5   -2.5 5 -2.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -2.5 0 -2.5   -2.5 5 -2.5   2.5 5 -2.5   2.5 0 -2.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -2.5 0 2.5   2.5 0 2.5   2.5 5 2.5   -2.5 5 2.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -2.5 0 -2.5   -2.5 0 2.5   -2.5 5 2.5   -2.5 5 -2.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 2.5 0 -2.5   2.5 5 -2.5   2.5 5 2.5   2.5 0 2.5 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 2.3 4.9 -2.3   2.3 4.9 2.3   -2.3 4.9 2.3   -2.3 4.9 -2.3 ]
+AttributeEnd

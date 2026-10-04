@@ -131,6 +131,7 @@ extern "C" __global__ void __closesthit__wf_bilinear_patch() {
 	payload->t           = t_hit;
 	payload->materialIdx = patch.materialIdx;
 	payload->geomType    = 2;
+	payload->primIdx     = primIdx;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	// See __closesthit__wf_quad's comment on frontFace - same missing

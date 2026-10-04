@@ -329,6 +329,7 @@ struct WfHitPayload {
 	float  t;
 	int    materialIdx;
 	int    geomType;   // 0 = sphere, 1 = quad, 2 = bilinear patch, 4 = disk, 5 = cylinder
+	int    primIdx;    // see HitWorkItem::primIdx
 	bool   hit;
 	float  mediumTFar; // MaterialType::Medium/DielectricMedium only - see HitWorkItem::mediumTFar
 	int    frontFace;  // see HitWorkItem::frontFace

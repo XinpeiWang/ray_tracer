@@ -259,11 +259,18 @@ extern "C" __global__ void evaluate_materials(
 
 	// -------------------------------------------------------------------------
 	// Emissive: add emission term, path terminates (no scatter).
-	// pbrt-v4 alignment: only add emissive if depth==0 or specular_bounce==1
-	// to avoid double-counting with NEE shadow rays at non-specular bounces.
+	// pbrt-v4 alignment: the camera ray and a specular bounce add the full emission (no NEE partner);
+	// any other arrival adds it weighted by the MIS complement of the NEE shadow ray taken at the
+	// previous vertex, so the two strategies together count the lamp exactly once.
 	// -------------------------------------------------------------------------
 	if (mat.type == MaterialType::DiffuseLight) {
-		if (h.specular_bounce || h.depth == 0) {
+		// A BSDF-sampled arrival (not specular, not the camera ray) is MIS-weighted against the NEE sample that
+		// the previous vertex took at this same point - see wf_emitter_hit_mis_weight().
+		float emitMis = 1.0f;
+		if (!h.specular_bounce && h.depth > 0)
+			emitMis = wf_emitter_hit_mis_weight(h, spheres, quads, triangles, bilinearPatches, disks, cylinders,
+												lightIndices, lightKinds, aliasTable, numLights, lightBvh);
+		if (emitMis > 0.0f) {
 			// mat.twoSided (pbrt AreaLightSource "diffuse" "bool twosided") lets
 			// a light emit from both faces instead of gating on frontFace - see
 			// CPU's diffuse_light::is_two_sided()/the recursive backend's
@@ -300,7 +307,7 @@ extern "C" __global__ void evaluate_materials(
 				// 0*NaN=NaN), so skip the multiply entirely rather than rely on
 				// multiplying by zero to cancel it out.
 				if (le.x > 0.0f || le.y > 0.0f || le.z > 0.0f)
-					radiance = radiance + throughput * wf_lift_rgb_to_spectrum(le, swl, /*isIlluminant=*/true);
+					radiance = radiance + (throughput * emitMis) * wf_lift_rgb_to_spectrum(le, swl, /*isIlluminant=*/true);
 			}
 		}
 		addToFramebuffer(h.pixelIndex, radiance * h.filterWeight);

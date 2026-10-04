@@ -2096,6 +2096,62 @@ __device__ __forceinline__ NeeLightSample wf_nee_pick_light(
 	return result;
 }
 
+// MIS weight for a BSDF-sampled ray that arrives at an emitter: w = pb^2 / (pb^2 + pl^2), where pb is the
+// BSDF pdf the ray was sampled with and pl the solid-angle pdf next-event estimation at the ray's origin would
+// have had for choosing this very point (light-selection pmf x area-to-solid-angle). The NEE contribution at
+// that origin is weighted by the complementary pl^2/(pb^2+pl^2) (wf_finish_material_scatter), so dropping this
+// half - as the emissive early-exit used to for every non-specular bounce - lost the share of a lamp's light that
+// NEE gives to the BSDF strategy: ~0 for a small or distant light, 10-20% of each indirect bounce near a large
+// one. Returns 1 when NEE could not have sampled the point (an emitter outside the light list, pl == 0).
+__device__ __forceinline__ float wf_emitter_hit_mis_weight(
+	const HitWorkItem& h, const SphereData* spheres, const QuadData* quads, const TriangleData* triangles,
+	const BilinearPatchData* bilinearPatches, const DiskData* disks, const CylinderData* cylinders,
+	const int* lightIndices, const GpuLightKind* lightKinds, const GpuAliasEntry* aliasTable,
+	unsigned int numLights, const WfLightBvhContext& lightBvh)
+{
+	if (!(h.brdf_pdf > 0.0f) || numLights == 0 || aliasTable == nullptr) return 1.0f;
+
+	// HitWorkItem::geomType and GpuLightKind number the shapes differently.
+	GpuLightKind kind;
+	switch (h.geomType) {
+		case 0: kind = GpuLightKind::Sphere; break;
+		case 1: kind = GpuLightKind::Quad; break;
+		case 2: kind = GpuLightKind::BilinearPatch; break;
+		case 3: kind = GpuLightKind::Triangle; break;
+		case 4: kind = GpuLightKind::Disk; break;
+		default: kind = GpuLightKind::Cylinder; break;
+	}
+	int li = -1;
+	for (unsigned int i = 0; i < numLights; ++i) {
+		if (lightIndices[i] == h.primIdx && lightKinds[i] == kind) { li = (int)i; break; }
+	}
+	if (li < 0) return 1.0f;
+
+	GpuLightSample s;
+	s.lightIdx = li;
+	s.kind     = kind;
+	s.primIdx  = h.primIdx;
+	s.sampleU  = h.uv_u;
+	s.sampleV  = h.uv_v;
+	s.point    = h.hitPoint;
+	s.normal   = h.normal;
+	s.time     = h.time;
+	float3 toLight; float dist, geomPdf;
+	if (!wf_reevaluate_light_geometry(s, h.rayOrigin, spheres, quads, triangles, bilinearPatches, disks,
+									  cylinders, toLight, dist, geomPdf) || !(geomPdf > 0.0f))
+		return 1.0f;
+
+	const float3& o = h.rayOrigin;
+	const float selection = (lightBvh.nodeCount > 0)
+		? wf_light_bvh_pmf(o.x, o.y, o.z, li, numLights, lightBvh.nodes, lightBvh.bitTrail, lightBvh.nodeCount,
+			lightBvh.allBMinX, lightBvh.allBMinY, lightBvh.allBMinZ,
+			lightBvh.allBMaxX, lightBvh.allBMaxY, lightBvh.allBMaxZ)
+		: aliasTable[li].pdf;
+	const float pl = selection * geomPdf;
+	if (!(pl > 0.0f)) return 1.0f;
+	return 1.0f - wf_mis(pl, h.brdf_pdf);   // wf_mis(a, b) = a^2/(a^2+b^2), so this is pb^2/(pb^2+pl^2)
+}
+
 // Extracted out of wf_finish_material_scatter() (item 4 sub-step 4 of this
 // project's own code-health plan) - the shadow-ray build+push logic that was
 // near-identically repeated across the area-light, sky-light, and punctual-

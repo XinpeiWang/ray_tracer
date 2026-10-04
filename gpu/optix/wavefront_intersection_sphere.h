@@ -438,6 +438,7 @@ extern "C" __global__ void __closesthit__wf_sphere() {
 	payload->t           = t_hit;
 	payload->materialIdx = sph.materialIdx;
 	payload->geomType    = 0;
+	payload->primIdx     = sphereIdx;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;

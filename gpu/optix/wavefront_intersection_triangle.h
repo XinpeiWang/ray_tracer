@@ -226,6 +226,7 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	payload->t           = t_hit;
 	payload->materialIdx = tri.materialIdx;
 	payload->geomType    = 3;
+	payload->primIdx     = primIdx;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	// See __closesthit__wf_quad's comment on frontFace - same missing
