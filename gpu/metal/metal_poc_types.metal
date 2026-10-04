@@ -300,6 +300,21 @@ struct Uniforms {
     // mirrored comment for the full "why". Appended at the very end,
     // same reasoning as that comment.
     uint rowOffset;
+
+    // Pixel reconstruction filter importance-sampling table - see
+    // metal_poc_gpu_types.h's own mirrored comment for the full "why".
+    // Appended at the very end, same reasoning as rowOffset's own
+    // comment just above. Consumed by primaryRayKernel's own
+    // sampleFilterPosition() call (metal_poc_sampling.metal).
+    uint filterKind;
+    float filterB;
+    float filterC;
+    float filterSigma;
+    float filterTau;
+    float filterRadius;
+    float filterIntegral;
+    float filterConditionalCDF[32][32];
+    float filterMarginalCDF[32];
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/

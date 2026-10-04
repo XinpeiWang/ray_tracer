@@ -1,3 +1,78 @@
+// Result of one importance-sampled pixel-filter draw - mirrors
+// src/shared/filter_sampler.h's own FilterSample<T> exactly.
+struct MetalFilterSample {
+    float px, py;  // sub-pixel position in [-radius, +radius]
+    float weight;  // f(p)/pdf(p) - see this function's own comment
+};
+
+// Hand-ported MSL device-side mirror of FilterSampler<float,32>::sample()
+// (src/shared/filter_sampler.h) - a GATHER, not a scatter: THIS pixel's
+// own thread draws (px,py) from the distribution of ITS OWN
+// reconstruction filter, which for a filter wider than one pixel
+// (uniforms.filterRadius > 0.5, e.g. pbrt-v4's own default Gaussian 1.5)
+// legitimately reaches into the geometric area of a NEIGHBOURING pixel -
+// the camera ray this sample drives (primaryRayKernel's own caller)
+// simply points in a slightly different screen direction for that one
+// sample, same as CPU's camera.h get_ray() offsetting pixel_sample by
+// `offset.x()/offset.y()` beyond the unit pixel square. No cross-thread
+// write/atomic is needed because each pixel independently estimates its
+// OWN reconstruction integral this way - exactly pbrt-v4's own per-pixel
+// filter-importance-sampling model, not a splat-to-neighbours one.
+//
+// Can't call FilterSampler<float,32>::sample() directly on-device the
+// way OptiX/CUDA does (that backend's host and device code share one
+// real C++ compilation, so the SAME class instance - uploaded by
+// OptiXRenderer::render() - runs verbatim on the GPU; Metal Shading
+// Language is a separate compiled language with no such link) - this is
+// a faithful port of that function's own CDF-inversion + intra-cell
+// lerp algorithm instead, reading the SAME table (built host-side by
+// compileShaderAndDispatch(), copied into Uniforms::filterConditionalCDF/
+// filterMarginalCDF - see that field's own comment for why it rides in
+// the Uniforms buffer rather than a separate one).
+//
+// weight = f(p)/pdf(p), which FilterSampler::sample()'s own comment
+// proves is the CONSTANT integral() for every reachable (nonzero-
+// probability) cell, not a per-cell value - uniforms.filterIntegral
+// already IS exactly that constant, so there's no need to also upload
+// the f_/pdf_ tables themselves (only the two CDFs, needed for the
+// inversion/lerp below) just to recompute a ratio that always reduces
+// to the one scalar already on hand.
+inline MetalFilterSample sampleFilterPosition(constant Uniforms& uniforms, float u1, float u2) {
+    constant float (&marginal)[32] = uniforms.filterMarginalCDF;
+    constant float (&conditional)[32][32] = uniforms.filterConditionalCDF;
+
+    int lo = 0, hi = 31;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (marginal[mid] < u2) lo = mid + 1; else hi = mid;
+    }
+    int row = lo;
+
+    lo = 0; hi = 31;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (conditional[row][mid] < u1) lo = mid + 1; else hi = mid;
+    }
+    int col = lo;
+
+    float cellW = 2.0 * uniforms.filterRadius / 32.0;
+    float cellH = cellW;  // FilterSampler's own build() uses the same formula for both - square cells
+
+    float cdfColPrev = (col > 0) ? conditional[row][col - 1] : 0.0;
+    float cdfColCurr = conditional[row][col];
+    float du = (cdfColCurr > cdfColPrev) ? (u1 - cdfColPrev) / (cdfColCurr - cdfColPrev) : 0.5;
+
+    float cdfRowPrev = (row > 0) ? marginal[row - 1] : 0.0;
+    float cdfRowCurr = marginal[row];
+    float dv = (cdfRowCurr > cdfRowPrev) ? (u2 - cdfRowPrev) / (cdfRowCurr - cdfRowPrev) : 0.5;
+
+    MetalFilterSample s;
+    s.px = -uniforms.filterRadius + (float(col) + du) * cellW;
+    s.py = -uniforms.filterRadius + (float(row) + dv) * cellH;
+    s.weight = uniforms.filterIntegral;
+    return s;
+}
+
 inline bool sampleRealisticCameraRay(constant Uniforms& uniforms,
                                       device const LensElement* lensElements,
                                       device const ExitPupilBounds* exitPupilBounds,
@@ -260,12 +335,64 @@ inline float3 sampleUniformHemisphere(float3 normal, thread uint& rngState) {
 // normals (Suzanne's own `vn` data) sees a different, smoothly-varying
 // result. Same interpolation `.obj`/pbrt-v4/this project's own CPU
 // triangle.h use for a shading normal, not an approximation of it.
-inline float3 shadingNormalFor(uint primId, float2 barycentric, device const packed_float3* normals) {
+// `positions` (the SAME per-corner-indexed buffer shadingNormalFor's own
+// caller already has bound for this triangle buffer - `vertices` for the
+// room/mesh case, `suzanneVertices` for the Suzanne-instance case) backs
+// the fallback below: a barycentric blend of two opposite (or nearly
+// opposite) vertex normals - a mid-edge point between a convex crease's
+// two differently-angled vertex normals, or simply a degenerate authored
+// normal - can cancel to (near) zero length, and normalizing that would
+// produce a NaN shading normal that poisons every later calculation this
+// hit feeds into. CPU's triangle.h and all 3 OptiX closest-hit sites
+// already guard this exact case (interpolate_shading_normal()/triangle.h's
+// own `len2 > 1e-20` check, commit aca9117) by falling back to the
+// triangle's own flat FACET normal (cross of two edges) instead - this
+// Metal loader's own independent copy of the same interpolation had no
+// such guard until now. 1e-20 matches those call sites exactly, not a
+// locally-chosen tolerance.
+inline float3 shadingNormalFor(uint primId, float2 barycentric, device const packed_float3* normals,
+                                device const packed_float3* positions) {
     float3 n0 = float3(normals[primId * 3 + 0]);
     float3 n1 = float3(normals[primId * 3 + 1]);
     float3 n2 = float3(normals[primId * 3 + 2]);
     float w0 = 1.0 - barycentric.x - barycentric.y;
-    return normalize(w0 * n0 + barycentric.x * n1 + barycentric.y * n2);
+    float3 blended = w0 * n0 + barycentric.x * n1 + barycentric.y * n2;
+    float len2 = dot(blended, blended);
+    if (len2 > 1e-20) return blended * (1.0 / sqrt(len2));
+    float3 p0 = float3(positions[primId * 3 + 0]);
+    float3 p1 = float3(positions[primId * 3 + 1]);
+    float3 p2 = float3(positions[primId * 3 + 2]);
+    return normalize(cross(p1 - p0, p2 - p0));
+}
+
+// Same zero-length-blend guard as shadingNormalFor() above, for the one
+// caller (Suzanne's own instanced hit, metal_poc_kernel.metal) that has
+// no matching per-corner POSITION buffer bound to primaryRayKernel to
+// fall back to a true facet normal with - Suzanne's own vertex positions
+// only ever reach the GPU as the instanced acceleration structure's own
+// geometry-descriptor vertex buffer (metal_poc_gpu_resources.mm's own
+// suzanneVertexBuffer), which Metal's hardware traversal consumes
+// directly and this shader has no other handle to (adding one would need
+// a 32nd kernel buffer argument - MTLArgumentBuffer's own hard "0-30"
+// index ceiling for a function this size, confirmed by the compiler
+// itself rejecting buffer(31) - not a limit worth taking on for an edge
+// case this rare). Falls back to whichever single vertex normal is
+// itself non-degenerate instead of the flat facet normal: still exact
+// (no interpolation) at that one vertex, never NaN, and visually
+// indistinguishable from a true facet-normal fallback for the
+// vanishingly rare mid-edge/degenerate-normal hit this guards against in
+// the first place.
+inline float3 shadingNormalForNoFacet(uint primId, float2 barycentric, device const packed_float3* normals) {
+    float3 n0 = float3(normals[primId * 3 + 0]);
+    float3 n1 = float3(normals[primId * 3 + 1]);
+    float3 n2 = float3(normals[primId * 3 + 2]);
+    float w0 = 1.0 - barycentric.x - barycentric.y;
+    float3 blended = w0 * n0 + barycentric.x * n1 + barycentric.y * n2;
+    float len2 = dot(blended, blended);
+    if (len2 > 1e-20) return blended * (1.0 / sqrt(len2));
+    if (dot(n0, n0) > 1e-20) return normalize(n0);
+    if (dot(n1, n1) > 1e-20) return normalize(n1);
+    return normalize(n2);
 }
 
 // Same barycentric-blend idea as shadingNormalFor(), for texture

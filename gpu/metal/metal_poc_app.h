@@ -217,6 +217,29 @@ struct MetalPocApp {
     float3 pbrtFogAlbedo{1, 1, 1};
     float pbrtFogAsymmetryG = 0.0f;
 
+    // Set by loadPbrtScene() from the scene's own resolved PixelFilter
+    // (pbrt_flatten::FlatScene::filter - already per-kind-default-
+    // resolved by flatten(), the SAME struct gpu/optix/scene_builder.cpp
+    // reads for its own identical GpuCameraParams::filterKind/etc wiring)
+    // - read instead of the class-level defaults below in
+    // compileShaderAndDispatch()'s own havePbrtCamera override block.
+    // The in-struct defaults here (gaussian/1.5/1/3/1/3/0.5/3.0) are
+    // pbrt-v4's own PixelFilter class defaults, so a HAND-AUTHORED scene
+    // (this member never gets touched at all for one) already gets a
+    // real Gaussian r=1.5 reconstruction filter for free, matching CPU's
+    // own default exactly - not a sentinel needing a runtime fallback
+    // branch the way gpu/optix/optix_types.h's own filterRadius<=0
+    // convention needs (GpuCameraParams there is reused/zero-initialized
+    // across multiple code paths; MetalPocApp's own members are each
+    // only ever written once, by this exact scene's own loadPbrtScene()
+    // call, so a plain default member initializer is sufficient here).
+    std::string pbrtFilterKind = "gaussian";
+    float pbrtFilterB = 1.0f / 3.0f;
+    float pbrtFilterC = 1.0f / 3.0f;
+    float pbrtFilterSigma = 0.5f;
+    float pbrtFilterTau = 3.0f;
+    float pbrtFilterRadius = 1.5f;
+
     // Set by loadPbrtScene() for a constant-colour (no image)
     // LightSource "infinite" - see that function's own comment and
     // metal_poc.metal's own mirrored one on why this is miss-path-only,

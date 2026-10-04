@@ -17,6 +17,11 @@
 #include <algorithm>
 #include "metal_poc_app.h"
 #include "metal_poc_shader_files.h"
+// PixelFilterDispatch/FilterSampler<float,32> - see Uniforms::filterKind's
+// own comment (metal_poc_gpu_types.h) for why this table is built here,
+// host-side, from the SAME shared headers CPU/OptiX already use.
+#include "../../src/shared/filter.h"
+#include "../../src/shared/filter_sampler.h"
 
 // Every buffer/texture the compute encoder below binds can be nil if its
 // own newBufferWith.../newTextureWithDescriptor call failed - OOM, or a
@@ -708,6 +713,42 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         } else if (havePbrtImageEnvLight) {
             uniforms.pbrtHasImageEnvLight = 1u;
         }
+        // Film's own PixelFilter - see MetalPocApp::pbrtFilterKind's own
+        // comment. Same int mapping gpu/optix/scene_builder.cpp uses for
+        // its own identical GpuCameraParams::filterKind wiring.
+        uniforms.filterKind = (pbrtFilterKind == "box") ? 1u
+            : (pbrtFilterKind == "triangle") ? 2u
+            : (pbrtFilterKind == "mitchell") ? 3u
+            : (pbrtFilterKind == "sinc") ? 4u
+            : 0u;  // "gaussian", or any unrecognized kind (pbrt_flatten's own parser already rejects those at load time)
+        uniforms.filterB = pbrtFilterB;
+        uniforms.filterC = pbrtFilterC;
+        uniforms.filterSigma = pbrtFilterSigma;
+        uniforms.filterTau = pbrtFilterTau;
+        uniforms.filterRadius = pbrtFilterRadius;
+    }
+    // uniforms.filterKind/B/C/sigma/tau/radius are now final (either the
+    // pbrt override just above, or this struct's own in-class defaults -
+    // gaussian, radius 1.5 - for a HAND-AUTHORED scene, which never
+    // enters the havePbrtCamera block above at all). Build this scene's
+    // own FilterSampler<float,32> table and copy it into the Uniforms
+    // struct itself - see that struct's own filterConditionalCDF comment
+    // for why a separate kernel buffer isn't used here. A fresh build
+    // every render (not cached across Live-Preview-style repeated calls,
+    // unlike gpu/optix/optix_renderer_render.cpp's own cached version) -
+    // this POC's own compileShaderAndDispatch() already runs once per
+    // process invocation, never in a tight per-frame loop, so there is
+    // no repeated-rebuild cost to amortize here.
+    {
+        static const char* const kFilterKindNames[] = { "gaussian", "box", "triangle", "mitchell", "sinc" };
+        const uint32_t kind = (uniforms.filterKind <= 4u) ? uniforms.filterKind : 0u;
+        const PixelFilterDispatch dispatch(kFilterKindNames[kind], uniforms.filterRadius,
+                                            uniforms.filterB, uniforms.filterC,
+                                            uniforms.filterSigma, uniforms.filterTau);
+        const FilterSampler<float, 32> sampler(dispatch);
+        uniforms.filterIntegral = sampler.integral();
+        memcpy(uniforms.filterConditionalCDF, &sampler.conditionalCDF(), sizeof(uniforms.filterConditionalCDF));
+        memcpy(uniforms.filterMarginalCDF, &sampler.marginalCDF(), sizeof(uniforms.filterMarginalCDF));
     }
 
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];

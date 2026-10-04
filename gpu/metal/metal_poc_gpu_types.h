@@ -163,6 +163,42 @@ struct Uniforms {
     // mirrors only need to agree on ONE new field's placement, not be
     // re-verified against forty already-correct ones.
     uint32_t rowOffset = 0;
+
+    // Pixel reconstruction filter importance-sampling table (section 207) -
+    // replaces the old in-pixel-only uniform jitter (hardcoded [0,1)
+    // box, radius 0.5) with the SAME tabulated FilterSampler<float,32>
+    // CPU's own camera.h and gpu/optix/scene_builder.cpp's own GPU
+    // backends already use (src/shared/filter_sampler.h), so a camera
+    // sample's sub-pixel position can land outside its own pixel for a
+    // filter wider than one (the pbrt-v4 default Gaussian's own real
+    // radius, 1.5, reaches neighbouring pixels - exactly the reach a
+    // plain [-0.5,0.5] box jitter can't reproduce). filterKind/B/C/
+    // sigma/tau/radius mirror pbrt_flatten::PixelFilter's own fields
+    // (MetalPocApp::pbrtFilterKind's own comment) - 0=gaussian 1=box
+    // 2=triangle 3=mitchell 4=sinc, matching gpu/optix/scene_builder.cpp's
+    // own identical int mapping so a shared mental model/debugging
+    // comparison between the two backends' filter wiring stays valid.
+    // filterConditionalCDF/filterMarginalCDF/filterIntegral are this
+    // scene's own FilterSampler<float,32> table, built host-side
+    // (compileShaderAndDispatch(), from PixelFilterDispatch's own real
+    // evaluate()) and copied in here rather than bound as a separate
+    // kernel buffer - primaryRayKernel's own buffer arguments already
+    // sit at the Metal compiler's own hard ceiling ([[buffer(30)]] is
+    // the last index that compiles; buffer(31) is rejected outright,
+    // confirmed directly - see PR #215's own commit message for the
+    // exact error), so a new table this size (1024 + 32 floats) rides
+    // along in the ALREADY-bound Uniforms constant buffer instead of
+    // needing a 32nd kernel argument. Appended at the very end, same
+    // reasoning as rowOffset's own comment just above.
+    uint32_t filterKind = 0;
+    float filterB = 1.0f / 3.0f;
+    float filterC = 1.0f / 3.0f;
+    float filterSigma = 0.5f;
+    float filterTau = 3.0f;
+    float filterRadius = 1.5f;
+    float filterIntegral = 0.0f;
+    float filterConditionalCDF[32][32] = {};
+    float filterMarginalCDF[32] = {};
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single

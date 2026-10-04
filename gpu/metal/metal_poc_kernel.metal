@@ -149,14 +149,22 @@ kernel void primaryRayKernel(
     uint convergedCount = 0;
     float convergedMean = 0.0;
     float convergedM2 = 0.0;
-    uint actualSamples = uniforms.samplesPerPixel;
 
+    // Running filter-weight denominator for the accumColor normalization
+    // below (accumColor /= weightSum, not /= actualSamples) - see
+    // sampleFilterPosition()'s own comment and this loop's own
+    // `accumColor += radiance * filterSample.weight` line.
+    float weightSum = 0.0;
     for (uint s = 0; s < uniforms.samplesPerPixel; ++s) {
-        // Jittered pixel sample - the multi-sample loop's own antialiasing,
-        // not a separate feature: without the jitter every sample would
-        // retrace the exact same primary ray.
-        float2 jitter = float2(randFloat(rngState), randFloat(rngState));
-        float2 pixelNDC = (float2(tid) + jitter) / float2(uniforms.width, uniforms.height);
+        // Filter-importance-sampled sub-pixel sample position - the
+        // multi-sample loop's own antialiasing AND reconstruction-filter
+        // reach in one draw (sampleFilterPosition()'s own comment);
+        // without it every sample would retrace the exact same primary
+        // ray. Replaces the old uniform-in-[0,1)-pixel jitter, which was
+        // exactly a hardcoded 0.5-pixel-radius box filter - see section
+        // 207, docs/METAL_GPU_FEASIBILITY.md.
+        MetalFilterSample filterSample = sampleFilterPosition(uniforms, randFloat(rngState), randFloat(rngState));
+        float2 pixelNDC = (float2(tid) + 0.5 + float2(filterSample.px, filterSample.py)) / float2(uniforms.width, uniforms.height);
         float2 screen = pixelNDC * 2.0 - 1.0;
         screen.y = -screen.y;
         screen.x *= uniforms.aspect;
@@ -829,11 +837,11 @@ kernel void primaryRayKernel(
                 // the one piece of shading math instancing actually adds
                 // over the room/Spot geometry's own single-identity-
                 // instance path.
-                float3 objectNormal = shadingNormalFor(primId, result.triangle_barycentric_coord, suzanneNormals);
+                float3 objectNormal = shadingNormalForNoFacet(primId, result.triangle_barycentric_coord, suzanneNormals);
                 normal = transformNormalByInstance(objectNormal, instanceTransforms[result.instance_id]);
                 mat = suzanneMaterials[primId];
             } else {
-                normal = shadingNormalFor(primId, result.triangle_barycentric_coord, normals);
+                normal = shadingNormalFor(primId, result.triangle_barycentric_coord, normals, vertices);
                 mat = triMaterials[primId];
             }
             // Raw (outward, unflipped) normal kept separately from here -
@@ -1311,7 +1319,19 @@ kernel void primaryRayKernel(
         if (sampleMax > kFireflyClampLuminance) {
             radiance *= kFireflyClampLuminance / sampleMax;
         }
-        accumColor += radiance;
+        // Filter-weighted accumulation - mirrors CPU's camera.h render
+        // loop exactly (weighted_color += w*sample; weight_sum += w;
+        // pixel = weighted_color/weight_sum), not a plain per-sample
+        // average - see sampleFilterPosition()'s own comment for why
+        // `filterSample.weight` is a scene-wide constant in practice,
+        // not a per-sample-varying one; accumulated as a running sum
+        // here anyway (not hoisted out as a single multiply at the end)
+        // to match that reference algorithm's own shape exactly, the
+        // same "port faithfully, don't hand-optimize away a generality
+        // this port doesn't need yet" choice the adaptive-sampling
+        // block just below already makes for CPU's Welford update.
+        accumColor += radiance * filterSample.weight;
+        weightSum += filterSample.weight;
 
         // Adaptive-sampling convergence check - see this kernel's own
         // opening comment. Welford's online update (matching
@@ -1337,14 +1357,28 @@ kernel void primaryRayKernel(
                     relativeConverged = (standardError / convergedMean) < kAdaptiveThreshold;
                 }
                 if (blackConverged || relativeConverged) {
-                    actualSamples = s + 1;
+                    // weightSum/accumColor already reflect only the
+                    // samples actually taken through this break (both
+                    // accumulated once per completed iteration above,
+                    // never for one that hasn't run yet) - no separate
+                    // "how many samples ran" count needed for the
+                    // normalization below, unlike before this function
+                    // divided by a plain actualSamples/sample-count.
                     break;
                 }
             }
         }
     }
 
-    accumColor /= float(actualSamples);
+    // Normalize by filter weight sum, not actualSamples - mirrors
+    // pbrt-v4/CPU's own film normalization (pixel.rgbSum/pixel.weightSum,
+    // camera.h's own identical comment) exactly. Black (not a divide-by-
+    // zero NaN) when weightSum is non-positive - unreachable today (every
+    // filter kind's own tabulated integral is strictly positive, and a
+    // scene can't reach this line with actualSamples==0), but matches
+    // CPU's own explicit `(weight_sum > 0.0) ? ... : color(0,0,0)` guard
+    // rather than relying on that being true.
+    accumColor = (weightSum > 1e-6) ? (accumColor / weightSum) : float3(0.0);
     outTexture.write(float4(accumColor, 1.0), tid);
 }
 
