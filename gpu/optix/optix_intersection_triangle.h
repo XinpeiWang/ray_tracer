@@ -361,6 +361,7 @@ extern "C" __global__ void __closesthit__triangle() {
 		// hand MIS a weight of 1 for the BSDF strategy - double-counting the
 		// light rather than merely losing a little quality.
 		float light_pdf_for_incoming = 0.0f;
+		const float3 mis_o = mis_origin_from_payload();  // last real vertex, not the (possibly moved) ray origin
 		if (params.aliasTable && params.numLights > 0) {
 			// Global index: lightIndices addresses the scene's own triangle
 			// array. An instanced triangle is never emissive, so its global
@@ -371,7 +372,7 @@ extern "C" __global__ void __closesthit__triangle() {
 				if (params.lightIndices[li] == prim_global &&
 					params.lightKinds[li] == GpuLightKind::Triangle) {
 					sel_pdf = (params.lightBvhNodeCount > 0)
-						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						? gpu_light_bvh_pmf(mis_o.x, mis_o.y, mis_o.z, 0.f, 0.f, 0.f, (int)li)
 						: params.aliasTable[li].pdf;
 					break;
 				}
@@ -382,7 +383,8 @@ extern "C" __global__ void __closesthit__triangle() {
 				const float3 n_unnorm = cross(e1, e2);
 				const float twice_area = length(n_unnorm);
 				const float area = 0.5f * twice_area;
-				const float dist_sq = t * t * dot(ray_dir, ray_dir);
+				const float3 hit_to_origin = (ray_orig + t * ray_dir) - mis_o;
+				const float dist_sq = dot(hit_to_origin, hit_to_origin);
 				const float cosine = (twice_area > 1e-12f)
 					? fabsf(dot(ray_dir, n_unnorm / twice_area)) : 0.0f;
 				if (cosine > 1e-6f && area > 1e-12f)

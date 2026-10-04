@@ -10,7 +10,7 @@
 # boundary - this loader's MediumInterface support has no trianglemesh
 # wiring at all (verified directly - see cornell-smoke.pbrt/A8's own header
 # comment for the full explanation), so this is a sphere instead, same
-# "near-invisible dielectric shell (eta~1.001) + MediumInterface"
+# "Material "interface" shell + MediumInterface"
 # convention. NOT a fresh compromise: native's own GPU builder (deleted by
 # this migration) already approximated the box as this exact same sphere
 # (center (277.5,277.5,277.5), radius 270 - build_homogeneous_medium_scene_gpu)
@@ -59,7 +59,7 @@ MakeNamedMedium "fog" "string type" [ "homogeneous" ]
 
 AttributeBegin
   Translate 277.5 277.5 277.5
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "fog" ""
   Shape "sphere" "float radius" [ 270 ]
 AttributeEnd

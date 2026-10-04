@@ -367,7 +367,7 @@ bool OptiXRenderer::createModule() {
 	// and shade_material()'s inout_rgb_channel parameter comment,
 	// optix_device_helpers.h) = 25 total. Comfortably under OptiX's
 	// 32-register hard limit.
-	pipelineCompileOptions_.numPayloadValues = 25;
+	pipelineCompileOptions_.numPayloadValues = 28;  // p25-p27: mis_origin (optix_raygen.h)
 	pipelineCompileOptions_.numAttributeValues = 4;  // Sphere: center.xyz + radius (4 attrs)
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";

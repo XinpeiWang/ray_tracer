@@ -214,6 +214,7 @@ extern "C" __global__ void __closesthit__quad() {
 	} else if (mat.type == MaterialType::DiffuseLight) {
 		// p12: NEE PDF for the incoming ray direction reaching this quad light.
 		float light_pdf_for_incoming = 0.0f;
+		const float3 mis_o = mis_origin_from_payload();  // last real vertex, not the (possibly moved) ray origin
 		if (params.aliasTable && params.numLights > 0) {
 			int prim_idx = (int)primIdx;
 			float sel_pdf = 0.0f;
@@ -222,13 +223,13 @@ extern "C" __global__ void __closesthit__quad() {
 					// See optix_intersection_sphere.h's identical block for
 					// why this checks the light BVH first.
 					sel_pdf = (params.lightBvhNodeCount > 0)
-						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						? gpu_light_bvh_pmf(mis_o.x, mis_o.y, mis_o.z, 0.f, 0.f, 0.f, (int)li)
 						: params.aliasTable[li].pdf;
 					break;
 				}
 			}
 			// Solid-angle PDF for quad: dist^2 / (cos * area)
-			float3 to_light = hit_point - ray_orig;
+			float3 to_light = hit_point - mis_o;
 			float dist_sq = dot(to_light, to_light);
 			float area = length(quad.w);  // |u x v|
 			float cos_theta = fabsf(dot(normalize(ray_dir), quad.normal));

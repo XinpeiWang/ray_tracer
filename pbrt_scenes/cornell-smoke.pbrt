@@ -19,7 +19,7 @@
 # silently dropped (verified directly: an earlier version of this file used
 # a real box here and rendered with NO visible fog at all, on both
 # backends). Reproduced instead as a sphere via the established "near-
-# invisible dielectric shell (eta~1.001) + MediumInterface" convention this
+# invisible shell (Material "interface") + MediumInterface" convention this
 # loader's own bundled cloud-medium.pbrt/cylinder-medium.pbrt examples use -
 # NOT a new approximation: native's own GPU builder (deleted by this
 # migration) already approximated both these boxes as spheres at these
@@ -83,7 +83,7 @@ MakeNamedMedium "smoke1" "string type" [ "homogeneous" ]
 
 AttributeBegin
   Translate 347 165 377
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "smoke1" ""
   Shape "sphere" "float radius" [ 115 ]
 AttributeEnd
@@ -93,7 +93,7 @@ MakeNamedMedium "smoke2" "string type" [ "homogeneous" ]
 
 AttributeBegin
   Translate 212 82 147
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "smoke2" ""
   Shape "sphere" "float radius" [ 82 ]
 AttributeEnd

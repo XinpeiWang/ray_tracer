@@ -308,3 +308,24 @@ TEST(PbrtBackendAgreementTest, CameraMediumAbsorbingAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, DiskCylinderLightAgreesAcrossBackends) {
 	expectBackendsAgree("disk-cylinder-light", 128, 0.96, 1.04);
 }
+
+// A medium boundary written the way pbrt-v4 does it (Material "interface") must be a free crossing that leaves the MIS
+// state of the last real vertex alone. The loader did not know the name "interface" (it fell to a grey diffuse), the
+// recursive backend's free crossings never advanced the ray, and both GPU backends reset the MIS state at every
+// medium pass-through, so a non-absorbing fog under a sky read 23-52% bright. See pbrt_scenes/fog-furnace.pbrt.
+TEST(PbrtBackendAgreementTest, FogFurnaceAgreesAcrossBackends) {
+	expectBackendsAgree("fog-furnace", 128, 0.97, 1.03);
+}
+
+// The heterogeneous media. The wavefront backend never received its uniform-grid arrays, so NEE shadow rays inside
+// a "uniformgrid" medium were never attenuated (E8 rendered +10% bright, a sky-lit furnace 4x); the CPU sampled free
+// flights along an unnormalised camera ray, a medium |d| times too thin for primary rays (4-10% too bright).
+TEST(PbrtBackendAgreementTest, UniformGridMediumAgreesAcrossBackends) {
+	expectBackendsAgree("uniformgrid-medium", 128, 0.97, 1.03);
+}
+TEST(PbrtBackendAgreementTest, RgbGridMediumAgreesAcrossBackends) {
+	expectBackendsAgree("rgbgrid-medium", 128, 0.95, 1.05);  // GPU ratio-tracks the brightest channel only
+}
+TEST(PbrtBackendAgreementTest, CloudMediumAgreesAcrossBackends) {
+	expectBackendsAgree("cloud-medium", 128, 0.97, 1.03);
+}

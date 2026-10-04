@@ -1,0 +1,29 @@
+# fog-furnace.pbrt -- a non-absorbing fog sphere under a uniform sky, bounded the pbrt-v4 way with
+# Material "interface" (the shape has no BSDF of its own; the ray passes straight through).
+#
+# A furnace: every path through the fog either scatters (albedo 1) or passes, so with enough bounces the
+# sphere is invisible against the sky. Within the bounce budget the three backends must still agree, which
+# they only do when a boundary crossing leaves the MIS state of the last real vertex alone and the
+# multiply-scattered light is weighted exactly once. Measured (centre of frame, empty sky = 1.0, depth 40):
+# CPU 1.01, recursive 1.00, wavefront 1.01 at an optical radius of 3.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 -6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 20 ]
+
+Film "rgb" "integer xresolution" [ 128 ] "integer yresolution" [ 128 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.6 0.7 0.9 ]
+
+MakeNamedMedium "fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 1 1 1 ] "float g" [ 0.3 ]
+
+AttributeBegin
+  Material "interface"
+  MediumInterface "fog" ""
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

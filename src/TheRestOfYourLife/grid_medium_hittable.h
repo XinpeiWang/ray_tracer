@@ -67,13 +67,20 @@ class grid_medium_hittable : public hittable {
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        // Work in world distance: a camera ray's direction is not unit length (it is pixel_sample - origin),
+        // and sigma is per world unit, so sampling along the raw parameter made the medium |d| times too thin for
+        // primary rays. constant_medium converts by ray_length the same way. rec.t goes back to ray-parameter units.
+        const double len = r.direction().length();
+        if (!(len > 0.0)) return false;
+        const ray ur(r.origin(), r.direction() / len, r.time());
+        const double t_lo = ray_t.min * len, t_hi = ray_t.max * len;
         double mox, moy, moz, mdx, mdy, mdz;
-        world_to_medium(r, mox, moy, moz, mdx, mdy, mdz);
+        world_to_medium(ur, mox, moy, moz, mdx, mdy, mdz);
 
         Ray3<double> mray(mox, moy, moz, mdx, mdy, mdz);
         double tMin, tMax;
-        if (!grid.intersect_ray(mray, ray_t.max, tMin, tMax)) return false;
-        if (tMin < ray_t.min) tMin = ray_t.min;
+        if (!grid.intersect_ray(mray, t_hi, tMin, tMax)) return false;
+        if (tMin < t_lo) tMin = t_lo;
         if (tMin >= tMax) return false;
 
         bool got_hit = false;
@@ -84,8 +91,8 @@ class grid_medium_hittable : public hittable {
             double sigma_t_local = sa + ss;
 
             if (random_double() < sigma_t_local / seg_sigma_maj) {
-                rec.t = tt;
-                rec.p = r.at(tt);
+                rec.t = tt / len;
+                rec.p = ur.at(tt);
                 rec.normal     = vec3(1, 0, 0);  // arbitrary (volume has no surface normal)
                 rec.front_face = true;
 
@@ -162,12 +169,17 @@ class grid_medium_hittable : public hittable {
     // rgb_grid_medium_hittable's per-channel one, since there's only one
     // channel here), bounded by t_max.
     color shadow_transmittance_impl(const ray& r, double t_max) const {
+        // World distance, as in hit() - the shadow ray's direction is not unit length either.
+        const double len = r.direction().length();
+        if (!(len > 0.0)) return color(1, 1, 1);
+        const ray ur(r.origin(), r.direction() / len, r.time());
+        const double t_max_w = t_max * len;
         double mox, moy, moz, mdx, mdy, mdz;
-        world_to_medium(r, mox, moy, moz, mdx, mdy, mdz);
+        world_to_medium(ur, mox, moy, moz, mdx, mdy, mdz);
 
         Ray3<double> mray(mox, moy, moz, mdx, mdy, mdz);
         double tMin, tMax;
-        if (!grid.intersect_ray(mray, t_max, tMin, tMax)) return color(1, 1, 1);
+        if (!grid.intersect_ray(mray, t_max_w, tMin, tMax)) return color(1, 1, 1);
         if (tMin < 0) tMin = 0;
         if (tMin >= tMax) return color(1, 1, 1);
 

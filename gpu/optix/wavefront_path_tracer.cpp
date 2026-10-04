@@ -2764,6 +2764,13 @@ bool WavefrontPathTracer::render(
 	lp.numRgbGridMediums = numRgbGridMediums_;
 	lp.rgbGridData        = reinterpret_cast<float*>(d_rgbGridData_);
 	lp.rgbGridDataCount   = rgbGridDataCount_;
+	// The shadow any-hit (wavefront_anyhit_shadow.h) ratio-tracks uniform-grid media from these. Left unset, its
+	// bounds check (idx >= numGridMediums) always failed, so NEE shadow rays inside a "uniformgrid" medium were
+	// never attenuated and the medium rendered far too bright, growing with every extra bounce.
+	lp.gridMediums        = reinterpret_cast<GpuGridMedium*>(d_gridMediums_);
+	lp.numGridMediums     = numGridMediums_;
+	lp.gridData           = reinterpret_cast<float*>(d_gridData_);
+	lp.gridDataCount      = gridDataCount_;
 	lp.lightIndices  = reinterpret_cast<int*>(d_light_indices);
 	lp.lightKinds = reinterpret_cast<const GpuLightKind*>(d_lightKinds);
 	lp.instancePrimBase = reinterpret_cast<const int*>(d_instancePrimBase_);
@@ -2825,7 +2832,11 @@ bool WavefrontPathTracer::render(
 		// -------------------------------------------------------------------------
 		// Inner bounce loop
 		// -------------------------------------------------------------------------
-		for (int depth = 0; depth < max_depth; ++depth) {
+		// max_depth bounces, plus room for free medium-boundary crossings (MaterialType::Interface and the medium
+		// pass-throughs): those take an iteration here but not a bounce, and each ray's own depth (checked in the
+		// intersect and material kernels) is what enforces the real budget. The queue empties as rays finish, so
+		// the extra iterations cost nothing in a scene without media.
+		for (int depth = 0; depth < max_depth + kMaxMediumBoundaryCrossings; ++depth) {
 
 			int numRays = readQueueSize(reinterpret_cast<int*>(d_rayCounter_));
 			if (numRays == 0) break;

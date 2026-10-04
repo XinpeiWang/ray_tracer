@@ -201,6 +201,7 @@ extern "C" __global__ void __closesthit__disk() {
 		// strategy via mis_power_heuristic(), instead of always treating this
 		// as an un-aimable light (light_pdf_for_incoming == 0).
 		float light_pdf_for_incoming = 0.0f;
+		const float3 mis_o = mis_origin_from_payload();  // last real vertex, not the (possibly moved) ray origin
 		if (params.aliasTable && params.numLights > 0) {
 			const int prim_idx = (int)primIdx;
 			float sel_pdf = 0.0f;
@@ -209,13 +210,13 @@ extern "C" __global__ void __closesthit__disk() {
 					// See optix_intersection_sphere.h's identical block for
 					// why this checks the light BVH first.
 					sel_pdf = (params.lightBvhNodeCount > 0)
-						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						? gpu_light_bvh_pmf(mis_o.x, mis_o.y, mis_o.z, 0.f, 0.f, 0.f, (int)li)
 						: params.aliasTable[li].pdf;
 					break;
 				}
 			}
 			if (sel_pdf > 0.0f) {
-				const float geom_pdf = dc_pdf_disk(disk, ray_orig, normalize(ray_dir));
+				const float geom_pdf = dc_pdf_disk(disk, mis_o, normalize(ray_dir));
 				light_pdf_for_incoming = sel_pdf * geom_pdf;
 			}
 		}
@@ -564,6 +565,9 @@ extern "C" __global__ void __closesthit__cylinder() {
 			scattered_dir = unit_dir;
 			attenuation = make_float3(1.0f, 1.0f, 1.0f);
 			is_specular = true;  // no interaction - a free/non-scattering pass-through
+			// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+			// specular flag) survives it instead of being reset as if a specular bounce had happened.
+			is_medium_boundary = true;
 		}
 		scattered   = true;
 		is_medium   = true;
@@ -712,19 +716,20 @@ extern "C" __global__ void __closesthit__cylinder() {
 	} else if (mat.type == MaterialType::DiffuseLight) {
 		// See __closesthit__disk's identical pattern (this file, above).
 		float light_pdf_for_incoming = 0.0f;
+		const float3 mis_o = mis_origin_from_payload();  // last real vertex, not the (possibly moved) ray origin
 		if (params.aliasTable && params.numLights > 0) {
 			const int prim_idx = (int)primIdx;
 			float sel_pdf = 0.0f;
 			for (unsigned int li = 0; li < params.numLights; ++li) {
 				if (params.lightIndices[li] == prim_idx && params.lightKinds[li] == GpuLightKind::Cylinder) {
 					sel_pdf = (params.lightBvhNodeCount > 0)
-						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						? gpu_light_bvh_pmf(mis_o.x, mis_o.y, mis_o.z, 0.f, 0.f, 0.f, (int)li)
 						: params.aliasTable[li].pdf;
 					break;
 				}
 			}
 			if (sel_pdf > 0.0f) {
-				const float geom_pdf = dc_pdf_cylinder(cyl, ray_orig, normalize(ray_dir));
+				const float geom_pdf = dc_pdf_cylinder(cyl, mis_o, normalize(ray_dir));
 				light_pdf_for_incoming = sel_pdf * geom_pdf;
 			}
 		}

@@ -915,6 +915,42 @@ TEST(PbrtCpuBuildTest, NanoVdbTemperatureNameProducesRealEmission) {
 		   "emission across 500 ray casts through the medium's dense centre";
 }
 
+// A heterogeneous medium's sigma is per world unit, but the camera hands the medium a ray whose direction is
+// pixel_sample - origin, hundreds of units long. The grid, rgbgrid and cloud hittables sampled free flights along
+// the raw ray parameter, so a primary ray saw a medium |d| times too thin and the CPU rendered them 4-10% too
+// bright next to both GPU backends. The chance of scattering on the way through must not depend on |d|.
+TEST(PbrtCpuBuildTest, UniformGridMediumThicknessDoesNotDependOnRayDirectionLength) {
+	const pbrt_cpu::BuildResult b = buildFrom(
+		"MakeNamedMedium \"g\" \"string type\" [ \"uniformgrid\" ] "
+		"\"integer nx\" [ 2 ] \"integer ny\" [ 2 ] \"integer nz\" [ 2 ] "
+		"\"float density\" [ 1 1 1 1 1 1 1 1 ] "
+		"\"rgb sigma_a\" [ 0 0 0 ] \"rgb sigma_s\" [ 0.7 0.7 0.7 ]\n"
+		"AttributeBegin\n"
+		"  Translate 1000 1000 1000\n"
+		"  Material \"interface\"\n"
+		"  MediumInterface \"g\" \"\"\n"
+		"  Shape \"sphere\" \"float radius\" [ 0.01 ]\n"
+		"AttributeEnd\n");
+	const auto scatterFraction = [&](double dirLength) {
+		int scattered = 0;
+		constexpr int kRays = 4000;
+		for (int i = 0; i < kRays; ++i) {
+			hit_record rec;
+			const ray r(point3(0.5, 0.5, -5), vec3(0, 0, dirLength));
+			if (b.world->hit(r, interval(0.001, infinity), rec)) {
+				++scattered;
+				EXPECT_GT(rec.t * dirLength, 5.0) << "rec.t is in ray-parameter units, so the hit is past the origin";
+				EXPECT_LT(rec.t * dirLength, 6.0) << "and inside the unit cube, whatever the direction's length";
+			}
+		}
+		return static_cast<double>(scattered) / kRays;
+	};
+	const double unit = scatterFraction(1.0);
+	const double longDir = scatterFraction(300.0);
+	EXPECT_GT(unit, 0.2) << "the medium should scatter a visible share of rays";
+	EXPECT_NEAR(longDir, unit, 0.05);
+}
+
 TEST(PbrtCpuBuildTest, NanoVdbMissingFilenameBuildsNoMediumButKeepsTheShape) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"MakeNamedMedium \"fog\" \"string type\" [ \"nanovdb\" ]\n"

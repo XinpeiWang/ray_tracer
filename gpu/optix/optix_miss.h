@@ -43,7 +43,9 @@ extern "C" __global__ void __miss__ms() {
 	const float prev_brdf_pdf = __uint_as_float(optixGetPayload_12());
 	float3 emission = color;
 	if (prev_brdf_pdf > 0.0f && (flatColor.x > 0.0f || flatColor.y > 0.0f || flatColor.z > 0.0f)) {
-		const float pdf_sky = sky_pdf_for_mis(rayDir, rayOrigin);
+		// From the path's last real vertex (see mis_origin_from_payload()), not the ray origin a free medium-boundary
+		// crossing may have moved - matters for a portal sky, whose pdf depends on where it is seen from.
+		const float pdf_sky = sky_pdf_for_mis(rayDir, mis_origin_from_payload());
 		float w_b = mis_power_heuristic(prev_brdf_pdf, pdf_sky);
 		emission = w_b * color;
 	}

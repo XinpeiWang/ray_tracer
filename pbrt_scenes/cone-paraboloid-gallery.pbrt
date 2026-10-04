@@ -11,8 +11,8 @@
 #    not a straight taper).
 #  - Cone 2 (x=6): AreaLightSource "diffuse" instead of a normal material -
 #    should glow, not just sit lit by the scene's other lights.
-#  - Paraboloid 2 (x=9): MediumInterface fog boundary, near-invisible
-#    "dielectric" eta~1.001 shell (same convention as cylinder-medium.pbrt -
+#  - Paraboloid 2 (x=9): MediumInterface fog boundary, Material
+#    "interface" boundary (same convention as cylinder-medium.pbrt -
 #    an opaque material would absorb the ray before it ever reaches the
 #    medium's own scattering), oriented with its open rim (zmax) facing the
 #    camera so incoming rays enter the medium through the open end, not the
@@ -63,7 +63,7 @@ MakeNamedMedium "cone-fog" "string type" [ "homogeneous" ]
 
 AttributeBegin
   Translate 9 1 -0.5
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "cone-fog" ""
   Shape "paraboloid" "float radius" [ 1 ] "float zmin" [ 0 ] "float zmax" [ 1.6 ]
 AttributeEnd

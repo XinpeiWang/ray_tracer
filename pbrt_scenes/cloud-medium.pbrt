@@ -50,13 +50,16 @@ AttributeEnd
 # the medium's own world AABB (pbrt_cpu_builder.h's addMediumIfPresent) - the
 # declaring shape itself is STILL added to the scene separately with its own
 # material (matching the homogeneous-medium "glass shell + fog inside"
-# convention, see build_dielectric_medium_scene), so it needs an explicitly
-# near-invisible one here (eta~1: negligible refraction/reflection) rather
-# than inheriting whatever Material was last set - otherwise it would render
-# as a solid opaque shell hiding the cloud entirely.
+# convention, see build_dielectric_medium_scene), so it needs an explicit
+# Material "interface" (pbrt-v4's no-BSDF boundary: the ray passes straight
+# through and leaves the MIS state alone) rather than inheriting whatever
+# Material was last set - otherwise it would render as a solid opaque shell
+# hiding the cloud entirely. (This used to be a near-invisible eta 1.001
+# dielectric; a dielectric is a specular surface, which made fog under a sky
+# or area light read up to 50% bright - see pbrt_scenes/fog-furnace.pbrt.)
 AttributeBegin
   Translate 358 280 330
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "puffcloud" ""
   Shape "sphere" "float radius" [ 145 ]
 AttributeEnd

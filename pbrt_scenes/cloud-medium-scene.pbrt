@@ -52,7 +52,7 @@ AttributeEnd
 
 AttributeBegin
   Translate 0 2.5 0
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "puffcloud" ""
   Shape "sphere" "float radius" [ 5.5 ]
 AttributeEnd

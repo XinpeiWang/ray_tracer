@@ -250,13 +250,14 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 		// from a bilinear patch), using blp_pdf_wi for the area-to-solid-
 		// angle Jacobian instead of recomputing it by hand.
 		float light_pdf_for_incoming = 0.0f;
+		const float3 mis_o = mis_origin_from_payload();  // last real vertex, not the (possibly moved) ray origin
 		if (params.aliasTable && params.numLights > 0) {
 			float sel_pdf = 0.0f;
 			for (unsigned int li = 0; li < params.numLights; ++li) {
 				if (params.lightIndices[li] == (int)primIdx &&
 					params.lightKinds[li] == GpuLightKind::BilinearPatch) {
 					sel_pdf = (params.lightBvhNodeCount > 0)
-						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						? gpu_light_bvh_pmf(mis_o.x, mis_o.y, mis_o.z, 0.f, 0.f, 0.f, (int)li)
 						: params.aliasTable[li].pdf;
 					break;
 				}
@@ -266,7 +267,7 @@ extern "C" __global__ void __closesthit__bilinear_patch() {
 				const float p10[3] = {patch.p10.x, patch.p10.y, patch.p10.z};
 				const float p01[3] = {patch.p01.x, patch.p01.y, patch.p01.z};
 				const float p11[3] = {patch.p11.x, patch.p11.y, patch.p11.z};
-				const float ref[3] = {ray_orig.x, ray_orig.y, ray_orig.z};
+				const float ref[3] = {mis_o.x, mis_o.y, mis_o.z};
 				const float wi[3] = {ray_dir.x, ray_dir.y, ray_dir.z};
 				light_pdf_for_incoming = sel_pdf * blp_pdf_wi(p00, p10, p01, p11, ref, wi);
 			}

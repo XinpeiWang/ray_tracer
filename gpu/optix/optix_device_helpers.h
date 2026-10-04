@@ -412,6 +412,14 @@ __device__ __forceinline__ unsigned int pack_scatter_flag(bool bssrdf_exit, bool
 	return (bssrdf_exit ? 3 : (is_medium_boundary ? 4 : 1)) | (is_specular ? 8 : 0);
 }
 
+// The path's last real vertex (optix_raygen.h's mis_origin, payload p25-p27) - where the BSDF sample that reached an
+// emitter was taken. Not the ray origin: a free medium-boundary crossing moves that. An emitter's MIS pdf must be
+// evaluated from here to match the NEE sample taken at the vertex (CPU's prev_surface_p).
+__device__ __forceinline__ float3 mis_origin_from_payload() {
+	return make_float3(__uint_as_float(optixGetPayload_25()), __uint_as_float(optixGetPayload_26()),
+					   __uint_as_float(optixGetPayload_27()));
+}
+
 // Integrator "bool regularize" gate for THIS bounce, read fresh by each
 // closest-hit program right before its shade_material() call - same
 // "called identically from all closest-hit programs across the 5
