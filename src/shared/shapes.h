@@ -877,8 +877,20 @@ struct CylinderShape {
 		auto hit=intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
 		                   T(1e-4),std::numeric_limits<T>::max());
 		if(!hit) return T(0);
-		return solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
-		                                 wix, wiy, wiz, hit->t, pdf_area());
+		T pdf=solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
+		                                wix, wiy, wiz, hit->t, pdf_area());
+		// A ray can cross this open tube twice. An integrator that samples a DIRECTION toward the shape and then
+		// credits whatever emitter the ray hits first (this renderer's NEE, via hittable::random()/pdf_value()) is
+		// unbiased only if that direction's density counts BOTH crossings: the sampler lands on the far wall as
+		// readily as on the near one, and pbrt's first-hit-only PDF() halves the denominator exactly where the near
+		// wall hides the far one. Next to a cylinder light that rendered the floor up to 3x too bright against
+		// the same light built from quads.
+		auto hit2=intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
+		                    hit->t+T(1e-4),std::numeric_limits<T>::max());
+		if(hit2)
+			pdf+=solid_angle_pdf_from_hit(hit2->nx, hit2->ny, hit2->nz,
+			                               wix, wiy, wiz, hit2->t, pdf_area());
+		return pdf;
 	}
 };
 

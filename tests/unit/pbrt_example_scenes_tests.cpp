@@ -301,3 +301,10 @@ TEST(PbrtBackendAgreementTest, HairSphereDimSkyAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, CameraMediumAbsorbingAgreesAcrossBackends) {
 	expectBackendsAgree("camera-medium-absorbing", 128, 0.93, 1.07);
 }
+
+// Disk and cylinder area lights. The CPU's cylinder pdf counted only the first of a ray's two crossings of the
+// tube while its NEE credits whatever emitter the ray hits first, so the floor beside the cylinder light rendered up
+// to 3x too bright and the whole scene ~8% above both GPU backends (which evaluate emission at the sampled point).
+TEST(PbrtBackendAgreementTest, DiskCylinderLightAgreesAcrossBackends) {
+	expectBackendsAgree("disk-cylinder-light", 128, 0.96, 1.04);
+}
