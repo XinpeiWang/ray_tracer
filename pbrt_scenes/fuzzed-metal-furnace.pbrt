@@ -1,0 +1,23 @@
+# fuzzed-metal-furnace.pbrt -- regression scene for the recursive GPU backend's fuzzed-metal sampling.
+#
+# A huge plane of "conductor, reflectance 0.9, roughness 1" under a uniform white sky, seen at an angle.
+# Without a named metal spectrum the GPU loader builds this as MaterialType::Metal, the fuzzed mirror (as
+# does the CPU's metal class): the reflected direction is perturbed by fuzz times a random unit vector, and
+# a ray the perturbation sends below the surface is absorbed. The recursive backend instead substituted the
+# pure reflection for those rays, so a fuzzed metal lost no energy: this plane rendered 0.90 there against
+# 0.645 on the CPU and the wavefront backend (roughness 0.5: 0.90 vs 0.82). Salle de Bain (seven such
+# metals) came out ~3% bright for the same reason.
+#
+# See tests/unit/pbrt_example_scenes_tests.cpp (FuzzedMetalFurnaceAgreesAcrossBackends).
+
+LookAt 0 3 6  0 0 0  0 1 0
+Camera "perspective" "float fov" [ 30 ]
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+Material "conductor" "rgb reflectance" [ 0.9 0.9 0.9 ] "float roughness" [ 1 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -100 0 -100   100 0 -100   100 0 100   -100 0 100 ]

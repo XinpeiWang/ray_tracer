@@ -1335,11 +1335,16 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::Metal: {
-			float3 reflected = reflect(normalize(ray_dir), normal);
-			scattered_dir = normalize(reflected) + mat.fuzz * random_in_unit_sphere(seed);
-			// Clamp to hemisphere: if fuzz pushes below surface, use pure reflection
-			if (dot(scattered_dir, normal) <= 0.0f)
-				scattered_dir = reflected;
+			// Same sampling as the shared MetalBxDF (CPU) and the wavefront backend: perturb the unit
+			// reflection by fuzz times a point ON the unit sphere, and ABSORB the ray when that points
+			// below the surface. This used to substitute the pure reflection instead, so a fuzzed metal
+			// never lost the energy the others lose to those rays - a furnace plane of "conductor
+			// reflectance 0.9 roughness 1" (which the loader builds as this fuzzed mirror) rendered
+			// 0.90 here against 0.645 on CPU and wavefront, and Salle de Bain's metals came out ~3% bright.
+			float3 reflected = normalize(reflect(normalize(ray_dir), normal));
+			float3 fuzzed = reflected + mat.fuzz * random_unit_vector(seed);
+			if (dot(fuzzed, normal) <= 0.0f) { scattered = false; break; }
+			scattered_dir = normalize(fuzzed);
 			attenuation = mat.albedo;
 			scattered = true;
 			is_specular = true;  // specular bounce: next hit adds full emission, no MIS
