@@ -3134,6 +3134,9 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// Bounce: push next ray
 	// -------------------------------------------------------------------------
 	SS new_throughput = throughput * attenuation;
+	// The CPU's per-path throughput ceiling (kMaxPathThroughput, optix_math_helpers.h) - see its comment.
+	for (int i = 0; i < kWFNWavelengths; ++i)
+		if (new_throughput[i] > kMaxPathThroughput) new_throughput[i] = kMaxPathThroughput;
 
 	// Russian roulette (pbrt-v4 PathIntegrator formula - matches CPU's
 	// camera.h and the recursive backend's optix_raygen.h exactly):

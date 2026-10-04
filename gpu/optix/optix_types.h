@@ -1908,6 +1908,9 @@ struct GpuCameraParams {
 	float3 cameraMediumAlbedo;
 	float  cameraMediumG;
 	float3 cameraMediumEmission;
+	// Wavefront only: index into LaunchParams::materials of the synthetic Medium material standing for the camera
+	// medium (SceneData::cameraMediumMaterialIdx); meaningful only while cameraMediumSigmaT > 0.
+	int    cameraMediumMaterialIdx;
 };
 
 // Launch parameters (passed to all OptiX programs)

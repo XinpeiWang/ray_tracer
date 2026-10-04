@@ -989,6 +989,22 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::Medium: {
+		// A scatter in pbrt's camera medium (h.geomType == kWfGeomCameraMedium): there is no boundary geometry here -
+		// __raygen__wf_trace already sampled the free flight against the nearest surface and found a collision at
+		// h.hitPoint, so go straight to the phase-function scatter (the same hand-off to wf_finish_material_scatter's
+		// phase NEE that the in-geometry branch below uses).
+		if (h.geomType == kWfGeomCameraMedium) {
+			const float3 unit_dir = normalize(h.rayDir);
+			mediumMeanFreePath = wf_restir_volume_mean_free_path(mat.ior);
+			hit_point     = h.hitPoint;
+			scattered_dir = wf_sample_phase_scatter(unit_dir, mat.fuzz, seed, phaseWo, phaseG, brdf_pdf_override);
+			attenuation   = unboundedSpectrum(mat.albedo);   // tint * sigma_s/sigma_t; the tint can exceed 1, so unbounded
+			is_specular   = false;
+			if (mat.medium_emission.x > 0.0f || mat.medium_emission.y > 0.0f || mat.medium_emission.z > 0.0f)
+				radiance = radiance + throughput * wf_lift_rgb_to_spectrum(mat.medium_emission, swl, /*isIlluminant=*/true);
+			scattered = true;
+			break;
+		}
 		// Homogeneous participating medium - mirrors optix_intersection_sphere.h's
 		// closesthit Medium case. Geometry (entry/exit roots) was already
 		// recomputed in __closesthit__wf_sphere and handed over via h.t (near)

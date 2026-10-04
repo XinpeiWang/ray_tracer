@@ -1,0 +1,22 @@
+# hair-sphere-dim-sky.pbrt -- regression scene for the GPU backends lacking the CPU's path-throughput ceiling.
+#
+# One closed hair-material sphere under a dim uniform sky. HairBxDF's sample weight (f / pdf) averages ~4, and
+# the sphere's interior hits give a ray several hair bounces in a row, so the running throughput passes 50 within
+# three bounces. The CPU caps a path's throughput at 50 (camera.h's kMaxPathThroughput, the safety net for a BSDF
+# whose per-bounce weight compounds - Russian roulette only acts below 1); both GPU backends had no cap and
+# rendered this sphere 2.1x brighter (Hair Fibers, B11, 2.3-2.5x), from the first interior bounce on. The sky is
+# dim on purpose: a bright one clips the output and hides the difference.
+#
+# See tests/unit/pbrt_example_scenes_tests.cpp (HairSphereDimSkyAgreesAcrossBackends).
+
+LookAt 0 0 6  0 0 0  0 1 0
+Camera "perspective" "float fov" [ 30 ]
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.05 0.05 0.05 ]
+
+Material "hair" "rgb sigma_a" [ 0.06 0.10 0.20 ] "float beta_m" [ 0.25 ] "float beta_n" [ 0.25 ] "float alpha" [ 2.0 ]
+Shape "sphere" "float radius" [ 1.0 ]

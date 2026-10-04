@@ -1682,9 +1682,13 @@ class camera {
                 double ray_length = 0.0;
                 if (camera_medium->sample_scatter(current_ray, surface_t, rec, &ray_length)) {
                     hit_something = true;
-                } else {
-                    beta = clamp_throughput(beta * camera_medium->transmittance_over(surface_t * ray_length));
                 }
+                // No scatter: the ray reaches the surface (or escapes) with weight 1. The free-flight sample
+                // above already decides scatter-or-pass with probabilities 1 - T and T, so multiplying beta by
+                // the transmittance T as well (as this branch used to) attenuated a ray that got through by T
+                // a second time: a surface seen through a pure absorber of optical depth 1 rendered at
+                // exp(-2) instead of exp(-1). (ray_length is only needed by sample_scatter() itself now.)
+                (void)ray_length;
             }
 
             // Miss -- query sky (HDR env map) or fall back to flat background.

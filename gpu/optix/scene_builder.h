@@ -126,6 +126,12 @@ struct SceneData {
 	std::vector<int> lightIndices;      // Indices into sphere/quad arrays
 	std::vector<GpuLightKind> lightKinds;   // how to sample lightIndices[i]
 
+	// Index into `materials` of the synthetic homogeneous-medium material that stands for the camera medium
+	// (pbrt's MediumInterface before the Camera directive), or -1 when the scene has none. Only the wavefront
+	// backend reads it: its trace raygen turns a camera-medium scatter into a hit on this material so the
+	// ordinary medium scatter code shades it (see __raygen__wf_trace). GpuCameraParams carries the same index.
+	int cameraMediumMaterialIdx = -1;
+
 	// Punctual (delta) lights: point/spot/distant. Separate from the area
 	// lights above - not geometry, evaluated deterministically every hit.
 	std::vector<PunctualLightGPU> punctualLights;

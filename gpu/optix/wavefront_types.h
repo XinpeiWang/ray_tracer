@@ -35,6 +35,8 @@ inline float3 make_float3(float x, float y, float z) { return float3{x, y, z}; }
 
 // Number of hero wavelengths per ray (matches pbrt-v4 NSpectrumSamples = 4)
 static constexpr int kWFNWavelengths = 4;
+// HitWorkItem::geomType of a scatter event in the camera medium (not a surface hit) - see __raygen__wf_trace.
+static constexpr int kWfGeomCameraMedium = 6;
 
 // A primary or bounce ray pending intersection.
 struct RayWorkItem {
@@ -742,6 +744,12 @@ struct WavefrontLaunchParams {
 	unsigned int height;
 	// Viewport of the camera for the bump-map footprint step (gpu_bump_map.h); disabled by default
 	GpuBumpFootprint bumpFootprint;
+	// pbrt's camera medium (an unbounded fog the camera starts inside), see GpuCameraParams::cameraMediumSigmaT.
+	// <= 0 means none. The trace raygen samples its free flight against the nearest surface; a scatter becomes a
+	// hit (geomType kWfGeomCameraMedium) on the synthetic Medium material, and the shadow raygen attenuates every
+	// shadow ray by exp(-sigmaT * length).
+	float cameraMediumSigmaT;
+	int   cameraMediumMaterialIdx;
 
 	// Scene
 	OptixTraversableHandle traversable;

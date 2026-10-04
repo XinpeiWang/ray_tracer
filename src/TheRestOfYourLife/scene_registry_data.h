@@ -862,7 +862,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "nanovdb-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E10", 154, SceneNames::CameraMediumPbrtExample, SceneCategories::Volumes,
-            "pbrt-v4's camera-medium idiom -- a MediumInterface issued before the Camera directive puts the camera itself inside a fog with no boundary shape at all, unlike every other bundled medium scene. Real on CPU and GPU-recursive; GPU-wavefront support is deferred.",
+            "pbrt-v4's camera-medium idiom -- a MediumInterface issued before the Camera directive puts the camera itself inside a fog with no boundary shape at all, unlike every other bundled medium scene. Real on the CPU and both GPU backends.",
             "Fast", "camera-medium.pbrt"),
 
         // -- Geometry --

@@ -51,19 +51,47 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		p0, p1
 	);
 
-	if (payload.hit) {
+	// pbrt's camera medium (unbounded fog the camera starts inside): sample the free flight against the nearest
+	// surface (or infinity on a miss), as CPU's ambient_medium::sample_scatter() does after its own world.hit().
+	// A scatter before the surface becomes a hit on the synthetic Medium material at the scatter point, shaded by
+	// the ordinary medium scatter code (phase NEE + bounce); no scatter passes with weight 1 - the sample already
+	// picked pass with probability T, so multiplying by T as well would attenuate a surviving ray twice.
+	unsigned int ambientSeed = ray.seed;
+	bool  ambientScatter = false;
+	float ambientT = 0.0f;
+	if (wf_params.cameraMediumSigmaT > 0.0f && wf_params.cameraMediumMaterialIdx >= 0) {
+		const float surfaceT = payload.hit ? payload.t : 1e30f;
+		ambientT = -logf(fmaxf(1e-8f, 1.0f - wf_rand(ambientSeed))) / wf_params.cameraMediumSigmaT;
+		ambientScatter = ambientT < surfaceT;
+	}
+
+	if (payload.hit || ambientScatter) {
 		HitWorkItem h;
-		h.hitPoint    = payload.hitPoint;
-		h.normal      = payload.normal;
-		h.t           = payload.t;
-		h.materialIdx = payload.materialIdx;
-		h.geomType    = payload.geomType;
-		h.primIdx     = payload.primIdx;
-		h.mediumTFar  = payload.mediumTFar;
-		h.frontFace   = payload.frontFace;
-		h.objDpdu     = payload.objDpdu;
-		h.uv_u        = payload.uv_u;
-		h.uv_v        = payload.uv_v;
+		if (ambientScatter) {
+			h.hitPoint    = ray.origin + ambientT * ray.direction;
+			h.normal      = -ray.direction;
+			h.t           = ambientT;
+			h.materialIdx = wf_params.cameraMediumMaterialIdx;
+			h.geomType    = kWfGeomCameraMedium;
+			h.primIdx     = -1;
+			h.mediumTFar  = 0.0f;
+			h.frontFace   = 1;
+			h.objDpdu     = make_float3(0.0f, 0.0f, 0.0f);
+			h.uv_u        = 0.0f;
+			h.uv_v        = 0.0f;
+		} else {
+			h.hitPoint    = payload.hitPoint;
+			h.normal      = payload.normal;
+			h.t           = payload.t;
+			h.materialIdx = payload.materialIdx;
+			h.geomType    = payload.geomType;
+			h.primIdx     = payload.primIdx;
+			h.mediumTFar  = payload.mediumTFar;
+			h.frontFace   = payload.frontFace;
+			h.objDpdu     = payload.objDpdu;
+			h.uv_u        = payload.uv_u;
+			h.uv_v        = payload.uv_v;
+		}
 		h.rayOrigin   = ray.origin;
 		h.rayDir      = ray.direction;
 		for (int i = 0; i < kWFNWavelengths; ++i) {
@@ -72,7 +100,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 			h.wavelengths[i]     = ray.wavelengths[i];
 			h.wavelength_pdfs[i] = ray.wavelength_pdfs[i];
 		}
-		h.seed        = ray.seed;
+		h.seed        = ambientSeed;   // == ray.seed unless a camera medium consumed a variate
 		h.pixelIndex  = ray.pixelIndex;
 		h.depth       = ray.depth;
 		h.specular_bounce = ray.specular_bounce;
@@ -218,5 +246,10 @@ extern "C" __global__ void __raygen__wf_shadow() {
 	// same as the old bool did, with real attenuation values in between for
 	// a ray that crossed one or more participating media.
 	float* transmittance = (float*)wf_params.framebuffer;
-	transmittance[idx]   = sp.transmittance;
+	float T = sp.transmittance;
+	// pbrt's camera medium attenuates every shadow ray over its whole length (the CPU/recursive NEE sites'
+	// camera_medium_shadow_trans); a ray to infinity (the sky) is fully extinguished.
+	if (wf_params.cameraMediumSigmaT > 0.0f)
+		T *= (s.tMax >= 1e29f) ? 0.0f : expf(-wf_params.cameraMediumSigmaT * s.tMax);
+	transmittance[idx]   = T;
 }

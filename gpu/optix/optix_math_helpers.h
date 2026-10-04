@@ -161,3 +161,13 @@ inline __host__ __device__ void shadow_ray_toward(const float3& original, const 
 	const float len = sqrtf(to_target.x * to_target.x + to_target.y * to_target.y + to_target.z * to_target.z);
 	if (len > 1e-6f) { out_dir = to_target / len; out_tmax = len; }
 }
+
+// Ceiling on a path's running throughput, the CPU's kMaxPathThroughput (camera.h, 50 in both ray_color() and the
+// spectral integrator): Russian roulette only acts on a throughput below 1, so nothing else bounds a BSDF whose
+// per-bounce sample weight is large and compounds over bounces - HairBxDF's mean weight is ~4, so three bounces
+// off the inside of a closed hair shape already reach the cap. Without the same cap here a hair sphere under a
+// dim sky rendered 2.1x brighter on both GPU backends than on the CPU from the second hair bounce on.
+constexpr float kMaxPathThroughput = 50.0f;
+inline __host__ __device__ float3 clamp_path_throughput(const float3& t) {
+	return make_float3(fminf(t.x, kMaxPathThroughput), fminf(t.y, kMaxPathThroughput), fminf(t.z, kMaxPathThroughput));
+}

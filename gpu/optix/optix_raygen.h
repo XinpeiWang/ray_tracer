@@ -403,6 +403,12 @@ extern "C" __global__ void __raygen__rg() {
 				if (medium_scattered) {
 					radiance = radiance + throughput * medium_emission;
 
+					// The scattering albedo (tint * sigma_s/sigma_t) weights the path that continues, as the CPU's
+					// phase material does with srec.attenuation: the NEE term above already carries it, but the
+					// continuing path used to keep its full throughput, so every further scatter was lossless and an
+					// absorbing camera medium ended up 2x too bright by the eighth bounce.
+					throughput = throughput * params.camera.cameraMediumAlbedo;
+
 					// Same Russian Roulette as the normal scattered-bounce
 					// branch below (depth>1 gate, power-heuristic-compatible
 					// rr_max/q derivation) - a medium scatter consumes a real
@@ -427,7 +433,11 @@ extern "C" __global__ void __raygen__rg() {
 					seed = medium_seed;
 					continue;
 				}
-				throughput = throughput * medium_transmittance;
+				// No scatter: weight 1. The free-flight sample in sample_camera_medium() already decides scatter or
+				// pass with probabilities 1 - T and T, so also multiplying by T (as this line used to) attenuated a
+				// ray that got through a second time - a surface behind a pure absorber of optical depth 1 rendered
+				// at exp(-2) instead of exp(-1).
+				(void)medium_transmittance;
 			}
 
 			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light, 3=scattered
@@ -442,7 +452,7 @@ extern "C" __global__ void __raygen__rg() {
 				// consume the depth loop or an RR trial either - a free
 				// crossing, matching CPU camera.h's own is_medium_boundary
 				// branch exactly.
-				throughput = throughput * payload.attenuation;
+				throughput = clamp_path_throughput(throughput * payload.attenuation);
 				float3 hit_point = ray_origin + t_hit * ray_direction;
 				// Same 0.001f continuation offset as the normal scatter below and
 				// as the wavefront backend. This used to be 0.01f, carried over from
@@ -498,7 +508,7 @@ extern "C" __global__ void __raygen__rg() {
 				float3 scatter_origin = hit_point + 0.001f * normalize(payload.scatterDir);
 
 				// Multiply throughput by surface BRDF (attenuation from hit program)
-				throughput = throughput * payload.attenuation;
+				throughput = clamp_path_throughput(throughput * payload.attenuation);
 
 				// pbrt-v4 etaScale: accumulated every bounce (payload.eta is
 				// 1.0f, a no-op, unless this hit was a real transmission
