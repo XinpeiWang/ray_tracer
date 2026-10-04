@@ -2097,9 +2097,10 @@ __device__ __forceinline__ NeeLightSample wf_nee_pick_light(
 }
 
 // MIS weight for a BSDF-sampled ray that arrives at an emitter: w = pb^2 / (pb^2 + pl^2), where pb is the
-// BSDF pdf the ray was sampled with and pl the solid-angle pdf next-event estimation at the ray's origin would
-// have had for choosing this very point (light-selection pmf x area-to-solid-angle). The NEE contribution at
-// that origin is weighted by the complementary pl^2/(pb^2+pl^2) (wf_finish_material_scatter), so dropping this
+// BSDF pdf the ray was sampled with and pl the solid-angle pdf next-event estimation at the vertex that sampled
+// it (HitWorkItem::scatterOrigin - not the ray's own origin, which an interface pass-through moves) would have
+// had for choosing this very point (light-selection pmf x area-to-solid-angle). The NEE contribution at
+// that vertex is weighted by the complementary pl^2/(pb^2+pl^2) (wf_finish_material_scatter), so dropping this
 // half - as the emissive early-exit used to for every non-specular bounce - lost the share of a lamp's light that
 // NEE gives to the BSDF strategy: ~0 for a small or distant light, 10-20% of each indirect bounce near a large
 // one. Returns 1 when NEE could not have sampled the point (an emitter outside the light list, pl == 0).
@@ -2121,10 +2122,7 @@ __device__ __forceinline__ float wf_emitter_hit_mis_weight(
 		case 4: kind = GpuLightKind::Disk; break;
 		default: kind = GpuLightKind::Cylinder; break;
 	}
-	int li = -1;
-	for (unsigned int i = 0; i < numLights; ++i) {
-		if (lightIndices[i] == h.primIdx && lightKinds[i] == kind) { li = (int)i; break; }
-	}
+	const int li = gpu_find_light(lightIndices, lightKinds, numLights, kind, h.primIdx);
 	if (li < 0) return 1.0f;
 
 	GpuLightSample s;
@@ -2137,11 +2135,11 @@ __device__ __forceinline__ float wf_emitter_hit_mis_weight(
 	s.normal   = h.normal;
 	s.time     = h.time;
 	float3 toLight; float dist, geomPdf;
-	if (!wf_reevaluate_light_geometry(s, h.rayOrigin, spheres, quads, triangles, bilinearPatches, disks,
+	if (!wf_reevaluate_light_geometry(s, h.scatterOrigin, spheres, quads, triangles, bilinearPatches, disks,
 									  cylinders, toLight, dist, geomPdf) || !(geomPdf > 0.0f))
 		return 1.0f;
 
-	const float3& o = h.rayOrigin;
+	const float3& o = h.scatterOrigin;
 	const float selection = (lightBvh.nodeCount > 0)
 		? wf_light_bvh_pmf(o.x, o.y, o.z, li, numLights, lightBvh.nodes, lightBvh.bitTrail, lightBvh.nodeCount,
 			lightBvh.allBMinX, lightBvh.allBMinY, lightBvh.allBMinZ,
@@ -3307,6 +3305,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// optix_intersection_sphere.h's brdf_pdf_out exactly (0 for specular,
 	// else brdf_pdf_override if the material set one, else the cosine-
 	// weighted hemisphere pdf every non-specular case here samples from).
+	next.scatterOrigin = hit_point;   // see RayWorkItem::scatterOrigin
 	next.brdf_pdf = is_specular ? 0.0f
 		: (brdf_pdf_override > 0.0f ? brdf_pdf_override
 			: fmaxf(dot(next.direction, normal), 0.0f) / 3.14159265f);

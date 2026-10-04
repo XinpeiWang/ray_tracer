@@ -79,6 +79,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 		h.etaScale        = ray.etaScale;
 		h.filterWeight    = ray.filterWeight;
 		h.brdf_pdf        = ray.brdf_pdf;
+		h.scatterOrigin   = ray.scatterOrigin;
 		h.time            = ray.time;
 		// Resolve Mix HERE, once, before routing - not in each consumer
 		// kernel. h.materialIdx is overwritten with the RESOLVED index, so

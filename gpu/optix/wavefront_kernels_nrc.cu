@@ -193,6 +193,7 @@ extern "C" __global__ void nrc_generate_training_rays(
 	item.etaScale = 1.0f;
 	item.filterWeight = 1.0f;
 	item.brdf_pdf = 0.0f;
+	item.scatterOrigin = item.origin;
 	item.tMin = 0.001f;
 	item.tMax = 1e30f;
 	rayQueue.push(item);
@@ -283,6 +284,7 @@ extern "C" __global__ void nrc_training_shade_simple(
 	next.etaScale = 1.0f;
 	next.filterWeight = 1.0f;
 	next.brdf_pdf = 0.0f;
+	next.scatterOrigin = h.hitPoint;
 	next.tMin = 0.001f;
 	next.tMax = 1e30f;
 	next.time = h.time;
@@ -405,6 +407,7 @@ extern "C" __global__ void nrc_training_shade_full(
 	next.etaScale = 1.0f;
 	next.filterWeight = 1.0f;
 	next.brdf_pdf = sample.pdf;
+	next.scatterOrigin = h.hitPoint;
 	next.tMin = 0.001f;
 	next.tMax = 1e30f;
 	next.time = h.time;
