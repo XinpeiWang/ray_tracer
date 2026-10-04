@@ -607,4 +607,62 @@ if(RT_BUILD_METAL)
     set_tests_properties(metal_poc_seed_reproducible PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "SEED_TEST_OK")
+
+    # CPU vs Metal-GPU render-output parity sweep - see metal_cpu_gpu_
+    # parity_check.cpp's own header comment for the full "why"/design.
+    # Links cpu_renderer (for cpu_render_main, and for free: tinyexr/
+    # stb_image's *_IMPLEMENTATION, already baked into that library - see
+    # its own add_library() sources above) and metal_renderer (for
+    # metal_render_main). src/external/image_writer.cpp is needed for the
+    # same reason ray_tracer's own link line needs it (that target's own
+    # comment): metal_render_main()'s postProcessAndWrite() still COMPILES
+    # its stbi_write_png() call on the PNG branch even though this sweep's
+    # own .exr-only output path never executes it at runtime - the symbol
+    # still has to resolve at link time. WORKING_DIRECTORY matches every
+    # other pbrt-scene-loading Metal test here (cpu_scene_pbrt_path_by_id()
+    # resolves pbrt_scenes/ paths relative to the process's own CWD).
+    add_executable(metal_cpu_gpu_parity_check
+        gpu/metal/metal_cpu_gpu_parity_check.cpp
+        src/external/image_writer.cpp)
+    target_include_directories(metal_cpu_gpu_parity_check PRIVATE ${CMAKE_SOURCE_DIR})
+    # metal_renderer BEFORE cpu_renderer - order matters here, confirmed
+    # directly (the reverse order fails to link). Both static libraries
+    # independently carry their own tinyexr implementation (metal_poc.mm.o
+    # defines TINYEXR_IMPLEMENTATION itself, needed so the standalone
+    # metal_poc/metal_poc_shader_tests targets - which never link
+    # cpu_renderer at all - still resolve SaveEXR/LoadEXR; cpu_renderer's
+    # own copy lives in its separate src/external/tinyexr_impl.cpp.o).
+    # This executable is the first one to link BOTH libraries AND
+    # reference a tinyexr symbol (LoadEXR, in this file's own
+    # mp_load_exr()) directly from a THIRD object file - ld64 processes
+    # archives left-to-right, extracting a member only to resolve a
+    # CURRENTLY outstanding undefined symbol: with metal_renderer first,
+    # metal_poc.mm.o is extracted once (for metal_render_main AND this
+    # file's own LoadEXR reference together), which satisfies every
+    # tinyexr symbol before cpu_renderer is even scanned, so cpu_interface.
+    # cpp.o's own identical undefined references (it needs SaveEXR/LoadEXR
+    # too) are satisfied without ever touching cpu_renderer's own
+    # tinyexr_impl.cpp.o - no second definition is ever pulled in, so no
+    # conflict. ray_tracer links both libraries too but never references a
+    # tinyexr symbol directly from its own launcher/*.cpp - only through
+    # cpu_render_main/metal_render_main - so whichever archive happens to
+    # be scanned first there also wins outright, which is why this ordering
+    # sensitivity never surfaced until this target added a direct caller.
+    target_link_libraries(metal_cpu_gpu_parity_check PRIVATE metal_renderer cpu_renderer)
+    # Informational by default (metal_cpu_gpu_parity_check.cpp's own
+    # "CURRENT STATUS" header comment) - always exits 0 unless
+    # METAL_PARITY_STRICT=1 is set in the environment, in which case a
+    # nonzero exit already fails ctest on its own (PASS_REGULAR_EXPRESSION
+    # only gates the exit-0 case, same as every other Metal test here).
+    # The "no Metal device" early-exit also returns 0, printing a
+    # different message (never reaches the summary/"PASS (informational)"
+    # line) - matched here too so this test alone, outside the CI
+    # workflow's own wrapper-script skip handling other Metal tests rely
+    # on, still reports ctest PASS on a no-device machine (this exact
+    # "No Metal device available" wording is also what that workflow's own
+    # grep-based skip detection matches on, case-insensitively).
+    add_test(NAME metal_poc_cpu_gpu_parity COMMAND metal_cpu_gpu_parity_check)
+    set_tests_properties(metal_poc_cpu_gpu_parity PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "PASS \\(informational\\)|No Metal device available")
 endif()
