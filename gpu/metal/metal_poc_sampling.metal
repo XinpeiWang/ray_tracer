@@ -1,3 +1,78 @@
+// Result of one importance-sampled pixel-filter draw - mirrors
+// src/shared/filter_sampler.h's own FilterSample<T> exactly.
+struct MetalFilterSample {
+    float px, py;  // sub-pixel position in [-radius, +radius]
+    float weight;  // f(p)/pdf(p) - see this function's own comment
+};
+
+// Hand-ported MSL device-side mirror of FilterSampler<float,32>::sample()
+// (src/shared/filter_sampler.h) - a GATHER, not a scatter: THIS pixel's
+// own thread draws (px,py) from the distribution of ITS OWN
+// reconstruction filter, which for a filter wider than one pixel
+// (uniforms.filterRadius > 0.5, e.g. pbrt-v4's own default Gaussian 1.5)
+// legitimately reaches into the geometric area of a NEIGHBOURING pixel -
+// the camera ray this sample drives (primaryRayKernel's own caller)
+// simply points in a slightly different screen direction for that one
+// sample, same as CPU's camera.h get_ray() offsetting pixel_sample by
+// `offset.x()/offset.y()` beyond the unit pixel square. No cross-thread
+// write/atomic is needed because each pixel independently estimates its
+// OWN reconstruction integral this way - exactly pbrt-v4's own per-pixel
+// filter-importance-sampling model, not a splat-to-neighbours one.
+//
+// Can't call FilterSampler<float,32>::sample() directly on-device the
+// way OptiX/CUDA does (that backend's host and device code share one
+// real C++ compilation, so the SAME class instance - uploaded by
+// OptiXRenderer::render() - runs verbatim on the GPU; Metal Shading
+// Language is a separate compiled language with no such link) - this is
+// a faithful port of that function's own CDF-inversion + intra-cell
+// lerp algorithm instead, reading the SAME table (built host-side by
+// compileShaderAndDispatch(), copied into Uniforms::filterConditionalCDF/
+// filterMarginalCDF - see that field's own comment for why it rides in
+// the Uniforms buffer rather than a separate one).
+//
+// weight = f(p)/pdf(p), which FilterSampler::sample()'s own comment
+// proves is the CONSTANT integral() for every reachable (nonzero-
+// probability) cell, not a per-cell value - uniforms.filterIntegral
+// already IS exactly that constant, so there's no need to also upload
+// the f_/pdf_ tables themselves (only the two CDFs, needed for the
+// inversion/lerp below) just to recompute a ratio that always reduces
+// to the one scalar already on hand.
+inline MetalFilterSample sampleFilterPosition(constant Uniforms& uniforms, float u1, float u2) {
+    constant float (&marginal)[32] = uniforms.filterMarginalCDF;
+    constant float (&conditional)[32][32] = uniforms.filterConditionalCDF;
+
+    int lo = 0, hi = 31;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (marginal[mid] < u2) lo = mid + 1; else hi = mid;
+    }
+    int row = lo;
+
+    lo = 0; hi = 31;
+    while (lo < hi) {
+        int mid = (lo + hi) / 2;
+        if (conditional[row][mid] < u1) lo = mid + 1; else hi = mid;
+    }
+    int col = lo;
+
+    float cellW = 2.0 * uniforms.filterRadius / 32.0;
+    float cellH = cellW;  // FilterSampler's own build() uses the same formula for both - square cells
+
+    float cdfColPrev = (col > 0) ? conditional[row][col - 1] : 0.0;
+    float cdfColCurr = conditional[row][col];
+    float du = (cdfColCurr > cdfColPrev) ? (u1 - cdfColPrev) / (cdfColCurr - cdfColPrev) : 0.5;
+
+    float cdfRowPrev = (row > 0) ? marginal[row - 1] : 0.0;
+    float cdfRowCurr = marginal[row];
+    float dv = (cdfRowCurr > cdfRowPrev) ? (u2 - cdfRowPrev) / (cdfRowCurr - cdfRowPrev) : 0.5;
+
+    MetalFilterSample s;
+    s.px = -uniforms.filterRadius + (float(col) + du) * cellW;
+    s.py = -uniforms.filterRadius + (float(row) + dv) * cellH;
+    s.weight = uniforms.filterIntegral;
+    return s;
+}
+
 inline bool sampleRealisticCameraRay(constant Uniforms& uniforms,
                                       device const LensElement* lensElements,
                                       device const ExitPupilBounds* exitPupilBounds,

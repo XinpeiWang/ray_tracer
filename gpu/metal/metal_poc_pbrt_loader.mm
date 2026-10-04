@@ -56,6 +56,20 @@ void MetalPocApp::loadPbrtScene() {
         fprintf(stderr, "loadPbrtScene: pbrt loader warning: %s\n", w.message.c_str());
     }
 
+    // Film's own PixelFilter - see MetalPocApp::pbrtFilterKind's own
+    // comment. `scene.filter` is already per-kind-default-resolved by
+    // flatten() (PixelFilter::radius's own comment, src/shared/
+    // pbrt_flatten.h) - a scene with no explicit PixelFilter directive
+    // reads back exactly pbrt-v4's own gaussian/1.5 default, same as
+    // this struct's own in-class defaults, so this assignment is a true
+    // no-op for the overwhelming majority of scenes that never set one.
+    pbrtFilterKind = scene.filter.kind;
+    pbrtFilterB = (float)scene.filter.B;
+    pbrtFilterC = (float)scene.filter.C;
+    pbrtFilterSigma = (float)scene.filter.sigma;
+    pbrtFilterTau = (float)scene.filter.tau;
+    pbrtFilterRadius = (float)scene.filter.radius;
+
     // Uniform scene-scale normalization: a real pbrt scene is typically
     // authored at a scale of hundreds of units (a classic Cornell box
     // spans ~555) - NOT this shader's own [-1,1]-ish hardcoded-room
