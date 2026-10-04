@@ -48,9 +48,8 @@
 // on after its own Phase 2 expansion (Materials, Volumes, Textures,
 // Lights, Cameras, Geometry, Basics) - a scope already proven reasonable
 // by that suite's own experience, not re-derived from scratch - filtered
-// to scenes Metal actually supports (cpu_scene_pbrt_path_by_id() non-empty,
-// or cpu_scene_metal_hand_authored_supported() - the exact same two-part
-// check metal_render_main() itself makes before rejecting a scene) and
+// to scenes Metal actually supports (cpu_scene_pbrt_path_by_id() non-empty -
+// the same pbrt-file check metal_render_main() itself makes before rejecting a scene) and
 // excluding requires_files (external mesh assets this sandbox doesn't
 // bundle - see scripts/build_and_deploy_macos.sh's own comment on that).
 //
@@ -306,8 +305,7 @@ bool is_known_gap_scene(const std::string& id) {
 
 bool metal_supports_scene(const std::string& id) {
 	const char* pbrtPath = cpu_scene_pbrt_path_by_id(id.c_str());
-	if (pbrtPath && pbrtPath[0]) return true;
-	return cpu_scene_metal_hand_authored_supported(id.c_str()) != 0;
+	return pbrtPath && pbrtPath[0];
 }
 
 std::vector<const SceneDescriptor*> testable_scenes() {

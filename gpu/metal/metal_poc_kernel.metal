@@ -540,7 +540,7 @@ kernel void primaryRayKernel(
                         shadowRay.min_distance = 0.001f;
                         shadowRay.max_distance = dist - 0.002f;
                         intersection_result<instancing, triangle_data> shadowResult =
-                            isect.intersect(shadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            traceShadowAnyP(isect, shadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (shadowResult.type == intersection_type::none) {
                             float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                             // HG's own sampling pdf for direction wi EQUALS
@@ -588,7 +588,7 @@ kernel void primaryRayKernel(
                         plShadowRay.min_distance = 0.001f;
                         plShadowRay.max_distance = plDist - 0.002f;
                         intersection_result<instancing, triangle_data> plShadowResult =
-                            isect.intersect(plShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            traceShadowAnyP(isect, plShadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (plShadowResult.type == intersection_type::none) {
                             float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), uniforms.fogAsymmetryG);
                             float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
@@ -611,7 +611,7 @@ kernel void primaryRayKernel(
                         dlShadowRay.min_distance = 0.001f;
                         dlShadowRay.max_distance = kDirectionalLightMaxDistance;
                         intersection_result<instancing, triangle_data> dlShadowResult =
-                            isect.intersect(dlShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                            traceShadowAnyP(isect, dlShadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (dlShadowResult.type == intersection_type::none) {
                             float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), uniforms.fogAsymmetryG);
                             float dlExitDist = rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
@@ -640,7 +640,7 @@ kernel void primaryRayKernel(
                             pjShadowRay.min_distance = 0.001f;
                             pjShadowRay.max_distance = pjDist - 0.002f;
                             intersection_result<instancing, triangle_data> pjShadowResult =
-                                isect.intersect(pjShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                                traceShadowAnyP(isect, pjShadowRay, accelStructure, functionTable, shadowSpherePayload);
                             if (pjShadowResult.type == intersection_type::none) {
                                 float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), uniforms.fogAsymmetryG);
                                 float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
@@ -668,7 +668,7 @@ kernel void primaryRayKernel(
                             glShadowRay.min_distance = 0.001f;
                             glShadowRay.max_distance = glDist - 0.002f;
                             intersection_result<instancing, triangle_data> glShadowResult =
-                                isect.intersect(glShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                                traceShadowAnyP(isect, glShadowRay, accelStructure, functionTable, shadowSpherePayload);
                             if (glShadowResult.type == intersection_type::none) {
                                 float glPhaseValue = henyeyGreensteinPhase(dot(wo, glWi), uniforms.fogAsymmetryG);
                                 float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
