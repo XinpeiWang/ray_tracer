@@ -260,12 +260,64 @@ inline float3 sampleUniformHemisphere(float3 normal, thread uint& rngState) {
 // normals (Suzanne's own `vn` data) sees a different, smoothly-varying
 // result. Same interpolation `.obj`/pbrt-v4/this project's own CPU
 // triangle.h use for a shading normal, not an approximation of it.
-inline float3 shadingNormalFor(uint primId, float2 barycentric, device const packed_float3* normals) {
+// `positions` (the SAME per-corner-indexed buffer shadingNormalFor's own
+// caller already has bound for this triangle buffer - `vertices` for the
+// room/mesh case, `suzanneVertices` for the Suzanne-instance case) backs
+// the fallback below: a barycentric blend of two opposite (or nearly
+// opposite) vertex normals - a mid-edge point between a convex crease's
+// two differently-angled vertex normals, or simply a degenerate authored
+// normal - can cancel to (near) zero length, and normalizing that would
+// produce a NaN shading normal that poisons every later calculation this
+// hit feeds into. CPU's triangle.h and all 3 OptiX closest-hit sites
+// already guard this exact case (interpolate_shading_normal()/triangle.h's
+// own `len2 > 1e-20` check, commit aca9117) by falling back to the
+// triangle's own flat FACET normal (cross of two edges) instead - this
+// Metal loader's own independent copy of the same interpolation had no
+// such guard until now. 1e-20 matches those call sites exactly, not a
+// locally-chosen tolerance.
+inline float3 shadingNormalFor(uint primId, float2 barycentric, device const packed_float3* normals,
+                                device const packed_float3* positions) {
     float3 n0 = float3(normals[primId * 3 + 0]);
     float3 n1 = float3(normals[primId * 3 + 1]);
     float3 n2 = float3(normals[primId * 3 + 2]);
     float w0 = 1.0 - barycentric.x - barycentric.y;
-    return normalize(w0 * n0 + barycentric.x * n1 + barycentric.y * n2);
+    float3 blended = w0 * n0 + barycentric.x * n1 + barycentric.y * n2;
+    float len2 = dot(blended, blended);
+    if (len2 > 1e-20) return blended * (1.0 / sqrt(len2));
+    float3 p0 = float3(positions[primId * 3 + 0]);
+    float3 p1 = float3(positions[primId * 3 + 1]);
+    float3 p2 = float3(positions[primId * 3 + 2]);
+    return normalize(cross(p1 - p0, p2 - p0));
+}
+
+// Same zero-length-blend guard as shadingNormalFor() above, for the one
+// caller (Suzanne's own instanced hit, metal_poc_kernel.metal) that has
+// no matching per-corner POSITION buffer bound to primaryRayKernel to
+// fall back to a true facet normal with - Suzanne's own vertex positions
+// only ever reach the GPU as the instanced acceleration structure's own
+// geometry-descriptor vertex buffer (metal_poc_gpu_resources.mm's own
+// suzanneVertexBuffer), which Metal's hardware traversal consumes
+// directly and this shader has no other handle to (adding one would need
+// a 32nd kernel buffer argument - MTLArgumentBuffer's own hard "0-30"
+// index ceiling for a function this size, confirmed by the compiler
+// itself rejecting buffer(31) - not a limit worth taking on for an edge
+// case this rare). Falls back to whichever single vertex normal is
+// itself non-degenerate instead of the flat facet normal: still exact
+// (no interpolation) at that one vertex, never NaN, and visually
+// indistinguishable from a true facet-normal fallback for the
+// vanishingly rare mid-edge/degenerate-normal hit this guards against in
+// the first place.
+inline float3 shadingNormalForNoFacet(uint primId, float2 barycentric, device const packed_float3* normals) {
+    float3 n0 = float3(normals[primId * 3 + 0]);
+    float3 n1 = float3(normals[primId * 3 + 1]);
+    float3 n2 = float3(normals[primId * 3 + 2]);
+    float w0 = 1.0 - barycentric.x - barycentric.y;
+    float3 blended = w0 * n0 + barycentric.x * n1 + barycentric.y * n2;
+    float len2 = dot(blended, blended);
+    if (len2 > 1e-20) return blended * (1.0 / sqrt(len2));
+    if (dot(n0, n0) > 1e-20) return normalize(n0);
+    if (dot(n1, n1) > 1e-20) return normalize(n1);
+    return normalize(n2);
 }
 
 // Same barycentric-blend idea as shadingNormalFor(), for texture

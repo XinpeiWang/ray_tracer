@@ -829,11 +829,11 @@ kernel void primaryRayKernel(
                 // the one piece of shading math instancing actually adds
                 // over the room/Spot geometry's own single-identity-
                 // instance path.
-                float3 objectNormal = shadingNormalFor(primId, result.triangle_barycentric_coord, suzanneNormals);
+                float3 objectNormal = shadingNormalForNoFacet(primId, result.triangle_barycentric_coord, suzanneNormals);
                 normal = transformNormalByInstance(objectNormal, instanceTransforms[result.instance_id]);
                 mat = suzanneMaterials[primId];
             } else {
-                normal = shadingNormalFor(primId, result.triangle_barycentric_coord, normals);
+                normal = shadingNormalFor(primId, result.triangle_barycentric_coord, normals, vertices);
                 mat = triMaterials[primId];
             }
             // Raw (outward, unflipped) normal kept separately from here -
