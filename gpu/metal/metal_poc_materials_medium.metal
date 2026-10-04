@@ -66,7 +66,7 @@ inline void shadeHomogeneousMediumSphere(
             mediumShadowRay.min_distance = 0.001f;
             mediumShadowRay.max_distance = dist - 0.002f;
             intersection_result<instancing, triangle_data> mediumShadowResult =
-                isect.intersect(mediumShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                traceShadowAnyP(isect, mediumShadowRay, accelStructure, functionTable, shadowSpherePayload);
             if (mediumShadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float phaseValue = henyeyGreensteinPhase(dot(wo, wi), mediumMat.roughness);
@@ -229,7 +229,7 @@ inline void shadeCloudMediumSphere(
             cloudShadowRay.min_distance = 0.001f;
             cloudShadowRay.max_distance = dist - 0.002f;
             intersection_result<instancing, triangle_data> cloudShadowResult =
-                isect.intersect(cloudShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                traceShadowAnyP(isect, cloudShadowRay, accelStructure, functionTable, shadowSpherePayload);
             if (cloudShadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float phaseValue = henyeyGreensteinPhase(dot(wo, wi), mediumMat.roughness);
@@ -344,7 +344,7 @@ inline void shadeCloudMediumSphere(
             bgShadowRay.min_distance = 0.001f;
             bgShadowRay.max_distance = 1.0e6f;
             intersection_result<instancing, triangle_data> bgShadowResult =
-                isect.intersect(bgShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                traceShadowAnyP(isect, bgShadowRay, accelStructure, functionTable, shadowSpherePayload);
             if (bgShadowResult.type == intersection_type::none) {
                 radiance += throughput * float3(mediumMat.color) * float3(uniforms.pbrtEnvColor) * selfTransmittance;
             }
@@ -457,7 +457,7 @@ inline void shadeRgbGridMediumSphere(
             gridShadowRay.min_distance = 0.001f;
             gridShadowRay.max_distance = dist - 0.002f;
             intersection_result<instancing, triangle_data> gridShadowResult =
-                isect.intersect(gridShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                traceShadowAnyP(isect, gridShadowRay, accelStructure, functionTable, shadowSpherePayload);
             if (gridShadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float phaseValue = henyeyGreensteinPhase(dot(wo, wi), grid.phaseG);
@@ -494,7 +494,7 @@ inline void shadeRgbGridMediumSphere(
             bgShadowRay.min_distance = 0.001f;
             bgShadowRay.max_distance = 1.0e6f;
             intersection_result<instancing, triangle_data> bgShadowResult =
-                isect.intersect(bgShadowRay, accelStructure, functionTable, shadowSpherePayload);
+                traceShadowAnyP(isect, bgShadowRay, accelStructure, functionTable, shadowSpherePayload);
             if (bgShadowResult.type == intersection_type::none) {
                 radiance += throughput * scatterColor * float3(uniforms.pbrtEnvColor) * selfTransmittance;
             }
