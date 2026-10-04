@@ -329,3 +329,10 @@ TEST(PbrtBackendAgreementTest, RgbGridMediumAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, CloudMediumAgreesAcrossBackends) {
 	expectBackendsAgree("cloud-medium", 128, 0.97, 1.03);
 }
+
+// A glass shape that bounds a medium is opaque to NEE shadow rays, as every pbrt-v4 surface with a material is. The
+// loader made it transparent (a near-invisible-shell idiom), which counted every escape from the fog twice. All three
+// backends now block at the shell and agree. See pbrt_scenes/glass-fog-furnace.pbrt.
+TEST(PbrtBackendAgreementTest, GlassFogFurnaceAgreesAcrossBackends) {
+	expectBackendsAgree("glass-fog-furnace", 128, 0.95, 1.05);
+}

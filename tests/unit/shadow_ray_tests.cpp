@@ -38,13 +38,29 @@ TEST(ShadowRayTest, DielectricOccludesLight) {
     EXPECT_EQ(Le.x(), 0.0) << "the shadow ray found the light through the glass";
 }
 
-// ...except a glass SHELL around a participating medium: the loader's fog-boundary idiom is a
-// near-invisible dielectric (eta ~1.001) + MediumInterface, which must stay transparent to NEE.
-TEST(ShadowRayTest, MediumBoundaryDielectricStaysTransparent) {
+// A glass shape that bounds a participating medium blocks NEE just like any other glass: pbrt-v4 gives every
+// surface with a material an opaque shadow (VolPathIntegrator::SampleLd), and the fog inside is lit only along
+// specular chains. This loader used to make such a shell transparent (its old fog-boundary idiom was a near-invisible
+// eta 1.001 dielectric); the idiom is Material "interface" now, which is the transparent one.
+TEST(ShadowRayTest, GlassAroundAMediumBlocksLikeAnyOtherGlass) {
     hittable_list world;
     auto glass = make_shared<dielectric>(1.001);
-    glass->mark_medium_boundary();
     world.add(make_shared<sphere>(point3(0, 0, -5), 1.0, glass));
+
+    auto light_mat = make_shared<diffuse_light>(color(4, 4, 4));
+    world.add(make_shared<quad>(point3(-1, -1, -10), vec3(2, 0, 0), vec3(0, 2, 0), light_mat));
+
+    ray shadow_ray(point3(0, 0, 0), vec3(0, 0, -1));
+    hit_record rec;
+    ASSERT_TRUE(shadow_ray_hit(world, shadow_ray, rec));
+    color Le = rec.mat->emitted(shadow_ray, rec, rec.u, rec.v, rec.p);
+    EXPECT_EQ(Le.x(), 0.0) << "the shadow ray found the light through the glass shell";
+}
+
+// ...whereas Material "interface" (a medium boundary with no BSDF) is walked past.
+TEST(ShadowRayTest, InterfaceBoundaryStaysTransparent) {
+    hittable_list world;
+    world.add(make_shared<sphere>(point3(0, 0, -5), 1.0, make_shared<interface_material>()));
 
     auto light_mat = make_shared<diffuse_light>(color(4, 4, 4));
     world.add(make_shared<quad>(point3(-1, -1, -10), vec3(2, 0, 0), vec3(0, 2, 0), light_mat));
@@ -85,14 +101,13 @@ TEST(ShadowRayTest, RespectsTMax) {
     EXPECT_FALSE(shadow_ray_hit(world, shadow_ray, rec, /*t_max=*/5.0));
 }
 
-// Two glass spheres in a row must both be skipped -- exercises the walk-past
+// Two interface spheres in a row must both be skipped -- exercises the walk-past
 // loop taking more than a single step before it finds the opaque surface.
 TEST(ShadowRayTest, MultipleDielectricsInARowAreSkipped) {
     hittable_list world;
-    auto glass = make_shared<dielectric>(1.5);
-    glass->mark_medium_boundary();   // plain glass blocks; shells around a medium are walked past
-    world.add(make_shared<sphere>(point3(0, 0, -3), 0.5, glass));
-    world.add(make_shared<sphere>(point3(0, 0, -5), 0.5, glass));
+    auto boundary = make_shared<interface_material>();   // plain glass blocks; interface boundaries are walked past
+    world.add(make_shared<sphere>(point3(0, 0, -3), 0.5, boundary));
+    world.add(make_shared<sphere>(point3(0, 0, -5), 0.5, boundary));
 
     auto light_mat = make_shared<diffuse_light>(color(4, 4, 4));
     world.add(make_shared<quad>(point3(-1, -1, -10), vec3(2, 0, 0), vec3(0, 2, 0), light_mat));

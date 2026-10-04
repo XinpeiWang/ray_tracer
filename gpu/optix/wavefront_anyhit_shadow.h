@@ -32,16 +32,17 @@
 //     blocking NEE outright. Dielectric/RoughDielectric/ThinDielectric do NOT: like
 //     every pbrt-v4 surface with a material they block shadow rays (VolPathIntegrator::
 //     SampleLd, integrators.cpp:1335), and the glass is lit through its specular BSDF
-//     path instead (matches optix_anyhit_shadow.h).
-//   - Medium/CloudMedium/RgbGridMedium/GridMedium/DielectricMedium (sphere/
-//     cylinder only - the pbrt loader never assigns these to quad/bilinear-
-//     patch/triangle/disk) let light through too, but ATTENUATED: real
-//     Beer-Lambert (homogeneous Medium/DielectricMedium) or ratio tracking
+//     path instead (matches optix_anyhit_shadow.h). That includes DielectricMedium,
+//     a glass surface that bounds a medium: NEE from a scatter vertex inside it is blocked
+//     by its own shell, so the fog is lit only along specular chains, exactly as in pbrt.
+//   - Medium/CloudMedium/RgbGridMedium/GridMedium (sphere/cylinder only - the pbrt
+//     loader never assigns these to quad/bilinear-patch/triangle/disk) let light through,
+//     but ATTENUATED: real Beer-Lambert (homogeneous Medium) or ratio tracking
 //     (heterogeneous Cloud/RgbGrid/Grid) multiplies WfShadowPayload::
 //     transmittance down for the chord this shadow ray crosses through the
 //     medium, rather than treating it as fully non-occluding - see that
 //     field's own comment (wavefront_common.h) for why this replaced the
-//     old unconditional optixIgnoreIntersection() for these five types.
+//     old unconditional optixIgnoreIntersection() for these types.
 extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 	const int instBase = wf_instance_base();
 	const SphereData& sph = wf_params.spheres[wf_prim_base(instBase) + optixGetPrimitiveIndex()];
@@ -73,21 +74,23 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 
 	// Participating media: attenuate the running transmittance instead of
 	// the old unconditional pass-through - see WfShadowPayload::
-	// transmittance's own comment (wavefront_common.h). Homogeneous Medium/
-	// DielectricMedium get deterministic Beer-Lambert over the sphere's own
+	// transmittance's own comment (wavefront_common.h). Homogeneous Medium
+	// gets deterministic Beer-Lambert over the sphere's own
 	// analytic near/far chord; the three heterogeneous kinds get stochastic
 	// ratio tracking against their existing GLOBAL majorant (sigma_maj) -
 	// same simplification the primary-ray free-path sampling already makes
 	// (wavefront_kernels_materials.cu), so shadow and primary-ray results
 	// stay mutually consistent.
-	if (mat.type == MaterialType::Medium || mat.type == MaterialType::DielectricMedium) {
+	// DielectricMedium (a real glass surface that bounds a medium) is deliberately NOT here: like every pbrt-v4
+	// surface with a material it is opaque to NEE shadow rays (VolPathIntegrator::SampleLd), so it falls through to
+	// the occluder case below. Light reaches the fog inside only along specular chains, as in pbrt.
+	if (mat.type == MaterialType::Medium) {
 		const float3 unit_dir = normalize(ray_dir);
 		const bool is_box = (sph.shapeKind == GpuMediumShapeKind::Box);
 		const float3 sphere_center = wf_read_hit_sphere_center();
 		float t_near, t_far;
 		wf_medium_sphere_near_far(ray_orig, unit_dir, sph, sphere_center, is_box, t_near, t_far);
-		const float sigma_t = (mat.type == MaterialType::Medium)
-			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
+		const float sigma_t = mat.sigma_t;
 		const float segFar = fminf(t_far, sp->tMax);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
 		sp->transmittance *= expf(-sigma_t * segLen);
@@ -407,7 +410,10 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 	// reaching a cylinder at all is new (pbrt_gpu_builder.h's cylinder loop
 	// now resolves MediumInterface + a smooth dielectric surface via
 	// mediumMaterialIndex(), mirroring the sphere loop).
-	if (mat.type == MaterialType::Medium || mat.type == MaterialType::DielectricMedium) {
+	// DielectricMedium (a real glass surface that bounds a medium) is deliberately NOT here: like every pbrt-v4
+	// surface with a material it is opaque to NEE shadow rays (VolPathIntegrator::SampleLd), so it falls through to
+	// the occluder case below. Light reaches the fog inside only along specular chains, as in pbrt.
+	if (mat.type == MaterialType::Medium) {
 		// ray_dir (raw, not normalize()'d) - matches __closesthit__wf_cylinder's
 		// own call into this same helper exactly (wavefront_intersection_
 		// disk_cylinder.h); world ray directions reaching this point are
@@ -417,8 +423,7 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 		wf_medium_cylinder_near_far(ray_orig, ray_dir, cyl, t_near, t_far);
 		const float segFar = fminf(t_far, sp->tMax);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
-		const float sigma_t = (mat.type == MaterialType::Medium)
-			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
+		const float sigma_t = mat.sigma_t;
 		sp->transmittance *= expf(-sigma_t * segLen);
 		if (sp->transmittance <= 0.0f) { optixTerminateRay(); return; }
 		optixIgnoreIntersection();
