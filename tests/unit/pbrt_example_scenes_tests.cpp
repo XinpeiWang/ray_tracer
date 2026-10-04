@@ -275,3 +275,10 @@ TEST(PbrtBackendAgreementTest, FogPointLightAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, AbsorbingFogAgreesAcrossBackends) {
 	expectBackendsAgree("absorbing-fog", 128, 0.95, 1.05);
 }
+
+// A fuzzed metal (the GPU loader's build for a conductor given only a reflectance) has to absorb the rays its
+// fuzz sends below the surface, as the CPU's metal and the wavefront backend do. The recursive backend used to
+// reflect them instead, so the plane kept all 0.9 of its reflectance (140% of the CPU's 0.645 at roughness 1).
+TEST(PbrtBackendAgreementTest, FuzzedMetalFurnaceAgreesAcrossBackends) {
+	expectBackendsAgree("fuzzed-metal-furnace", 128, 0.96, 1.04);
+}

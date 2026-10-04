@@ -537,6 +537,14 @@ extern "C" __global__ void __raygen__rg() {
 				// a second, pre-mask throughput value through the whole bounce
 				// loop for a narrow, already-approximate feature - a bigger
 				// change than this variance characteristic warrants.
+				// Continue from the stream the hit program advanced. This used to happen at the very end of
+				// the branch, so the roulette draw below came from the unadvanced `seed` - the very state the
+				// hit program started this bounce from, whose first variate it had already spent sampling the
+				// scatter direction. Survival was therefore correlated with the direction taken: on H7 the
+				// recursive backend's fourth bounce order came out ~26% too bright (+2.7% overall); with the
+				// roulette off, or drawn from the advanced stream as here, it matches CPU and wavefront.
+				seed = payload.seed;
+
 				if (depth > 1) {
 					float3 rr_beta = throughput * eta_scale;
 					float rr_max = fmaxf(rr_beta.x, fmaxf(rr_beta.y, rr_beta.z));
@@ -563,7 +571,6 @@ extern "C" __global__ void __raygen__rg() {
 
 				ray_origin = scatter_origin;
 				ray_direction = normalize(payload.scatterDir);  // MUST normalize!
-				seed = payload.seed;
 			} else {
 				// Absorbed — add any surface emission (e.g. background hit) then stop
 				radiance = radiance + throughput * payload.emission;
