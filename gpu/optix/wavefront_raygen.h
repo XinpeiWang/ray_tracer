@@ -25,6 +25,7 @@ extern "C" __global__ void __raygen__wf_intersect() {
 
 	WfHitPayload payload;
 	payload.hit = false;
+	payload.primaryRay = (ray.depth == 0) ? 1 : 0;
 
 	unsigned int p0, p1;
 	packPointer(&payload, p0, p1);

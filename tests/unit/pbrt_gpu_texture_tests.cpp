@@ -228,17 +228,46 @@ TEST_F(GpuTextureTempTree, DisplacementWithARealNormalMapBecomesNormalMappedLamb
 	EXPECT_EQ(tex.kind, TextureKind::Image);
 }
 
-TEST_F(GpuTextureTempTree, DisplacementWithARealGrayscaleBumpMapStaysPlainLambertian) {
-	// The scalar/grayscale case: GPU has no device-side scalar bump
-	// perturbation path (see makeMaterial()'s own comment on this), so a
-	// real grayscale displacement image must leave the material as plain
-	// Lambertian rather than mis-rendering it through the normal-map unpack
-	// path (which would decode a flat R==G==B image as a degenerate normal
-	// offset only along one fixed diagonal).
+TEST_F(GpuTextureTempTree, DisplacementWithARealGrayscaleBumpMapStaysPlainLambertianButCarriesTheBump) {
+	// The scalar/grayscale case: a real grayscale displacement image is a height map, not a tangent-space
+	// normal map, so the material stays plain Lambertian (the normal-map unpack path would decode a flat
+	// R==G==B image as a degenerate offset along one fixed diagonal) and instead carries the height texture
+	// and its scale for the triangle closest-hit programs to perturb the shading normal with
+	// (gpu_bump_map.h).
 	write("bump.bmp", solidBmp1x1(128, 128, 128));
 
 	pbrt_flatten::Material m;
 	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.displacementTextureFilename = path("bump.bmp");
+	m.displacementScale = 0.25;
+	pbrt_flatten::FlatScene flat;
+	flat.materials.push_back(m);
+	pbrt_flatten::Triangle tri{};
+	tri.material = 0;
+	tri.areaLight = -1;
+	flat.triangles.push_back(tri);
+
+	SceneData scene;
+	pbrt_gpu::build(flat, scene);
+	ASSERT_EQ(scene.materials.size(), 1u);
+	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+	EXPECT_EQ(scene.materials[0].textureIdx, -1);
+	ASSERT_GE(scene.materials[0].bumpTexIdx, 0);
+	EXPECT_FLOAT_EQ(scene.materials[0].bumpScale, 0.25f);
+	const TextureData &tex = scene.textures[static_cast<std::size_t>(scene.materials[0].bumpTexIdx)];
+	EXPECT_EQ(tex.kind, TextureKind::Image);
+	EXPECT_EQ(tex.wrapMode, GpuWrapMode::Repeat);   // the CPU reads displacement with a Repeat bilinear lookup
+}
+
+TEST_F(GpuTextureTempTree, GrayscaleBumpAlongsideAReflectanceTextureKeepsBoth) {
+	// Sibenik/Fireplace-style materials bind a colour texture AND a bump map. The shared textureIdx slot only
+	// forbids hosting an RGB normal map next to a reflectance texture; a scalar bump has its own field.
+	write("bump.bmp", solidBmp1x1(128, 128, 128));
+	write("color.bmp", solidBmp1x1(200, 100, 50));
+
+	pbrt_flatten::Material m;
+	m.kind = pbrt_flatten::MaterialKind::Diffuse;
+	m.textureFilename = path("color.bmp");
 	m.displacementTextureFilename = path("bump.bmp");
 	pbrt_flatten::FlatScene flat;
 	flat.materials.push_back(m);
@@ -251,6 +280,9 @@ TEST_F(GpuTextureTempTree, DisplacementWithARealGrayscaleBumpMapStaysPlainLamber
 	pbrt_gpu::build(flat, scene);
 	ASSERT_EQ(scene.materials.size(), 1u);
 	EXPECT_EQ(scene.materials[0].type, MaterialType::Lambertian);
+	EXPECT_GE(scene.materials[0].textureIdx, 0);
+	EXPECT_GE(scene.materials[0].bumpTexIdx, 0);
+	EXPECT_NE(scene.materials[0].bumpTexIdx, scene.materials[0].textureIdx);
 }
 
 TEST(PbrtGpuTextureTest, NoDisplacementParameterLeavesMaterialUnperturbed) {

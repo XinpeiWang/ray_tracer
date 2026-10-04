@@ -1298,6 +1298,13 @@ struct MaterialData {
 	// automatically, no existing call site needs updating.
 	int alphaMaskTexIdx = -1;
 
+	// pbrt "texture displacement" bump map with a grayscale height image: index into
+	// LaunchParams::textures (-1 = none) and the factor of the "scale" texture wrapping it. The triangle
+	// closest-hit programs perturb the shading normal with it (gpu_bump_map.h) for any non-emissive
+	// material; other shapes ignore it. Same default-member-initializer trick as alphaMaskTexIdx.
+	int   bumpTexIdx = -1;
+	float bumpScale  = 1.0f;
+
 	// DiffuseTransmission only: index into LaunchParams::textures for a
 	// texture-bound "transmittance", or -1 to use the `transmittance` union
 	// field directly - independent of textureIdx above, which this same

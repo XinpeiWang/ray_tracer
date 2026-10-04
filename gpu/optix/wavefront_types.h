@@ -10,6 +10,7 @@
 #include <optix.h>
 #include <cuda_runtime.h>
 #include "optix_types.h"
+#include "gpu_bump_map.h"   // GpuBumpFootprint (WavefrontLaunchParams::bumpFootprint)
 #else
 // Minimal float3 stub for host-only compilation
 #ifndef __VECTOR_TYPES_H__
@@ -739,6 +740,8 @@ struct WavefrontLaunchParams {
 	float3*      framebuffer;
 	unsigned int width;
 	unsigned int height;
+	// Viewport of the camera for the bump-map footprint step (gpu_bump_map.h); disabled by default
+	GpuBumpFootprint bumpFootprint;
 
 	// Scene
 	OptixTraversableHandle traversable;
