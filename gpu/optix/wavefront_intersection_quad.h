@@ -55,6 +55,7 @@ extern "C" __global__ void __closesthit__wf_quad() {
 	payload->t           = t_hit;
 	payload->materialIdx = q.materialIdx;
 	payload->geomType    = 1;
+	payload->primIdx     = quadIdx;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	// frontFace was left uninitialized here (only __closesthit__wf_sphere set

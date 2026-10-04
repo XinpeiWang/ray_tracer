@@ -126,6 +126,9 @@ struct HitWorkItem {
 
 	// Material info
 	int    materialIdx;
+	// Index of the hit primitive in its geometry array (the same space GpuLightKind lightIndices use), so a
+	// hit on an emitter can be mapped back to its light for MIS - see evaluate_materials()'s DiffuseLight case.
+	int    primIdx;
 	int    geomType;           // 0 = sphere, 1 = quad, 2 = bilinear patch, 3 = triangle, 4 = disk, 5 = cylinder (read in the NormalMappedLambertian case only - see evaluate_materials())
 
 	// MaterialType::Medium and MaterialType::DielectricMedium (exit surface,
@@ -216,10 +219,9 @@ struct HitWorkItem {
 	// multiplied into every radiance contribution this hit produces.
 	float  filterWeight;
 	// Carried from RayWorkItem::brdf_pdf (see its own comment) - the BRDF
-	// pdf of the ray that arrived at THIS hit. Not read by the DiffuseLight
-	// early-exit above (that gate is specular_bounce/depth==0 only, no real
-	// MIS blend - see evaluate_materials()'s own comment), only added here
-	// so MaterialType::Interface's pass-through case can propagate it
+	// pdf of the ray that arrived at THIS hit. The DiffuseLight early-exit
+	// weights a BSDF-sampled emitter hit with it (wf_emitter_hit_mis_weight),
+	// and MaterialType::Interface's pass-through case propagates it
 	// unchanged into the NEXT RayWorkItem it pushes directly (bypassing
 	// wf_finish_material_scatter's own recompute) - without this, a path
 	// that crosses an interface boundary and then escapes to the sky on

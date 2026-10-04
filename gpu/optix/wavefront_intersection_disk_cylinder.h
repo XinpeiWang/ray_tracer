@@ -81,6 +81,7 @@ extern "C" __global__ void __closesthit__wf_disk() {
 	payload->t           = t_hit;
 	payload->materialIdx = disk.materialIdx;
 	payload->geomType    = 4;
+	payload->primIdx     = (int)primIdx;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;
@@ -283,6 +284,7 @@ extern "C" __global__ void __closesthit__wf_cylinder() {
 	payload->t           = t_hit;
 	payload->materialIdx = cyl.materialIdx;
 	payload->geomType    = 5;
+	payload->primIdx     = (int)primIdx;
 	payload->hit         = true;
 	payload->mediumTFar  = 0.0f;
 	payload->frontFace   = front_face ? 1 : 0;

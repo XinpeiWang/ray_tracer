@@ -253,3 +253,11 @@ TEST(PbrtBackendAgreementTest, FlushCeilingLightAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, EmissiveOctahedronFurnaceAgreesAcrossBackends) {
 	expectBackendsAgree("emissive-octahedron-furnace", 128, 0.88, 1.12);
 }
+
+// A BSDF-sampled bounce that lands on a lamp has to be counted, MIS-weighted against the NEE sample taken at the
+// previous vertex. The wavefront backend dropped it for every non-specular bounce while still weighting its NEE
+// sample, so with a big lamp close to bright walls it lost a fifth of the indirect light (83% of CPU on Fireplace
+// Room). Tight bounds: the three backends agree to about 1% here.
+TEST(PbrtBackendAgreementTest, LargeAreaLightRoomAgreesAcrossBackends) {
+	expectBackendsAgree("large-area-light-room", 64, 0.96, 1.04);
+}
