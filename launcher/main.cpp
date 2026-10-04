@@ -1478,8 +1478,23 @@ int main(int argc, char** argv) {
             // bytes as a PPM header and fail, so skip it here, the same
             // way the is_exr_output_path() branch below skips it for
             // tinyexr's own already-final output format.
+            // The GUI (and users) expect the image at <stem>.png, but the
+            // caller may have asked for <stem>.ppm: Metal writes PNG bytes
+            // to whatever path it's given, so a .ppm name would hold PNG
+            // data under the wrong extension and nothing would exist at
+            // .png. Rename it to match the actual content.
+            std::filesystem::path png_path = ppm_path_obj.parent_path() / (ppm_path_obj.stem().string() + ".png");
+            if (ppm_path_obj != png_path) {
+                std::error_code ec;
+                std::filesystem::rename(ppm_path_obj, png_path, ec);
+                if (ec) {
+                    std::cerr << "WARNING: could not rename Metal output to " << png_path
+                              << ": " << ec.message() << std::endl;
+                    png_path = ppm_path_obj;
+                }
+            }
             std::cout << "\nRender complete! You can now open:" << std::endl;
-            std::cout << "  - " << ppm_path_obj.filename()
+            std::cout << "  - " << png_path.filename()
                        << " (PNG - written directly by the Metal renderer)" << std::endl;
         } else
 #endif
