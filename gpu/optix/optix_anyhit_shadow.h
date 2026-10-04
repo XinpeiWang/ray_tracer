@@ -176,7 +176,10 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	// helpers_lighting.h) sampled a shadow ray back out through this same
 	// boundary toward a light - measured ~36-42% too bright vs. both other
 	// backends (which agreed with each other) before this fix.
-	if (mat.type == MaterialType::Medium || mat.type == MaterialType::DielectricMedium) {
+	// DielectricMedium (a real glass surface that bounds a medium) is deliberately NOT here: like every pbrt-v4
+	// surface with a material it is opaque to NEE shadow rays (VolPathIntegrator::SampleLd), so it falls through to
+	// the occluder case below. Light reaches the fog inside only along specular chains, as in pbrt.
+	if (mat.type == MaterialType::Medium) {
 		const float3 ray_orig = optixGetWorldRayOrigin();
 		const float3 ray_dir = optixGetWorldRayDirection();  // unit length by construction (trace_shadow_ray's own callers)
 		const bool is_box = (sphere.shapeKind == GpuMediumShapeKind::Box);
@@ -204,8 +207,7 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 			t_near = fmaxf(0.0f, -half_b - sq);
 			t_far = -half_b + sq;
 		}
-		const float sigma_t = (mat.type == MaterialType::Medium)
-			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
+		const float sigma_t = mat.sigma_t;
 		// NOT optixGetRayTmax(): inside an any-hit program that is the CANDIDATE
 		// hit's own t (OptiX shrinks tmax to it while the program runs), not the
 		// ray's original max_distance. Using it (as this did, wrongly believing
@@ -353,7 +355,10 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 	// comment describes; DielectricMedium reaching a cylinder at all is new
 	// this round (pbrt_gpu_builder.h's cylinder loop now resolves
 	// MediumInterface + a smooth dielectric surface via mediumMaterialIndex()).
-	if (mat.type == MaterialType::Medium || mat.type == MaterialType::DielectricMedium) {
+	// DielectricMedium (a real glass surface that bounds a medium) is deliberately NOT here: like every pbrt-v4
+	// surface with a material it is opaque to NEE shadow rays (VolPathIntegrator::SampleLd), so it falls through to
+	// the occluder case below. Light reaches the fog inside only along specular chains, as in pbrt.
+	if (mat.type == MaterialType::Medium) {
 		const float3 ray_orig = optixGetWorldRayOrigin();
 		const float3 ray_dir = optixGetWorldRayDirection();  // unit length by construction (trace_shadow_ray's own callers)
 		const float3 ro = dc_apply_point(cyl.w2o, ray_orig);
@@ -380,8 +385,7 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		float t_far  = fminf(tube_t1, z_t1);
 		if (!hasTube || !hasZSlab || t_far < t_near) { t_near = 0.0f; t_far = 0.0f; }
 
-		const float sigma_t = (mat.type == MaterialType::Medium)
-			? mat.sigma_t : mat.dielectric_medium_extra.sigma_t;
+		const float sigma_t = mat.sigma_t;
 		// Original max_distance, NOT optixGetRayTmax() (the candidate hit's own
 		// t inside an any-hit) - see __anyhit__shadow_sphere's identical comment.
 		const float segFar = fminf(t_far, shadow_state_from_payload()->maxDistance);

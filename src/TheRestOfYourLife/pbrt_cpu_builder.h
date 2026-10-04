@@ -739,7 +739,7 @@ inline void buildDisksAndCylinders(const std::vector<pbrt_flatten::Disk> &disks,
 									const CachedMaterialFn &cachedMaterial,
 									const AddMediumFn &addMediumIfPresent) {
 	for (const pbrt_flatten::Disk &d : disks) {
-		auto mat = cachedMaterial(d.material, d.areaLight, false, d.medium >= 0);
+		auto mat = cachedMaterial(d.material, d.areaLight);
 		auto disk = std::make_shared<disk_hittable>(
 			d.radius, d.innerRadius, d.height, degrees_to_radians(d.phiMaxDeg),
 			toMatrix4(d.xform), toMatrix4(d.xformEnd), mat);
@@ -750,7 +750,7 @@ inline void buildDisksAndCylinders(const std::vector<pbrt_flatten::Disk> &disks,
 	diskCount += disks.size();
 
 	for (const pbrt_flatten::Cylinder &c : cylinders) {
-		auto mat = cachedMaterial(c.material, c.areaLight, false, c.medium >= 0);
+		auto mat = cachedMaterial(c.material, c.areaLight);
 		auto cyl = std::make_shared<cylinder_hittable>(
 			c.radius, c.zMin, c.zMax, degrees_to_radians(c.phiMaxDeg),
 			toMatrix4(c.xform), toMatrix4(c.xformEnd), mat);
@@ -771,7 +771,7 @@ inline void buildConesAndParaboloids(const std::vector<pbrt_flatten::Cone> &cone
 									  const CachedMaterialFn &cachedMaterial,
 									  const AddMediumFn &addMediumIfPresent) {
 	for (const pbrt_flatten::Cone &cn : cones) {
-		auto mat = cachedMaterial(cn.material, cn.areaLight, false, cn.medium >= 0);
+		auto mat = cachedMaterial(cn.material, cn.areaLight);
 		auto cone = std::make_shared<cone_hittable>(
 			cn.radius, cn.height, degrees_to_radians(cn.phiMaxDeg), toMatrix4(cn.xform), mat);
 		world.add(cone);
@@ -781,7 +781,7 @@ inline void buildConesAndParaboloids(const std::vector<pbrt_flatten::Cone> &cone
 	coneCount += cones.size();
 
 	for (const pbrt_flatten::Paraboloid &pb : paraboloids) {
-		auto mat = cachedMaterial(pb.material, pb.areaLight, false, pb.medium >= 0);
+		auto mat = cachedMaterial(pb.material, pb.areaLight);
 		auto para = std::make_shared<paraboloid_hittable>(
 			pb.radius, pb.zMin, pb.zMax, degrees_to_radians(pb.phiMaxDeg), toMatrix4(pb.xform), mat);
 		world.add(para);
@@ -1158,16 +1158,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	// via NamedMaterial reuse - unusual but valid pbrt) gets two distinct
 	// hair_material instances with the right tangent behavior each, instead
 	// of whichever shape asks first silently winning for both.
-	// mediumBoundary is part of the key too: a glass material that bounds a participating medium is a
-	// distinct instance (see material::mark_medium_boundary()), so sharing a material index with a
-	// plain glass shape does not make that shape's shadows transparent.
-	std::map<std::tuple<int, int, bool, bool>, std::shared_ptr<material>> materialCache;
-	const auto cachedMaterial = [&](int mi, int ai, bool forCurve = false, bool mediumBoundary = false) {
-		const auto key = std::make_tuple(mi, ai, forCurve, mediumBoundary);
+	std::map<std::tuple<int, int, bool>, std::shared_ptr<material>> materialCache;
+	const auto cachedMaterial = [&](int mi, int ai, bool forCurve = false) {
+		const auto key = std::make_tuple(mi, ai, forCurve);
 		auto it = materialCache.find(key);
 		if (it != materialCache.end()) return it->second;
 		auto made = materialFor(mi, ai, forCurve);
-		if (mediumBoundary && made) made->mark_medium_boundary();
 		materialCache.emplace(key, made);
 		return made;
 	};
@@ -1808,7 +1804,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 
 	// ---- spheres ---------------------------------------------------------
 	for (const pbrt_flatten::Sphere &s : sphs) {
-		auto mat = cachedMaterial(s.material, s.areaLight, false, s.medium >= 0);
+		auto mat = cachedMaterial(s.material, s.areaLight);
 		std::shared_ptr<hittable> sp;
 		if (s.clipped) {
 			// Real zmin/zmax/phimax clipping - see pbrt_flatten::Sphere's

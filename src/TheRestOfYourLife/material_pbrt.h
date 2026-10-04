@@ -436,10 +436,9 @@ class rough_dielectric : public material, public dispersive_material {
     // Opaque to shadow rays, like every pbrt-v4 surface that has a material
     // (VolPathIntegrator::SampleLd, integrators.cpp:1335). Letting NEE pass straight through glass
     // counted a light seen through it twice (once here, once on the specular BSDF path) and ignored
-    // the refraction. Matches optix_anyhit_shadow.h / wavefront_anyhit_shadow.h - except as the shell of a
-    // participating medium (mark_medium_boundary()).
-    bool is_shadow_transmissive(const hit_record&) const override { return medium_boundary_; }
-    void mark_medium_boundary() override { medium_boundary_ = true; }
+    // the refraction. Matches optix_anyhit_shadow.h / wavefront_anyhit_shadow.h, and holds for a glass shape that
+    // bounds a medium too: pbrt blocks NEE at that shell, so light reaches the fog only along specular chains.
+    // (This is the base class's default, so there is nothing to override.)
 
     // See material::as_dispersive()'s comment. `this` (not nullptr) only
     // when built via make_dispersive() above - lets ray_color_spectral()
@@ -481,7 +480,6 @@ class rough_dielectric : public material, public dispersive_material {
     }
 
   private:
-    bool medium_boundary_ = false;   // see mark_medium_boundary()
     // Single shared expression for "is this alpha pair smooth" - every
     // caller (effectively_smooth() below, is_delta_bsdf(rec) above,
     // scatter_impl()'s own per-hit branch) goes through this one static
@@ -857,17 +855,13 @@ class thin_dielectric : public material {
 
     double get_ior() const { return ior; }
 
-    // Opaque to shadow rays - see rough_dielectric::is_shadow_transmissive() for the pbrt-v4 reference -
-    // unless it is the shell of a participating medium (mark_medium_boundary()).
-    bool is_shadow_transmissive(const hit_record&) const override { return medium_boundary_; }
-    void mark_medium_boundary() override { medium_boundary_ = true; }
+    // Opaque to shadow rays (the base default) - see rough_dielectric's comment for the pbrt-v4 reference.
 
     // No roughness parameter at all - scatter() above always takes the
     // skip_pdf=true path. See material::is_delta_bsdf()'s own comment.
     bool is_delta_bsdf() const override { return true; }
 
   private:
-    bool medium_boundary_ = false;   // see mark_medium_boundary()
     double ior;
 };
 

@@ -245,12 +245,6 @@ class material {
         return false;
     }
 
-    // Called by the pbrt builder for a surface that bounds a participating medium (MediumInterface). Glass
-    // is opaque to shadow rays (pbrt-v4), but this loader's idiom for a fog boundary is a near-invisible
-    // dielectric shell (eta ~1.001) plus MediumInterface - pbrt itself would write Material "interface" -
-    // and that shell must stay transparent to NEE, as the GPU's DielectricMedium type is.
-    virtual void mark_medium_boundary() {}
-
     // Real attenuation a shadow ray picks up passing through this material,
     // for materials where is_shadow_transmissive() is true. Default 1.0 (no
     // attenuation) is correct for ordinary transmissive surfaces like glass -

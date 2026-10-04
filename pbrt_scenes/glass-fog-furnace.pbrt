@@ -1,0 +1,28 @@
+# glass-fog-furnace.pbrt -- a non-absorbing fog sphere inside a real glass shell (eta 1.5), under a uniform sky.
+#
+# pbrt-v4 makes every surface that has a material opaque to NEE shadow rays (VolPathIntegrator::SampleLd), glass
+# included, so a scatter vertex inside the shell gets no direct light: the fog is lit only along specular chains
+# (a phase-sampled ray refracting back out). This loader used to let NEE walk through a glass shape that carried a
+# MediumInterface, which counted every escape twice - the sphere read 23-51% bright against the sky it should
+# vanish into. The three backends must agree, and in a furnace they must also agree with the sky.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 -6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 20 ]
+
+Film "rgb" "integer xresolution" [ 128 ] "integer yresolution" [ 128 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.6 0.7 0.9 ]
+
+MakeNamedMedium "fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 1 1 1 ] "float g" [ 0.3 ]
+
+AttributeBegin
+  Material "dielectric" "float eta" [ 1.5 ]
+  MediumInterface "fog" ""
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

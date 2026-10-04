@@ -216,10 +216,8 @@ class dielectric : public material, public dispersive_material {
     // Accessor for serialization
     double get_refraction_index() const { return refraction_index; }
 
-    // Opaque to shadow rays - see rough_dielectric::is_shadow_transmissive() for the pbrt-v4 reference -
-    // unless it is the shell of a participating medium (mark_medium_boundary()).
-    bool is_shadow_transmissive(const hit_record&) const override { return medium_boundary_; }
-    void mark_medium_boundary() override { medium_boundary_ = true; }
+    // Opaque to shadow rays (the base default) - see rough_dielectric::is_shadow_transmissive()'s comment for the
+    // pbrt-v4 reference, which holds for a glass shape that bounds a medium as well.
 
     // See material::as_dispersive()'s comment. `this` (not nullptr) only
     // when built via make_dispersive() above - lets ray_color_spectral()
@@ -235,7 +233,6 @@ class dielectric : public material, public dispersive_material {
     bool is_delta_bsdf() const override { return true; }
 
   private:
-    bool medium_boundary_ = false;   // see mark_medium_boundary()
     // Dispersive glass: wavelength-dependent IOR via the two-term Cauchy
     // formula (fresnel.h's CauchyEta). eta_d is the index at the sodium D
     // line (589.3nm); A/B are derived once here via the standard closed
