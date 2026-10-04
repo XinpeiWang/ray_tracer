@@ -447,21 +447,21 @@ __device__ __forceinline__ float3 sample_area_light_by_kind(
 		const SphereData& s = params.spheres[prim_idx];
 		float su, sv; float3 snormal;
 		const float3 dir = sample_sphere_light(s, origin, seed, geom_pdf, su, sv, snormal, ray_time);
-		// Distance to the CENTRE, matching what this path has always used to
-		// bound the shadow ray for a sphere light. Interpolated the same way
-		// sample_sphere_light() itself just did (see that function's own
-		// comment) - a moving sphere light's shadow-ray bound has to agree
-		// with the position its own NEE sample was actually taken against.
-		// ray_time is the SAME parameter just passed to sample_sphere_light()
-		// above, not a fresh optixGetRayTime() read - see this function's own
-		// parameter comment for why an implicit "current ray" read isn't
-		// always legal here.
+		// Distance to the SAMPLED POINT on the sphere (centre + radius * its outward normal), not to the centre
+		// this path used to report. The shadow ray is unaffected (a sphere emitter never occludes, so a ray
+		// that stops at its surface or runs on to its centre sees the same scene), but every NEE site also
+		// attenuates by the camera medium over this length, and the centre distance over-attenuated by
+		// exp(-sigma_t * radius): E10's sphere light came out 5-7% dark. The centre is interpolated the same
+		// way sample_sphere_light() itself just did (see that function's own comment) - a moving sphere light
+		// has to agree with the position its own NEE sample was actually taken against. ray_time is the SAME
+		// parameter just passed to sample_sphere_light() above, not a fresh optixGetRayTime() read - see this
+		// function's own parameter comment for why an implicit "current ray" read isn't always legal here.
 		{
 			const float3 center = make_float3(
 				s.center.x + ray_time * (s.center1.x - s.center.x),
 				s.center.y + ray_time * (s.center1.y - s.center.y),
 				s.center.z + ray_time * (s.center1.z - s.center.z));
-			max_dist = length(center - origin);
+			max_dist = length(center + s.radius * snormal - origin);
 		}
 		const MaterialData& sm = params.materials[s.materialIdx];
 		emission = nee_light_texture_emission(sm, su, sv);

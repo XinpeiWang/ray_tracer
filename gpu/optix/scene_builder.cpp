@@ -870,37 +870,21 @@ static bool build_loaded_pbrt_scene(
 	// optix_raygen.h's own call site; wavefront: wavefront_kernels.cu's own
 	// call site), sharing this one GpuCameraParams-level construction since
 	// GpuCameraParams is already threaded to both (see GpuCameraParams::
-	// cameraMediumSigmaT's own comment, optix_types.h). Same luminance-
-	// collapse formula as mediumMaterialIndex()'s homogeneous branch
-	// (pbrt_gpu_builder.h) - not reused directly since that lambda also
-	// handles cloud/rgbgrid/uniformgrid (out of scope here: flatten() only
-	// ever resolves cameraMediumIndex to a homogeneous medium, warning and
-	// leaving it at -1 for anything else - see pbrt_flatten.h's own
-	// resolution block), so duplicating just the homogeneous-collapse math
-	// here (mirroring pbrt_cpu_builder.h's own separate camera-medium block,
-	// which duplicates addMediumIfPresent's homogeneous branch for the
-	// identical reason) is simpler than threading a 4-case lambda's shared
-	// state out to a helper for one caller.
+	// cameraMediumSigmaT's own comment, optix_types.h). The homogeneous collapse
+	// (luminance sigma_a/sigma_s, chromatic tint, single-scatter albedo) is
+	// pbrt_gpu::cameraMediumGpu(), shared with the synthetic wavefront material
+	// pbrt_gpu::build() creates for the same medium. flatten() only ever resolves
+	// cameraMediumIndex to a homogeneous medium, warning and leaving it at -1 for
+	// anything else - see pbrt_flatten.h's own resolution block.
 	if (out_camera_extra && loaded.scene.cameraMediumIndex >= 0
 		&& static_cast<std::size_t>(loaded.scene.cameraMediumIndex) < loaded.scene.media.size()) {
-		const pbrt_flatten::Medium& m = loaded.scene.media[static_cast<std::size_t>(loaded.scene.cameraMediumIndex)];
-		const auto luminance = [](const double c[3]) {
-			return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-		};
-		const double sig_a = luminance(m.sigma_a);
-		const double sig_s = luminance(m.sigma_s);
-		const float3 tint = (sig_s > 1e-9)
-			? make_float3(static_cast<float>(m.sigma_s[0] / sig_s),
-						  static_cast<float>(m.sigma_s[1] / sig_s),
-						  static_cast<float>(m.sigma_s[2] / sig_s))
-			: make_float3(1.0f, 1.0f, 1.0f);
-		const float sigma_t = static_cast<float>(sig_a + sig_s);
-		out_camera_extra->cameraMediumSigmaT = sigma_t;
-		out_camera_extra->cameraMediumAlbedo = tint;
-		out_camera_extra->cameraMediumG = static_cast<float>(m.g);
-		const float leWeight = (sigma_t > 1e-9f) ? static_cast<float>(sig_a) / sigma_t : 0.0f;
-		out_camera_extra->cameraMediumEmission = make_float3(
-			static_cast<float>(m.Le[0]), static_cast<float>(m.Le[1]), static_cast<float>(m.Le[2])) * leWeight;
+		const pbrt_gpu::CameraMediumGpu cm = pbrt_gpu::cameraMediumGpu(
+			loaded.scene.media[static_cast<std::size_t>(loaded.scene.cameraMediumIndex)]);
+		out_camera_extra->cameraMediumSigmaT = cm.sigmaT;
+		out_camera_extra->cameraMediumAlbedo = cm.albedo;   // tint * sigma_s/sigma_t - see cameraMediumGpu()
+		out_camera_extra->cameraMediumG = cm.g;
+		out_camera_extra->cameraMediumEmission = cm.emission;
+		out_camera_extra->cameraMediumMaterialIdx = built->sceneData.cameraMediumMaterialIdx;
 	}
 
 	// Shape "cone"/"paraboloid" (pbrt_flatten::Cone/Paraboloid's own comment)

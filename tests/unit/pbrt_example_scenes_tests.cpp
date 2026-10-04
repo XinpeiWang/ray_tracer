@@ -288,3 +288,16 @@ TEST(PbrtBackendAgreementTest, FuzzedMetalFurnaceAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, BumpMappedPlaneAgreesAcrossBackends) {
 	expectBackendsAgree("bump-mapped-plane", 128, 0.95, 1.05);
 }
+
+// The CPU caps a path's throughput at 50; the GPU backends had no cap, so a closed hair shape (whose BSDF sample
+// weight averages ~4 and compounds over its interior bounces) rendered 2.1x too bright there (B11: 2.3-2.5x).
+TEST(PbrtBackendAgreementTest, HairSphereDimSkyAgreesAcrossBackends) {
+	expectBackendsAgree("hair-sphere-dim-sky", 128, 0.95, 1.05);
+}
+
+// pbrt's camera medium on all three backends: CPU and recursive GPU attenuated a ray that passed through the fog
+// twice, recursive GPU ignored the scattering albedo (and its builder dropped sigma_s/sigma_t), wavefront GPU had no
+// camera medium at all. See the scene's header for the Monte Carlo numbers they now match.
+TEST(PbrtBackendAgreementTest, CameraMediumAbsorbingAgreesAcrossBackends) {
+	expectBackendsAgree("camera-medium-absorbing", 128, 0.93, 1.07);
+}

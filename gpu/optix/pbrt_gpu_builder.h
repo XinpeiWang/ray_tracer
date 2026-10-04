@@ -187,6 +187,36 @@ namespace detail {
 // include it from outside this namespace).
 #include "pbrt_gpu_builder_materials.h"
 
+// The camera medium's GPU parameters: the homogeneous-medium collapse every other medium here uses (luminance
+// sigma_a/sigma_s, the chromatic tint sigma_s/luminance(sigma_s), and - not just the tint - the single-scatter
+// albedo sigma_s/sigma_t, exactly CPU's collapse_homogeneous_medium()). Shared by the per-launch GpuCameraParams
+// fields (scene_builder.cpp) and the synthetic wavefront material built in build() so the two cannot drift apart.
+struct CameraMediumGpu {
+	float  sigmaT = 0.0f;
+	float3 albedo = {0.0f, 0.0f, 0.0f};   // tint * sigma_s/sigma_t
+	float  g = 0.0f;
+	float3 emission = {0.0f, 0.0f, 0.0f}; // "rgb Le" already weighted by sigma_a/sigma_t
+};
+inline CameraMediumGpu cameraMediumGpu(const pbrt_flatten::Medium &m) {
+	const auto luminance = [](const double c[3]) { return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
+	const double sig_a = luminance(m.sigma_a);
+	const double sig_s = luminance(m.sigma_s);
+	const double sig_t = sig_a + sig_s;
+	CameraMediumGpu c;
+	const float scatterProb = (sig_t > 1e-9) ? static_cast<float>(sig_s / sig_t) : 0.0f;
+	const float3 tint = (sig_s > 1e-9)
+		? make_float3(static_cast<float>(m.sigma_s[0] / sig_s), static_cast<float>(m.sigma_s[1] / sig_s),
+					  static_cast<float>(m.sigma_s[2] / sig_s))
+		: make_float3(1.0f, 1.0f, 1.0f);
+	c.sigmaT   = static_cast<float>(sig_t);
+	c.albedo   = make_float3(tint.x * scatterProb, tint.y * scatterProb, tint.z * scatterProb);
+	c.g        = static_cast<float>(m.g);
+	const float leWeight = (sig_t > 1e-9) ? static_cast<float>(sig_a / sig_t) : 0.0f;
+	c.emission = make_float3(static_cast<float>(m.Le[0]) * leWeight, static_cast<float>(m.Le[1]) * leWeight,
+							 static_cast<float>(m.Le[2]) * leWeight);
+	return c;
+}
+
 // Fills `out` with the scene's geometry, materials and light list. Returns the
 // counts; `out` is cleared first.
 inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
@@ -1553,6 +1583,25 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		}
 		}
 		out.punctualLights.push_back(light);
+	}
+
+	// The camera medium as a synthetic homogeneous Medium material (index recorded for GpuCameraParams): the
+	// wavefront backend's trace raygen samples the camera-medium free flight and turns a scatter into a hit on this
+	// material so the ordinary medium scatter code shades it. Field layout as the homogeneous Medium built from a
+	// per-shape MediumInterface (albedo/g/sigma_t in albedo/fuzz/ior, emission in medium_emission).
+	out.cameraMediumMaterialIdx = -1;
+	if (scene.cameraMediumIndex >= 0 && static_cast<std::size_t>(scene.cameraMediumIndex) < scene.media.size()) {
+		const CameraMediumGpu cm = cameraMediumGpu(scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)]);
+		if (cm.sigmaT > 0.0f) {
+			MaterialData d = {};
+			d.type = MaterialType::Medium;
+			d.medium_albedo = cm.albedo;
+			d.fuzz = cm.g;
+			d.ior = cm.sigmaT;
+			d.medium_emission = cm.emission;
+			out.cameraMediumMaterialIdx = static_cast<int>(out.materials.size());
+			out.materials.push_back(d);
+		}
 	}
 
 	// Sorted by gpu_light_sort_key so a hit emitter finds its light by binary search (gpu_find_light). The loops

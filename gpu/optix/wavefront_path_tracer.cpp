@@ -2739,6 +2739,8 @@ bool WavefrontPathTracer::render(
 	lp.width         = (unsigned int)width;
 	lp.height        = (unsigned int)height;
 	lp.bumpFootprint = gpu_make_bump_footprint(camera, width, height);
+	lp.cameraMediumSigmaT       = camera.cameraMediumSigmaT;
+	lp.cameraMediumMaterialIdx  = camera.cameraMediumMaterialIdx;
 	lp.traversable   = gas_handle;
 	lp.spheres       = reinterpret_cast<SphereData*>(d_spheres);
 	lp.numSpheres    = num_spheres;

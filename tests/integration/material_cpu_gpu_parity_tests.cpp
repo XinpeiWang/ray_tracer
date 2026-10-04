@@ -225,7 +225,8 @@
  *     current ray on every call, so this one targeted override is
  *     sufficient; no other downstream change needed. Verified: this
  *     scene's own regional-diff check now passes.
- *   - B11 (Hair Fibers) - RESOLVED, not a code bug, same pattern as B14:
+ *   - B11 (Hair Fibers) - [LATER: the exception below was retired; the GPU lacked the CPU's path-throughput
+ *     ceiling and rendered 2.3-2.5x bright - see pbrt_scenes/hair-sphere-dim-sky.pbrt] RESOLVED, same pattern as B14:
  *     CPU vs both GPU backends differed by up to 61% in 1-2 blocks. The
  *     scene (pbrt_scenes/hair-fibers-scene.pbrt) is 5 plain spheres shaded
  *     via HairBxDF using the shading normal as a fiber-tangent proxy, NOT
@@ -280,7 +281,8 @@
  *     MAGNIFICATION case bilinear alone fixes) is a real, larger,
  *     still-open gap for a different scenario (a texture far smaller on
  *     screen than its own resolution), not reached by this scene.
- *   - E10 (Camera Medium, pbrt example) - a LATER regional-check finding
+ *   - E10 (Camera Medium, pbrt example) - [LATER: both exceptions below were retired; wavefront now implements the
+ *     camera medium and the CPU/recursive camera medium was itself wrong - see camera-medium-absorbing.pbrt] a LATER regional-check finding
  *     (found on a full-suite run after the 4 above were already resolved
  *     and this header's own count was written), NOT a new bug: 13/36
  *     blocks exceeded the generic regional_tolerance_for(0.85)=0.95 cap,
@@ -665,21 +667,11 @@ constexpr float kVolumeRegionalRelTolerance = 0.85f;
 // B1 (RoughMetalSpheres) - RETIRED exception (was 34%): the gap was a missing GPU flat
 // background; see this file's header comment.
 
-// E10 (Camera Medium pbrt example) - a genuinely different-magnitude, fully
-// understood gap: GPU-wavefront does not implement pbrt-v4's camera-medium
-// idiom AT ALL (see gpu/optix/wavefront_kernels.cu's own runtime warning,
-// emitted verbatim when this scene renders under --wavefront: "scene has a
-// camera medium ... which is not supported under --wavefront - the scene
-// will render without it"), unlike GPU-recursive, which does implement it
-// (see this scene's own registry description, scene_registry_data.h's E10
-// entry). CPU and GPU-recursive both show the ambient fog;
-// GPU-wavefront silently omits it entirely, so its render is a materially
-// different (unfogged) image, not sampling noise around the same result -
-// measured ~79-82% relative difference across all channels in isolated
-// runs. 85% gives a couple of points of real margin over the worst measured
-// run without masking an actual regression on the CPU-vs-GPU-recursive pair
-// (which passes comfortably within the standard Volumes tolerance already).
-constexpr float kCameraMediumRelTolerance = 0.85f;
+// E10 (Camera Medium pbrt example) - RETIRED exception (was 85%): the gap was GPU-wavefront not implementing the
+// camera medium at all (it rendered the scene unfogged). It does now, and the camera medium itself was wrong on the
+// CPU and recursive GPU (a ray that passed was attenuated twice; the recursive backend ignored the scattering albedo)
+// - all three backends match a Monte Carlo reference (pbrt_scenes/camera-medium-absorbing.pbrt). E10 uses the
+// standard Volumes tolerance like every other fog scene.
 
 // B14 (Measured BRDF) - RETIRED regional exception (was 65%, then 70%).
 // It existed for a CPU-vs-GPU worst-block gap of up to ~63% on this
@@ -695,27 +687,10 @@ constexpr float kCameraMediumRelTolerance = 0.85f;
 // flakes again, the 24.6% same-backend swing above is the number to
 // reason from before restoring an exception.
 
-// B11 (Hair Fibers) - same pattern as B14 above, a REGIONAL-check-only
-// exception (whole-image checks pass comfortably at the standard 30%).
-// HairBxDF is dispatched is_specular=true/skip_pdf=true (no NEE) identically
-// on all three backends (verified: material_pbrt.h's `hair_material::
-// scatter()`, optix_device_helpers.h's sample_hair_material(), wavefront_
-// device_helpers.h's wf_sample_hair_material() all call the SAME shared
-// src/shared/bxdfs_hair.h HairBxDF<T> template with the identical 5-value
-// RNG draw order - no algorithmic divergence found). The scene (pbrt_
-// scenes/hair-fibers-scene.pbrt: 5 spheres shaded with HairBxDF via a
-// shading-normal-as-fiber-tangent proxy, lit by one small overhead area
-// light) has the same narrow-lobe-plus-no-NEE-plus-small-light setup that
-// produces real firefly variance for B14 - re-rendering CPU alone 5x with
-// different seeds at this suite's own 200spp/60x60 settings showed one
-// block swinging by up to 40.8%, already exceeding half the worst observed
-// CPU-vs-GPU gap (61.1%) with zero GPU involved; GPU-recursive vs
-// GPU-wavefront also PASS this check against each other (same "GPU's two
-// backends resemble each other more than either resembles CPU's
-// independent noise" signature as B14). 70% gives real margin over the
-// worst isolated measurement without masking a materially larger future
-// regression.
-constexpr float kHairFibersRegionalRelTolerance = 0.70f;
+// B11 (Hair Fibers) - RETIRED regional exception (was 70%): the CPU capped path throughput at 50 and the GPU
+// backends did not, so the compounding hair BSDF weights rendered the spheres 2.3-2.5x brighter on the GPU (see
+// pbrt_scenes/hair-sphere-dim-sky.pbrt). With the same cap everywhere B11 agrees to ~1% and uses the standard
+// regional tolerance.
 
 // J2 (DiffuseTransmission Texture, pbrt example) - a REGIONAL-check-only
 // exception, but UNLIKE B14/B11 above this one is NOT pure noise: a real,
@@ -737,30 +712,7 @@ constexpr float kHairFibersRegionalRelTolerance = 0.70f;
 // the known NEE-strategy difference already explains.
 constexpr float kDiffuseTransmissionTextureRegionalRelTolerance = 0.85f;
 
-// E10 (Camera Medium pbrt example) - a REGIONAL-check-only exception on top
-// of its own already-wide whole-image kCameraMediumRelTolerance=0.85 above.
-// Investigated (full suite run, 2026-10-01): 13/36 blocks exceeded the
-// generic regional_tolerance_for(0.85)=min(0.85*1.667, 0.95)=0.95 cap,
-// worst block differing by exactly 100%, on BOTH the CPU-vs-wavefront AND
-// recursive-vs-wavefront pairs - CPU-vs-recursive passes outright (no
-// failure reported for that pair at all), confirming GPU-recursive tracks
-// CPU correctly and only GPU-wavefront is the outlier, exactly as
-// kCameraMediumRelTolerance's own comment already documents: GPU-wavefront
-// does not implement pbrt-v4's camera-medium idiom AT ALL (its own runtime
-// warning says so verbatim), so its render of this scene is a materially
-// different, completely unfogged image, not sampling noise. A block whose
-// content is dominated by "background behind fog" vs. the same background
-// fully exposed can genuinely approach mp_regional_diff()'s own
-// mathematical maximum (relDiff = |a-b|/max(a,b), which is bounded to
-// [0,1] since both operands are non-negative pixel averages) - this is not
-// a calibration gap to narrow with a tighter measured value the way
-// B14/B11/J2 did, it is the direct, expected, already-accepted consequence
-// of a fully-omitted feature. 1.0 is deliberately the exact mathematical
-// ceiling: this check cannot mathematically fail for E10 (relDiff can
-// equal but never exceed 1.0), which is the honest reflection of "GPU-
-// wavefront support is deferred" (this scene's own registry description)
-// rather than a tolerance tuned to just barely pass today's measurement.
-constexpr float kCameraMediumRegionalRelTolerance = 1.0f;
+// E10's REGIONAL exception - RETIRED with its whole-image one above.
 
 // ============================================================================
 // GPU-recursive vs GPU-wavefront - SEPARATELY calibrated tolerances.
@@ -1199,12 +1151,10 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	if (!cache.gpuAvailable) GTEST_SKIP() << "OptiX not available -- skipping 3-way backend comparison";
 
 	// See kVolumeRelTolerance's own comment for why Volumes scenes need a
-	// wider, separately-justified tolerance than everything else. B13
-	// E10 and E12 get their own named carve-outs for specific, understood
-	// reasons - see kCameraMediumRelTolerance's/
-	// kRoughDielectricMediumRecWfRelTolerance's own comments.
+	// wider, separately-justified tolerance than everything else. E12 gets its
+	// own named carve-out for a specific, understood reason - see
+	// kRoughDielectricMediumRecWfRelTolerance's own comment.
 	const float tolerance =
-		(s->id == "E10")                                          ? kCameraMediumRelTolerance :
 		(s->id == "E12")                                          ? kRoughDielectricMediumRecWfRelTolerance :
 		(std::strcmp(s->category, SceneCategories::Volumes) == 0) ? kVolumeRelTolerance :
 		kRelTolerance;
@@ -1266,7 +1216,6 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// `tolerance` - see that constant's own comment for the real measured
 	// data behind this, and why it's much tighter than the CPU-pair values.
 	const float recWfTolerance =
-		(s->id == "E10") ? kCameraMediumRelTolerance :
 		(s->id == "E12") ? kRoughDielectricMediumRecWfRelTolerance :
 		kRecWfRelTolerance;
 	check_relative_parity(s->name, s->id, "avg brightness", "GPU-recursive", "GPU-wavefront", recBright, wfBright, recWfTolerance);
@@ -1285,9 +1234,7 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// constants' comments) - their whole-image `tolerance` above stays
 	// standard.
 	const float regionalTolerance =
-		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
-		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
 		(s->id == "C11") ? kLightTextureRegionalRelTolerance :
 		(std::strcmp(s->category, SceneCategories::Volumes) == 0) ? kVolumeRegionalRelTolerance :
 		regional_tolerance_for(tolerance);
@@ -1300,9 +1247,7 @@ TEST_P(MaterialCpuGpuParityTest, BrightnessAndChannelsConsistentAcrossBackends) 
 	// why no new constant was needed for those four); E1 and B13 get their
 	// own new exceptions, measured specifically for this pair.
 	const float recWfRegionalTolerance =
-		(s->id == "B11") ? kHairFibersRegionalRelTolerance :
 		(s->id == "J2")  ? kDiffuseTransmissionTextureRegionalRelTolerance :
-		(s->id == "E10") ? kCameraMediumRegionalRelTolerance :
 		(s->id == "B23" || s->id == "B24") ? kDispersivePrismRecWfRegionalRelTolerance :
 				kRecWfRegionalRelTolerance;
 	check_regional_parity(s->name, s->id, "GPU-recursive", "GPU-wavefront", recImg, wfImg, recWfRegionalTolerance);
