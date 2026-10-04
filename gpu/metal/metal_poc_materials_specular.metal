@@ -408,7 +408,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
             shadowRay.min_distance = 0.001f;
             shadowRay.max_distance = dist - 0.002f;
             intersection_result<instancing, triangle_data> shadowResult =
-                isect.intersect(shadowRay, accelStructure, functionTable);
+                traceShadowAny(isect, shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                 float pdfBsdf = ggxConductorPdf(Dh, ggxG1(woLocal, alphaX, alphaY), NdotO);
@@ -442,7 +442,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 plShadowRay.min_distance = 0.001f;
                 plShadowRay.max_distance = plDist - 0.002f;
                 intersection_result<instancing, triangle_data> plShadowResult =
-                    isect.intersect(plShadowRay, accelStructure, functionTable);
+                    traceShadowAny(isect, plShadowRay, accelStructure, functionTable);
                 if (plShadowResult.type == intersection_type::none) {
                     float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
                     float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
@@ -471,7 +471,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 dlShadowRay.min_distance = 0.001f;
                 dlShadowRay.max_distance = kDirectionalLightMaxDistance;
                 intersection_result<instancing, triangle_data> dlShadowResult =
-                    isect.intersect(dlShadowRay, accelStructure, functionTable);
+                    traceShadowAny(isect, dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
                     // Skip when there is no fog - rayBoxExitDistance()
                     // is only valid for an origin INSIDE the hardcoded
@@ -512,7 +512,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     pjShadowRay.min_distance = 0.001f;
                     pjShadowRay.max_distance = pjDist - 0.002f;
                     intersection_result<instancing, triangle_data> pjShadowResult =
-                        isect.intersect(pjShadowRay, accelStructure, functionTable);
+                        traceShadowAny(isect, pjShadowRay, accelStructure, functionTable);
                     if (pjShadowResult.type == intersection_type::none) {
                         float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
                         radiance += throughput * pjBrdf * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
@@ -548,7 +548,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     glShadowRay.min_distance = 0.001f;
                     glShadowRay.max_distance = glDist - 0.002f;
                     intersection_result<instancing, triangle_data> glShadowResult =
-                        isect.intersect(glShadowRay, accelStructure, functionTable);
+                        traceShadowAny(isect, glShadowRay, accelStructure, functionTable);
                     if (glShadowResult.type == intersection_type::none) {
                         float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
                         radiance += throughput * glBrdf * glRadiance * glCosSurface * glTransmittance / glDistSq;
@@ -599,7 +599,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 envShadowRay.min_distance = 0.001f;
                 envShadowRay.max_distance = 1e5f;
                 intersection_result<instancing, triangle_data> envShadowResult =
-                    isect.intersect(envShadowRay, accelStructure, functionTable);
+                    traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
                 if (envShadowResult.type == intersection_type::none) {
                     float2 envUV = equirectangularUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
@@ -638,7 +638,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 pbrtEnvShadowRay.min_distance = 0.001f;
                 pbrtEnvShadowRay.max_distance = 1e5f;
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
-                    isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                    traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
                     float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
@@ -755,7 +755,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 shadowRay.min_distance = 0.001f;
                 shadowRay.max_distance = dist - 0.002f;
                 intersection_result<instancing, triangle_data> shadowResult =
-                    isect.intersect(shadowRay, accelStructure, functionTable);
+                    traceShadowAny(isect, shadowRay, accelStructure, functionTable);
                 if (shadowResult.type == intersection_type::none) {
                     float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                     float pdfBsdfForThisDir = cosSurface / M_PI_F;
@@ -782,7 +782,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     plShadowRay.min_distance = 0.001f;
                     plShadowRay.max_distance = plDist - 0.002f;
                     intersection_result<instancing, triangle_data> plShadowResult =
-                        isect.intersect(plShadowRay, accelStructure, functionTable);
+                        traceShadowAny(isect, plShadowRay, accelStructure, functionTable);
                     if (plShadowResult.type == intersection_type::none) {
                         float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
                         float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
@@ -804,7 +804,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     dlShadowRay.min_distance = 0.001f;
                     dlShadowRay.max_distance = kDirectionalLightMaxDistance;
                     intersection_result<instancing, triangle_data> dlShadowResult =
-                        isect.intersect(dlShadowRay, accelStructure, functionTable);
+                        traceShadowAny(isect, dlShadowRay, accelStructure, functionTable);
                     if (dlShadowResult.type == intersection_type::none) {
                         // Skip when there is no fog - rayBoxExitDistance()
                         // is only valid for an origin INSIDE the hardcoded
@@ -838,7 +838,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                         pjShadowRay.min_distance = 0.001f;
                         pjShadowRay.max_distance = pjDist - 0.002f;
                         intersection_result<instancing, triangle_data> pjShadowResult =
-                            isect.intersect(pjShadowRay, accelStructure, functionTable);
+                            traceShadowAny(isect, pjShadowRay, accelStructure, functionTable);
                         if (pjShadowResult.type == intersection_type::none) {
                             float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
                             float pjCoatTransmitIn = 1.0 - frDielectric(pjCosSurface, kClearcoatEta);
@@ -867,7 +867,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                         glShadowRay.min_distance = 0.001f;
                         glShadowRay.max_distance = glDist - 0.002f;
                         intersection_result<instancing, triangle_data> glShadowResult =
-                            isect.intersect(glShadowRay, accelStructure, functionTable);
+                            traceShadowAny(isect, glShadowRay, accelStructure, functionTable);
                         if (glShadowResult.type == intersection_type::none) {
                             float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
                             float glCoatTransmitIn = 1.0 - frDielectric(glCosSurface, kClearcoatEta);
@@ -897,7 +897,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     envShadowRay.min_distance = 0.001f;
                     envShadowRay.max_distance = 1e5f;
                     intersection_result<instancing, triangle_data> envShadowResult =
-                        isect.intersect(envShadowRay, accelStructure, functionTable);
+                        traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
                     if (envShadowResult.type == intersection_type::none) {
                         float2 envUV = equirectangularUV(envWi);
                         float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
@@ -927,7 +927,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     pbrtEnvShadowRay.min_distance = 0.001f;
                     pbrtEnvShadowRay.max_distance = 1e5f;
                     intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
-                        isect.intersect(pbrtEnvShadowRay, accelStructure, functionTable);
+                        traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                     if (pbrtEnvShadowResult.type == intersection_type::none) {
                         float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
                         float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;

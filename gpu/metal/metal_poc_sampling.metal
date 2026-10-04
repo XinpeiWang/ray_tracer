@@ -1364,3 +1364,25 @@ inline float sampleGGXEnergyTableDevice(device const float* E, uint roughRes, ui
     return e0 + (e1 - e0) * mt;
 }
 
+
+// Shadow-ray visibility query: any intersection blocks the ray, so the
+// traversal can stop at the first one instead of searching for the closest.
+// Same argument list as the call it replaces, only the intersector mode differs.
+inline intersection_result<instancing, triangle_data> traceShadowAny(
+    intersector<instancing, triangle_data> isect, ray shadowRay,
+    instance_acceleration_structure accelStructure,
+    intersection_function_table<instancing, triangle_data> functionTable) {
+    intersector<instancing, triangle_data> anyIsect = isect;
+    anyIsect.accept_any_intersection(true);
+    return anyIsect.intersect(shadowRay, accelStructure, functionTable);
+}
+
+inline intersection_result<instancing, triangle_data> traceShadowAnyP(
+    intersector<instancing, triangle_data> isect, ray shadowRay,
+    instance_acceleration_structure accelStructure,
+    intersection_function_table<instancing, triangle_data> functionTable,
+    thread SpherePayload& payload) {
+    intersector<instancing, triangle_data> anyIsect = isect;
+    anyIsect.accept_any_intersection(true);
+    return anyIsect.intersect(shadowRay, accelStructure, functionTable, payload);
+}
