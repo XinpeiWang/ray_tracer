@@ -591,7 +591,14 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		const float3 mediumEmission = f3(md.Le) * leWeight;
 
 		MaterialData d = {};
-		d.medium_albedo = albedo;
+		// Single-scatter albedo, not just the colour tint: a collision scatters with probability
+		// sigma_s/sigma_t and is absorbed otherwise, exactly as CPU's constant_medium does
+		// (collapse_homogeneous_medium: albedo * sigma_s/sigma_t). Without this factor every collision scattered
+		// at full strength, so an absorbing medium (E6: sigma_a 0.3, sigma_s 2.0) rendered 25% brighter than
+		// the CPU and a pure absorber lit the scene from nowhere (2.2x).
+		const double sig_t = sig_a + sig_s;
+		const float scatterProb = (sig_t > 1e-9) ? static_cast<float>(sig_s / sig_t) : 0.0f;
+		d.medium_albedo = albedo * scatterProb;
 		d.g = static_cast<float>(md.g);
 		if (isFusableDielectric) {
 			d.type = MaterialType::DielectricMedium;

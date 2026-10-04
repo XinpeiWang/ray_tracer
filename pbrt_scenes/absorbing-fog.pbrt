@@ -1,0 +1,36 @@
+# absorbing-fog.pbrt -- regression scene for the GPU ignoring a medium's absorption when it scatters.
+#
+# A fog sphere with BOTH absorption and scattering (sigma_a 0.3, sigma_s 2.0: a collision scatters with
+# probability sigma_s/sigma_t = 0.87 and is absorbed otherwise) beside a bright sphere light. The CPU
+# weights a scattered path by that single-scatter albedo; the GPU builder only passed the colour tint
+# (sigma_s / luminance(sigma_s)), so every collision scattered at full strength. Absorbing media rendered
+# up to 25% too bright (cylinder-medium.pbrt) and a pure absorber, which cannot add any light, lit the
+# scene 2.2x brighter than without it. With sigma_a = 0 the old code was already right, which is why the
+# scattering-only fog scenes never showed it.
+#
+# See tests/unit/pbrt_example_scenes_tests.cpp (AbsorbingFogAgreesAcrossBackends).
+
+LookAt  0 2 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 200 ] "integer yresolution" [ 150 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 5 -2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+MakeNamedMedium "fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0.3 0.3 0.3 ] "rgb sigma_s" [ 2.0 2.0 2.0 ]
+
+AttributeBegin
+  Translate -2 1 0
+  Material "dielectric" "float eta" [ 1.001 ]
+  MediumInterface "fog" ""
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd
