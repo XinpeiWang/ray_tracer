@@ -1156,23 +1156,10 @@ void MainWindow::setupUI() {
 						}
 					}
 				}
-				// Same shape as the scene-compat guard just above, for a
-				// second invalid (mode, backend) pair: launcher/main.cpp's
-				// video-frame loop only ever calls optix_render_main() per
-				// frame, with no Metal branch at all (unlike the single-
-				// image path, which does) - selecting GPU while Video mode
-				// is already active, on a non-OptiX (Metal) build, would
-				// otherwise reach a real per-frame render failure
-				// ("ERROR: OptiX is not available!") instead of a graceful
-				// auto-switch. kGpuOptionAvailable is a compile-time
-				// constant true only on the Windows/OptiX build, so this
-				// check (and its onModeChanged() twin, guarding the other
-				// direction) is a no-op there - Windows GPU video is
-				// unaffected either way.
-				if (m_renderModeCombo->currentData().toBool() && !kGpuOptionAvailable && isVideoMode()) {
-					m_renderModeCombo->setCurrentIndex(1); // index 1 = CPU
-					return;
-				}
+				// GPU video works on both GPU backends now: launcher/main.cpp's
+				// per-frame loop dispatches to optix_render_main() on Windows
+				// and metal_render_main() on macOS, so the old "GPU + Video
+				// forces CPU" guard that used to live here is gone.
 				refreshStatusBarInfo();
 				updateRenderOptionsEnabled();
 			});

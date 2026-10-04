@@ -237,6 +237,16 @@ static int run_subprocess(const std::vector<std::string>& argv) {
 // of the original frame index, so a mid-run render failure (which just skips
 // pushing that frame) doesn't leave a gap in the sequence - ffmpeg's
 // sequential image2 demuxer stops at the first gap in a numbered sequence.
+//
+// Metal's own frame writer produces PNG directly (metal_render_main() only
+// writes PNG or EXR), so on a Metal build a GPU video frame is already the
+// final encoded file and needs no ppm->png conversion, only a rename into
+// the same enc_NNNN.png sequence.
+#if defined(RT_HAVE_METAL)
+constexpr bool kMetalVideoFrames = true;
+#else
+constexpr bool kMetalVideoFrames = false;
+#endif
 class BackgroundPngConverter {
 public:
     BackgroundPngConverter(std::filesystem::path frames_dir)
@@ -244,10 +254,12 @@ public:
 
     // Queue a successfully-rendered PPM for conversion. Safe to call from the
     // render loop while the worker thread is running.
-    void push(std::string ppm_path) {
+    // `already_png`: the frame file is already PNG (a Metal frame), so the
+    // worker moves it into the enc_NNNN.png sequence instead of converting.
+    void push(std::string frame_path, bool already_png = false) {
         {
             std::lock_guard<std::mutex> lock(mtx_);
-            queue_.push(std::move(ppm_path));
+            queue_.push({std::move(frame_path), already_png});
         }
         cv_.notify_one();
     }
@@ -268,24 +280,32 @@ private:
     void run() {
         int next_index = 0;
         while (true) {
-            std::string ppm_path;
+            QueuedFrame job;
             {
                 std::unique_lock<std::mutex> lock(mtx_);
                 cv_.wait(lock, [&] { return !queue_.empty() || done_; });
                 if (queue_.empty() && done_) break;
-                ppm_path = std::move(queue_.front());
+                job = std::move(queue_.front());
                 queue_.pop();
             }
 
             char enc_filename[32];
             std::snprintf(enc_filename, sizeof(enc_filename), "enc_%04d.png", next_index);
             std::filesystem::path png_path = frames_dir_ / enc_filename;
-            if (convert_ppm_to_png(ppm_path.c_str(), png_path.string().c_str())) {
+            bool ok;
+            if (job.already_png) {
+                std::error_code ec;
+                std::filesystem::rename(job.path, png_path, ec);
+                ok = !ec;
+            } else {
+                ok = convert_ppm_to_png(job.path.c_str(), png_path.string().c_str());
+            }
+            if (ok) {
                 ++next_index;
                 converted_ = next_index;
             } else {
                 std::lock_guard<std::mutex> lock(mtx_);
-                std::cerr << "\nWARNING: PNG conversion failed for " << ppm_path << std::endl;
+                std::cerr << "\nWARNING: PNG conversion failed for " << job.path << std::endl;
             }
         }
     }
@@ -293,7 +313,8 @@ private:
     std::filesystem::path frames_dir_;
     std::mutex mtx_;
     std::condition_variable cv_;
-    std::queue<std::string> queue_;
+    struct QueuedFrame { std::string path; bool already_png; };
+    std::queue<QueuedFrame> queue_;
     bool done_ = false;
     int converted_ = 0;
     std::thread worker_;  // must be the last member so it's constructed last
@@ -811,8 +832,13 @@ int main(int argc, char** argv) {
                                                             path_lookat_x, path_lookat_y, path_lookat_z);
 
             // Generate frame filename (e.g., frame_0001.ppm)
+            // Metal's own writer only produces PNG (never PPM), so a Metal
+            // frame is written directly as .png and handed to the converter
+            // already encoded - see BackgroundPngConverter::push().
+            const bool frame_is_png = use_gpu && kMetalVideoFrames;
             char frame_filename[256];
-            std::snprintf(frame_filename, sizeof(frame_filename), "frame_%04d.ppm", frame);
+            std::snprintf(frame_filename, sizeof(frame_filename),
+                          frame_is_png ? "frame_%04d.png" : "frame_%04d.ppm", frame);
             std::filesystem::path frame_path = frames_dir / frame_filename;
 
             // Progress indicator
@@ -856,6 +882,27 @@ int main(int argc, char** argv) {
             // must honor its per-frame animated camera regardless, or it
             // would render the same static frame video_frames times.
             if (use_gpu) {
+#if defined(RT_HAVE_METAL)
+                MetalDiagnostics metal_diag{};
+                if (metal_get_diagnostics(&metal_diag)) {
+                    render_result = metal_render_main(
+                        image_width,
+                        image_height,
+                        samples_per_pixel,
+                        max_ray_depth,
+                        frame_path.string().c_str(),
+                        scene_id.c_str(),
+                        cam_pos.lookfrom_x,
+                        cam_pos.lookfrom_y,
+                        cam_pos.lookfrom_z,
+                        1,  // force_camera_override
+                        render_opts
+                    );
+                } else {
+                    std::cerr << "\nERROR: Metal is not available!" << std::endl;
+                    return ERR_GPU_NO_DEVICE;
+                }
+#else
                 if (optix_is_available()) {
                     render_result = optix_render_main(
                         image_width,
@@ -874,6 +921,7 @@ int main(int argc, char** argv) {
                     std::cerr << "\nERROR: OptiX is not available!" << std::endl;
                     return ERR_GPU_NO_DEVICE;
                 }
+#endif
             } else {
                 render_result = cpu_render_main(
                     image_width,
@@ -895,7 +943,7 @@ int main(int argc, char** argv) {
 
             if (render_result == SUCCESS) {
                 successful_frames++;
-                png_converter.push(frame_path.string());
+                png_converter.push(frame_path.string(), frame_is_png);
                 std::cout << " ✓ (" << (frame_duration.count() / 1000.0) << "s)" << std::endl;
             } else {
                 std::cerr << " ✗ FAILED (error code: " << render_result << ")" << std::endl;
