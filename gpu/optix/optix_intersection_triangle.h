@@ -222,6 +222,26 @@ extern "C" __global__ void __closesthit__triangle() {
 
 	float3 shade_normal = final_normal;
 	MaterialData shade_mat = mat;
+
+	// pbrt "texture displacement" bump map (grayscale height image) - perturb the shading normal for every
+	// downstream use (BSDF sampling, NEE cosines, MIS pdfs), as the CPU's bump_map_material does. See
+	// gpu_bump_map.h. Skipped for emitters, like the CPU, and for a mesh without UVs (no lookup coordinate).
+	if (mat.bumpTexIdx >= 0 && tri.hasUVs && mat.type != MaterialType::DiffuseLight) {
+		float3 bump_dpdu, bump_dpdv;
+		gpu_triangle_dpdu_dpdv(tri.p0, tri.p1, tri.p2, tri.uv0, tri.uv1, tri.uv2, final_normal, bump_dpdu, bump_dpdv);
+		if (instBase >= 0) {
+			bump_dpdu = optixTransformVectorFromObjectToWorldSpace(bump_dpdu);
+			bump_dpdv = optixTransformVectorFromObjectToWorldSpace(bump_dpdv);
+		}
+		// Footprint step for a camera ray, like the CPU (which gives only the primary ray differentials).
+		// prev_brdf_pdf arrives in payload p12 and is 0 for the primary ray or a specular bounce.
+		float bump_step = 0.0f;
+		if (__uint_as_float(optixGetPayload_12()) == 0.0f)
+			bump_step = gpu_bump_footprint_step(gpu_make_bump_footprint(params.camera, (int)params.width, (int)params.height),
+												ray_orig, normalize(ray_dir), hit_point, final_normal, bump_dpdu, bump_dpdv);
+		shade_normal = gpu_bump_shading_normal(params.textures, params.texturePixels, mat.bumpTexIdx,
+											   mat.bumpScale, uv_u, uv_v, final_normal, bump_dpdu, bump_step);
+	}
 	if (mat.type == MaterialType::NormalMappedLambertian) {
 		const float3& dpdu = tri_dpdu;
 		const float3 packed = sample_texture(mat.textureIdx, uv_u, uv_v, hit_point);

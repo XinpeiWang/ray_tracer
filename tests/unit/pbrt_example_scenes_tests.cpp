@@ -282,3 +282,9 @@ TEST(PbrtBackendAgreementTest, AbsorbingFogAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, FuzzedMetalFurnaceAgreesAcrossBackends) {
 	expectBackendsAgree("fuzzed-metal-furnace", 128, 0.96, 1.04);
 }
+
+// A grayscale "texture displacement" is a bump map: the CPU perturbs the shading normal with it and the GPU
+// ignored it, so a strongly bumped plane rendered ~58% too bright there (and Sibenik 12-15% too dark).
+TEST(PbrtBackendAgreementTest, BumpMappedPlaneAgreesAcrossBackends) {
+	expectBackendsAgree("bump-mapped-plane", 128, 0.95, 1.05);
+}

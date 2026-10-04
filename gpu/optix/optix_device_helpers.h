@@ -13,6 +13,7 @@
 #include "../../src/shared/bxdfs.h"      // HairBxDF<T> (CPU+GPU) - see MaterialType::Hair
 #include "../../src/shared/noise.h"      // Perlin turbulence (CPU+GPU) - see sample_texture()
 #include "../../src/shared/normal_map.h" // apply_normal_map (CPU+GPU) - see MaterialType::NormalMappedLambertian
+#include "gpu_bump_map.h"               // grayscale "texture displacement" bump - see optix_intersection_triangle.h
 #include "../../src/shared/bilinear_patch.h" // blp_sample/blp_pdf_wi (CPU+GPU) - see GpuLightKind::BilinearPatch
 #include "../../src/shared/shading_frame.h"  // ShadingFrame<T> (CPU+GPU) - see MaterialType::Measured
 #include "camera_motion_blur_device.h"        // gpu_camera_anim_rotation/apply (shared with wavefront_kernels.cu)

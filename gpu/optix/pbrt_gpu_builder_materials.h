@@ -1171,21 +1171,29 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	}
 
 	// Material "texture displacement" (bump mapping - Material::
-	// displacementTextureFilename's own comment). Mirrors scene_builder.cpp's
-	// own OBJ/MTL map_Bump dispatch exactly, including its scope: only a
-	// Lambertian material with no existing diffuse texture can host
-	// NormalMappedLambertian (MaterialData has one shared textureIdx slot
-	// per material - see add_normal_mapped_lambertian()'s own comment for
-	// why), and only the RGB tangent-space normal-map case is wired at all -
-	// GPU has no device-side scalar bump/height perturbation path today
-	// (the grayscale case is a real, pre-existing, documented gap shared
-	// with OBJ/MTL - see is_grayscale_texture_gpu()'s own comment - not
-	// something pbrt-specific wiring alone can close).
-	if (!m.displacementTextureFilename.empty() && d.type == MaterialType::Lambertian && d.textureIdx < 0) {
-		const int dispTexIdx = getOrBuildPbrtImageTexture(m.displacementTextureFilename, out, imageTextureCache);
-		if (dispTexIdx >= 0 && !isPbrtTextureGrayscale(out, dispTexIdx)) {
-			d.type = MaterialType::NormalMappedLambertian;
-			d.textureIdx = dispTexIdx;
+	// displacementTextureFilename's own comment), classified by the image's real content like the CPU
+	// (pbrt_cpu_builder.h): an RGB image is a tangent-space normal map, hosted by NormalMappedLambertian -
+	// only a Lambertian material with no existing diffuse texture can be that (MaterialData has one shared
+	// textureIdx slot per material, see add_normal_mapped_lambertian()'s own comment); a grayscale image is a
+	// scalar height map, applied to the shading normal at closest-hit instead (see below).
+	if (!m.displacementTextureFilename.empty() && d.type != MaterialType::DiffuseLight) {
+		// Read with the default Repeat wrap, like the CPU's bilinear_wrap_texture for both kinds of map.
+		const int dispTexIdx = getOrBuildPbrtImageTexture(m.displacementTextureFilename, out, imageTextureCache,
+														  kGpuImagemapDefaultGamma, GpuWrapMode::Repeat);
+		if (dispTexIdx >= 0) {
+			if (!isPbrtTextureGrayscale(out, dispTexIdx)) {
+				if (d.type == MaterialType::Lambertian && d.textureIdx < 0) {
+					d.type = MaterialType::NormalMappedLambertian;
+					d.textureIdx = dispTexIdx;
+				}
+			} else {
+				// A grayscale height image is a scalar bump map: the triangle closest-hit programs perturb
+				// the shading normal with it for any non-emissive material (gpu_bump_map.h), whatever its
+				// own reflectance texture is - the single shared textureIdx slot above only constrains the
+				// RGB normal-map case. Scaled by the wrapping "scale" texture, like the CPU.
+				d.bumpTexIdx = dispTexIdx;
+				d.bumpScale  = static_cast<float>(m.displacementScale);
+			}
 		}
 	}
 

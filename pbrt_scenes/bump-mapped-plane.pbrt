@@ -1,0 +1,30 @@
+# bump-mapped-plane.pbrt -- regression scene for GPU bump mapping (a grayscale "texture displacement").
+#
+# A diffuse plane whose shading normal is perturbed by a height image (images/bump-marble.png, scaled by a
+# "scale" float texture), lit grazing from one side by a tall area light. The CPU wraps such a material in
+# bump_map_material; the GPU used to ignore the displacement entirely and render the plane flat, which here is
+# ~58% too bright (0.29 against the CPU's 0.185). With the bump on every backend agrees to ~1%. The same missing
+# bump made Sibenik Cathedral (kamen / mramor stone with *-bump.png) 12-15% darker on the GPU than the CPU.
+#
+# Not meant to be pretty: scale 20 is far stronger than a real material, so a regression in the normal
+# perturbation, the texture lookup (bilinear, Repeat, sRGB-decoded) or the dpdu/dpdv solve moves the mean a lot.
+#
+# See tests/unit/pbrt_example_scenes_tests.cpp (BumpMappedPlaneAgreesAcrossBackends).
+
+LookAt 0 4 6  0 0 0  0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Film "rgb" "integer xresolution" [ 100 ] "integer yresolution" [ 100 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+Texture "bumpimg" "float" "imagemap" "string filename" [ "../images/bump-marble.png" ]
+Texture "bump" "float" "scale" "texture tex" [ "bumpimg" ] "float scale" [ 20 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -6 1.5 3   -6 1.5 -3   -6 4.5 -3   -6 4.5 3 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ] "texture displacement" [ "bump" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -5 0 -5   5 0 -5   5 0 5   -5 0 5 ] "point2 uv" [ 0 0  1 0  1 1  0 1 ]

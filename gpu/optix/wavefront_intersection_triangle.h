@@ -221,6 +221,29 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 		if (instBase >= 0) tri_dpdu = normalize(optixTransformVectorFromObjectToWorldSpace(tri_dpdu));
 	}
 
+	// pbrt "texture displacement" bump map (grayscale height image): perturb the shading normal here so every
+	// downstream use sees it (BSDF sampling, NEE cosines, MIS pdfs), as the CPU's bump_map_material does -
+	// see gpu_bump_map.h. `front_face` above keeps deciding the side from the unperturbed normal, as on the
+	// CPU. Skipped for emitters and for a mesh without UVs.
+	{
+		const MaterialData& hitMat = wf_params.materials[tri.materialIdx];
+		if (hitMat.bumpTexIdx >= 0 && tri.hasUVs && hitMat.type != MaterialType::DiffuseLight) {
+			float3 bump_dpdu, bump_dpdv;
+			gpu_triangle_dpdu_dpdv(tri.p0, tri.p1, tri.p2, tri.uv0, tri.uv1, tri.uv2, normal, bump_dpdu, bump_dpdv);
+			if (instBase >= 0) {
+				bump_dpdu = optixTransformVectorFromObjectToWorldSpace(bump_dpdu);
+				bump_dpdv = optixTransformVectorFromObjectToWorldSpace(bump_dpdv);
+			}
+			// Footprint step for a camera ray, like the CPU (which gives only the primary ray differentials).
+			float bump_step = 0.0f;
+			if (payload->primaryRay)
+				bump_step = gpu_bump_footprint_step(wf_params.bumpFootprint, ray_orig, normalize(ray_dir), hit_point,
+													normal, bump_dpdu, bump_dpdv);
+			normal = gpu_bump_shading_normal(wf_params.textures, wf_params.texturePixels, hitMat.bumpTexIdx,
+											 hitMat.bumpScale, uv_u, uv_v, normal, bump_dpdu, bump_step);
+		}
+	}
+
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
 	payload->t           = t_hit;

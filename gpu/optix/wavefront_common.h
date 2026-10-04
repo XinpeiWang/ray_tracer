@@ -52,6 +52,7 @@
 // wavefront-module-local reimplementation of the non-portable parts).
 #include "../../src/shared/noise.h"
 #include "../../src/shared/ray_hash.h"   // pbrt-v4 stochastic alpha test hash - see wf_passes_alpha_cutout()
+#include "gpu_bump_map.h"                // grayscale "texture displacement" bump - see __closesthit__wf_triangle
 
 // Wavefront launch params live in constant memory.
 extern "C" { __constant__ WavefrontLaunchParams wf_params; }
@@ -331,6 +332,8 @@ struct WfHitPayload {
 	int    materialIdx;
 	int    geomType;   // 0 = sphere, 1 = quad, 2 = bilinear patch, 4 = disk, 5 = cylinder
 	int    primIdx;    // see HitWorkItem::primIdx
+	int    primaryRay; // INPUT, set by __raygen__wf_trace before the trace: 1 for a camera ray (depth 0) - the CPU
+	                   // gives only those ray differentials, so __closesthit__wf_triangle's bump step is a footprint one there
 	bool   hit;
 	float  mediumTFar; // MaterialType::Medium/DielectricMedium only - see HitWorkItem::mediumTFar
 	int    frontFace;  // see HitWorkItem::frontFace
