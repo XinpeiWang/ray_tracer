@@ -2149,8 +2149,8 @@ __device__ __forceinline__ void wf_push_nee_shadow_ray(
 	ShadowRayWorkItem shadow;
 	shadow.origin    = hit_point + (isPhase ? make_float3(0.0f, 0.0f, 0.0f) : copysignf(shadow_eps, raw_cos) * normal)
 		+ shadow_eps * normalize(lightDir);
-	shadow.direction = lightDir;
-	shadow.tMax      = tMax;
+	// Aimed at the sampled target from the shifted origin - see shadow_ray_toward().
+	shadow_ray_toward(hit_point, shadow.origin, normalize(lightDir), tMax, shadow.direction, shadow.tMax);
 	for (int i = 0; i < kWFNWavelengths; ++i) {
 		shadow.Ld[i]              = Ld[i] * filterWeight;  // see RayWorkItem::filterWeight's own comment
 		shadow.wavelengths[i]     = swl.lambda[i];

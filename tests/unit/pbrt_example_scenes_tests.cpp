@@ -28,6 +28,7 @@
 #include <gtest/gtest.h>
 #include <cmath>
 #include <cstdio>
+#include <cstdlib>
 #include <fstream>
 #include <string>
 #include <vector>
@@ -89,6 +90,8 @@ bool allFinite(const RenderResult& r) {
 // material (the documented largest CPU/GPU gap) had render-level coverage
 // from this folder at all.
 constexpr const char* kExampleSceneStems[] = {
+	"flush-ceiling-light",
+	"emissive-octahedron-furnace",
 	"example-cornell",
 	"instanced-spheres",
 	"killeroo-simple",
@@ -192,3 +195,61 @@ INSTANTIATE_TEST_SUITE_P(
 			sanitized += std::isalnum(static_cast<unsigned char>(*p)) ? *p : '_';
 		return sanitized;
 	});
+
+// CPU vs GPU-recursive vs GPU-wavefront mean brightness of one bundled scene; the CPU is the reference.
+static void expectBackendsAgree(const char* stem, int spp, double lo, double hi) {
+	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
+	const SceneDescriptor* s = find_example_scene(stem);
+	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
+
+	const auto mean = [](const RenderResult& r) {
+		double sum = 0.0;
+		for (float p : r.pixels) sum += p;
+		return r.pixels.empty() ? 0.0 : sum / static_cast<double>(r.pixels.size());
+	};
+	const auto setWavefront = [](const char* v) {
+#ifdef _WIN32
+		_putenv_s("RAY_TRACER_WAVEFRONT", v);
+#else
+		setenv("RAY_TRACER_WAVEFRONT", v, 1);
+#endif
+	};
+	const auto renderGpu = [&](const char* wavefront, const std::string& out) {
+		setWavefront(wavefront);
+		const int rc = optix_render_main(64, 64, spp, 8, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0);
+		EXPECT_EQ(rc, 0);
+		RenderResult r = load_render(out.c_str());
+		std::remove(out.c_str());
+		return r;
+	};
+
+	const std::string base = std::string("pbrt_agree_") + stem;
+	ASSERT_EQ(cpu_render_main(64, 64, spp, 8, (base + "_cpu.ppm").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	const RenderResult cpu = load_render((base + "_cpu.ppm").c_str());
+	std::remove((base + "_cpu.ppm").c_str());
+	const RenderResult recursive = renderGpu("0", base + "_rec.ppm");
+	const RenderResult wavefront = renderGpu("1", base + "_wf.ppm");
+	setWavefront("0");
+	ASSERT_TRUE(cpu.valid && recursive.valid && wavefront.valid);
+	const double c = mean(cpu);
+	ASSERT_GT(c, 0.05) << stem << ": the CPU reference came out black";
+	EXPECT_GT(mean(recursive), lo * c) << stem << ": GPU-recursive too dark vs CPU";
+	EXPECT_LT(mean(recursive), hi * c) << stem << ": GPU-recursive too bright vs CPU";
+	EXPECT_GT(mean(wavefront), lo * c) << stem << ": GPU-wavefront too dark vs CPU";
+	EXPECT_LT(mean(wavefront), hi * c) << stem << ": GPU-wavefront too bright vs CPU";
+}
+
+// A finite light sitting closer to the surface behind it than the GPU's 0.01 shadow-ray nudge. The GPU
+// used to measure a shadow ray's length from the un-nudged shading point, overshooting the light by the nudge
+// and ending inside the ceiling 0.005 behind it, so the sample counted as blocked: recursive rendered this
+// room at 22% of the CPU's brightness and wavefront at 37%. See pbrt_scenes/flush-ceiling-light.pbrt.
+TEST(PbrtBackendAgreementTest, FlushCeilingLightAgreesAcrossBackends) {
+	expectBackendsAgree("flush-ceiling-light", 64, 0.85, 1.15);
+}
+
+// A multi-faced emitter must occlude its own far side: the GPU used to skip emissive surfaces in shadow
+// any-hits, so a ray aimed at the back of this octahedron passed through its front and every face counted
+// as visible - both GPU backends rendered it 48% too bright. The CPU matches the closed-form answer.
+TEST(PbrtBackendAgreementTest, EmissiveOctahedronFurnaceAgreesAcrossBackends) {
+	expectBackendsAgree("emissive-octahedron-furnace", 128, 0.88, 1.12);
+}
