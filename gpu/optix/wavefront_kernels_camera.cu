@@ -191,6 +191,7 @@ extern "C" __global__ void generate_camera_rays(
 	item.any_nonspecular = 0; // primary ray: no prior bounce to regularize against
 	item.etaScale   = 1.0f;    // primary ray: no transmission yet - see RayWorkItem::etaScale
 	item.brdf_pdf   = 0.0f;    // primary ray: no MIS on an escaped camera ray
+	item.scatterOrigin = item.origin;
 	item.tMin       = 0.001f;
 	item.tMax       = 1e30f;
 

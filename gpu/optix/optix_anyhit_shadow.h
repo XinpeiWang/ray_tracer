@@ -273,7 +273,6 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	int matIdx = quad.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-
 	// Transmissive materials let light through -- ignore them in shadow rays
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
@@ -295,7 +294,6 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
 	int matIdx = patch.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
-
 
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
@@ -321,7 +319,6 @@ extern "C" __global__ void __anyhit__shadow_disk() {
 	int matIdx = disk.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
@@ -341,7 +338,6 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 	const float3 shadow_hit_point = optixGetWorldRayOrigin() + shadow_t * optixGetWorldRayDirection();
 	int matIdx = cyl.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
-
 
 	// Homogeneous Medium/DielectricMedium: real Beer-Lambert attenuation of
 	// the running shadow-ray transmittance (payload 1), same fix and same
@@ -452,7 +448,6 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 			return;
 		}
 	}
-
 
 	// MaterialType::Subsurface belongs in this list: its entry interface IS a
 	// plain dielectric surface (see MaterialType::Subsurface's own comment,

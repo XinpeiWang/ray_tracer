@@ -318,6 +318,37 @@ enum class GpuLightKind : int {
 	Disk = 4,
 	Cylinder = 5,
 };
+// Order in which the pbrt GPU builder registers lights, shape kind by shape kind, each kind in ascending primitive
+// index. gpu_light_sort_key() reproduces that order, so the builder's final sort is a no-op in practice, and a
+// light can be found from the primitive a ray hit by binary search (gpu_find_light) instead of a scan.
+CPU_GPU inline int gpu_light_kind_rank(GpuLightKind k) {
+	switch (k) {
+		case GpuLightKind::Sphere:        return 0;
+		case GpuLightKind::BilinearPatch: return 1;
+		case GpuLightKind::Disk:          return 2;
+		case GpuLightKind::Cylinder:      return 3;
+		case GpuLightKind::Quad:          return 4;
+		default:                          return 5;   // Triangle
+	}
+}
+CPU_GPU inline long long gpu_light_sort_key(GpuLightKind k, int primIdx) {
+	return ((long long)gpu_light_kind_rank(k) << 32) | (long long)(unsigned int)primIdx;
+}
+// Index of the light for (kind, primIdx) in lightIndices/lightKinds, which must be sorted by gpu_light_sort_key;
+// -1 when that primitive is not a sampled light.
+CPU_GPU inline int gpu_find_light(const int* lightIndices, const GpuLightKind* lightKinds, unsigned int numLights,
+								  GpuLightKind kind, int primIdx) {
+	const long long key = gpu_light_sort_key(kind, primIdx);
+	int lo = 0, hi = (int)numLights - 1;
+	while (lo <= hi) {
+		const int mid = lo + (hi - lo) / 2;
+		const long long k = gpu_light_sort_key(lightKinds[mid], lightIndices[mid]);
+		if (k == key) return mid;
+		if (k < key) lo = mid + 1; else hi = mid - 1;
+	}
+	return -1;
+}
+
 
 // ReSTIR DI (Live Preview only - gpu/optix/wavefront_restir_helpers.h) plain
 // data structs. Defined here (host+device safe, like every other struct in

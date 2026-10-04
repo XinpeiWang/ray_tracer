@@ -26,8 +26,9 @@
 //   __raygen__wf_shadow          - Dispatches one shadow-test per ShadowRayWorkItem.
 //   __anyhit__wf_shadow_sphere / _quad / _bilinear_patch / _triangle
 //                                 - One per geometry type (mirrors
-//                                   optix_anyhit_shadow.h): DiffuseLight is
-//                                   NOT an occluder, purely-transmissive
+//                                   optix_anyhit_shadow.h): a sphere light is
+//                                   NOT an occluder (every other emitter is),
+//                                   purely-transmissive
 //                                   materials (Dielectric family, Interface)
 //                                   are ignored, participating media
 //                                   (sphere/cylinder only - Medium/

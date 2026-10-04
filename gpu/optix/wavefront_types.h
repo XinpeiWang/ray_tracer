@@ -100,6 +100,10 @@ struct RayWorkItem {
 	// specular_bounce above - "no MIS, full weight"), cosine_pdf(direction,
 	// normal) otherwise.
 	float        brdf_pdf;
+	// The vertex whose BSDF sampled this ray's direction (where the matching NEE sample was taken), carried
+	// unchanged across an Interface/medium-boundary pass-through that moves `origin`. wf_emitter_hit_mis_weight
+	// evaluates the light's pdf from here. Meaningful whenever brdf_pdf > 0.
+	float3       scatterOrigin;
 	float        tMin;             // ray t_min (normally 0.001)
 	float        tMax;             // ray t_max (normally 1e30)
 	// Object (per-primitive sphere) motion blur shutter time in [0,1] -
@@ -228,6 +232,8 @@ struct HitWorkItem {
 	// its very next segment would lose its real MIS pdf and get treated as
 	// a specular bounce (full weight, no MIS) instead.
 	float  brdf_pdf;
+	// Carried from RayWorkItem::scatterOrigin (see its own comment).
+	float3 scatterOrigin;
 	// Carried from RayWorkItem::time (see its own comment) - the shutter
 	// time this hit's ray was traced at, needed so a continuation ray
 	// spawned from this hit keeps sampling the SAME moving sphere at the
@@ -255,6 +261,7 @@ __device__ __forceinline__ void wf_carry_ray_state(RayWorkItem& next, const HitW
 	next.etaScale        = h.etaScale;
 	next.filterWeight    = h.filterWeight;
 	next.brdf_pdf        = h.brdf_pdf;
+	next.scatterOrigin   = h.scatterOrigin;
 	next.time            = h.time;
 }
 #endif

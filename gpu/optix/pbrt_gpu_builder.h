@@ -1548,6 +1548,23 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.punctualLights.push_back(light);
 	}
 
+	// Sorted by gpu_light_sort_key so a hit emitter finds its light by binary search (gpu_find_light). The loops
+	// above already register lights in this order, so this normally moves nothing.
+	{
+		std::vector<std::pair<long long, int>> order(out.lightIndices.size());
+		for (size_t i = 0; i < order.size(); ++i)
+			order[i] = { gpu_light_sort_key(out.lightKinds[i], out.lightIndices[i]), static_cast<int>(i) };
+		std::stable_sort(order.begin(), order.end());
+		std::vector<int> sortedIdx(order.size());
+		std::vector<GpuLightKind> sortedKinds(order.size());
+		for (size_t i = 0; i < order.size(); ++i) {
+			sortedIdx[i]   = out.lightIndices[order[i].second];
+			sortedKinds[i] = out.lightKinds[order[i].second];
+		}
+		out.lightIndices = std::move(sortedIdx);
+		out.lightKinds   = std::move(sortedKinds);
+	}
+
 	return stats;
 }
 
