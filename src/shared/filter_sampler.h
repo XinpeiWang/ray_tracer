@@ -126,6 +126,22 @@ public:
 	// Integral of the filter over its domain (useful for normalisation)
 	CPU_GPU T integral() const { return integral_; }
 
+	// Read-only access to the two CDF tables sample() itself inverts -
+	// added for a caller (gpu/metal/metal_poc_dispatch.mm) that needs to
+	// COPY this table to a separate device, rather than running sample()
+	// on this same object directly (OptiX/CUDA's shared-compilation-unit
+	// model lets device code call sample() on this class verbatim; Metal
+	// Shading Language is a separate compiled language with no such
+	// link, so its own hand-ported sample() - see metal_poc_sampling.
+	// metal's sampleFilterPosition() - needs these tables as plain
+	// uploaded data instead). f_/pdf_ are deliberately NOT exposed:
+	// sample()'s own `weight = fval/pdf` is a constant equal to
+	// integral() by construction for every reachable cell (see sample()'s
+	// own comment), so a caller that already has integral() needs
+	// nothing further from either table.
+	CPU_GPU const T (&conditionalCDF() const)[N][N] { return conditional_cdf_; }
+	CPU_GPU const T (&marginalCDF() const)[N] { return marginal_cdf_; }
+
 private:
 	T radius_;
 	T f_[N][N];           // tabulated filter values
