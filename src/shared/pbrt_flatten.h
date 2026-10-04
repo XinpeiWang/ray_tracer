@@ -2326,7 +2326,9 @@ inline MaterialKind materialKindFor(const std::string &type) {
 	if (type == "measured")            return MaterialKind::Measured;
 	if (type == "mix")                 return MaterialKind::Mix;
 	if (type == "hair")                return MaterialKind::Hair;
-	if (type == "none" || type.empty()) return MaterialKind::Interface;
+	// pbrt-v4's parser rewrites "none" and "" to "interface" (parser.cpp), so the canonical
+	// spelling is "interface" itself - all three are the same no-BSDF boundary material.
+	if (type == "interface" || type == "none" || type.empty()) return MaterialKind::Interface;
 	// Not real pbrt-v4 - this loader's own extension, see MaterialKind::
 	// Principled's own comment above for why it exists anyway.
 	if (type == "principled")          return MaterialKind::Principled;

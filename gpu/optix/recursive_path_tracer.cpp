@@ -34,7 +34,7 @@ bool RecursivePathTracer::initialize(
 	// count/breakdown; kept in sync here since this class shares the same
 	// optix_raygen.h/closest-hit headers, which now unconditionally pack
 	// all 25 registers regardless of which pipeline compiled them).
-	pipelineCompileOptions_.numPayloadValues = 25;
+	pipelineCompileOptions_.numPayloadValues = 28;  // p25-p27: mis_origin (optix_raygen.h)
 	pipelineCompileOptions_.numAttributeValues = 4;  // Custom intersection attributes
 	pipelineCompileOptions_.exceptionFlags = OPTIX_EXCEPTION_FLAG_NONE;
 	pipelineCompileOptions_.pipelineLaunchParamsVariableName = "params";

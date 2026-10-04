@@ -3532,7 +3532,7 @@ AttributeEnd
 
 AttributeBegin
   Translate 0 3 0
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "nebula" ""
   Shape "sphere" "float radius" [ 6.2 ]
 AttributeEnd

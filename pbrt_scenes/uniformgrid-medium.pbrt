@@ -7,8 +7,8 @@
 # Like cloud-medium.pbrt/rgbgrid-medium.pbrt, the medium is declared inside
 # its own Translate+Scale block so the CTM captured at MakeNamedMedium time
 # (not an axis-aligned box picked by hand) is what places it. The trigger
-# sphere needs an explicit near-invisible material (eta~1) - see cloud-
-# medium.pbrt's own comment on why, and rgbgrid-medium.pbrt's identical one.
+# sphere needs an explicit Material "interface" - see cloud-medium.pbrt's own
+# comment on why, and rgbgrid-medium.pbrt's identical one.
 # The voxel data is a single soft Gaussian-ish blob centered in the grid, so
 # the render should show a genuine soft-edged puff, not a hard-edged box.
 #
@@ -112,7 +112,7 @@ AttributeEnd
 # (80*sqrt(3) =~ 138.6) so the whole box is enclosed.
 AttributeBegin
   Translate 278 280 250
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "puff" ""
   Shape "sphere" "float radius" [ 145 ]
 AttributeEnd

@@ -23,6 +23,11 @@ extern "C" __global__ void __raygen__wf_intersect() {
 
 	const RayWorkItem& ray = rq.items[rayIdx];
 
+	// A continuation that has used its whole bounce budget is never traced - the host loop used to enforce this
+	// by running exactly max_depth iterations, but a free medium-boundary crossing takes an iteration without
+	// taking a bounce, so the loop now runs longer and the budget is checked per ray, like CPU's bounces_left.
+	if (ray.depth >= (int)wf_params.maxDepth) return;
+
 	WfHitPayload payload;
 	payload.hit = false;
 	payload.primaryRay = (ray.depth == 0) ? 1 : 0;

@@ -123,15 +123,15 @@ AttributeEnd
 
 # Trigger sphere: centered on the world-space box above (min (-50,200,250),
 # max (130,380,430), center (40,290,340)), radius past its half-diagonal
-# (90*sqrt(3) =~ 155.9) so the whole box is enclosed. Needs an explicitly
-# near-invisible material (eta~1) - see cloud-medium.pbrt's own comment on
-# its trigger sphere for why: on CPU the declaring shape is added to the
+# (90*sqrt(3) =~ 155.9) so the whole box is enclosed. Needs an explicit
+# Material "interface" - see cloud-medium.pbrt's own comment on its
+# trigger sphere for why: on CPU the declaring shape is added to the
 # scene separately from the standalone medium hittable, with its own
 # material, so an unset Material here would inherit whatever was last set
 # and render as a solid opaque shell hiding the medium entirely.
 AttributeBegin
   Translate 40 290 340
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "nebula" ""
   Shape "sphere" "float radius" [ 165 ]
 AttributeEnd

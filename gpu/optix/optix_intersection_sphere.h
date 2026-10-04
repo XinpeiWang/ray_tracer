@@ -648,6 +648,9 @@ extern "C" __global__ void __closesthit__sphere() {
 				scattered_dir = unit_dir;  // straight through, no interaction
 				attenuation = make_float3(1.0f, 1.0f, 1.0f);
 				is_specular = true;  // no interaction - a free/non-scattering pass-through
+				// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+				// specular flag) survives it instead of being reset as if a specular bounce had happened.
+				is_medium_boundary = true;
 			}
 			scattered    = true;
 			is_medium    = true;
@@ -724,6 +727,9 @@ extern "C" __global__ void __closesthit__sphere() {
 				scattered_dir = unit_dir3;  // straight through, no interaction
 				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
 				is_specular   = true;  // no interaction - a free/non-scattering pass-through
+				// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+				// specular flag) survives it instead of being reset as if a specular bounce had happened.
+				is_medium_boundary = true;
 			}
 			scattered    = true;
 			is_medium    = true;
@@ -846,6 +852,9 @@ extern "C" __global__ void __closesthit__sphere() {
 				scattered_dir = unit_dir3;
 				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
 				is_specular   = true;  // no interaction - a free/non-scattering pass-through
+				// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+				// specular flag) survives it instead of being reset as if a specular bounce had happened.
+				is_medium_boundary = true;
 			}
 			scattered    = true;
 			is_medium    = true;
@@ -924,6 +933,9 @@ extern "C" __global__ void __closesthit__sphere() {
 				scattered_dir = unit_dir3;
 				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
 				is_specular   = true;  // no interaction - a free/non-scattering pass-through
+				// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+				// specular flag) survives it instead of being reset as if a specular bounce had happened.
+				is_medium_boundary = true;
 			}
 			scattered    = true;
 			is_medium    = true;
@@ -1191,6 +1203,7 @@ extern "C" __global__ void __closesthit__sphere() {
 		// p12: NEE PDF for the incoming ray direction reaching this sphere light.
 		// This is the solid-angle PDF used by the NEE sampler, enabling MIS in raygen.
 		float light_pdf_for_incoming = 0.0f;
+		const float3 mis_o = mis_origin_from_payload();  // last real vertex, not the (possibly moved) ray origin
 		if (params.aliasTable && params.numLights > 0) {
 			// Find selection PMF for this sphere in the alias table. The
 			// GLOBAL index, since lightIndices holds indices into the one flat
@@ -1203,13 +1216,13 @@ extern "C" __global__ void __closesthit__sphere() {
 				if (params.lightIndices[li] == prim_idx && params.lightKinds[li] == GpuLightKind::Sphere) {
 					// Light BVH's selection pmf is position-dependent (see
 					// gpu_light_bvh_pmf()'s own comment) - evaluated at
-					// ray_orig, the shading point the BSDF sample that
+					// mis_o, the shading point the BSDF sample that
 					// reached this light was actually taken from, so this
 					// MIS weight matches whatever NEE would have used from
 					// there. Falls back to the alias table's fixed pdf for
 					// any scene that didn't build a light BVH.
 					sel_pdf = (params.lightBvhNodeCount > 0)
-						? gpu_light_bvh_pmf(ray_orig.x, ray_orig.y, ray_orig.z, 0.f, 0.f, 0.f, (int)li)
+						? gpu_light_bvh_pmf(mis_o.x, mis_o.y, mis_o.z, 0.f, 0.f, 0.f, (int)li)
 						: params.aliasTable[li].pdf;
 					break;
 				}
@@ -1225,7 +1238,7 @@ extern "C" __global__ void __closesthit__sphere() {
 			// (NEE-sampling) direction for MIS weights to be consistent.
 			const float3 lightCenter = is_clipped ? sphere.center : sphere_center;
 			const float lightRadius = is_clipped ? sphere.radius : sphere_radius;
-			float3 to_center = lightCenter - ray_orig;
+			float3 to_center = lightCenter - mis_o;
 			float dist_sq = dot(to_center, to_center);
 			if (dist_sq > lightRadius * lightRadius) {
 				float cos_theta_max = sqrtf(1.0f - lightRadius * lightRadius / dist_sq);

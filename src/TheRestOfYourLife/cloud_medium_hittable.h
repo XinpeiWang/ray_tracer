@@ -43,14 +43,21 @@ class cloud_medium_hittable : public hittable {
     }
 
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
-        double ray_o[3] = { r.origin().x(), r.origin().y(), r.origin().z() };
-        double ray_d[3] = { r.direction().x(), r.direction().y(), r.direction().z() };
+        // Work in world distance: a camera ray's direction is not unit length (it is pixel_sample - origin),
+        // and sigma is per world unit, so sampling along the raw parameter made the medium |d| times too thin for
+        // primary rays. constant_medium converts by ray_length the same way. rec.t goes back to ray-parameter units.
+        const double len = r.direction().length();
+        if (!(len > 0.0)) return false;
+        const ray ur(r.origin(), r.direction() / len, r.time());
+        const double t_lo = ray_t.min * len, t_hi = ray_t.max * len;
+        double ray_o[3] = { ur.origin().x(), ur.origin().y(), ur.origin().z() };
+        double ray_d[3] = { ur.direction().x(), ur.direction().y(), ur.direction().z() };
 
-        auto maj_it = cloud.sample_ray(ray_o, ray_d, ray_t.max);
+        auto maj_it = cloud.sample_ray(ray_o, ray_d, t_hi);
         double tMin, tMax, sigma_maj;
         if (!maj_it.next(tMin, tMax, sigma_maj)) return false;
         if (sigma_maj <= 0.0) return false;
-        if (tMin < ray_t.min) tMin = ray_t.min;
+        if (tMin < t_lo) tMin = t_lo;
         if (tMin >= tMax) return false;
 
         double t = tMin;
@@ -59,7 +66,7 @@ class cloud_medium_hittable : public hittable {
             t += dt;
             if (t >= tMax) return false;  // exited the majorant segment: no interaction
 
-            point3 p = r.at(t);
+            point3 p = ur.at(t);
             double mx, my, mz;
             cloud.world_to_medium_pt(p.x(), p.y(), p.z(), mx, my, mz);
             double d = cloud.compute_density(mx, my, mz);
@@ -67,7 +74,7 @@ class cloud_medium_hittable : public hittable {
 
             if (random_double() < sigma_s_local / sigma_maj) {
                 // Real scattering event.
-                rec.t = t;
+                rec.t = t / len;
                 rec.p = p;
                 rec.normal    = vec3(1, 0, 0);  // arbitrary (volume has no surface normal)
                 rec.front_face = true;
@@ -101,10 +108,15 @@ class cloud_medium_hittable : public hittable {
     // CloudMedium's majorant iterator; a multi-segment cloud medium would
     // need both this and hit() extended together, out of scope here.
     color shadow_transmittance_impl(const ray& r, double t_max) const {
-        double ray_o[3] = { r.origin().x(), r.origin().y(), r.origin().z() };
-        double ray_d[3] = { r.direction().x(), r.direction().y(), r.direction().z() };
+        // World distance, as in hit() - the shadow ray's direction is not unit length either.
+        const double len = r.direction().length();
+        if (!(len > 0.0)) return color(1, 1, 1);
+        const ray ur(r.origin(), r.direction() / len, r.time());
+        const double t_max_w = t_max * len;
+        double ray_o[3] = { ur.origin().x(), ur.origin().y(), ur.origin().z() };
+        double ray_d[3] = { ur.direction().x(), ur.direction().y(), ur.direction().z() };
 
-        auto maj_it = cloud.sample_ray(ray_o, ray_d, t_max);
+        auto maj_it = cloud.sample_ray(ray_o, ray_d, t_max_w);
         double tMin, tMax, sigma_maj;
         if (!maj_it.next(tMin, tMax, sigma_maj)) return color(1, 1, 1);
         if (sigma_maj <= 0.0) return color(1, 1, 1);
@@ -120,7 +132,7 @@ class cloud_medium_hittable : public hittable {
             tMin, tMax, sigma_maj,
             []() { return random_double(); },
             [&](double t) {
-                point3 p = r.at(t);
+                point3 p = ur.at(t);
                 double mx, my, mz;
                 cloud.world_to_medium_pt(p.x(), p.y(), p.z(), mx, my, mz);
                 double d = cloud.compute_density(mx, my, mz);

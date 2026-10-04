@@ -30,7 +30,7 @@ MakeNamedMedium "fog" "string type" [ "homogeneous" ]
 
 AttributeBegin
   Translate -2 1 0
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "fog" ""
   Shape "sphere" "float radius" [ 1.5 ]
 AttributeEnd

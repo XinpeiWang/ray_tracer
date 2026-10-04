@@ -2903,8 +2903,11 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// comment). glossyPdf is 0 (falls through to the non-glossy
 			// branches) for every other material type, matching prior
 			// behavior exactly.
+			// A phase vertex's pdf at the light direction is the phase value itself
+			// (cos_l == 1); brdf_pdf_override is the pdf at the CONTINUATION
+			// direction, which only equals it for an isotropic phase (g == 0).
 			float brdf_pdf_l = (glossyPdf > 0.0f) ? glossyPdf
-				: (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+				: (!isPhase && brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(light_pdf, brdf_pdf_l);
 
 			// Spectral direct-light contribution. nee_norm is 1/light_pdf
@@ -3016,7 +3019,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// priority over brdf_pdf_override (pdf at the unrelated
 			// continuation direction) for the 5 glossy types.
 			float brdf_pdf_sky = (glossyPdf > 0.0f) ? glossyPdf
-				: (brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
+				: (!isPhase && brdf_pdf_override > 0.0f) ? brdf_pdf_override : (bsdf_val * cos_l);
 			float mis_w = wf_mis(pdf_sky, brdf_pdf_sky);
 
 			// Uplift RGB sky_Le_val (the real per-direction radiance for an

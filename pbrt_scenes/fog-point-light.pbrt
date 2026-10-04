@@ -28,7 +28,7 @@ MakeNamedMedium "fog" "string type" [ "homogeneous" ]
   "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.05 0.05 0.05 ] "float g" [ 0 ]
 
 AttributeBegin
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "fog" ""
   Shape "sphere" "float radius" [ 10 ]
 AttributeEnd

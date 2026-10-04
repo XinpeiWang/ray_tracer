@@ -1066,6 +1066,9 @@ extern "C" __global__ void evaluate_materials(
 			scattered_dir = unit_dir;  // straight through, no interaction
 			attenuation   = SS(1.f);
 			is_specular   = true;  // no interaction - a free/non-scattering pass-through
+			// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+			// specular flag) survives it instead of being reset as if a specular bounce had happened.
+			is_medium_boundary = true;
 		}
 		scattered   = true;
 		break;
@@ -1126,6 +1129,9 @@ extern "C" __global__ void evaluate_materials(
 			scattered_dir = unit_dir;
 			attenuation   = SS(1.f);
 			is_specular   = true;  // no interaction - a free/non-scattering pass-through
+			// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+			// specular flag) survives it instead of being reset as if a specular bounce had happened.
+			is_medium_boundary = true;
 		}
 		scattered   = true;
 		break;
@@ -1238,6 +1244,9 @@ extern "C" __global__ void evaluate_materials(
 			scattered_dir = unit_dir;
 			attenuation   = SS(1.f);
 			is_specular   = true;  // no interaction - a free/non-scattering pass-through
+			// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+			// specular flag) survives it instead of being reset as if a specular bounce had happened.
+			is_medium_boundary = true;
 		}
 		scattered   = true;
 		break;
@@ -1314,6 +1323,9 @@ extern "C" __global__ void evaluate_materials(
 			scattered_dir = unit_dir;
 			attenuation   = SS(1.f);
 			is_specular   = true;  // no interaction - a free/non-scattering pass-through
+			// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
+			// specular flag) survives it instead of being reset as if a specular bounce had happened.
+			is_medium_boundary = true;
 		}
 		scattered   = true;
 		break;

@@ -35,14 +35,14 @@ MakeNamedMedium "fog" "string type" [ "homogeneous" ]
 
 # The cylinder itself is still added to the scene separately with its own
 # material (matching the homogeneous-medium "shell + fog inside" convention
-# - see cloud-medium.pbrt's identical comment), so it needs an explicitly
-# near-invisible one (eta~1: negligible refraction/reflection) rather than
-# an opaque material - otherwise it renders as a solid black shell that
-# absorbs the ray before it ever reaches the medium's own scattering.
+# - see cloud-medium.pbrt's identical comment), so it needs an explicit
+# Material "interface" (a no-BSDF boundary) rather than an opaque material -
+# otherwise it renders as a solid black shell that absorbs the ray before it
+# ever reaches the medium's own scattering.
 AttributeBegin
   Translate -2 1 0
   Rotate 90 0 1 0
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "fog" ""
   Shape "cylinder" "float radius" [ 1.2 ] "float zmin" [ 0 ] "float zmax" [ 4 ]
 AttributeEnd

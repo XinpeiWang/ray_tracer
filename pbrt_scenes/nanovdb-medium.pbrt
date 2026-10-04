@@ -18,8 +18,8 @@
 # MakeNamedMedium time is what places it (this loader's nanovdb path reads
 # that CTM back out of Medium::nanovdbXform at build time, composed with
 # the grid's own baked index-to-world transform - see pbrt_cpu_builder.h's
-# own comment). The trigger sphere needs an explicit near-invisible
-# material (eta~1) - see uniformgrid-medium.pbrt's own comment on why.
+# own comment). The trigger sphere needs an explicit Material
+# "interface" - see cloud-medium.pbrt's own comment on why.
 #
 # Original, not derived from any distributed scene, so it carries no
 # licence constraints beyond NanoVDB's own (Apache-2.0, src/external/
@@ -61,7 +61,7 @@ AttributeEnd
 # past its half-diagonal (70*sqrt(3) =~ 121) so the whole grid is enclosed.
 AttributeBegin
   Translate 278 280 250
-  Material "dielectric" "float eta" [ 1.001 ]
+  Material "interface"
   MediumInterface "puff" ""
   Shape "sphere" "float radius" [ 130 ]
 AttributeEnd

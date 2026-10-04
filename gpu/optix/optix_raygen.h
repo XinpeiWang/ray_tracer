@@ -200,6 +200,10 @@ extern "C" __global__ void __raygen__rg() {
 		// (src/shared/cpu_gpu.h) is the one shared bound every integrator
 		// that supports this uses.
 		int mediumBoundaryCrossings = 0;
+		// The last REAL vertex of the path: where the arriving BSDF sample was taken. A free medium-boundary
+		// crossing moves ray_origin but not this, so the emitter MIS pdf (hit programs, payload p25-p27) is evaluated
+		// from the vertex the light was actually sampled against - CPU's prev_surface_p, wavefront's scatterOrigin.
+		float3 mis_origin = ray_origin;
 
 		for (unsigned int depth = 0; depth < params.maxDepth; ++depth) {
 			// --stats: one traced ray per iteration (primary on depth==0, a
@@ -283,6 +287,8 @@ extern "C" __global__ void __raygen__rg() {
 			// AND writes it back (unchanged if this bounce wasn't the
 			// path's first dispersive hit), so it persists correctly.
 			unsigned int p24 = rgbChannel;
+			// p25-p27: mis_origin (INPUT only, read by the emitter hit programs - see its declaration above).
+			unsigned int p25 = __float_as_uint(mis_origin.x), p26 = __float_as_uint(mis_origin.y), p27 = __float_as_uint(mis_origin.z);
 
 			optixTrace(
 				params.traversable,     // Acceleration structure
@@ -297,7 +303,7 @@ extern "C" __global__ void __raygen__rg() {
 				RAY_TYPE_COUNT,         // SBT stride
 				RAY_TYPE_RADIANCE,      // missSBTIndex
 				p0, p1, p2, p3, p4, p5, p6, p7, p8, p9, p10, p11, p12, p13, p14, p15,
-				p16, p17, p18, p19, p20, p21, p22, p23, p24
+				p16, p17, p18, p19, p20, p21, p22, p23, p24, p25, p26, p27
 			);
 
 			// Unpack payload (25 registers, p0-p24 - see the trace call above)
@@ -429,6 +435,7 @@ extern "C" __global__ void __raygen__rg() {
 					// scatter is not a transmission event (matches CPU's
 					// hg_phase_material::scatter() leaving srec.eta at 1.0).
 					ray_origin = medium_point;
+					mis_origin = medium_point;
 					ray_direction = medium_dir;  // already normalized (sample_henyey_greenstein)
 					seed = medium_seed;
 					continue;
@@ -461,6 +468,7 @@ extern "C" __global__ void __raygen__rg() {
 				// centimetre of the start, so rays near an edge or corner leaked out
 				// of a closed room. The dense scenes (A9's sphere field, Sibenik,
 				// Fireplace Room) render without incident at 0.001f.
+				ray_origin = hit_point + 0.001f * ray_direction;
 				// ray_direction is left unchanged - real pass-through.
 				seed = payload.seed;
 				if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
@@ -580,6 +588,7 @@ extern "C" __global__ void __raygen__rg() {
 				any_nonspecular = any_nonspecular || !bounce_is_specular;
 
 				ray_origin = scatter_origin;
+				mis_origin = scatter_origin;
 				ray_direction = normalize(payload.scatterDir);  // MUST normalize!
 			} else {
 				// Absorbed — add any surface emission (e.g. background hit) then stop

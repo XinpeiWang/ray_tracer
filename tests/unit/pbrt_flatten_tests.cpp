@@ -3043,6 +3043,19 @@ TEST(FlattenMaterialTest, InterfaceMaterialNoneMapsToInterfaceKind) {
 	EXPECT_FALSE(warnedAbout(s, "none"));
 }
 
+TEST(FlattenMaterialTest, InterfaceMaterialCanonicalNameMapsToInterfaceKind) {
+	// pbrt-v4 itself rewrites "none" and "" to "interface" (parser.cpp), so
+	// `Material "interface"` is the canonical spelling real scenes use. It used
+	// to fall to MaterialKind::Unsupported - an opaque flat grey Lambertian
+	// plus a warning - so a medium boundary written the pbrt-v4 way rendered as
+	// a solid sphere instead of disappearing.
+	const FlatScene s = flattenSource(
+		"Material \"interface\"\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_EQ(s.materials[0].kind, MaterialKind::Interface);
+	EXPECT_FALSE(warnedAbout(s, "interface"));
+}
+
 TEST(FlattenMaterialTest, InterfaceMaterialEmptyStringAlsoMapsToInterface) {
 	// pbrt-v4 also accepts a bare empty type string for the same idiom.
 	const FlatScene s = flattenSource(
