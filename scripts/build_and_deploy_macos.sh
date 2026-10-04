@@ -186,6 +186,15 @@ cp "$REPO_ROOT/models/suzanne.obj" "$APP_BUNDLE/Contents/MacOS/models/suzanne.ob
 cp "$REPO_ROOT/models/spot.obj" "$APP_BUNDLE/Contents/MacOS/models/spot.obj"
 cp "$REPO_ROOT/images/earthmap.jpg" "$APP_BUNDLE/Contents/MacOS/images/earthmap.jpg"
 
+# The pbrt scene collection (~5MB). Every pbrt-backed scene - nearly the whole
+# registry now - loads from pbrt_scenes/*.pbrt, and the GUI runs the renderer
+# with the app's MacOS folder as its working directory (qt_gui/mainwindow.cpp's
+# setWorkingDirectory), so a pbrt_scenes/ folder beside the executable is the
+# one search path that resolves on any install machine (src/shared/
+# pbrt_discover.h). Without it the renderer finds no scene file and fails with
+# "Scene is Empty (CPU)" (error 101).
+cp -R "$REPO_ROOT/pbrt_scenes" "$APP_BUNDLE/Contents/MacOS/pbrt_scenes"
+
 echo
 echo "[5/5] Collecting output..."
 rm -rf "$DEPLOY_DIR"
