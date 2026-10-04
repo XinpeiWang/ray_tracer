@@ -81,6 +81,19 @@ inline bool shadow_ray_hit(
             return true;
         }
 
+        // A participating medium reports a hit only when its free-path sample lands inside the
+        // segment (hittable::hit() is stochastic delta tracking), i.e. with probability 1 - T.
+        // Treat that collision as a blocker. Walking through it and multiplying by the medium's
+        // Beer-Lambert/ratio-tracked T as well, as this loop used to, applies the attenuation only
+        // to the rays that scattered and none to the ones that did not: the expected visibility
+        // came out T + (1 - T) * T = T * (2 - T) instead of T. Invisible in thin fog, but a
+        // medium of optical depth 1 rendered ~24% too bright against a Monte Carlo reference.
+        // The per-ray answer is binary, so it is exact only in expectation - which is all NEE needs.
+        if (rec.mat->is_medium_scatter()) {
+            out_hit = rec;
+            return true;
+        }
+
         // Bound the transmittance search to `remaining` (this iteration's
         // real target distance, e.g. the light) rather than letting a
         // medium integrate all the way to its own far geometric boundary -

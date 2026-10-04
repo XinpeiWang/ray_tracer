@@ -996,6 +996,15 @@ __device__ __forceinline__ float camera_medium_shadow_trans(float max_distance) 
 	return expf(-sigma_t * max_distance);
 }
 
+// Defined further down, with the other punctual-light helpers; medium_phase_nee_mis() below needs it too.
+__device__ __forceinline__ bool eval_punctual_light(
+	const PunctualLightGPU& light,
+	const float3& p,
+	float3& wi,
+	float3& Li,
+	float& t_max
+);
+
 // Real NEE+MIS at a Henyey-Greenstein phase-function scatter event inside a
 // participating medium - the volumetric counterpart of a diffuse/glossy
 // BSDF's own NEE block, reused by every medium-interior scatter case in this
@@ -1104,6 +1113,20 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 						* shadow_tr * camera_medium_shadow_trans(max_dist);
 				}
 			}
+		}
+	}
+	// Punctual (point/spot/distant...) lights. Delta lights: no pdf division and no MIS, the phase value
+	// plays the role a surface BSDF*cos plays at a hit. These were missing here, so a point light lit
+	// every surface but left a participating medium dark on this backend (the wavefront backend and the
+	// CPU both light it).
+	for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+		float3 wi_p, Li_p; float t_max_p;
+		if (!eval_punctual_light(params.punctualLights[pi], medium_point, wi_p, Li_p, t_max_p)) continue;
+		float shadow_tr = 0.0f;
+		if (trace_shadow_ray(medium_point, wi_p, t_max_p, &shadow_tr)) {
+			medium_emission = medium_emission +
+				hg_phase_value(dot(wo, wi_p), g) * attenuation * Li_p
+				* shadow_tr * camera_medium_shadow_trans(t_max_p);
 		}
 	}
 	{

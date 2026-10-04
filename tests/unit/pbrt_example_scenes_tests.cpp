@@ -261,3 +261,17 @@ TEST(PbrtBackendAgreementTest, EmissiveOctahedronFurnaceAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, LargeAreaLightRoomAgreesAcrossBackends) {
 	expectBackendsAgree("large-area-light-room", 64, 0.96, 1.04);
 }
+
+// Participating media: a point-lit fog sphere whose full multiple-scattering answer is known from an
+// independent Monte Carlo solution (see the scene's header). The CPU used to attenuate a shadow ray through
+// fog only on the rays that happened to scatter (T*(2-T) instead of T: 24% too bright here) and the
+// recursive GPU backend never sampled punctual lights at a scatter event (black).
+TEST(PbrtBackendAgreementTest, FogPointLightAgreesAcrossBackends) {
+	expectBackendsAgree("fog-point-light", 128, 0.94, 1.06);
+}
+
+// A medium that absorbs as well as scatters: the GPU builder dropped the sigma_s/sigma_t factor, so every
+// collision scattered at full strength (the fog came out ~14% too bright in this scene, a pure absorber 2.2x).
+TEST(PbrtBackendAgreementTest, AbsorbingFogAgreesAcrossBackends) {
+	expectBackendsAgree("absorbing-fog", 128, 0.95, 1.05);
+}
