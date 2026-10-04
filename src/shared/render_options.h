@@ -131,9 +131,11 @@ struct RenderOptions {
 	long long seed = -1;
 	// Metal backend only (see gpu/metal/metal_interface.h's own comment on
 	// which fields this backend reads) - skip the hardcoded demo room's own
-	// lights when rendering a loaded pbrt scene, so that scene's real
-	// lighting can be judged in isolation. False (default) preserves every
-	// existing scene's hash-sweep-verified output unchanged; see
+	// lights when rendering a loaded pbrt scene. NO LONGER READ: Metal now
+	// always skips them for a pbrt scene (metal_render_main()), so a scene is
+	// lit by its own lights only - this field is kept so the CLI flag still
+	// parses. History: it used to default false to keep every existing
+	// scene's hash-sweep-verified output unchanged; see
 	// launcher/launcher_args.h's LaunchArgs::isolate_pbrt_lighting for the
 	// full "why" (docs/METAL_GPU_FEASIBILITY.md section 197's C9 finding).
 	bool isolate_pbrt_lighting = false;
