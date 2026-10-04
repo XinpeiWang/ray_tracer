@@ -444,14 +444,13 @@ extern "C" __global__ void __raygen__rg() {
 				// branch exactly.
 				throughput = throughput * payload.attenuation;
 				float3 hit_point = ray_origin + t_hit * ray_direction;
-				// 0.01f, not 0.001f: matches the normal-scatter continuation
-				// ray's own offset below - a smaller epsilon here previously
-				// caused reproducible self-intersection/illegal-memory-access
-				// crashes on dense geometry elsewhere in this codebase (see
-				// wavefront_kernels.cu's shadow-ray epsilon comment), so this
-				// new pass-through ray uses the same, already-fixed value
-				// rather than reintroducing a smaller one.
-				ray_origin = hit_point + 0.01f * ray_direction;
+				// Same 0.001f continuation offset as the normal scatter below and
+				// as the wavefront backend. This used to be 0.01f, carried over from
+				// the shadow-ray epsilon's dense-geometry crash fix (a shadow-launch
+				// problem); as a continuation offset it skipped any surface within a
+				// centimetre of the start, so rays near an edge or corner leaked out
+				// of a closed room. The dense scenes (A9's sphere field, Sibenik,
+				// Fireplace Room) render without incident at 0.001f.
 				// ray_direction is left unchanged - real pass-through.
 				seed = payload.seed;
 				if (++mediumBoundaryCrossings > kMaxMediumBoundaryCrossings) break;
@@ -494,7 +493,9 @@ extern "C" __global__ void __raygen__rg() {
 				radiance = radiance + throughput * payload.emission;
 
 				float3 hit_point = (flag == 3) ? explicit_origin : (ray_origin + t_hit * ray_direction);
-				float3 scatter_origin = hit_point + 0.01f * normalize(payload.scatterDir);
+				// 0.001f, like the wavefront backend's continuation ray - see the pass-through
+				// offset above for why not the 0.01f shadow-ray value.
+				float3 scatter_origin = hit_point + 0.001f * normalize(payload.scatterDir);
 
 				// Multiply throughput by surface BRDF (attenuation from hit program)
 				throughput = throughput * payload.attenuation;
