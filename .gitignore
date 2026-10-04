@@ -95,8 +95,8 @@ build.log
 *.cubin
 *.fatbin
 
-# OptiX PTX (keep the checked-in version for deployment)
-!gpu/optix/optix_programs.ptx
+# optix_programs.ptx is generated from optix_programs.cu by build_optix.targets, like wavefront_programs.ptx and
+# sppm_programs.ptx. It used to be tracked ("for deployment"), which rewrote ~35 MB in the repo on every GPU commit.
 
 # CUDA object files
 gpu/cuda/obj/
