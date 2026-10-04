@@ -981,7 +981,17 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // See MetalPocApp::exposureValue's own comment for why this is a
         // direct field poke rather than a new argv[] slot.
         app.exposureValue = (float)options.exposure;
-        app.isolatePbrtLighting = options.isolate_pbrt_lighting;
+        // Always true here: metal_render_main() only renders pbrt-backed
+        // scenes now (the hand-authored builders are gone), and a pbrt scene
+        // must be lit by its OWN lights only. The hardcoded demo room's
+        // lights used to be added on top by default, which both injected
+        // light the scene never asked for (CPU has no such lights - several
+        // parity-sweep scenes rendered several times brighter on Metal for
+        // exactly this reason) and cost up to 8 extra shadow rays per
+        // bounce. options.isolate_pbrt_lighting is therefore redundant on
+        // this path and no longer read; the standalone metal_poc CLI (the
+        // demo room itself, no pbrt scene) still keeps its room lights.
+        app.isolatePbrtLighting = true;
         // --seed: options.seed < 0 means "not requested" (leave the default
         // stream). Otherwise offset by 2 so seed 0 maps to 2, never to the
         // default stream's own 1u - every explicit
