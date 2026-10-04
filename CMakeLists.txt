@@ -354,25 +354,10 @@ if(RT_BUILD_METAL)
     # where that wiring happens).
     add_library(metal_renderer STATIC
         gpu/metal/metal_poc.mm
-        # One .mm per hand-authored scene CATEGORY (MetalPocApp::buildXxx()
-        # out-of-class definitions only - the shared class declaration
-        # itself lives in gpu/metal/metal_poc_app.h, #included by all of
-        # these plus metal_poc.mm) - split out of metal_poc.mm once its
-        # own scene-builder count made that one file unwieldy (a pure
-        # code-motion refactor, no behaviour change - see
-        # docs/METAL_GPU_FEASIBILITY.md).
-        gpu/metal/metal_poc_scenes_a.mm
-        gpu/metal/metal_poc_scenes_b.mm
-        gpu/metal/metal_poc_scenes_c.mm
-        gpu/metal/metal_poc_scenes_d.mm
-        gpu/metal/metal_poc_scenes_e.mm
-        gpu/metal/metal_poc_scenes_f.mm
-        gpu/metal/metal_poc_scenes_g.mm
-        gpu/metal/metal_poc_scenes_i.mm
         # loadPbrtScene() and its 9 phase methods (real pbrt scene
         # loading) - split out of metal_poc.mm once that one file's own
         # "Stage 2.5" block grew past a third of it, same pure-code-motion
-        # precedent as the metal_poc_scenes_*.mm split just above.
+        # precedent as the other metal_poc_*.mm splits.
         gpu/metal/metal_poc_pbrt_loader.mm
         # Stage 3 (GPU buffer/acceleration-structure upload) and Stage 4
         # (shader compile + dispatch + readback) - split out of

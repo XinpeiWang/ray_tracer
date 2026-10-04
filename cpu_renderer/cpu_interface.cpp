@@ -946,91 +946,6 @@ extern "C" const char* cpu_scene_category_by_id(const char* scene_id) {
 	return s ? s->category : "";
 }
 
-extern "C" int cpu_scene_metal_hand_authored_supported(const char* scene_id) {
-	// See cpu_interface.h's own comment for why this is the one canonical
-	// list. Starts with just "A1" (the classic Cornell box, gpu/metal/'s
-	// own metal_poc.mm::buildCornellBoxA1() - see docs/METAL_GPU_
-	// FEASIBILITY.md section 116) - grows one scene (or small batch) at a
-	// time as MetalPocApp::buildHandAuthoredScene() gains more real cases,
-	// each addition here and a real builder there landing in the SAME PR
-	// so this list never claims support the Metal side doesn't actually
-	// have yet.
-	static const std::unordered_set<std::string> kSupported = {
-		"A1",                    // Classic Cornell Box (section 116)
-		"G1", "G2", "G3",        // Stanford Bunny/Armadillo/Happy Buddha (section 117)
-		"G4", "G5", "G6", "G8", "G9", "G11", "G14", "G15", "G17", "G18",
-		"G19", "G20", "G21", "G22", "G23", "G24",  // mesh gallery, batch 2 (section 118)
-		"G7", "G10", "G13",      // mesh gallery, batch 3 (section 119)
-		"G12",                   // Trophy Room - category G now fully complete, 23/23 (section 120)
-		"A3",                    // Checkered Spheres - first category-A scene beyond A1 (section 121)
-		"A6",                    // Colored Quads (section 122)
-		"A4",                    // Earth (section 123)
-		"A5",                    // Perlin Spheres (section 124)
-		"A7",                    // Simple Light (section 125)
-		"B2",                    // Cornell Rough Metal - first category-B scene (section 126)
-		"B4",                    // Cornell Conductor (section 127)
-		"B3",                    // Cornell Rough Glass (section 128)
-		"B6",                    // Cornell Thin Glass (section 129)
-		"B1",                    // Rough Metal Spheres (section 130)
-		"B8",                    // Cornell Wax Slab (section 131)
-		// Category I (Education) - scenes that reuse ANOTHER scene's own
-		// geometry verbatim (see buildHandAuthoredScene()'s own comment,
-		// metal_poc.mm, and each scene's own registry row comment,
-		// scene_registry_data.h) - section 132.
-		"I1", "I4", "I6", "I7", "I9",  // = build_cornell_box, same as A1
-		"I5", "I10",                   // = build_cornell_rough_glass, same as B3
-		"I8",                          // Light Sampler Comparison, real new geometry (section 133)
-		"C2", "C3", "C4",              // Spotlight/Distant/Point Light Cornell (section 134)
-		"C5", "C6",                    // Goniometric/Projection Light Cornell (section 135)
-		"F2",                          // Triangle Mesh - first category-F scene (section 136)
-		"D5",                          // Depth of Field Cornell Box - first category-D scene (section 137)
-		"E1",                          // Homogeneous Medium - first category-E scene (section 138)
-		"B9",                          // Cornell Crystal, new materialType 18 NormalizedFresnelBxDF (section 139)
-		"B5",                          // Cornell Coated Diffuse, new materialType 19 CoatedDiffuseBxDF (section 140)
-		"B7",                          // Cornell Coated Conductor, new materialType 20 CoatedConductorBxDF (section 141)
-		"B12",                         // Normal Mapped Cornell, new materialType 21 checker normal map (section 142)
-		"B23",                         // Glass Prism Dispersion, new materialType 22 dispersive dielectric (section 143)
-		"B24",                         // Frosted Prism Dispersion, new materialType 23 dispersive rough dielectric (section 144)
-		"B10",                         // Principled Showcase, new materialType 24 PrincipledBxDF (section 145)
-		"B11",                         // Hair Fibers, new materialType 31 HairBxDF (section 183)
-		"B14",                         // STALE entry since B14's pbrt migration (commit af83bb8a): B14 is
-		                               // now pbrt-backed, so metal_render_main() always takes the pbrt
-		                               // path and never reaches buildHandAuthoredScene()'s "B14" case -
-		                               // kept here only so tests/unit/backend_consistency_tests.cpp's
-		                               // MetalSupportedSceneListMatchesDispatcher stays green (it
-		                               // requires this set and buildHandAuthoredScene()'s dispatch to
-		                               // match exactly), not because this is Metal's real B14 path.
-		                               // Metal's ACTUAL "B14" render goes through
-		                               // metal_poc_pbrt_loader.mm's generic material mapper, which has
-		                               // no MaterialKind::Measured case and falls back to flat gray
-		                               // Lambertian - see that file's own comment. Originally added for
-		                               // new sphere-light NEE (section 184), still true of the
-		                               // now-unreachable buildMeasuredBrdfScene() builder itself.
-		"B13",                         // Subsurface Slab, tinted-glass approximation (section 185)
-		"A9",                          // Final Scene, combined finale reusing existing mechanisms (section 186)
-		"C1",                          // HDRI Sky, no new materialType/shader code needed (section 146)
-		"C7",                          // Portal Infinite Light, no new materialType/shader code needed (section 147)
-		"I3",                          // ExposureToneMapping, reuses C1's own world + a new --exposure implementation (section 148)
-		"D1",                          // Depth of Field - open row-of-spheres scene, reuses D5's own lens mechanism (section 149)
-		"D6",                          // Orthographic Camera Cornell Box - first orthographic-camera port (section 150)
-		"D2",                          // Orthographic Camera - open column-of-spheres scene (section 151)
-		"D7",                          // Spherical Camera Cornell Box - first equirectangular-panorama port (section 152)
-		"D3",                          // Spherical Camera - open ring-of-spheres scene (section 153)
-		"F1",                          // Bilinear Patch - tessellated triangle-grid approximation (section 154)
-		"F4",                          // Curve Fibers - tessellated tapered-tube approximation (section 155)
-		"D4",                          // Realistic Camera - real 9-element lens (section 157)
-		"D8",                          // Realistic Camera Cornell Box - real 9-element lens (section 157)
-		"I2",                          // Spectral Dispersion Education, reuses B23's own glass-prism geometry verbatim (section 168) - same "Education scene, real geometry already built for another id" pattern as I1/I3/I5/etc. above, just missed in that original batch
-		"D13",                         // Camera Motion Blur - A1's own geometry plus a real orbit-style camera shutter dolly (section 174)
-		"A2",                          // Bouncing Spheres - the classic In One Weekend final scene, real per-sphere object motion blur (section 175)
-		"A8",                          // Cornell Smoke - A1's own walls plus two bounded medium spheres approximating CPU's own rotated smoke boxes (section 176)
-		"E3",                          // Dielectric Medium Showcase - 3 tinted-glass spheres approximating CPU's own dielectric-plus-real-medium combination (section 177)
-		"E2",                          // Cloud Medium - a real heterogeneous, procedural Perlin-noise cloud, delta-tracked through its own world AABB via a trigger sphere (section 178)
-		"E4",                          // RGB Grid Medium - a real heterogeneous per-voxel R/G/B scattering "nebula", same trigger-sphere delta tracking as E2 with a single global majorant (section 179)
-	};
-	return scene_id && kSupported.count(scene_id) ? 1 : 0;
-}
-
 extern "C" const char* cpu_scene_pbrt_path_by_id(const char* scene_id) {
 	// get_scene_registry() must run at least once before pbrt_scene_
 	// registry::paths() has anything in it - that map is populated as a
@@ -1110,7 +1025,7 @@ extern "C" int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSn
 	out->recommended_spp = s->recommended_spp;
 	out->requires_files = s->requires_files ? 1 : 0;
 	out->gpu_compatible = s->gpu_compatible ? 1 : 0;
-	out->metal_compatible = (s->is_pbrt_backed || cpu_scene_metal_hand_authored_supported(scene_id)) ? 1 : 0;
+	out->metal_compatible = s->is_pbrt_backed ? 1 : 0;
 	out->recommended_exposure = s->recommended_exposure;
 	out->recommended_integrator = s->recommended_integrator.c_str();
 	out->recommended_sampler = s->recommended_sampler.c_str();
