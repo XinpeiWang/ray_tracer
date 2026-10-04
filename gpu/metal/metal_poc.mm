@@ -139,7 +139,6 @@ bool MetalPocApp::parseArgsAndCreateDevice(int argc, const char** argv) {
     outPath = (argc > 3) ? argv[3] : "/tmp/metal_poc_render.png";
     toneMapMode = parseToneMapMode((argc > 6) ? argv[6] : nullptr);
     if (argc > 7) pbrtScenePath = argv[7];
-    if (argc > 8) handAuthoredSceneId = argv[8];
 
     // MTLCreateSystemDefaultDevice() is explicitly documented as
     // unsupported for command-line/daemon processes (confirmed via
@@ -429,7 +428,6 @@ void MetalPocApp::buildScene() {
     // only ever sets one of pbrtScenePath/handAuthoredSceneId), but if both
     // were somehow set, both would just coexist harmlessly the same way a
     // pbrt scene and this hardcoded room already do.
-    if (!handAuthoredSceneId.empty()) buildHandAuthoredScene(handAuthoredSceneId);
 
     // Builds each light's own pmf/aliasProb/aliasIndex in place - see
     // buildPowerLightSampler()'s own comment. Must run after every
@@ -775,121 +773,6 @@ void MetalPocApp::buildScene() {
 // phase methods now live in metal_poc_pbrt_loader.mm (pure code motion,
 // see that file's own header comment) ------------------------------------
 
-// See buildHandAuthoredScene()'s own declaration comment for the "which
-// scene_ids" contract (cpu_scene_metal_hand_authored_supported(),
-// cpu_interface.h) and section 116 (docs/METAL_GPU_FEASIBILITY.md).
-bool MetalPocApp::buildHandAuthoredScene(const std::string& scene_id) {
-    if (scene_id == "A1") {
-        buildCornellBoxA1();
-        return true;
-    }
-    if (scene_id == "G1") { buildStanfordBunny(); return true; }
-    if (scene_id == "G2") { buildStanfordArmadillo(); return true; }
-    if (scene_id == "G3") { buildStanfordHappyBuddha(); return true; }
-    if (scene_id == "G4") { buildStanfordLucy(); return true; }
-    if (scene_id == "G5") { buildStanfordDragon(); return true; }
-    if (scene_id == "G6") { buildUtahTeapot(); return true; }
-    if (scene_id == "G8") { buildSuzanneGallery(); return true; }
-    if (scene_id == "G9") { buildNefertiti(); return true; }
-    if (scene_id == "G11") { buildCheburashka(); return true; }
-    if (scene_id == "G14") { buildBeast(); return true; }
-    if (scene_id == "G15") { buildVWBeetle(); return true; }
-    if (scene_id == "G17") { buildBimba(); return true; }
-    if (scene_id == "G18") { buildCowGallery(); return true; }
-    if (scene_id == "G19") { buildFandisk(); return true; }
-    if (scene_id == "G20") { buildHomer(); return true; }
-    if (scene_id == "G21") { buildIgea(); return true; }
-    if (scene_id == "G22") { buildMaxPlanck(); return true; }
-    if (scene_id == "G23") { buildOgre(); return true; }
-    if (scene_id == "G24") { buildRockerArm(); return true; }
-    if (scene_id == "G7") { buildSpotCow(); return true; }
-    if (scene_id == "G10") { buildHorse(); return true; }
-    if (scene_id == "G13") { buildGlassDragon(); return true; }
-    if (scene_id == "G12") { buildTrophyRoom(); return true; }
-    if (scene_id == "A3") { buildCheckeredSpheres(); return true; }
-    if (scene_id == "A2") { buildBouncingSpheres(); return true; }
-    if (scene_id == "A8") { buildCornellSmoke(); return true; }
-    if (scene_id == "A6") { buildColoredQuads(); return true; }
-    if (scene_id == "A4") { buildEarth(); return true; }
-    if (scene_id == "A5") { buildPerlinSpheres(); return true; }
-    if (scene_id == "A7") { buildSimpleLight(); return true; }
-    if (scene_id == "B2") { buildCornellRoughMetal(); return true; }
-    if (scene_id == "B4") { buildCornellConductor(); return true; }
-    if (scene_id == "B3") { buildCornellRoughGlass(); return true; }
-    if (scene_id == "B6") { buildCornellThinGlass(); return true; }
-    if (scene_id == "B1") { buildRoughMetalSpheres(); return true; }
-    if (scene_id == "B8") { buildCornellWaxSlab(); return true; }
-    // Category I (Education) - several entries deliberately reuse ANOTHER
-    // scene's own geometry verbatim under a different id/description,
-    // pointing at a render-OPTION (sampler/integrator/exposure/light-
-    // sampler/firefly-suppression) rather than new geometry at all (see
-    // each one's own registry comment, scene_registry_data.h) - the
-    // render-option toggle itself is a GUI/CPU-integrator concern, out of
-    // scope here (Metal only ever runs its own fixed path tracer
-    // regardless of scene_id), but the underlying SCENE is one this
-    // backend already builds, so there's no reason not to claim it too.
-    // I1/I4/I6/I7/I9 all use build_cornell_box (identical to A1); I5/I10
-    // both use build_cornell_rough_glass (identical to B3). Section 132,
-    // docs/METAL_GPU_FEASIBILITY.md.
-    if (scene_id == "I1" || scene_id == "I4" || scene_id == "I6" ||
-        scene_id == "I7" || scene_id == "I9") { buildCornellBoxA1(); return true; }
-    if (scene_id == "I5" || scene_id == "I10") { buildCornellRoughGlass(); return true; }
-    if (scene_id == "I8") { buildLightSamplerComparison(); return true; }
-    if (scene_id == "C2") { buildSpotlightCornell(); return true; }
-    if (scene_id == "C3") { buildDistantLightCornell(); return true; }
-    if (scene_id == "C4") { buildPointLightCornell(); return true; }
-    if (scene_id == "C5") { buildGoniometricLightCornell(); return true; }
-    if (scene_id == "C6") { buildProjectionLightCornell(); return true; }
-    if (scene_id == "F2") { buildTriangleMeshScene(); return true; }
-    if (scene_id == "D5") { buildDepthOfFieldCornellBox(); return true; }
-    if (scene_id == "D1") { buildDepthOfField(); return true; }
-    if (scene_id == "D6") { buildOrthoCornellBox(); return true; }
-    if (scene_id == "D2") { buildOrthoCameraScene(); return true; }
-    if (scene_id == "D7") { buildSphericalCornellBox(); return true; }
-    if (scene_id == "D3") { buildSphericalCameraScene(); return true; }
-    if (scene_id == "D4") { buildRealisticCameraScene(); return true; }
-    if (scene_id == "D8") { buildRealisticCornellBox(); return true; }
-    if (scene_id == "D13") { buildCameraMotionBlurCornellBox(); return true; }
-    if (scene_id == "F1") { buildBilinearPatchScene(); return true; }
-    if (scene_id == "F4") { buildCurveFibersScene(); return true; }
-    if (scene_id == "E1") { buildHomogeneousMediumScene(); return true; }
-    if (scene_id == "E2") { buildCloudMediumScene(); return true; }
-    if (scene_id == "E3") { buildDielectricMediumShowcase(); return true; }
-    if (scene_id == "E4") { buildRgbGridMediumScene(); return true; }
-    if (scene_id == "B9") { buildCornellCrystal(); return true; }
-    if (scene_id == "B5") { buildCornellCoatedDiffuse(); return true; }
-    if (scene_id == "B7") { buildCornellCoatedConductor(); return true; }
-    if (scene_id == "B12") { buildNormalMappedCornell(); return true; }
-    if (scene_id == "B23") { buildPrismDispersion(); return true; }
-    if (scene_id == "B24") { buildPrismDispersionRough(); return true; }
-    if (scene_id == "B10") { buildPrincipledShowcase(); return true; }
-    if (scene_id == "B11") { buildHairFibersScene(); return true; }
-    if (scene_id == "B14") { buildMeasuredBrdfScene(); return true; }
-    if (scene_id == "B13") { buildSubsurfaceSlab(); return true; }
-    if (scene_id == "A9") { buildFinalScene(); return true; }
-    if (scene_id == "C1") { buildHdriSky(); return true; }
-    if (scene_id == "C7") { buildPortalLightScene(); return true; }
-    // I3 (ExposureToneMapping): the SAME world/lights/sky as C1
-    // (scene_registry_data.h's own comment: "Same world/lights/sky as
-    // C1... GPU-compatible: see gpu/optix/scene_builder.cpp's case 134,
-    // a near-verbatim copy of case 24, C1's own GPU case") - this
-    // education scene is purely a Render-Options exercise (raise/lower
-    // --exposure, compare --tonemap modes) against C1's own bright-sky/
-    // shadowed-sphere geometry, not a different scene. Section 148.
-    if (scene_id == "I3") { buildHdriSky(); return true; }
-    // I2 (SpectralDispersionEducation): "Same glass prism as B23" verbatim
-    // (scene_registry_data.h's own comment) - the missed entry from this
-    // same Education-category batch, caught by a fresh scoping pass
-    // (section 168). No new shader/materialType code needed - B23's own
-    // materialType 22 dispersive dielectric already handles it.
-    if (scene_id == "I2") { buildPrismDispersion(); return true; }
-    fprintf(stderr, "buildHandAuthoredScene: scene '%s' has no real hand-authored builder yet - "
-                    "this should not normally be reachable (metal_render_main()'s own gate "
-                    "already checks cpu_scene_metal_hand_authored_supported() first).\n",
-            scene_id.c_str());
-    return false;
-}
-
 // The classic Cornell box (glass sphere + rotated white box) - scene A1,
 // and (once cpu_scene_metal_hand_authored_supported()'s own list grows to
 // include them - not yet, section 116) every other scene_id that reuses
@@ -1070,12 +953,9 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
                        double cam_x, double cam_y, double cam_z,
                        int force_camera_override, const RenderOptions& options) {
     const char* pbrtPath = cpu_scene_pbrt_path_by_id(scene_id);
-    const bool handAuthored = (!pbrtPath || !pbrtPath[0]) && cpu_scene_metal_hand_authored_supported(scene_id);
-    if ((!pbrtPath || !pbrtPath[0]) && !handAuthored) {
-        fprintf(stderr, "metal_render_main: scene '%s' has no pbrt file backing it and no "
-                        "hand-authored Metal builder yet (see cpu_scene_metal_hand_authored_"
-                        "supported()'s own comment, cpu_interface.h, for the current coverage "
-                        "list). Use CPU or GPU (OptiX) for this scene instead.\n", scene_id);
+    if (!pbrtPath || !pbrtPath[0]) {
+        fprintf(stderr, "metal_render_main: scene '%s' has no pbrt file backing it. Metal renders "
+                        "only pbrt-backed scenes now - use CPU or GPU (OptiX) for this scene instead.\n", scene_id);
         return 1;
     }
 
@@ -1085,20 +965,15 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
     // explicit-parameter entry point of their own - keeps this new
     // callable path exercising the EXACT SAME, already-tested parsing
     // code the CLI does, instead of two argument-handling implementations
-    // that could silently drift apart. argv[8] (handAuthoredSceneId) is
-    // only ever non-empty when argv[7] (pbrtScenePath) is empty - see
-    // that member's own comment, MetalPocApp's own struct declaration.
     char widthStr[32], heightStr[32], sppStr[32], depthStr[32];
     snprintf(widthStr, sizeof(widthStr), "%d", image_width);
     snprintf(heightStr, sizeof(heightStr), "%d", image_height);
     snprintf(sppStr, sizeof(sppStr), "%d", samples_per_pixel);
     snprintf(depthStr, sizeof(depthStr), "%d", max_depth);
     const char* tonemapStr = (options.tonemap && options.tonemap[0]) ? options.tonemap : "aces";
-    const char* args[9] = {"metal_render_main", widthStr, heightStr, output_path,
-                            sppStr, depthStr, tonemapStr,
-                            handAuthored ? "" : pbrtPath,
-                            handAuthored ? scene_id : ""};
-    const int argCount = 9;
+    const char* args[8] = {"metal_render_main", widthStr, heightStr, output_path,
+                            sppStr, depthStr, tonemapStr, pbrtPath};
+    const int argCount = 8;
 
     @autoreleasepool {
         MetalPocApp app;

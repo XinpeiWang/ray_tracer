@@ -11,15 +11,7 @@
  * drift in either is exactly the kind of mistake that only surfaces
  * later, on the other platform.
  *
- * 1. Metal's "which scenes are supported" list vs. its dispatcher.
- *    cpu_scene_metal_hand_authored_supported() (cpu_renderer/
- *    cpu_interface.cpp) is what the GUI/CLI consult to decide whether to
- *    offer a scene on Metal; MetalPocApp::buildHandAuthoredScene()
- *    (gpu/metal/metal_poc.mm) is what actually builds it. A scene in the
- *    list with no builder is offered and then fails at render time; a
- *    builder with no list entry is dead code the GUI never offers.
- *
- * 2. The CPU-side source files each build system compiles. The MSBuild
+ * 1. The CPU-side source files each build system compiles. The MSBuild
  *    projects (Windows) and root CMakeLists.txt (macOS/Linux) each list the
  *    same source files by hand. PR #1 was exactly this drift: the CMake
  *    cpu_renderer target was missing files the MSBuild one had, which only
@@ -124,33 +116,6 @@ std::set<std::string> minus(const std::set<std::string> &a, const std::set<std::
     return out;
 }
 
-// ---- 1. Metal supported-scene list vs. dispatcher -------------------------
-
-std::set<std::string> metalListedScenes() {
-    const std::string src = stripSlashComments(readFile("cpu_renderer/cpu_interface.cpp"));
-    const size_t fn = src.find("cpu_scene_metal_hand_authored_supported(const char* scene_id)");
-    if (fn == std::string::npos) return {};
-    const size_t set = src.find("kSupported", fn);
-    if (set == std::string::npos) return {};
-    const size_t open = src.find('{', set);
-    if (open == std::string::npos) return {};
-    const size_t close = matchingClose(src, open, '{', '}');
-    if (close == std::string::npos) return {};
-    return allMatches(src.substr(open, close - open), std::regex("\"([A-Z][0-9]+)\""));
-}
-
-std::set<std::string> metalDispatchedScenes() {
-    const std::string src = stripSlashComments(readFile("gpu/metal/metal_poc.mm"));
-    const size_t fn = src.find("bool MetalPocApp::buildHandAuthoredScene(");
-    if (fn == std::string::npos) return {};
-    const size_t open = src.find('{', fn);
-    if (open == std::string::npos) return {};
-    const size_t close = matchingClose(src, open, '{', '}');
-    if (close == std::string::npos) return {};
-    return allMatches(src.substr(open, close - open),
-                      std::regex("scene_id\\s*==\\s*\"([A-Z][0-9]+)\""));
-}
-
 // ---- 2. Build-system source lists -----------------------------------------
 
 bool isCompiledSource(const std::string &p) {
@@ -202,27 +167,6 @@ TEST(BackendConsistency, SourceTreeIsReachableFromTestFile) {
     ASSERT_TRUE(fs::exists(repoRoot() / "CMakeLists.txt"))
         << "expected the repo root at " << repoRoot().string();
     ASSERT_TRUE(fs::exists(repoRoot() / "gpu" / "metal" / "metal_poc.mm"));
-}
-
-TEST(BackendConsistency, MetalSupportedSceneListMatchesDispatcher) {
-    const std::set<std::string> listed = metalListedScenes();
-    const std::set<std::string> dispatched = metalDispatchedScenes();
-
-    // Parser sanity: the real lists have ~80 entries each. A near-empty result
-    // means the file's shape changed under this parser, not that they agree.
-    ASSERT_GT(listed.size(), 40u) << "could not parse cpu_scene_metal_hand_authored_supported()'s list";
-    ASSERT_GT(dispatched.size(), 40u) << "could not parse MetalPocApp::buildHandAuthoredScene()";
-
-    EXPECT_TRUE(minus(listed, dispatched).empty())
-        << "Listed as Metal-supported in cpu_renderer/cpu_interface.cpp but MetalPocApp::"
-           "buildHandAuthoredScene() (gpu/metal/metal_poc.mm) has no builder for them - the "
-           "GUI/CLI would offer these scenes on Metal and then fail at render time: "
-        << joined(minus(listed, dispatched));
-    EXPECT_TRUE(minus(dispatched, listed).empty())
-        << "Have a Metal builder in buildHandAuthoredScene() but are missing from "
-           "cpu_scene_metal_hand_authored_supported() - dead code, the GUI/CLI will never "
-           "offer them on Metal: "
-        << joined(minus(dispatched, listed));
 }
 
 TEST(BackendConsistency, CpuSideSourceFilesMatchAcrossBuildSystems) {

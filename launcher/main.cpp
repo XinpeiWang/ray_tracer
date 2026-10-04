@@ -1289,9 +1289,8 @@ int main(int argc, char** argv) {
         // GPU Renderer (Metal, macOS) - see docs/METAL_GPU_FEASIBILITY.md's
         // own "phase 3b" section for the full story. metal_render_main()
         // itself (gpu/metal/metal_poc.mm) renders a scene_id that is EITHER
-        // pbrt-file-backed (loadPbrtScene()) OR in
-        // cpu_scene_metal_hand_authored_supported()'s list (a real
-        // hand-authored builder, MetalPocApp::buildHandAuthoredScene()) -
+        // pbrt-file-backed (loadPbrtScene()) - Metal no longer has hand-authored
+        // builders of its own -
         // a scene_id with neither prints a clear message and returns
         // non-zero, same "explain why, don't crash or silently render
         // something else" precedent optix_render_main()'s own error path
