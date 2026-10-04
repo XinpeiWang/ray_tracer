@@ -17,6 +17,7 @@
 #include "quad.h"
 #include "sphere.h"
 #include "material.h"
+#include "optix_math_helpers.h"
 
 // Glass is opaque to shadow rays, like every pbrt-v4 surface that has a material (VolPathIntegrator::
 // SampleLd returns 0 for any hit with a material, integrators.cpp:1335). Walking straight through it
@@ -101,4 +102,34 @@ TEST(ShadowRayTest, MultipleDielectricsInARowAreSkipped) {
     ASSERT_TRUE(shadow_ray_hit(world, shadow_ray, rec));
     color Le = rec.mat->emitted(shadow_ray, rec, rec.u, rec.v, rec.p);
     EXPECT_GT(Le.x(), 0.0);
+}
+
+// The wavefront backend shifts a shadow ray's origin along the surface normal as well as the ray, so it
+// has to re-aim at the sampled point: keeping the direction crossed a grazing light's plane early, and
+// with emitters acting as occluders the ray was blocked by the light it targeted.
+TEST(ShadowRayTowardTest, ShiftedRayLandsOnTheTargetPoint) {
+    const float3 hit    = make_float3(0.0f, 0.0f, 0.0f);
+    const float3 normal = make_float3(0.0f, 1.0f, 0.0f);
+    const float3 dir    = normalize(make_float3(1.0f, 0.2f, 0.0f));     // grazing the surface
+    const float  dist   = 5.0f;
+    const float3 shifted = hit + 0.01f * normal + 0.01f * dir;
+
+    float3 out_dir; float out_tmax;
+    shadow_ray_toward(hit, shifted, dir, dist, out_dir, out_tmax);
+
+    const float3 end = shifted + out_dir * out_tmax;
+    const float3 target = hit + dir * dist;
+    EXPECT_NEAR(end.x, target.x, 1e-4f);
+    EXPECT_NEAR(end.y, target.y, 1e-4f);
+    EXPECT_NEAR(end.z, target.z, 1e-4f);
+    EXPECT_NEAR(length(out_dir), 1.0f, 1e-5f);
+}
+
+TEST(ShadowRayTowardTest, UnboundedRayKeepsItsDirectionAndLength) {
+    const float3 hit = make_float3(0.0f, 0.0f, 0.0f);
+    const float3 dir = make_float3(0.0f, 1.0f, 0.0f);
+    float3 out_dir; float out_tmax;
+    shadow_ray_toward(hit, make_float3(0.0f, 0.01f, 0.01f), dir, 1e30f, out_dir, out_tmax);
+    EXPECT_FLOAT_EQ(out_dir.y, 1.0f);
+    EXPECT_GE(out_tmax, 1e29f);
 }

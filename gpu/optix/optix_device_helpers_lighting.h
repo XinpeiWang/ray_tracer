@@ -899,6 +899,14 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	// need a larger, explicitly-set override.
 	const float shadow_eps = (params.camera.shadowRayEpsilon > 0.0f) ? params.camera.shadowRayEpsilon : 0.01f;
 	const float3 shadow_origin = origin + shadow_eps * normalize(direction);
+	// Measure the ray from its shifted origin - see shadow_tmax_after_shift().
+	max_distance = shadow_tmax_after_shift(origin, shadow_origin, normalize(direction), max_distance);
+	// Stop just short of a finite target. Callers pass the full distance to the sampled point, which lies
+	// ON the emitting surface; emitters are occluders now (see optix_anyhit_shadow.h), so a ray ending
+	// exactly there hit the light it was aimed at about half the time. The wavefront backend already
+	// subtracts the same 0.002 at its call sites; pbrt does the same with its ShadowEpsilon.
+	if (max_distance < 1e29f) max_distance = fmaxf(max_distance - 0.002f, 0.0f);
+	shadow_state.maxDistance = max_distance;
 
 	// --stats: null unless --stats was requested - see optix_types.h's
 	// LaunchParams::statsShadowRays own comment. This helper is recursive-

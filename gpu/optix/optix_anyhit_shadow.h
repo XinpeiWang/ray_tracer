@@ -273,14 +273,6 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	int matIdx = quad.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-	// IMPORTANT: When hitting a light source, set NOT occluded and terminate
-	// This allows the shadow ray to "see" the light
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 
 	// Transmissive materials let light through -- ignore them in shadow rays
 	if (mat.type == MaterialType::DiffuseTransmission ||
@@ -304,12 +296,6 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	int matIdx = patch.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
@@ -321,7 +307,7 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	optixTerminateRay();
 }
 
-// Shadow any-hit for disks. Same simple (DiffuseLight not-occluding,
+// Shadow any-hit for disks. Same simple (emitters occluding like any other surface,
 // dielectric-family ignored, everything else opaque) list as quad/bilinear
 // patch above - the pbrt loader never assigns a Medium/DielectricMedium
 // material to a disk (see pbrt_gpu_builder.h's disk loop), so no CloudMedium/
@@ -335,12 +321,6 @@ extern "C" __global__ void __anyhit__shadow_disk() {
 	int matIdx = disk.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
@@ -362,12 +342,6 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 	int matIdx = cyl.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 
 	// Homogeneous Medium/DielectricMedium: real Beer-Lambert attenuation of
 	// the running shadow-ray transmittance (payload 1), same fix and same
@@ -479,12 +453,6 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 		}
 	}
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 
 	// MaterialType::Subsurface belongs in this list: its entry interface IS a
 	// plain dielectric surface (see MaterialType::Subsurface's own comment,

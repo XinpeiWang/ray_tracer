@@ -721,8 +721,7 @@ extern "C" __global__ void probe_cache_shade(
 	// comment (wavefront_device_helpers.h) for why both components matter.
 	ShadowRayWorkItem sr;
 	sr.origin    = item.hitPoint + shadowEps * item.hitNormal + shadowEps * normalize(toLight);
-	sr.direction = toLight;
-	sr.tMax      = maxDist - 0.002f;
+	shadow_ray_toward(item.hitPoint, sr.origin, normalize(toLight), maxDist - 0.002f, sr.direction, sr.tMax);
 	for (int i = 0; i < kWFNWavelengths; ++i) {
 		sr.Ld[i] = Ld[i];
 		sr.wavelengths[i] = swl.lambda[i];

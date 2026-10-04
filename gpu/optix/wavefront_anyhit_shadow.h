@@ -6,7 +6,13 @@
 // see that file's own comments for why DiffuseLight and the transmissive
 // materials need special handling, not just "any hit = occluded":
 //
-//   - MaterialType::DiffuseLight is NOT an occluder - a shadow ray sampled
+//   - EMITTERS THAT ARE NOT SPHERES ARE OCCLUDERS, like every pbrt-v4 surface (the shadow ray stops
+//     short of the sampled point, so only OTHER surfaces can block it). They used to be ignored, which
+//     let a ray aimed at the far side of a multi-faced emitter (a bulb, a box light, an octahedron)
+//     pass straight through its own near side and count every face as visible: a small two-sided
+//     octahedron light in a diffuse sphere rendered 48% too bright on both GPU backends (analytic
+//     prediction and the CPU agreed). See pbrt_scenes/emissive-octahedron-furnace.pbrt.
+//   - A SPHERE light (MaterialType::DiffuseLight on a sphere) stays NOT an occluder - a shadow ray sampled
 //     toward a light is EXPECTED to end inside/on that light's own surface,
 //     so treating the hit as occlusion would make every area light shadow
 //     itself. This one previously used a single generic __anyhit__wf_shadow
@@ -275,12 +281,6 @@ extern "C" __global__ void __anyhit__wf_shadow_quad() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
@@ -301,12 +301,6 @@ extern "C" __global__ void __anyhit__wf_shadow_bilinear_patch() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
@@ -352,12 +346,6 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
@@ -367,7 +355,7 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 	optixTerminateRay();
 }
 
-// Disk/Cylinder (Phase 4c) - same simple DiffuseLight/dielectric-family/
+// Disk/Cylinder (Phase 4c) - same simple (emitters-occlude)/dielectric-family/
 // opaque list as quad/bilinear-patch above, matching the recursive backend's
 // __anyhit__shadow_disk/__anyhit__shadow_cylinder (optix_anyhit_shadow.h)
 // exactly - the pbrt loader never assigns Medium/DielectricMedium to a
@@ -384,12 +372,6 @@ extern "C" __global__ void __anyhit__wf_shadow_disk() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
@@ -412,12 +394,6 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();

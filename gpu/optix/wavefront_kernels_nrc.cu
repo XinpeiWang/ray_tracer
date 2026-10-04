@@ -131,8 +131,7 @@ __device__ __forceinline__ void wf_nrc_do_nee(
 
 	ShadowRayWorkItem sr;
 	sr.origin    = hitPoint + shadowRayEpsilon * normal + shadowRayEpsilon * normalize(toLight);
-	sr.direction = toLight;
-	sr.tMax      = maxDist - 0.002f;
+	shadow_ray_toward(hitPoint, sr.origin, normalize(toLight), maxDist - 0.002f, sr.direction, sr.tMax);
 	for (int i = 0; i < kWFNWavelengths; ++i) {
 		sr.Ld[i] = Ld[i];
 		sr.wavelengths[i] = swl.lambda[i];

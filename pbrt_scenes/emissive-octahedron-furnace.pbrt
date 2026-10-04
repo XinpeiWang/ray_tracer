@@ -1,0 +1,30 @@
+# emissive-octahedron-furnace.pbrt -- regression scene for GPU shadow rays treating emissive triangles as
+# transparent: a small two-sided octahedron light (8 emissive triangles, L = 30, half-diagonal 0.3) at the
+# centre of a closed diffuse sphere (radius 5, albedo 0.6).
+#
+# The expected answer is closed-form. The octahedron's surface area is A = 0.6235, a convex body's mean
+# projected area is A/4, so every point of the sphere receives E = L * (A/4) / R^2 = 0.187 and radiates
+# L0 = 0.6 * E / pi = 0.0357; a closed sphere then gives a uniform radiance sum(0.6^k) * L0 over the bounces.
+# The CPU reproduces that. The GPU used to let a shadow ray aimed at the far side of the octahedron pass
+# straight through its near side (emitters were skipped by the shadow any-hit), counting all eight faces as
+# visible instead of the ~half that are: both GPU backends rendered it 48% too bright.
+# See tests/unit/pbrt_example_scenes_tests.cpp (EmissiveOctahedronFurnaceAgreesAcrossBackends).
+
+LookAt 1 0.5 0.3  -3 0 -4  0 1 0
+Camera "perspective" "float fov" [ 80 ]
+Film "rgb" "integer xresolution" [ 100 ] "integer yresolution" [ 100 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0 0 0 ]
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.6 ]
+Shape "sphere" "float radius" [ 5 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 30 30 30 ] "bool twosided" true
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  Shape "trianglemesh" "integer indices" [ 0 2 4  2 1 4  1 3 4  3 0 4  2 0 5  1 2 5  3 1 5  0 3 5 ]
+    "point3 P" [ 0.3 0 0  -0.3 0 0  0 0.3 0  0 -0.3 0  0 0 0.3  0 0 -0.3 ]
+AttributeEnd

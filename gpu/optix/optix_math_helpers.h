@@ -129,3 +129,35 @@ inline __host__ __device__ float3 interpolate_shading_normal(
 	const float len2 = n.x * n.x + n.y * n.y + n.z * n.z;
 	return len2 > 1e-20f ? n * (1.0f / sqrtf(len2)) : geometric_normal;
 }
+
+// A shadow ray whose origin was nudged off the shading point (by a normal and/or direction epsilon) must
+// have its length measured from the NEW origin: callers compute tMax as the distance from the original
+// point to the light, so keeping it unchanged made every finite-light shadow ray overshoot the light by
+// the nudge (~0.01 world units). With a light flush against a ceiling, a wall or a ledge - a lamp
+// fixture, a window, a strip light - the overshoot ended inside that surface behind the light and the
+// light sample was reported blocked. A closed 5-unit room lit by a quad 0.005 below its ceiling rendered
+// at 22% (recursive) / 37% (wavefront) of the CPU's brightness; with the length corrected they agree.
+// pbrt-v4 measures the shadow ray from its offset origin the same way (SpawnRayTo, ray.h:103-107).
+// An unbounded sentinel (the sky's 1e30) is passed through untouched.
+inline __host__ __device__ float shadow_tmax_after_shift(const float3& original, const float3& shifted,
+														 const float3& unit_dir, float tmax) {
+	if (tmax >= 1e29f) return tmax;
+	const float d = (shifted.x - original.x) * unit_dir.x + (shifted.y - original.y) * unit_dir.y +
+					(shifted.z - original.z) * unit_dir.z;
+	return fmaxf(tmax - d, 0.0f);
+}
+
+// Aim a shifted shadow ray at the point `original + unit_dir * tmax` instead of keeping the old direction
+// (pbrt's SpawnRayTo does the same). When the shift has a sideways part - the wavefront backend nudges along the
+// surface normal too - a ray keeping its direction crosses a finite light's plane earlier than the nominal
+// distance at grazing angles, and with emitters acting as occluders it is blocked by the light it targets.
+// `tmax` must already stop short of the target. Unbounded rays (sky, tmax >= 1e29) keep their direction.
+inline __host__ __device__ void shadow_ray_toward(const float3& original, const float3& shifted, const float3& unit_dir,
+												 float tmax, float3& out_dir, float& out_tmax) {
+	out_dir  = unit_dir;
+	out_tmax = shadow_tmax_after_shift(original, shifted, unit_dir, tmax);
+	if (tmax >= 1e29f) return;
+	const float3 to_target = original + unit_dir * tmax - shifted;
+	const float len = sqrtf(to_target.x * to_target.x + to_target.y * to_target.y + to_target.z * to_target.z);
+	if (len > 1e-6f) { out_dir = to_target / len; out_tmax = len; }
+}
