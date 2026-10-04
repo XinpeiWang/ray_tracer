@@ -1139,7 +1139,7 @@ void MetalPocApp::loadPbrtPunctualLights(const pbrt_flatten::FlatScene& scene, c
                             PackedFloat3{up.x, up.y, up.z},
                             tanHalfFovX,
                             tanHalfFovYFinal,
-                            (float)pl.scale,
+                            (float)pl.scale * intensityScale,
                             /*usePbrtTexture=*/1u});
                         break;
                     }
