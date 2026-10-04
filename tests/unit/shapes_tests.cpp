@@ -540,16 +540,37 @@ TEST(ShapesCylinder, SampleNormalIsOutward) {
 }
 
 TEST(ShapesCylinder, SampleFromPdfConsistent) {
-	// sample_from and pdf_from should agree when the sampled point is on the
-	// near (ctx-facing) side so that pdf_from traces back to the same point.
-	// ctx is at (10,0,0); u1=0.02 -> phi?0.13 rad, clearly on the +x face.
+	// pdf_from() is the density of a DIRECTION and a ray crosses the open tube twice, so it counts both crossings
+	// (the sampler lands on the far wall as readily as on the near one - see CylinderShape::pdf_from()). For a
+	// sample on the near (ctx-facing) side that is the sample's own solid-angle pdf plus the far crossing's.
+	// ctx is at (10,0,0); u1=0.02 -> phi ~ 0.13 rad, clearly on the +x face.
 	auto c = unit_cyl();
 	SamplingContext<double> ctx{10.0, 0.0, 0.0, 0.0, 0.0, 0.0};
 	auto ss = c.sample_from(ctx, 0.4, 0.02);
 	ASSERT_GT(ss.pdf, 0.0);
 	double wi_x = ss.px - ctx.px, wi_y = ss.py - ctx.py, wi_z = ss.pz - ctx.pz;
+	const double len = std::sqrt(wi_x * wi_x + wi_y * wi_y + wi_z * wi_z);
+	const double ux = wi_x / len, uy = wi_y / len, uz = wi_z / len;
+	auto near_hit = c.intersect(ctx.px, ctx.py, ctx.pz, ux, uy, uz, 1e-4, 1e30);
+	ASSERT_TRUE(near_hit.has_value());
+	auto far_hit = c.intersect(ctx.px, ctx.py, ctx.pz, ux, uy, uz, near_hit->t + 1e-4, 1e30);
+	ASSERT_TRUE(far_hit.has_value()) << "a ray aimed through the tube must cross it a second time";
+	auto from_hit = [&](const decltype(near_hit)& h) {
+		return (1.0 / c.area()) * h->t * h->t / std::abs(h->nx * -ux + h->ny * -uy + h->nz * -uz);
+	};
+	const double near_only = from_hit(near_hit);
+	EXPECT_NEAR(ss.pdf, near_only, 0.01 * near_only);   // the sample's own pdf is still the near crossing's
 	double pdf2 = c.pdf_from(ctx, wi_x, wi_y, wi_z);
-	EXPECT_NEAR(ss.pdf, pdf2, 0.01 * (ss.pdf + pdf2) * 0.5 + 1e-10);
+	EXPECT_NEAR(pdf2, near_only + from_hit(far_hit), 0.01 * pdf2);
+}
+
+TEST(ShapesCylinder, PdfFromCountsTheSameDensityFromEitherSideOfTheTube) {
+	// The direction's density must not depend on which crossing happens to come first: the same line through the
+	// tube, travelled in opposite directions from points equally far on each side, gives the same total.
+	auto c = unit_cyl();
+	SamplingContext<double> a{10.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	SamplingContext<double> b{-10.0, 0.0, 0.0, 0.0, 0.0, 0.0};
+	EXPECT_NEAR(c.pdf_from(a, -1.0, 0.0, 0.0), c.pdf_from(b, 1.0, 0.0, 0.0), 1e-9);
 }
 
 TEST(ShapesCylinder, PdfFromZeroForMiss) {
