@@ -300,7 +300,7 @@ float regional_tolerance_for(float wholeImageTolerance) {
 // either way (METAL_PARITY_STRICT doesn't distinguish the two - both
 // count as "not a clean pass" if that's ever enabled).
 const char* const kKnownGapScenes[] = {
-	"B9", "B10", "B11", "B14", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
+	"B9", "B10", "B11", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
 	"F1", "F4", "F7", "F8", "F14",            // unsupported shape (cone/paraboloid/bilinear patch/curve) -> silently dropped
 	// C17 (Portal Light): portal-light.pbrt reads sssdragon/textures/small_rural_road_equiarea.exr,
 	// which is not tracked in this repo (only the sssdragon benchmark checkout has it). Both
@@ -314,6 +314,21 @@ const char* const kKnownGapScenes[] = {
 	// cannot show a highlight from a delta (spot/point) light; Metal uses the real GGX conductor
 	// (closer to pbrt-v4), so it shows one. Direct lighting everywhere else matches CPU block-for-block.
 	"C2",
+	// F2 (Triangle Mesh): same cause as C2 - its icosahedron is a reflectance-only conductor. Verified:
+	// with that mesh swapped to diffuse, CPU and Metal agree to ~1.0-1.2x everywhere.
+	"F2",
+	// A5 (Perlin Spheres), A7 (Simple Light): "marble" procedural reflectance texture. The Metal pbrt loader
+	// has no mapping for MaterialKind::Diffuse + hasMarbleReflectance (CPU/OptiX use pbrt-v4 MarbleTexture),
+	// so Metal renders those surfaces with a flat colour.
+	"A5", "A7",
+	// J3, J5, J6: nested/procedural reflectance textures (checkerboard-in-checkerboard, fbm/windy/wrinkled
+	// gallery). The loader maps only the simple cases and averages a nested one to a flat colour (see
+	// nestedProceduralAverageColor use in metal_poc_pbrt_loader.mm); CPU renders the real texture.
+	"J3", "J5", "J6",
+	// E6 (Cylinder Medium), E7 (RGB Grid Medium): the medium itself is not representable on Metal (homogeneous
+	// medium on a cylinder; heterogeneous rgbgrid on a sphere). The interface boundary is now transparent
+	// instead of an opaque gray shape, but the volume scattering is missing.
+	"E6", "E7",
 };
 
 bool is_known_gap_scene(const std::string& id) {
