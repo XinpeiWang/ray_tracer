@@ -26,6 +26,7 @@
  */
 
 #include <gtest/gtest.h>
+#include "../../src/external/tinyexr.h"
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -196,17 +197,41 @@ INSTANTIATE_TEST_SUITE_P(
 		return sanitized;
 	});
 
+// Mean of a linear float EXR over its RGB channels (non-finite samples ignored); false if it cannot be read.
+static bool loadLinearMean(const std::string& path, double& mean) {
+	float* rgba = nullptr;
+	int w = 0, h = 0;
+	const char* err = nullptr;
+	if (LoadEXR(&rgba, &w, &h, path.c_str(), &err) != TINYEXR_SUCCESS) {
+		if (err) FreeEXRErrorMessage(err);
+		return false;
+	}
+	double sum = 0.0;
+	for (int i = 0; i < w * h; ++i)
+		for (int c = 0; c < 3; ++c) {
+			const float v = rgba[4 * i + c];
+			if (std::isfinite(v)) sum += v;
+		}
+	free(rgba);
+	mean = (w > 0 && h > 0) ? sum / (3.0 * w * h) : 0.0;
+	return true;
+}
+
 // CPU vs GPU-recursive vs GPU-wavefront mean brightness of one bundled scene; the CPU is the reference.
+//
+// Compared as LINEAR float means (each backend writes the pre-tone-map radiance when the output path ends in .exr), not as the
+// mean of the 8-bit tone-mapped picture: the ACES curve and sRGB encoding compress a real radiance error to a fraction of its size
+// and saturate bright pixels, so a +5% error in the glass of a scene read as +1% (or nothing) there. The ratios are always printed
+// ("[agree] stem: recursive 100.2%  wavefront 99.8%") so the bounds can be set from what the backends really do: most scenes sit
+// within 0.5% of the CPU and are bounded at +-1.5%; the wider ones are measured residuals - rgbgrid-medium (the GPU ratio-tracks the
+// brightest channel only, documented), bump-mapped-plane (GPU 98.4-99.0%), normal-mapped-cornell (wavefront 100.9-101.0%) and
+// camera-medium-absorbing (wavefront ~2.5% above recursive, and the CPU lands on one of the two between runs: 1.572, 1.572, 1.613) -
+// all three not yet explained.
 static void expectBackendsAgree(const char* stem, int spp, double lo, double hi) {
 	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
 	const SceneDescriptor* s = find_example_scene(stem);
 	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
 
-	const auto mean = [](const RenderResult& r) {
-		double sum = 0.0;
-		for (float p : r.pixels) sum += p;
-		return r.pixels.empty() ? 0.0 : sum / static_cast<double>(r.pixels.size());
-	};
 	const auto setWavefront = [](const char* v) {
 #ifdef _WIN32
 		_putenv_s("RAY_TRACER_WAVEFRONT", v);
@@ -214,29 +239,31 @@ static void expectBackendsAgree(const char* stem, int spp, double lo, double hi)
 		setenv("RAY_TRACER_WAVEFRONT", v, 1);
 #endif
 	};
-	const auto renderGpu = [&](const char* wavefront, const std::string& out) {
+	const auto renderGpu = [&](const char* wavefront, const std::string& out, double& mean) {
 		setWavefront(wavefront);
 		const int rc = optix_render_main(64, 64, spp, 8, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0);
 		EXPECT_EQ(rc, 0);
-		RenderResult r = load_render(out.c_str());
+		const bool ok = loadLinearMean(out, mean);
 		std::remove(out.c_str());
-		return r;
+		return ok;
 	};
 
 	const std::string base = std::string("pbrt_agree_") + stem;
-	ASSERT_EQ(cpu_render_main(64, 64, spp, 8, (base + "_cpu.ppm").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
-	const RenderResult cpu = load_render((base + "_cpu.ppm").c_str());
-	std::remove((base + "_cpu.ppm").c_str());
-	const RenderResult recursive = renderGpu("0", base + "_rec.ppm");
-	const RenderResult wavefront = renderGpu("1", base + "_wf.ppm");
+	double c = 0.0, rec = 0.0, wf = 0.0;
+	ASSERT_EQ(cpu_render_main(64, 64, spp, 8, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	const bool cpuOk = loadLinearMean(base + "_cpu.exr", c);
+	std::remove((base + "_cpu.exr").c_str());
+	const bool recOk = renderGpu("0", base + "_rec.exr", rec);
+	const bool wfOk = renderGpu("1", base + "_wf.exr", wf);
 	setWavefront("0");
-	ASSERT_TRUE(cpu.valid && recursive.valid && wavefront.valid);
-	const double c = mean(cpu);
-	ASSERT_GT(c, 0.05) << stem << ": the CPU reference came out black";
-	EXPECT_GT(mean(recursive), lo * c) << stem << ": GPU-recursive too dark vs CPU";
-	EXPECT_LT(mean(recursive), hi * c) << stem << ": GPU-recursive too bright vs CPU";
-	EXPECT_GT(mean(wavefront), lo * c) << stem << ": GPU-wavefront too dark vs CPU";
-	EXPECT_LT(mean(wavefront), hi * c) << stem << ": GPU-wavefront too bright vs CPU";
+	ASSERT_TRUE(cpuOk && recOk && wfOk) << stem << ": a render produced no readable EXR";
+	ASSERT_GT(c, 1e-3) << stem << ": the CPU reference came out black";
+	std::printf("[agree] %s: recursive %.1f%%  wavefront %.1f%%  (CPU linear mean %.4f, bounds %.1f%%..%.1f%%)\n",
+	            stem, 100.0 * rec / c, 100.0 * wf / c, c, 100.0 * lo, 100.0 * hi);
+	EXPECT_GT(rec, lo * c) << stem << ": GPU-recursive too dark vs CPU";
+	EXPECT_LT(rec, hi * c) << stem << ": GPU-recursive too bright vs CPU";
+	EXPECT_GT(wf, lo * c) << stem << ": GPU-wavefront too dark vs CPU";
+	EXPECT_LT(wf, hi * c) << stem << ": GPU-wavefront too bright vs CPU";
 }
 
 // A finite light sitting closer to the surface behind it than the GPU's 0.01 shadow-ray nudge. The GPU
@@ -244,14 +271,14 @@ static void expectBackendsAgree(const char* stem, int spp, double lo, double hi)
 // and ending inside the ceiling 0.005 behind it, so the sample counted as blocked: recursive rendered this
 // room at 22% of the CPU's brightness and wavefront at 37%. See pbrt_scenes/flush-ceiling-light.pbrt.
 TEST(PbrtBackendAgreementTest, FlushCeilingLightAgreesAcrossBackends) {
-	expectBackendsAgree("flush-ceiling-light", 64, 0.85, 1.15);
+	expectBackendsAgree("flush-ceiling-light", 64, 0.97, 1.03);
 }
 
 // A multi-faced emitter must occlude its own far side: the GPU used to skip emissive surfaces in shadow
 // any-hits, so a ray aimed at the back of this octahedron passed through its front and every face counted
 // as visible - both GPU backends rendered it 48% too bright. The CPU matches the closed-form answer.
 TEST(PbrtBackendAgreementTest, EmissiveOctahedronFurnaceAgreesAcrossBackends) {
-	expectBackendsAgree("emissive-octahedron-furnace", 128, 0.88, 1.12);
+	expectBackendsAgree("emissive-octahedron-furnace", 128, 0.98, 1.02);
 }
 
 // A BSDF-sampled bounce that lands on a lamp has to be counted, MIS-weighted against the NEE sample taken at the
@@ -259,7 +286,7 @@ TEST(PbrtBackendAgreementTest, EmissiveOctahedronFurnaceAgreesAcrossBackends) {
 // sample, so with a big lamp close to bright walls it lost a fifth of the indirect light (83% of CPU on Fireplace
 // Room). Tight bounds: the three backends agree to about 1% here.
 TEST(PbrtBackendAgreementTest, LargeAreaLightRoomAgreesAcrossBackends) {
-	expectBackendsAgree("large-area-light-room", 64, 0.96, 1.04);
+	expectBackendsAgree("large-area-light-room", 64, 0.985, 1.015);
 }
 
 // Participating media: a point-lit fog sphere whose full multiple-scattering answer is known from an
@@ -267,46 +294,46 @@ TEST(PbrtBackendAgreementTest, LargeAreaLightRoomAgreesAcrossBackends) {
 // fog only on the rays that happened to scatter (T*(2-T) instead of T: 24% too bright here) and the
 // recursive GPU backend never sampled punctual lights at a scatter event (black).
 TEST(PbrtBackendAgreementTest, FogPointLightAgreesAcrossBackends) {
-	expectBackendsAgree("fog-point-light", 128, 0.94, 1.06);
+	expectBackendsAgree("fog-point-light", 128, 0.98, 1.02);
 }
 
 // A medium that absorbs as well as scatters: the GPU builder dropped the sigma_s/sigma_t factor, so every
 // collision scattered at full strength (the fog came out ~14% too bright in this scene, a pure absorber 2.2x).
 TEST(PbrtBackendAgreementTest, AbsorbingFogAgreesAcrossBackends) {
-	expectBackendsAgree("absorbing-fog", 128, 0.95, 1.05);
+	expectBackendsAgree("absorbing-fog", 128, 0.985, 1.015);
 }
 
 // A fuzzed metal (the GPU loader's build for a conductor given only a reflectance) has to absorb the rays its
 // fuzz sends below the surface, as the CPU's metal and the wavefront backend do. The recursive backend used to
 // reflect them instead, so the plane kept all 0.9 of its reflectance (140% of the CPU's 0.645 at roughness 1).
 TEST(PbrtBackendAgreementTest, FuzzedMetalFurnaceAgreesAcrossBackends) {
-	expectBackendsAgree("fuzzed-metal-furnace", 128, 0.96, 1.04);
+	expectBackendsAgree("fuzzed-metal-furnace", 128, 0.985, 1.015);
 }
 
 // A grayscale "texture displacement" is a bump map: the CPU perturbs the shading normal with it and the GPU
 // ignored it, so a strongly bumped plane rendered ~58% too bright there (and Sibenik 12-15% too dark).
 TEST(PbrtBackendAgreementTest, BumpMappedPlaneAgreesAcrossBackends) {
-	expectBackendsAgree("bump-mapped-plane", 128, 0.95, 1.05);
+	expectBackendsAgree("bump-mapped-plane", 128, 0.97, 1.03);
 }
 
 // The CPU caps a path's throughput at 50; the GPU backends had no cap, so a closed hair shape (whose BSDF sample
 // weight averages ~4 and compounds over its interior bounces) rendered 2.1x too bright there (B11: 2.3-2.5x).
 TEST(PbrtBackendAgreementTest, HairSphereDimSkyAgreesAcrossBackends) {
-	expectBackendsAgree("hair-sphere-dim-sky", 128, 0.95, 1.05);
+	expectBackendsAgree("hair-sphere-dim-sky", 128, 0.985, 1.015);
 }
 
 // pbrt's camera medium on all three backends: CPU and recursive GPU attenuated a ray that passed through the fog
 // twice, recursive GPU ignored the scattering albedo (and its builder dropped sigma_s/sigma_t), wavefront GPU had no
 // camera medium at all. See the scene's header for the Monte Carlo numbers they now match.
 TEST(PbrtBackendAgreementTest, CameraMediumAbsorbingAgreesAcrossBackends) {
-	expectBackendsAgree("camera-medium-absorbing", 128, 0.93, 1.07);
+	expectBackendsAgree("camera-medium-absorbing", 128, 0.97, 1.04);
 }
 
 // Disk and cylinder area lights. The CPU's cylinder pdf counted only the first of a ray's two crossings of the
 // tube while its NEE credits whatever emitter the ray hits first, so the floor beside the cylinder light rendered up
 // to 3x too bright and the whole scene ~8% above both GPU backends (which evaluate emission at the sampled point).
 TEST(PbrtBackendAgreementTest, DiskCylinderLightAgreesAcrossBackends) {
-	expectBackendsAgree("disk-cylinder-light", 128, 0.96, 1.04);
+	expectBackendsAgree("disk-cylinder-light", 128, 0.985, 1.015);
 }
 
 // A medium boundary written the way pbrt-v4 does it (Material "interface") must be a free crossing that leaves the MIS
@@ -314,34 +341,34 @@ TEST(PbrtBackendAgreementTest, DiskCylinderLightAgreesAcrossBackends) {
 // recursive backend's free crossings never advanced the ray, and both GPU backends reset the MIS state at every
 // medium pass-through, so a non-absorbing fog under a sky read 23-52% bright. See pbrt_scenes/fog-furnace.pbrt.
 TEST(PbrtBackendAgreementTest, FogFurnaceAgreesAcrossBackends) {
-	expectBackendsAgree("fog-furnace", 128, 0.97, 1.03);
+	expectBackendsAgree("fog-furnace", 128, 0.985, 1.015);
 }
 
 // The heterogeneous media. The wavefront backend never received its uniform-grid arrays, so NEE shadow rays inside
 // a "uniformgrid" medium were never attenuated (E8 rendered +10% bright, a sky-lit furnace 4x); the CPU sampled free
 // flights along an unnormalised camera ray, a medium |d| times too thin for primary rays (4-10% too bright).
 TEST(PbrtBackendAgreementTest, UniformGridMediumAgreesAcrossBackends) {
-	expectBackendsAgree("uniformgrid-medium", 128, 0.97, 1.03);
+	expectBackendsAgree("uniformgrid-medium", 128, 0.985, 1.015);
 }
 TEST(PbrtBackendAgreementTest, RgbGridMediumAgreesAcrossBackends) {
-	expectBackendsAgree("rgbgrid-medium", 128, 0.95, 1.05);  // GPU ratio-tracks the brightest channel only
+	expectBackendsAgree("rgbgrid-medium", 128, 0.97, 1.04);  // GPU ratio-tracks the brightest channel only
 }
 TEST(PbrtBackendAgreementTest, CloudMediumAgreesAcrossBackends) {
-	expectBackendsAgree("cloud-medium", 128, 0.97, 1.03);
+	expectBackendsAgree("cloud-medium", 128, 0.985, 1.015);
 }
 
 // A glass shape that bounds a medium is opaque to NEE shadow rays, as every pbrt-v4 surface with a material is. The
 // loader made it transparent (a near-invisible-shell idiom), which counted every escape from the fog twice. All three
 // backends now block at the shell and agree. See pbrt_scenes/glass-fog-furnace.pbrt.
 TEST(PbrtBackendAgreementTest, GlassFogFurnaceAgreesAcrossBackends) {
-	expectBackendsAgree("glass-fog-furnace", 128, 0.95, 1.05);
+	expectBackendsAgree("glass-fog-furnace", 128, 0.985, 1.015);
 }
 
 // Normal-mapped and bump-mapped surfaces. The wavefront backend lit a normal-mapped surface with a white BSDF colour
 // instead of its albedo (a blue sphere read grey, 164-188% of the CPU over it), and both GPU backends skipped bump
 // mapping on a triangle mesh that has no UVs, which the CPU bumps through its barycentric fallback.
 TEST(PbrtBackendAgreementTest, NormalMappedCornellAgreesAcrossBackends) {
-	expectBackendsAgree("normal-mapped-cornell", 128, 0.98, 1.02);
+	expectBackendsAgree("normal-mapped-cornell", 128, 0.985, 1.02);
 }
 
 // Rough glass under a small lamp, where NEE at the vertices that leave the glass carries the image. The shared
@@ -355,14 +382,14 @@ TEST(PbrtBackendAgreementTest, RoughGlassUnderALampAgreesAcrossBackends) {
 	// lower the noisier it is (the tonemap is concave): at 128 spp the CPU read 6% under the GPU although the linear means
 	// agree to 0.3%, so this takes more samples, and the CPU's mean on a 64x64 image still wanders by a few percent between
 	// runs at 512 spp (hence 2048 and 5% bounds; the broken behaviour was 10-20% off).
-	expectBackendsAgree("rough-glass-lamp", 2048, 0.95, 1.05);
+	expectBackendsAgree("rough-glass-lamp", 2048, 0.985, 1.015);
 }
 
 // The camera inside a rough glass sphere: every pixel is an interior vertex where a large share of BSDF samples is rejected.
 // Both GPU backends returned before the NEE step when the continuation sample was rejected, so they read 1/(1+alpha^2) of
 // the CPU (63% at this scene's roughness 0.6; 50% at 1.0). pbrt takes the direct-light sample at every vertex regardless.
 TEST(PbrtBackendAgreementTest, RoughGlassFromInsideAgreesAcrossBackends) {
-	expectBackendsAgree("rough-glass-from-inside", 128, 0.97, 1.03);
+	expectBackendsAgree("rough-glass-from-inside", 128, 0.985, 1.015);
 }
 
 // A rough copper sphere lit by an out-of-view lamp, so the whole image is glossy direct light. Both GPU backends skipped NEE
@@ -370,7 +397,7 @@ TEST(PbrtBackendAgreementTest, RoughGlassFromInsideAgreesAcrossBackends) {
 // conductor's Fresnel at the view-normal cosine instead of the half-vector (104% / 108% of a pbrt-v4 path-level reference).
 // See pbrt_scenes/rough-metal-lamp.pbrt.
 TEST(PbrtBackendAgreementTest, RoughMetalLampAgreesAcrossBackends) {
-	expectBackendsAgree("rough-metal-lamp", 512, 0.96, 1.04);
+	expectBackendsAgree("rough-metal-lamp", 512, 0.985, 1.015);
 }
 
 // Smooth glass on the wavefront backend chose reflect-vs-refract with Schlick's approximation fed the incident cosine, which
@@ -385,9 +412,9 @@ TEST(PbrtBackendAgreementTest, GlassSphereLampAgreesAcrossBackends) {
 // at the coat: CPU 33% of the closed form and the GPU 24% of the CPU for the first, 72-84% of the CPU for rough ones. See
 // pbrt_scenes/coated-conductor-lamp.pbrt and coated-conductor-glossy-lamp.pbrt.
 TEST(PbrtBackendAgreementTest, CoatedConductorLampAgreesAcrossBackends) {
-	expectBackendsAgree("coated-conductor-lamp", 256, 0.96, 1.04);
+	expectBackendsAgree("coated-conductor-lamp", 256, 0.985, 1.015);
 }
 
 TEST(PbrtBackendAgreementTest, CoatedConductorGlossyLampAgreesAcrossBackends) {
-	expectBackendsAgree("coated-conductor-glossy-lamp", 512, 0.95, 1.05);
+	expectBackendsAgree("coated-conductor-glossy-lamp", 512, 0.985, 1.015);
 }
