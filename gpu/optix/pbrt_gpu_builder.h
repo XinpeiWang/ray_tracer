@@ -49,6 +49,7 @@
 // reachable here via scene_builder.cpp's own later #include of this same
 // header - this file is textually inserted before that point).
 #include "../../src/shared/fresnel.h"
+#include "../../src/shared/volume_scattering.h"   // HomogeneousMediumData::is_chromatic() - per-channel media, see makeMedium below
 // pbrt_scene::Matrix4::inverseAffine() - used below (disks/cylinders loop) to
 // precompute each primitive's w2o from its flattened o2w, host-side, once,
 // the same "invert once at scene-build time, never on device" split
@@ -667,6 +668,18 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			d.sigma_t = sigmaTVal;
 		}
 		d.medium_emission = mediumEmission;
+		// A medium thicker in one colour channel than another: hand the device the real per-channel coefficients so it samples the
+		// free flight the way CPU's sample_homogeneous_event does (the scalar sigma_t/tint above stay as the grey-medium model).
+		{
+			const HomogeneousMediumData<float> perChannel(
+				static_cast<float>(md.sigma_a[0]), static_cast<float>(md.sigma_a[1]), static_cast<float>(md.sigma_a[2]),
+				static_cast<float>(md.sigma_s[0]), static_cast<float>(md.sigma_s[1]), static_cast<float>(md.sigma_s[2]), 0.0f);
+			if (md.type == "homogeneous" && perChannel.is_chromatic()) {
+				d.chromaSigmaA = f3(md.sigma_a);
+				d.chromaSigmaS = f3(md.sigma_s);
+				d.chromaLe     = f3(md.Le);
+			}
+		}
 		const int idx = static_cast<int>(out.materials.size());
 		out.materials.push_back(d);
 		mediumCache.emplace(cacheKey, idx);

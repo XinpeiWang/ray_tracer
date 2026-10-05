@@ -817,9 +817,24 @@ __device__ __forceinline__ bool sample_nee_light(
 // pointer). Memory writes through the pointer survive the ignore. Only the
 // interior phase-scatter shadow rays were unaffected (they terminate on the
 // fully-attenuated case instead).
+// True for a Medium/DielectricMedium whose extinction differs between colour channels (pbrt_gpu_builder.h only fills the chroma*
+// fields then) - such a medium is sampled and shadowed per channel instead of with the scalar sigma_t.
+__device__ __forceinline__ bool medium_is_chromatic(const MaterialData& m) {
+	return (m.chromaSigmaA.x + m.chromaSigmaA.y + m.chromaSigmaA.z + m.chromaSigmaS.x + m.chromaSigmaS.y + m.chromaSigmaS.z) > 0.0f;
+}
+
+// One free-flight event over a chord of length `d` (see sample_homogeneous_event in src/shared/volume_scattering.h): which channel
+// samples the distance is picked with `u_channel`, the distance with `u_dist`.
+__device__ __forceinline__ HomogeneousEvent<float> chroma_medium_event(const MaterialData& m, float d, float u_channel, float u_dist) {
+	const HomogeneousMediumData<float> hm(m.chromaSigmaA.x, m.chromaSigmaA.y, m.chromaSigmaA.z,
+	                                      m.chromaSigmaS.x, m.chromaSigmaS.y, m.chromaSigmaS.z, 0.0f);
+	return sample_homogeneous_event<float>(hm, d, u_channel, u_dist);
+}
+
 struct ShadowRayState {
 	unsigned int occluded;      // 1 = blocked (default), 0 = reached the light
 	float        transmittance; // running Beer-Lambert product through media
+	float3       rgb;           // running per-channel transmittance through CHROMATIC media (medium_is_chromatic); (1,1,1) otherwise
 	float        maxDistance;   // the shadow ray's ORIGINAL tmax - see __anyhit__shadow_sphere
 	unsigned int seed;          // RNG state for the heterogeneous-medium ratio tracking in the any-hit
 };
@@ -856,13 +871,15 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	const float3& origin,
 	const float3& direction,
 	float max_distance,
-	float* out_transmittance = nullptr
+	float* out_transmittance = nullptr,
+	float3* out_rgb = nullptr
 ) {
 	// Pack shadow payload (bool: occluded, plus a running medium
 	// transmittance - see this function's own header comment above).
 	ShadowRayState shadow_state;
 	shadow_state.occluded = 1;           // Default to occluded (set to 0 by the miss program)
 	shadow_state.transmittance = 1.0f;
+	shadow_state.rgb = make_float3(1.0f, 1.0f, 1.0f);
 	shadow_state.maxDistance = max_distance;
 	// Stateless per-ray seed (the shadow any-hit has no access to the caller's
 	// RNG): hash of the ray's own origin/direction bits, which differ for every
@@ -936,6 +953,9 @@ __device__ __forceinline__ bool trace_shadow_ray(
 	if (out_transmittance) {
 		*out_transmittance = (shadow_state.occluded == 0) ? shadow_state.transmittance : 0.0f;
 	}
+	if (out_rgb) {
+		*out_rgb = (shadow_state.occluded == 0) ? shadow_state.rgb : make_float3(0.0f, 0.0f, 0.0f);
+	}
 
 	// Return true if NOT occluded (path is clear)
 	return (shadow_state.occluded == 0);
@@ -961,6 +981,21 @@ __device__ __forceinline__ bool trace_shadow_ray_stochastic(
 ) {
 	float transmittance = 1.0f;
 	if (!trace_shadow_ray(origin, direction, max_distance, &transmittance)) return false;
+	return transmittance >= 1.0f || random_float(seed) < transmittance;
+}
+
+// Same visibility draw, plus the per-channel transmittance through any CHROMATIC medium on the way (1,1,1 when there is none): the
+// caller multiplies its contribution by `rgb` (every surface NEE site already multiplies camera_medium_shadow_trans() the same way).
+__device__ __forceinline__ bool trace_shadow_ray_stochastic(
+	const float3& origin,
+	const float3& direction,
+	float max_distance,
+	unsigned int& seed,
+	float3& rgb
+) {
+	float transmittance = 1.0f;
+	rgb = make_float3(1.0f, 1.0f, 1.0f);
+	if (!trace_shadow_ray(origin, direction, max_distance, &transmittance, &rgb)) return false;
 	return transmittance >= 1.0f || random_float(seed) < transmittance;
 }
 
@@ -1106,11 +1141,12 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 				// always has to cross back out through its own medium's
 				// boundary to reach an external light.
 				float shadow_tr = 0.0f;
-				if (trace_shadow_ray(medium_point, to_light, max_dist, &shadow_tr)) {
+				float3 shadow_rgb = make_float3(1.0f, 1.0f, 1.0f);
+				if (trace_shadow_ray(medium_point, to_light, max_dist, &shadow_tr, &shadow_rgb)) {
 					float mis_weight = mis_power_heuristic(light_pdf, phase_val);
 					medium_emission = medium_emission +
 						(mis_weight * phase_val / light_pdf) * attenuation * sampled_light_emission
-						* shadow_tr * camera_medium_shadow_trans(max_dist);
+						* shadow_tr * shadow_rgb * camera_medium_shadow_trans(max_dist);
 				}
 			}
 		}
@@ -1123,10 +1159,11 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 		float3 wi_p, Li_p; float t_max_p;
 		if (!eval_punctual_light(params.punctualLights[pi], medium_point, wi_p, Li_p, t_max_p)) continue;
 		float shadow_tr = 0.0f;
-		if (trace_shadow_ray(medium_point, wi_p, t_max_p, &shadow_tr)) {
+		float3 shadow_rgb = make_float3(1.0f, 1.0f, 1.0f);
+		if (trace_shadow_ray(medium_point, wi_p, t_max_p, &shadow_tr, &shadow_rgb)) {
 			medium_emission = medium_emission +
 				hg_phase_value(dot(wo, wi_p), g) * attenuation * Li_p
-				* shadow_tr * camera_medium_shadow_trans(t_max_p);
+				* shadow_tr * shadow_rgb * camera_medium_shadow_trans(t_max_p);
 		}
 	}
 	{
@@ -1140,11 +1177,12 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 				// matters here (this same shadow ray still has to cross back
 				// out through its own medium's boundary).
 				float shadow_tr = 0.0f;
-				if (trace_shadow_ray(medium_point, sky_dir, 1e30f, &shadow_tr)) {
+				float3 shadow_rgb = make_float3(1.0f, 1.0f, 1.0f);
+				if (trace_shadow_ray(medium_point, sky_dir, 1e30f, &shadow_tr, &shadow_rgb)) {
 					float mis_weight = mis_power_heuristic(pdf_sky, phase_val_sky);
 					medium_emission = medium_emission +
 						(mis_weight * phase_val_sky / pdf_sky) * attenuation * sky_Le_val
-						* shadow_tr * camera_medium_shadow_trans(1e30f);
+						* shadow_tr * shadow_rgb * camera_medium_shadow_trans(1e30f);
 				}
 			}
 		}

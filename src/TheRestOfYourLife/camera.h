@@ -1979,9 +1979,13 @@ class camera {
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0) {
                                 color atten = rec.mat->scattering_attenuation(current_ray, rec, shadow_ray, srec.attenuation);
-                                color med_trans = camera_medium_trans(
-                                    light_rec.t * shadow_ray.direction().length())
-                                    * shape_media_trans(shadow_ray, light_rec.t);
+                                // shadow_ray_hit() restarts its ray at every transmissive surface it walks through (an interface
+                                // shell, glass), so light_rec.t is measured from the LAST of those, not from shadow_ray's origin.
+                                // The distance to the light's hit point is the real extent of the segment the media see.
+                                const double dir_len = shadow_ray.direction().length();
+                                const double t_light = (light_rec.p - shadow_ray.origin()).length() / dir_len;
+                                color med_trans = camera_medium_trans(t_light * dir_len)
+                                    * shape_media_trans(shadow_ray, t_light);
                                 L += beta * w_l * atten * trans * med_trans * f_pdf * Le_d / pdf_l;
                             }
                         }
