@@ -156,6 +156,23 @@ loader and no longer match the code:
 
 ## Other known gaps (not backend-asymmetric, but worth knowing)
 
+- **Rough dielectric under a small light: both GPU backends read 5-9% below the CPU** (recursive and wavefront agree to 0.1%;
+  `rough-dielectric-medium.pbrt` E12 is 94% / 91% of CPU, and a bare rough-glass sphere under a sphere lamp is 99.7% at
+  `roughness` 0.05, 94.8% at 0.25, 90.5% at 0.6; a quad lamp 87%). Open, cause not found. What is established: the CPU is
+  self-consistent (its NEE+MIS estimate equals its BSDF-sampling-only estimate, `--simplepath-no-lights`, to 0.2%); the
+  loss appears from the second bounce on (depth 1 agrees to 0.1%), i.e. on paths that reach the lamp through the glass; a
+  uniform sky does not show it (99.3-99.5%); it needs neither fog (the same sphere without a `MediumInterface` shows it) nor
+  a sphere light. The shared `RoughDielectricBxDF::f()`/`pdf()` transmission lobe both carry an extra eta^2 relative to the
+  true Walter BTDF (their ratio, which is all the CPU's sample weight uses, is right; `bsdf_chi2_tests.cpp` checks only that
+  ratio), so the integral of `f*|cos|` over the sphere is not the albedo and cannot serve as a reference for the GPU's inline
+  sampler. A pure-Python or C++ reference of the full path (or a pbrt-v4 build) is what is missing to decide which side is
+  biased.
+
+- A chromatic homogeneous fog (E11/E12's `sigma_s`) reads ~2-3% darker on the wavefront backend than on recursive and CPU.
+  A grey fog does not, so this is the hero-wavelength spectral uplift of the scattering tint (`sigma_s / luminance`, above 1
+  in some channels) not round-tripping exactly to RGB; it is the same spectral-vs-RGB effect documented for the other
+  chromatic materials, not a separate defect.
+
 - `Shape "plymesh"` also reads Wavefront `.obj` (`src/shared/ply_mesh.h`), and a
   filename written `file.obj#name` loads only the faces under `usemtl name`
   (`file.obj#` is the faces before the first `usemtl`). The environment scenes
