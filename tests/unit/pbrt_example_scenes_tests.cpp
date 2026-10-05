@@ -373,6 +373,13 @@ TEST(PbrtBackendAgreementTest, RoughMetalLampAgreesAcrossBackends) {
 	expectBackendsAgree("rough-metal-lamp", 512, 0.96, 1.04);
 }
 
+// Smooth glass on the wavefront backend chose reflect-vs-refract with Schlick's approximation fed the incident cosine, which
+// under-reflects for a ray leaving the glass: the light through two refractions was ~2.2x too bright and the glass read 105.3% of
+// a pbrt path-level reference (CPU and recursive, which use the exact Fresnel, 100.4% / 100.9%). See pbrt_scenes/glass-sphere-lamp.pbrt.
+TEST(PbrtBackendAgreementTest, GlassSphereLampAgreesAcrossBackends) {
+	expectBackendsAgree("glass-sphere-lamp", 512, 0.985, 1.015);
+}
+
 // A smooth coat over smooth copper (pbrt's coatedconductor default) is a mirror whose reflectance has a closed form, and a smooth
 // coat over a rough conductor is the layered BSDF's mixed case. The coated materials were a simplified model that never refracted
 // at the coat: CPU 33% of the closed form and the GPU 24% of the CPU for the first, 72-84% of the CPU for rough ones. See
