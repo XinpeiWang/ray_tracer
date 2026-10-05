@@ -350,7 +350,17 @@ TEST(PbrtBackendAgreementTest, NormalMappedCornellAgreesAcrossBackends) {
 // GPU +15%); its GPU samplers also kept refracted samples that land on the wrong side of the surface, which pbrt
 // rejects. See pbrt_scenes/rough-glass-lamp.pbrt and scripts/pbrt_rough_glass_reference.py.
 TEST(PbrtBackendAgreementTest, RoughGlassUnderALampAgreesAcrossBackends) {
-	// The harness compares tonemapped means of a scene whose lamp clips, so it is coarser than the linear ratios in the docs
-	// (GPU ~99% of CPU linearly, 96% here); the broken behaviour read ~90% or less.
-	expectBackendsAgree("rough-glass-lamp", 128, 0.95, 1.05);
+	// This scene's mean is dominated by the directly visible lamp, so it is a coarse check (see rough-glass-from-inside for
+	// one whose every pixel is a glass vertex). The harness compares TONEMAPPED means, and a clipped, noisy image reads
+	// lower the noisier it is (the tonemap is concave): at 128 spp the CPU read 6% under the GPU although the linear means
+	// agree to 0.3%, so this takes more samples, and the CPU's mean on a 64x64 image still wanders by a few percent between
+	// runs at 512 spp (hence 2048 and 5% bounds; the broken behaviour was 10-20% off).
+	expectBackendsAgree("rough-glass-lamp", 2048, 0.95, 1.05);
+}
+
+// The camera inside a rough glass sphere: every pixel is an interior vertex where a large share of BSDF samples is rejected.
+// Both GPU backends returned before the NEE step when the continuation sample was rejected, so they read 1/(1+alpha^2) of
+// the CPU (63% at this scene's roughness 0.6; 50% at 1.0). pbrt takes the direct-light sample at every vertex regardless.
+TEST(PbrtBackendAgreementTest, RoughGlassFromInsideAgreesAcrossBackends) {
+	expectBackendsAgree("rough-glass-from-inside", 128, 0.97, 1.03);
 }

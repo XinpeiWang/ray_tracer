@@ -1436,13 +1436,16 @@ extern "C" __global__ void evaluate_materials(
 			const float rd_dot = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
 			const float Fr = FrDielectric(rd_dot, 1.0f / rd_ri);
 
+			// A rejected continuation sample must not skip this vertex's NEE (see the RoughDielectric case in
+			// wavefront_kernels_materials_dielectric.cu): it carries zero weight and the path ends after the NEE.
+			bool rd_rej = false;
 			float wo_x, wo_y, wo_z;
 			if (wf_rand(seed) < Fr) {
 				wo_x = 2.0f*rd_dot*wm_x - wi_x;
 				wo_y = 2.0f*rd_dot*wm_y - wi_y;
 				wo_z = 2.0f*rd_dot*wm_z - wi_z;
-				if (wo_z <= 0.0f) return false;
-				scattered_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
+				if (wo_z <= 0.0f) rd_rej = true;
+				else scattered_dir = normalize(wo_x*tan_v + wo_y*bitan + wo_z*n);
 			} else {
 				float3 wm_world = wm_x*tan_v + wm_y*bitan + wm_z*n;
 				const float eta_ratio = rd_front_face ? (1.0f / mat.ior) : mat.ior;
@@ -1450,11 +1453,17 @@ extern "C" __global__ void evaluate_materials(
 				wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
 				// pbrt-v4 rejects a refracted sample that ends up on the same side as wo (DielectricBxDF::Sample_f: SameHemisphere(wo, wi)), which a strongly tilted
 				// microfacet produces at grazing incidence. Keeping it added ~7% to the albedo leaving glass at 75 degrees.
-				if (wo_z >= 0.0f) return false;
-				scattered_dir = refracted;
-				eventEta = eta_ratio;
+				if (wo_z >= 0.0f) rd_rej = true;
+				else {
+					scattered_dir = refracted;
+					eventEta = eta_ratio;
+				}
 			}
-			{
+			if (rd_rej && rd_dist.EffectivelySmooth()) return false;   // a smooth lobe has no NEE to keep
+			if (rd_rej) {
+				attenuation   = SS(0.f);
+				scattered_dir = normal;
+			} else {
 				const float wo_z_abs = fabsf(wo_z);
 				const float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z_abs);
 				const float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
@@ -1466,7 +1475,7 @@ extern "C" __global__ void evaluate_materials(
 				matEta = rd_ri;
 				effectiveMatType = MaterialType::RoughDielectric;
 				RoughDielectricBxDF<float> rd_bxdf{ mat.ior, rd_alpha_x, rd_alpha_y };
-				brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
+				brdf_pdf_override = rd_rej ? -1.0f : rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_x, wo_y, wo_z);
 				phaseWo = wi_w;
 			} else {
 				is_specular = true;

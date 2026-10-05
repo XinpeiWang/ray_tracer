@@ -3144,6 +3144,13 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// The CPU's per-path throughput ceiling (kMaxPathThroughput, optix_math_helpers.h) - see its comment.
 	for (int i = 0; i < kWFNWavelengths; ++i)
 		if (new_throughput[i] > kMaxPathThroughput) new_throughput[i] = kMaxPathThroughput;
+	// A BSDF sample that was rejected after NEE still ran (rough glass: a reflection below the horizon, a refraction on the
+	// wrong side) carries zero weight - there is nothing to continue. Specular vertices skip NEE, so they flush the radiance
+	// carried so far here, as the Russian roulette termination below does.
+	if (!(new_throughput.MaxComponentValue() > 0.0f)) {
+		if (is_specular) addToFramebuffer(pixelIndex, radiance * filterWeight);
+		return;
+	}
 
 	// Russian roulette (pbrt-v4 PathIntegrator formula - matches CPU's
 	// camera.h and the recursive backend's optix_raygen.h exactly):
