@@ -1374,7 +1374,14 @@ inline intersection_result<instancing, triangle_data> traceShadowAny(
     intersection_function_table<instancing, triangle_data> functionTable) {
     intersector<instancing, triangle_data> anyIsect = isect;
     anyIsect.accept_any_intersection(true);
-    return anyIsect.intersect(shadowRay, accelStructure, functionTable);
+    // Explicit payload: the 3-argument intersect() overload hands the intersection
+    // function an implicitly default-constructed payload whose fields are NOT
+    // reliably initialised (the struct's default member initialisers are not
+    // applied), so a sphere shadow test could run with garbage in
+    // shutterT/isShadowRay/shadowIgnorePrimId and over-block (C4: a sphere's
+    // shadow extended well past its true extent).
+    SpherePayload payload{0.0, true, -1};
+    return anyIsect.intersect(shadowRay, accelStructure, functionTable, payload);
 }
 
 inline intersection_result<instancing, triangle_data> traceShadowAnyP(
