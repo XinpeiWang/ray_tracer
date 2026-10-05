@@ -223,10 +223,11 @@ static bool loadLinearMean(const std::string& path, double& mean) {
 // mean of the 8-bit tone-mapped picture: the ACES curve and sRGB encoding compress a real radiance error to a fraction of its size
 // and saturate bright pixels, so a +5% error in the glass of a scene read as +1% (or nothing) there. The ratios are always printed
 // ("[agree] stem: recursive 100.2%  wavefront 99.8%") so the bounds can be set from what the backends really do: most scenes sit
-// within 0.5% of the CPU and are bounded at +-1.5%; the wider ones are measured residuals - rgbgrid-medium (the GPU ratio-tracks the
-// brightest channel only, documented), bump-mapped-plane (GPU 98.4-99.0%), normal-mapped-cornell (wavefront 100.9-101.0%) and
-// camera-medium-absorbing (wavefront ~2.5% above recursive, and the CPU lands on one of the two between runs: 1.572, 1.572, 1.613) -
-// all three not yet explained.
+// within 0.5% of the CPU and are bounded at +-1.5%; the wider ones are measured: rgbgrid-medium (the GPU ratio-tracks the brightest
+// channel only, documented) and camera-medium-absorbing (wavefront ~2.5% above recursive, and the CPU lands on one of the two between
+// runs: 1.572, 1.572, 1.613 - a heavy-tailed point light in fog, noise rather than bias). bump-mapped-plane and normal-mapped-cornell were
+// 98.4-99.0% and 100.9% until the CPU stopped requantizing the decoded height image to bytes and both backends began reading normal
+// maps linear, as pbrt does.
 static void expectBackendsAgree(const char* stem, int spp, double lo, double hi) {
 	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
 	const SceneDescriptor* s = find_example_scene(stem);
@@ -313,7 +314,7 @@ TEST(PbrtBackendAgreementTest, FuzzedMetalFurnaceAgreesAcrossBackends) {
 // A grayscale "texture displacement" is a bump map: the CPU perturbs the shading normal with it and the GPU
 // ignored it, so a strongly bumped plane rendered ~58% too bright there (and Sibenik 12-15% too dark).
 TEST(PbrtBackendAgreementTest, BumpMappedPlaneAgreesAcrossBackends) {
-	expectBackendsAgree("bump-mapped-plane", 128, 0.97, 1.03);
+	expectBackendsAgree("bump-mapped-plane", 128, 0.985, 1.015);
 }
 
 // The CPU caps a path's throughput at 50; the GPU backends had no cap, so a closed hair shape (whose BSDF sample
@@ -368,7 +369,7 @@ TEST(PbrtBackendAgreementTest, GlassFogFurnaceAgreesAcrossBackends) {
 // instead of its albedo (a blue sphere read grey, 164-188% of the CPU over it), and both GPU backends skipped bump
 // mapping on a triangle mesh that has no UVs, which the CPU bumps through its barycentric fallback.
 TEST(PbrtBackendAgreementTest, NormalMappedCornellAgreesAcrossBackends) {
-	expectBackendsAgree("normal-mapped-cornell", 128, 0.985, 1.02);
+	expectBackendsAgree("normal-mapped-cornell", 128, 0.985, 1.015);
 }
 
 // Rough glass under a small lamp, where NEE at the vertices that leave the glass carries the image. The shared

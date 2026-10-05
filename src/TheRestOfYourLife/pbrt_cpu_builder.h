@@ -1129,17 +1129,32 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				DispEntry entry;
 				if (disp_probe.height() > 0) {
 					entry.grayscale = is_grayscale_image(disp_probe);
-					// Bilinear + Repeat, like pbrt-v4's displacement/normal-map lookups: the nearest,
-					// clamped image_texture gave blocky bump gradients and ignored tiled UVs.
-					const int dw = disp_probe.width(), dh = disp_probe.height();
-					std::vector<unsigned char> bytes(static_cast<std::size_t>(dw) * dh * 3);
-					for (int y = 0; y < dh; ++y)
-						for (int x = 0; x < dw; ++x) {
-							const unsigned char *px = disp_probe.pixel_data(x, y);
-							unsigned char *o = &bytes[(static_cast<std::size_t>(y) * dw + x) * 3];
-							o[0] = px[0]; o[1] = px[1]; o[2] = px[2];
-						}
-					entry.tex = std::make_shared<bilinear_wrap_texture>(dw, dh, std::move(bytes), MipWrapMode::Repeat);
+					// Bilinear + Repeat, like pbrt-v4's displacement/normal-map lookups: the nearest, clamped image_texture gave blocky
+					// bump gradients and ignored tiled UVs. Texels are interpolated as FLOATS: a byte copy of the decoded values
+					// (what this used to build) crushes the darks of an sRGB height map and turns a smooth ramp into stairs, so a bump
+					// map's finite-difference slope came out wrong (bump-mapped-plane read 1-5% off the GPU, which decodes per texel).
+					const auto texelsOf = [](const rtw_image &img) {
+						std::vector<float> f(static_cast<std::size_t>(img.width()) * img.height() * 3);
+						for (int y = 0; y < img.height(); ++y)
+							for (int x = 0; x < img.width(); ++x) {
+								const float *px = img.float_pixel_data(x, y);
+								float *o = &f[(static_cast<std::size_t>(y) * img.width() + x) * 3];
+								o[0] = px[0]; o[1] = px[1]; o[2] = px[2];
+							}
+						return f;
+					};
+					if (entry.grayscale) {
+						// A scalar height map is a float imagemap: pbrt decodes a PNG as sRGB unless told otherwise (the default here).
+						entry.tex = std::make_shared<bilinear_wrap_texture>(disp_probe.width(), disp_probe.height(),
+							texelsOf(disp_probe), MipWrapMode::Repeat);
+					} else {
+						// A tangent-space normal map is read LINEAR (pbrt scene.cpp: Image::Read(filename, ..., ColorEncoding::Linear)); the
+						// default image load above is sRGB-decoded, which tilts every texel (a flat 128,128,255 map would read as (-.57,-.57,1)).
+						const rtw_image linear_probe(m.displacementTextureFilename.c_str(), 1.0f);
+						if (linear_probe.height() > 0)
+							entry.tex = std::make_shared<bilinear_wrap_texture>(linear_probe.width(), linear_probe.height(),
+								texelsOf(linear_probe), MipWrapMode::Repeat);
+					}
 				}
 				disp = dispCache.emplace(m.displacementTextureFilename, std::move(entry)).first;
 			}

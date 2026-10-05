@@ -230,8 +230,17 @@ class bilinear_wrap_texture : public texture {
                           MipWrapMode wrap = MipWrapMode::Repeat)
         : w_(w), h_(h), rgb_(std::move(rgb)), wrap_(wrap) {}
 
+    // Float texels (already decoded to linear, row 0 at the top), interpolated as given. The 8-bit form above stores the
+    // DECODED value requantized to a byte, which for an sRGB-decoded height map crushes the darks (the first ~12 byte values
+    // all decode to 0..1/255 linear) and turns a smooth ramp into stairs - the finite-difference slope a bump map takes from it
+    // is then wrong. pbrt decodes each texel to float and interpolates those.
+    bilinear_wrap_texture(int w, int h, std::vector<float> rgb,
+                          MipWrapMode wrap = MipWrapMode::Repeat)
+        : w_(w), h_(h), rgbf_(std::move(rgb)), wrap_(wrap) {}
+
     color value(double u, double v, const point3& /*p*/) const override {
-        if (w_ <= 0 || h_ <= 0 || rgb_.size() < static_cast<std::size_t>(w_) * h_ * 3) return color(0,1,1);
+        const std::size_t need = static_cast<std::size_t>(w_) * h_ * 3;
+        if (w_ <= 0 || h_ <= 0 || (rgbf_.empty() ? rgb_.size() : rgbf_.size()) < need) return color(0,1,1);
         const double s = u * w_ - 0.5;
         const double t = (1.0 - v) * h_ - 0.5;       // image row 0 is the top
         const double fx = std::floor(s), fy = std::floor(t);
@@ -254,13 +263,16 @@ class bilinear_wrap_texture : public texture {
         bool black = false;
         const long xi = wrapOne(x, w_, black), yi = wrapOne(y, h_, black);
         if (black) return color(0, 0, 0);
-        const unsigned char* p = &rgb_[(static_cast<std::size_t>(yi) * w_ + xi) * 3];
+        const std::size_t i = (static_cast<std::size_t>(yi) * w_ + xi) * 3;
+        if (!rgbf_.empty()) return color(rgbf_[i], rgbf_[i + 1], rgbf_[i + 2]);
+        const unsigned char* p = &rgb_[i];
         const double k = 1.0 / 255.0;
         return color(p[0] * k, p[1] * k, p[2] * k);
     }
 
     int w_, h_;
     std::vector<unsigned char> rgb_;
+    std::vector<float> rgbf_;
     MipWrapMode wrap_;
 };
 
