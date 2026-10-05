@@ -33,7 +33,7 @@ whose Metal device cannot do hardware ray tracing, so the gate really protects a
 Shapes: triangle meshes, spheres, disks, cylinders; **bilinear patches, cones, paraboloids and curves are
 tessellated into triangles at load time**. Materials: diffuse, conductor, dielectric (smooth and rough),
 thin dielectric, diffuse transmission, **coated diffuse / coated conductor (pbrt-v4 LayeredBxDF)**, hair,
-normalized-fresnel, principled, mix. Textures: image, 2D/3D/nested checkerboard, marble, fbm, windy,
+normalized-fresnel, principled, mix. Textures: image (a second image slot serves diffuse-transmission transmittance), 2D/3D/nested checkerboard, marble, fbm, windy,
 wrinkled, dots, bilerp. Lights: point, spot, distant, goniometric, projection, infinite (constant and image),
 quad / sphere / disk / cylinder / triangle area lights (all NEE-sampled). Media: camera medium (infinite),
 homogeneous media bounded by interface-material spheres, and **glass spheres that bound a scattering medium**.
@@ -63,7 +63,6 @@ materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D check
 | A9, B13, E11, E12 | glass + scattering medium, remaining differences | the medium is simulated now (E3 matches CPU to 2%); E12's *rough* glass blocks shadow rays while CPU lights through it; A9 also has a radius-5000 "world haze" sphere. |
 | E6, E7 | cylinder medium / RGB-grid medium | the medium is not representable; the boundary is transparent. |
 | C11 | image-textured disk/cylinder lights | only the image's average colour is used; the per-pixel pattern (and so the red channel, ~1/3 low) is not reproduced. |
-| J2 | two different image textures on one material | Metal has a single diffuse-image slot (reflectance and transmittance both bound to images). |
 | B11 | hair "black fur" | float32 hair BSDF instability for high absorption + narrow lobes; red channel ~1.4x CPU. |
 | C17 | missing asset | `sssdragon/textures/small_rural_road_equiarea.exr` is not in the repo; both backends fall back differently. |
 

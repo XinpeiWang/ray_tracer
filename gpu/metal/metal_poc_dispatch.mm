@@ -443,6 +443,30 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             withBytes:rgba.data() bytesPerRow:(NSUInteger)pw * 4 * sizeof(float)];
     }
 
+    // Second image slot (see MetalPocApp::havePbrtTransmitImage): a DiffuseTransmission material's transmittance image.
+    id<MTLTexture> pbrtTransmitTexture = nil;
+    {
+        const uint32_t tw = havePbrtTransmitImage ? (uint32_t)pbrtTransmitImageWidth : 1u;
+        const uint32_t th = havePbrtTransmitImage ? (uint32_t)pbrtTransmitImageHeight : 1u;
+        MTLTextureDescriptor* tdesc = [MTLTextureDescriptor
+            texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+            width:tw height:th mipmapped:NO];
+        tdesc.usage = MTLTextureUsageShaderRead;
+        tdesc.storageMode = MTLStorageModeShared;
+        pbrtTransmitTexture = [device newTextureWithDescriptor:tdesc];
+        std::vector<float> trgba((size_t)tw * th * 4, 0.0f);
+        if (havePbrtTransmitImage) {
+            for (size_t i = 0; i < (size_t)tw * th; ++i) {
+                trgba[i * 4 + 0] = pbrtTransmitImagePixels[i * 3 + 0];
+                trgba[i * 4 + 1] = pbrtTransmitImagePixels[i * 3 + 1];
+                trgba[i * 4 + 2] = pbrtTransmitImagePixels[i * 3 + 2];
+                trgba[i * 4 + 3] = 1.0f;
+            }
+        }
+        [pbrtTransmitTexture replaceRegion:MTLRegionMake2D(0, 0, tw, th) mipmapLevel:0
+            withBytes:trgba.data() bytesPerRow:(NSUInteger)tw * 4 * sizeof(float)];
+    }
+
     // envMarginalCDF/envConditionalCDF buffers - a real (non-empty)
     // envDist above uploads its own arrays directly; the fallback case
     // (missing JPEG) still needs SOME buffer bound at these indices
@@ -796,6 +820,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     checkGpuResource(pbrtProjectionTexture, "pbrtProjectionTexture", device, &anyResourceFailed);
     checkGpuResource(pbrtAreaLightTexture, "pbrtAreaLightTexture", device, &anyResourceFailed);
     checkGpuResource(pbrtDiffuseTexture, "pbrtDiffuseTexture", device, &anyResourceFailed);
+    checkGpuResource(pbrtTransmitTexture, "pbrtTransmitTexture", device, &anyResourceFailed);
     if (anyResourceFailed) return false;
 
     // --- Dispatch, one horizontal row-band at a time ------------------
@@ -866,6 +891,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         [enc setTexture:pbrtProjectionTexture atIndex:5];
         [enc setTexture:pbrtAreaLightTexture atIndex:6];
         [enc setTexture:pbrtDiffuseTexture atIndex:7];
+        [enc setTexture:pbrtTransmitTexture atIndex:8];
         [enc setAccelerationStructure:instAS atBufferIndex:0];
         [enc setBuffer:uniformBuffer offset:0 atIndex:1];
         [enc setBuffer:materialBuffer offset:0 atIndex:2];

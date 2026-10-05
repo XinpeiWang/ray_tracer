@@ -683,6 +683,38 @@ void MetalPocApp::loadPbrtScene() {
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                 mat.transmitColor = PackedFloat3{(float)m.transmittance[0], (float)m.transmittance[1],
                                                   (float)m.transmittance[2]};
+                // Image-textured reflectance and/or transmittance (J2): the reflectance image uses the shared
+                // diffuse-image slot, the transmittance image its own second slot (first filename wins in each).
+                // conductorK = (reflectance-is-image, 9 = this mode, transmittance-is-image); the kernel samples them.
+                {
+                    bool reflImg = false, transImg = false;
+                    if (!m.textureFilename.empty() && (!havePbrtDiffuseImage || m.textureFilename == pbrtDiffuseImageFilename)) {
+                        if (!havePbrtDiffuseImage) {
+                            std::string bytes;
+                            if (pbrt_load::loadFileNear(pbrtScenePath, m.textureFilename, bytes) &&
+                                pbrt_load::detail::decodeInfiniteLightImage(m.textureFilename, bytes,
+                                    pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                                havePbrtDiffuseImage = true;
+                                pbrtDiffuseImageFilename = m.textureFilename;
+                            }
+                        }
+                        reflImg = havePbrtDiffuseImage;
+                    }
+                    if (!m.transmittanceTextureFilename.empty() &&
+                        (!havePbrtTransmitImage || m.transmittanceTextureFilename == pbrtTransmitImageFilename)) {
+                        if (!havePbrtTransmitImage) {
+                            std::string bytes;
+                            if (pbrt_load::loadFileNear(pbrtScenePath, m.transmittanceTextureFilename, bytes) &&
+                                pbrt_load::detail::decodeInfiniteLightImage(m.transmittanceTextureFilename, bytes,
+                                    pbrtTransmitImagePixels, pbrtTransmitImageWidth, pbrtTransmitImageHeight)) {
+                                havePbrtTransmitImage = true;
+                                pbrtTransmitImageFilename = m.transmittanceTextureFilename;
+                            }
+                        }
+                        transImg = havePbrtTransmitImage;
+                    }
+                    if (reflImg || transImg) mat.conductorK = PackedFloat3{reflImg ? 1.0f : 0.0f, 9.0f, transImg ? 1.0f : 0.0f};
+                }
                 return mat;
             }
             case pbrt_flatten::MaterialKind::CoatedDiffuse: {

@@ -331,9 +331,6 @@ const char* const kKnownGapScenes[] = {
 	// as a flat emission and NEE-samples them. Total energy is right (was ~1.7x too bright with flat white), but
 	// the visible pattern - and so the red channel, ~1/3 low - is not reproduced.
 	"C11",
-	// J2 (DiffuseTransmission Texture): reflectance AND transmittance are bound to two different image textures;
-	// Metal has a single diffuse-image slot, so it renders flat colours.
-	"J2",
 	// B24 (Frosted Prism Dispersion): CPU's shadow rays deliberately walk STRAIGHT THROUGH glass (shadow_ray.h:
 	// is_shadow_transmissive, no refraction), so the delta distant light reaches the diffuse catcher screen
 	// behind the rough glass prism. Metal blocks shadow rays at glass - what pbrt-v4 itself does - so that
