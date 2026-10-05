@@ -13,6 +13,8 @@
 #import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
+#include "../../src/shared/curve_tessellate.h"
+#include <functional>
 
 // --- Stage 2.5: real pbrt scene loading (v1 - see docs/METAL_GPU_
 // FEASIBILITY.md's own section on this) ----------------------------------
@@ -45,12 +47,155 @@
 // None of this needed any changes to buildGPUResources() below - see
 // buildScene()'s own call-site comment for why (additive onto the
 // existing hardcoded room, never leaves any vector newly empty).
+// --- Shapes the Metal POC has no intersection primitive for, tessellated into triangles -----
+// bilinearmesh, cone, paraboloid and curve were skipped outright ("shapes skipped" warning), so
+// scenes using them (F1, F4, F7, F8, F14) rendered without that geometry. They are instead
+// converted, once at load time and BEFORE the scene bounding box / materials are processed, into
+// ordinary triangles appended to the flattened scene - so scale, materials, area lights and
+// instancing all treat them like any other mesh. Same approach pbrt-v4's own GPU path and this
+// project's OptiX builder take for curves (src/shared/curve_tessellate.h). The tessellation is a
+// close approximation, not exact geometry: smooth analytic vertex normals for the quadrics and
+// patches, flat-shaded 8-sided tubes for curves.
+namespace {
+
+void tessellateGrid(std::vector<pbrt_flatten::Triangle>& out, int nu, int nv, int material, int areaLight,
+                    const std::function<void(double, double, double*, double*)>& eval) {
+    for (int j = 0; j < nv; ++j) {
+        for (int i = 0; i < nu; ++i) {
+            const double u0 = (double)i / nu, u1 = (double)(i + 1) / nu;
+            const double v0 = (double)j / nv, v1 = (double)(j + 1) / nv;
+            double p[4][3], n[4][3];
+            const double us[4] = {u0, u1, u0, u1}, vs[4] = {v0, v0, v1, v1};   // p00 p10 p01 p11
+            for (int k = 0; k < 4; ++k) eval(us[k], vs[k], p[k], n[k]);
+            const int tris[2][3] = {{0, 1, 3}, {0, 3, 2}};
+            for (const auto& t : tris) {
+                pbrt_flatten::Triangle tri;
+                for (int c = 0; c < 3; ++c) {
+                    for (int a = 0; a < 3; ++a) { tri.v[c * 3 + a] = p[t[c]][a]; tri.n[c * 3 + a] = n[t[c]][a]; }
+                    tri.uv[c * 2 + 0] = us[t[c]]; tri.uv[c * 2 + 1] = vs[t[c]];
+                }
+                tri.hasNormals = true;
+                tri.hasUVs = true;
+                tri.material = material;
+                tri.areaLight = areaLight;
+                out.push_back(tri);
+            }
+        }
+    }
+}
+
+void normalize3(double* v) {
+    const double l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
+    if (l > 1e-300) { v[0] /= l; v[1] /= l; v[2] /= l; }
+}
+
+// Returns how many triangles were added (0 when the scene has none of these shapes).
+size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene) {
+    std::vector<pbrt_flatten::Triangle> out;
+    // A shape with `Material "interface"` only bounds a participating medium: skip it (transparent)
+    // rather than turning it into an opaque gray mesh - same rule the sphere/disk/cylinder loaders use.
+    auto isInterface = [&scene](int m) {
+        return m >= 0 && m < (int)scene.materials.size() &&
+               scene.materials[m].kind == pbrt_flatten::MaterialKind::Interface;
+    };
+
+    // Bilinear patch: p(u,v) = (1-u)(1-v)p00 + u(1-v)p10 + (1-u)v p01 + uv p11; normal = dpdu x dpdv.
+    for (const pbrt_flatten::BilinearPatch& bp : scene.bilinearPatches) {
+        if (isInterface(bp.material)) continue;
+        const double (*P)[3] = bp.p;
+        tessellateGrid(out, 16, 16, bp.material, bp.areaLight, [&](double u, double v, double* p, double* n) {
+            double dpdu[3], dpdv[3];
+            for (int a = 0; a < 3; ++a) {
+                p[a] = (1 - u) * (1 - v) * P[0][a] + u * (1 - v) * P[1][a] + (1 - u) * v * P[2][a] + u * v * P[3][a];
+                dpdu[a] = (1 - v) * (P[1][a] - P[0][a]) + v * (P[3][a] - P[2][a]);
+                dpdv[a] = (1 - u) * (P[2][a] - P[0][a]) + u * (P[3][a] - P[1][a]);
+            }
+            n[0] = dpdu[1] * dpdv[2] - dpdu[2] * dpdv[1];
+            n[1] = dpdu[2] * dpdv[0] - dpdu[0] * dpdv[2];
+            n[2] = dpdu[0] * dpdv[1] - dpdu[1] * dpdv[0];
+            normalize3(n);
+        });
+    }
+
+    // Cone (open, no base cap): object space z in [0,height], radius R*(1 - z/height).
+    for (const pbrt_flatten::Cone& c : scene.cones) {
+        if (isInterface(c.material)) continue;
+        pbrt_scene::Matrix4 xf;
+        for (int i = 0; i < 16; ++i) xf.m[i] = c.xform[i];
+        const double phiMax = c.phiMaxDeg * M_PI / 180.0;
+        tessellateGrid(out, 48, 4, c.material, c.areaLight, [&](double u, double v, double* p, double* n) {
+            const double ph = u * phiMax, rad = c.radius * (1.0 - v);
+            const double po[3] = {rad * std::cos(ph), rad * std::sin(ph), v * c.height};
+            pbrt_flatten::flatten_detail::transformPoint(xf, po[0], po[1], po[2], p);
+            pbrt_flatten::flatten_detail::transformNormal(xf, c.height * std::cos(ph), c.height * std::sin(ph), c.radius, n);
+            normalize3(n);
+        });
+    }
+
+    // Paraboloid: z in [zMin,zMax], radius R*sqrt(z/zMax); outward normal is the gradient of
+    // x^2 + y^2 - (R^2/zMax) z.
+    for (const pbrt_flatten::Paraboloid& pa : scene.paraboloids) {
+        if (isInterface(pa.material)) continue;
+        pbrt_scene::Matrix4 xf;
+        for (int i = 0; i < 16; ++i) xf.m[i] = pa.xform[i];
+        const double phiMax = pa.phiMaxDeg * M_PI / 180.0;
+        tessellateGrid(out, 48, 24, pa.material, pa.areaLight, [&](double u, double v, double* p, double* n) {
+            const double ph = u * phiMax;
+            const double z = pa.zMin + v * (pa.zMax - pa.zMin);
+            const double rad = pa.radius * std::sqrt(std::max(z, 0.0) / pa.zMax);
+            const double x = rad * std::cos(ph), y = rad * std::sin(ph);
+            pbrt_flatten::flatten_detail::transformPoint(xf, x, y, z, p);
+            pbrt_flatten::flatten_detail::transformNormal(xf, 2.0 * x, 2.0 * y, -pa.radius * pa.radius / pa.zMax, n);
+            normalize3(n);
+        });
+    }
+
+    // Curve: every Bezier segment becomes a tapered 8-sided tube (the same dicing density OptiX
+    // uses); width interpolates across the WHOLE curve, as in pbrt-v4. Flat-shaded.
+    for (const pbrt_flatten::Curve& cv : scene.curves) {
+        if (isInterface(cv.material)) continue;
+        std::vector<curve_tessellate::Quad> quads;
+        for (int seg = 0; seg < cv.nSegments; ++seg) {
+            float cp[4][3];
+            for (int i = 0; i < 4; ++i)
+                for (int a = 0; a < 3; ++a) cp[i][a] = (float)cv.cp[((size_t)seg * 4 + i) * 3 + a];
+            const double t0 = (double)seg / cv.nSegments, t1 = (double)(seg + 1) / cv.nSegments;
+            quads.clear();
+            curve_tessellate::tessellate(cp, 0.0f, 1.0f, (float)(cv.width0 + (cv.width1 - cv.width0) * t0),
+                                         (float)(cv.width0 + (cv.width1 - cv.width0) * t1), 10, 8, quads);
+            for (const curve_tessellate::Quad& q : quads) {
+                const float* c4[4] = {q.p00, q.p10, q.p01, q.p11};
+                const int tris[2][3] = {{0, 1, 3}, {0, 3, 2}};
+                for (const auto& t : tris) {
+                    pbrt_flatten::Triangle tri;
+                    for (int c = 0; c < 3; ++c)
+                        for (int a = 0; a < 3; ++a) tri.v[c * 3 + a] = c4[t[c]][a];
+                    tri.material = cv.material;
+                    tri.areaLight = cv.areaLight;
+                    out.push_back(tri);
+                }
+            }
+        }
+    }
+
+    scene.triangles.insert(scene.triangles.end(), out.begin(), out.end());
+    scene.bilinearPatches.clear();
+    scene.cones.clear();
+    scene.paraboloids.clear();
+    scene.curves.clear();
+    return out.size();
+}
+
+}  // namespace
+
 void MetalPocApp::loadPbrtScene() {
     pbrt_load::LoadResult result = pbrt_load::loadFile(pbrtScenePath);
     if (!result.ok) {
         fprintf(stderr, "loadPbrtScene: %s\n", result.error.c_str());
         return;
     }
+    if (const size_t added = tessellateUnsupportedShapes(result.scene))
+        fprintf(stderr, "loadPbrtScene: tessellated bilinear patch/cone/paraboloid/curve shapes into %zu triangle(s)\n", added);
     const pbrt_flatten::FlatScene& scene = result.scene;
     for (const pbrt_scene::Warning& w : scene.warnings) {
         fprintf(stderr, "loadPbrtScene: pbrt loader warning: %s\n", w.message.c_str());
@@ -1575,15 +1720,12 @@ void MetalPocApp::loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene) {
                     pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z);
         }
     }
-    // Disks are handled above (section 101, common full-circle case);
-    // cylinders are handled above too now (section 171, common full-tube
-    // case, via loadPbrtCylinders()); cone/paraboloid/bilinearmesh/curve
-    // remain a real gap.
-    if (!scene.cones.empty() || !scene.paraboloids.empty() ||
-        !scene.bilinearPatches.empty() || !scene.curves.empty())
-        fprintf(stderr, "loadPbrtScene: cone/paraboloid/bilinearmesh/curve shapes skipped - "
-                        "only triangle mesh, sphere, (full-circle) disk, and (full-tube) cylinder "
-                        "shapes are supported by this POC's scene loader yet\n");
+    // Disks and cylinders have their own primitives; cone/paraboloid/bilinearmesh/curve are
+    // tessellated into triangles up front (tessellateUnsupportedShapes()). Only the ANIMATED
+    // (motion-blurred) variants of patches and curves are still dropped.
+    if (!scene.animatedBilinearPatches.empty() || !scene.animatedCurves.empty())
+        fprintf(stderr, "loadPbrtScene: animated (motion-blurred) bilinearmesh/curve shapes skipped - "
+                        "only their static forms are supported by this POC's scene loader\n");
 }
 
 // --- Camera ------------------------------------------------------------
