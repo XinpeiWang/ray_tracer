@@ -2808,7 +2808,11 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// phase-scatter case, direction-independent, safe to reuse directly.
 		outBsdfColor = SS(1.f);
 		outGlossyPdf = 0.0f;
-		if (matType == MaterialType::Lambertian) {
+		// NormalMappedLambertian shades as a plain Lambertian with the perturbed normal (its sampling case in
+		// wavefront_kernels_materials.cu sets attenuation = albedoSpectrum(mat.albedo)), so its NEE needs the same
+		// albedo. Without it the colour stayed at the white default and a normal-mapped blue sphere lit by a lamp
+		// rendered grey (B12: 164-188% of the CPU over the sphere).
+		if (matType == MaterialType::Lambertian || matType == MaterialType::NormalMappedLambertian) {
 			outBsdfColor = attenuation;
 		} else if (matType == MaterialType::NormalizedFresnel) {
 			float inv_eta = 1.0f / nfEta;

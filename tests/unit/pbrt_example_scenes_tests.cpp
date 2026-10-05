@@ -336,3 +336,10 @@ TEST(PbrtBackendAgreementTest, CloudMediumAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, GlassFogFurnaceAgreesAcrossBackends) {
 	expectBackendsAgree("glass-fog-furnace", 128, 0.95, 1.05);
 }
+
+// Normal-mapped and bump-mapped surfaces. The wavefront backend lit a normal-mapped surface with a white BSDF colour
+// instead of its albedo (a blue sphere read grey, 164-188% of the CPU over it), and both GPU backends skipped bump
+// mapping on a triangle mesh that has no UVs, which the CPU bumps through its barycentric fallback.
+TEST(PbrtBackendAgreementTest, NormalMappedCornellAgreesAcrossBackends) {
+	expectBackendsAgree("normal-mapped-cornell", 128, 0.98, 1.02);
+}
