@@ -229,6 +229,24 @@ void MetalPocApp::loadPbrtScene() {
                 // default below instead of misrendering it. Also excludes
                 // m.checkerIs3D: a 3D checker is handled by its own case just above
                 // (it needs a texture-space point, not UV tile frequencies).
+                // pbrt-v4 "marble" reflectance texture (A5/A7): FBm-perturbed sine through a colour
+                // spline, ported from CPU's marble_texture. Like CPU it is keyed on the (pbrt-world)
+                // hit point times `marbleScale`, so the same fold as the 3D checker applies: the
+                // kernel evaluates at t = k*p_metal + off, k = scale/sceneScale,
+                // off = scale*(bboxCenter - sceneOffset/sceneScale). materialType 25 with
+                // conductorK.y = 2 selects it; conductorK.x = k, conductorEta = off,
+                // transmitColor = (octaves, omega, variation).
+                if (m.hasMarbleReflectance) {
+                    const float s = (float)m.marbleScale;
+                    TriangleMaterial mat{PackedFloat3{0.5f, 0.5f, 0.5f}, /*materialType=*/25u, /*ior=*/1.0f,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    mat.transmitColor = PackedFloat3{(float)m.marbleOctaves, (float)m.marbleRoughness, (float)m.marbleVariation};
+                    mat.conductorK = PackedFloat3{s / sceneScale, 2.0f, 0.0f};
+                    mat.conductorEta = PackedFloat3{s * (bboxCenter.x - sceneOffset.x / sceneScale),
+                                                     s * (bboxCenter.y - sceneOffset.y / sceneScale),
+                                                     s * (bboxCenter.z - sceneOffset.z / sceneScale)};
+                    return mat;
+                }
                 // 3D checkerboard ("integer dimension" [3]): pbrt-v4 keys the pattern on a
                 // TEXTURE-SPACE point, floor(x)+floor(y)+floor(z) parity, exactly like CPU's
                 // checker_texture. Supported for the only shape the bundled scenes author - a
