@@ -1074,6 +1074,9 @@ struct SpherePayload {
     // primitive_id outright is the robust fix, independent of epsilon
     // tuning.
     int shadowIgnorePrimId = -1;
+    // Colour channel (0/1/2) whose sigma_t a glass-with-medium sphere should use for this shadow ray, or -1 for the
+    // channel mean. Set by the free-flight block while the path follows one channel inside a chromatic glass medium.
+    int shadowChannel = -1;
 };
 
 // Bounding-box intersection functions report their result through
@@ -1170,7 +1173,8 @@ SphereIntersectionResult sphereIntersectionFunction(
     {
         uint mt = sphereMaterials[primitiveIndex].materialType;
         if (payload.isShadowRay && (mt == 29u || mt == 30u)) return result;
-        if (payload.isShadowRay && mt == 28u) {
+        const bool glassWithMedium = (mt == 2u || mt == 11u) && sphereMaterials[primitiveIndex].conductorK.y > 0.5;
+        if (payload.isShadowRay && (mt == 28u || glassWithMedium)) {
             // Homogeneous medium sphere vs a shadow ray: not an opaque
             // blocker, but it does attenuate. Visibility through it is
             // exp(-sigma_t * chord), and a binary occlusion test can
@@ -1193,7 +1197,14 @@ SphereIntersectionResult sphereIntersectionFunction(
             float t1 = min((-msB + msSqrt) / msA, maxDistance);
             if (t1 <= t0) return result;
             float chord = (t1 - t0) * sqrt(msA);
-            float transmittance = exp(-sphereMaterials[primitiveIndex].ior * chord);
+            float sigmaForShadow;
+            if (mt == 28u) {
+                sigmaForShadow = sphereMaterials[primitiveIndex].ior;
+            } else {
+                const float3 gEta = float3(sphereMaterials[primitiveIndex].conductorEta);
+                sigmaForShadow = (payload.shadowChannel >= 0) ? gEta[payload.shadowChannel] : (gEta.x + gEta.y + gEta.z) * (1.0 / 3.0);
+            }
+            float transmittance = exp(-sigmaForShadow * chord);
             uint h = as_type<uint>(origin.x) * 73856093u ^ as_type<uint>(origin.y) * 19349663u
                    ^ as_type<uint>(origin.z) * 83492791u ^ as_type<uint>(direction.x) * 2654435761u
                    ^ as_type<uint>(direction.y) * 40503u ^ as_type<uint>(direction.z) * 668265263u
