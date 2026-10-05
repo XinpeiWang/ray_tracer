@@ -1293,7 +1293,7 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
     AreaLight light = lights[idx];
     float2 u = float2(randFloat(rngState), randFloat(rngState));
     LightSample result;
-    if (light.kind > 0.5) {
+    if (light.kind > 0.5 && light.kind < 1.5) {
         // Sphere light (B14, section 184) - uniform-AREA sampling (not
         // pbrt-v4's own lower-variance cone-sampling, which would need
         // the shading point's own origin threaded through here and into
@@ -1319,6 +1319,39 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
         float radius = light.edgeU.x;
         result.point = float3(light.center) + radius * dir;
         result.normal = dir;
+        result.emission = float3(light.emission);
+    } else if (light.kind > 1.5 && light.kind < 2.5) {
+        // Disk light (pbrt "disk" AreaLightSource): uniform-area sampling of a flat disk.
+        // center = disk centre, edgeU.x = radius, normal = the emitting side's normal,
+        // area = pi*r^2. r = R*sqrt(u), phi = 2*pi*v is exactly uniform over the disk.
+        float3 n = float3(light.normal);
+        float3 t, b;
+        buildOnb(n, t, b);
+        float rr = light.edgeU.x * sqrt(u.x);
+        float ph = 2.0 * M_PI_F * u.y;
+        result.point = float3(light.center) + rr * (cos(ph) * t + sin(ph) * b);
+        result.normal = n;
+        result.emission = float3(light.emission);
+    } else if (light.kind > 2.5 && light.kind < 3.5) {
+        // Cylinder light (pbrt "cylinder", lateral surface only): uniform-area sampling.
+        // center = base centre, edgeU = unit axis, edgeV.x = radius, edgeV.y = height,
+        // area = 2*pi*r*h. The sampled normal is the OUTWARD radial direction.
+        float3 axis = float3(light.edgeU);
+        float3 t, b;
+        buildOnb(axis, t, b);
+        float ph = 2.0 * M_PI_F * u.y;
+        float3 radial = cos(ph) * t + sin(ph) * b;
+        result.point = float3(light.center) + axis * (light.edgeV.y * u.x) + radial * light.edgeV.x;
+        result.normal = radial;
+        result.emission = float3(light.emission);
+    } else if (light.kind > 3.5) {
+        // Triangle light (one triangle of a non-quad emissive mesh, e.g. a fan): center =
+        // vertex 0, edgeU/edgeV = the two edges from it, normal = the winding normal,
+        // area = half the parallelogram. Fold the unit square onto the triangle.
+        float2 uu = u;
+        if (uu.x + uu.y > 1.0) { uu = float2(1.0 - uu.x, 1.0 - uu.y); }
+        result.point = float3(light.center) + uu.x * float3(light.edgeU) + uu.y * float3(light.edgeV);
+        result.normal = float3(light.normal);
         result.emission = float3(light.emission);
     } else {
         float3 edgeU = float3(light.edgeU);

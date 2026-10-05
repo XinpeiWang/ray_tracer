@@ -84,6 +84,7 @@ struct AreaLightData {
     // 0.0 = planar quad (every light before this one). 1.0 = a sphere
     // light (B14, section 184) - see metal_poc.metal's own AreaLight::kind
     // comment for the full field-reuse layout (edgeU.x = radius).
+    // 2 = disk, 3 = cylinder (lateral), 4 = triangle - see metal_poc_types.metal's AreaLight::kind.
     float kind = 0.0f;
     // A sphere light's own index into `spheres[]` (-1 for a quad light) -
     // see metal_poc.metal's own AreaLight::spherePrimId comment.
