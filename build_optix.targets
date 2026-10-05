@@ -17,6 +17,15 @@
     <CudaToolkitPath Condition="'$(CudaToolkitPath)'==''">C:\Program Files\NVIDIA GPU Computing Toolkit\CUDA\v13.2</CudaToolkitPath>
 
     <OptixOutputDir>$(MSBuildThisFileDirectory)\gpu\optix</OptixOutputDir>
+
+    <!-- Plain CUDA kernels need explicit SASS per architecture (no JIT fallback, see CompileCudaSources' comment): native sm_86 (Ampere) and
+         sm_120 (Blackwell). Opt in to compiling only for THIS machine's GPU for quicker development builds with
+         `msbuild /p:RtCudaLocalArchOnly=true` or the environment variable RT_CUDA_LOCAL_ARCH_ONLY=1 (see CudaDetectLocalArch). The result
+         only runs on that GPU, so do not package it. -->
+    <CudaObjArchFlags>-gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120</CudaObjArchFlags>
+    <!-- How many nvcc processes scripts\cuda_build.ps1 runs at once (each may use a few GB; each also compiles its architectures concurrently via nvcc threads (-t0)). -->
+    <CudaParallelJobs Condition="'$(CudaParallelJobs)'=='' and '$(RT_CUDA_JOBS)' != ''">$(RT_CUDA_JOBS)</CudaParallelJobs>
+    <CudaParallelJobs Condition="'$(CudaParallelJobs)'==''">6</CudaParallelJobs>
   </PropertyGroup>
 
   <!-- Source file lists -->
@@ -28,10 +37,10 @@
     <!-- Wavefront CUDA compute kernels -> .obj (linked into optix_renderer.lib).
          The 6 wavefront_kernels_*.cu entries are wavefront_kernels.cu's own
          per-kernel-family split (see wavefront_device_helpers.h's own header
-         comment) - each recompiles independently based on its own mtime via
-         this item list's per-item Inputs/Outputs in CompileWavefrontKernels
-         below, so editing one kernel no longer forces recompiling all of
-         them. -->
+         comment) - each recompiles independently (CompileCudaSources below
+         decides per file from its own source, the headers nvcc reports it
+         included, and its flags), so editing one kernel does not force
+         recompiling the others. -->
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_camera.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_materials.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_materials_simple.cu" />
@@ -49,164 +58,74 @@
     <SppmObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_kernels.cu" />
     <SppmObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_launch.cu" />
 
-    <!-- Headers every .cu file above can transitively include, appended to
-         every CUDA-compiling target's Inputs below so MSBuild's up-to-date
-         check actually notices header edits. Without this, only each .cu
-         file's own timestamp was checked - editing a shared header (e.g.
-         src/shared/bxdfs.h) left every target reporting "up-to-date" and
-         silently kept stale .ptx/.obj output in place (confirmed live: no
-         CUDA recompilation occurred after touching such a header). Blunt
-         but correct: any header change in either directory invalidates
-         every target here, even ones that don't actually use it - a few
-         extra nvcc invocations is far cheaper than shipping stale device
-         code that the build itself can't detect. -->
-    <CudaHeaderDeps Include="$(OptixOutputDir)\*.h" />
-    <CudaHeaderDeps Include="$(MSBuildProjectDirectory)\..\src\shared\*.h" />
+    <!-- Header dependencies are NOT listed here any more: every compile below writes nvcc's own dependency file (-MD -MF) and
+         scripts\cuda_build.ps1 rebuilds a file only when its source, a header it really included, or its flags changed. (This used to be a
+         blanket "every header in gpu/optix and src/shared" list, so touching ANY of them - even a host-only header no .cu includes -
+         recompiled all 16 CUDA files, ~4 minutes.) -->
   </ItemGroup>
 
   <!-- ===================================================================== -->
-  <!-- Compile optix_programs.cu -> optix_programs.ptx                       -->
+  <!-- Compile every CUDA/OptiX source: 3 PTX modules + the wavefront and    -->
+  <!-- SPPM kernel .obj files, in parallel, with exact header dependencies   -->
   <!-- ===================================================================== -->
-  <Target Name="CompileOptixPrograms"
-          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          BeforeTargets="Build"
-          Inputs="@(OptixSource);@(CudaHeaderDeps)"
-          Outputs="$(SolutionDir)gpu\optix\%(OptixSource.Filename).ptx">
+  <!-- Replaces five per-file MSBuild targets whose Exec calls ran one after another and whose Inputs listed every header in two directories.
+       scripts\cuda_build.ps1 does the up-to-date check per file from nvcc's own dependency output, runs -Parallel compiles at a time, and
+       prints which files it rebuilt. Outputs and flags are the ones those targets used, plus nvcc threads (-t0) on the .obj files (nvcc compiles the
+       two target architectures concurrently: the largest kernel went 78 s -> 51 s with an identical result).
 
-    <Message Text="[OptiX] Compiling %(OptixSource.Filename).cu to PTX..." Importance="High" />
+       Why the .obj files carry explicit SASS for each architecture and not embedded PTX: they use relocatable device code, and the dlink step
+       below only emits resolved SASS, dropping any embedded PTX, so each supported architecture needs its own gencode entry rather than JIT
+       (found when sm_86-only kernels failed with "no device code available" on an RTX 5080). The OptiX PTX modules are always PTX and JIT. -->
+  <Target Name="CompileCudaSources"
+          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
+          BeforeTargets="Build">
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <OptixInclude>$(OptixSdkPath)\include</OptixInclude>
-      <CudaInclude>$(CudaToolkitPath)\include</CudaInclude>
-      <OptixFlags>--ptx</OptixFlags>
-      <OptixFlags>$(OptixFlags) -O3</OptixFlags>
-      <OptixFlags>$(OptixFlags) --use_fast_math</OptixFlags>
-      <OptixFlags>$(OptixFlags) --relocatable-device-code=true</OptixFlags>
-      <OptixFlags>$(OptixFlags) -arch=sm_86</OptixFlags>
-      <!-- CloudMedium (src/shared/cloud_medium.h) transitively includes
-           grid_medium.h, which uses std::optional, needing C++17, which nvcc
-           does not default to. The obj compiling CUDA targets in this file
-           already pass the C++17 std flag; this PTX target needs it too now
-           that optix_intersection_sphere.h's MaterialType::CloudMedium
-           branch pulls that header chain in. -->
-      <OptixFlags>$(OptixFlags) --std=c++17</OptixFlags>
-      <OptixFlags>$(OptixFlags) -I"$(OptixInclude)"</OptixFlags>
-      <OptixFlags>$(OptixFlags) -I"$(CudaInclude)"</OptixFlags>
-      <OptixFlags>$(OptixFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</OptixFlags>
-      <OptixSourcePath>$(MSBuildProjectDirectory)\..\gpu\optix\%(OptixSource.Filename)%(OptixSource.Extension)</OptixSourcePath>
-      <OptixOutput>$(MSBuildProjectDirectory)\..\gpu\optix\%(OptixSource.Filename).ptx</OptixOutput>
+      <CudaWorkDir>$(MSBuildThisFileDirectory.TrimEnd('\'))</CudaWorkDir>
+      <CudaGpuDir>$(MSBuildProjectDirectory)\..\gpu\optix</CudaGpuDir>
+      <CudaDepDir>$(MSBuildProjectDirectory)\..\gpu\optix\.cudadeps</CudaDepDir>
+      <CudaIncludes>-I"$(OptixSdkPath)\include" -I"$(CudaToolkitPath)\include" -I"$(CudaGpuDir)"</CudaIncludes>
+      <CudaSharedInclude>-I"$(MSBuildProjectDirectory)\..\src\shared"</CudaSharedInclude>
+      <CudaCrt Condition="'$(Configuration)'=='Debug'">-Xcompiler /MDd</CudaCrt>
+      <CudaCrt Condition="'$(Configuration)'=='Release'">-Xcompiler /MD</CudaCrt>
+      <CudaPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</CudaPtxFlags>
+      <CudaObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true $(CudaObjArchFlags) --std=c++17 $(CudaCrt) -t0</CudaObjFlags>
+      <CudaPtxJobFlags>$(CudaPtxFlags) $(CudaIncludes)</CudaPtxJobFlags>
+      <CudaPtxSharedJobFlags>$(CudaPtxFlags) $(CudaIncludes) $(CudaSharedInclude)</CudaPtxSharedJobFlags>
+      <CudaObjJobFlags>$(CudaObjFlags) $(CudaIncludes) $(CudaSharedInclude)</CudaObjJobFlags>
     </PropertyGroup>
 
-    <Exec Command='"$(NvccPath)" $(OptixFlags) "$(OptixSourcePath)" -o "$(OptixOutput)"'
-          WorkingDirectory="$(MSBuildThisFileDirectory)"
+    <ItemGroup>
+      <!-- source <TAB> output <TAB> flags -->
+      <CudaJobLine Include="$(CudaGpuDir)\optix_programs.cu&#9;$(CudaGpuDir)\optix_programs.ptx&#9;$(CudaPtxJobFlags)" />
+      <CudaJobLine Include="$(CudaGpuDir)\wavefront_programs.cu&#9;$(CudaGpuDir)\wavefront_programs.ptx&#9;$(CudaPtxSharedJobFlags)" />
+      <CudaJobLine Include="$(CudaGpuDir)\sppm_programs.cu&#9;$(CudaGpuDir)\sppm_programs.ptx&#9;$(CudaPtxSharedJobFlags)" />
+      <CudaJobLine Include="@(WavefrontObjSource->'%(FullPath)&#9;$(CudaGpuDir)\%(Filename).obj&#9;$(CudaObjJobFlags)')" />
+      <CudaJobLine Include="@(SppmObjSource->'%(FullPath)&#9;$(CudaGpuDir)\%(Filename).obj&#9;$(CudaObjJobFlags)')" />
+    </ItemGroup>
+
+    <MakeDir Directories="$(CudaDepDir)" />
+    <WriteLinesToFile File="$(CudaDepDir)\cuda_jobs.txt" Lines="@(CudaJobLine)" Overwrite="true" />
+
+    <Exec Command='powershell.exe -NoProfile -ExecutionPolicy Bypass -File "$(MSBuildThisFileDirectory)scripts\cuda_build.ps1" -JobFile "$(CudaDepDir)\cuda_jobs.txt" -Nvcc "$(NvccPath)" -DepDir "$(CudaDepDir)" -Parallel $(CudaParallelJobs) -WorkDir "$(CudaWorkDir)"'
           IgnoreExitCode="false"
           ConsoleToMSBuild="true" />
-
-    <Message Text="[OptiX] Generated PTX: $(OptixOutput)" Importance="High" />
   </Target>
 
-  <!-- ===================================================================== -->
-  <!-- Compile wavefront_programs.cu -> wavefront_programs.ptx               -->
-  <!-- ===================================================================== -->
-  <Target Name="CompileWavefrontPtx"
-          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          BeforeTargets="Build"
-          Inputs="@(WavefrontPtxSource);@(CudaHeaderDeps)"
-          Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_programs.ptx">
-
-    <Message Text="[OptiX] Compiling wavefront_programs.cu to PTX..." Importance="High" />
-
+  <!-- Opt-in: compile the .obj files only for the GPU in this machine (nvidia-smi compute capability), for faster development builds. -->
+  <Target Name="CudaDetectLocalArch"
+          Condition="('$(RtCudaLocalArchOnly)' == 'true' or '$(RT_CUDA_LOCAL_ARCH_ONLY)' == '1') and '$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
+          BeforeTargets="CompileCudaSources">
+    <Exec Command="nvidia-smi --query-gpu=compute_cap --format=csv,noheader" ConsoleToMSBuild="true" StandardOutputImportance="low" IgnoreExitCode="true">
+      <Output TaskParameter="ConsoleOutput" PropertyName="_RtComputeCapRaw" />
+    </Exec>
     <PropertyGroup>
-      <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <WfPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</WfPtxFlags>
-      <WfPtxFlags>$(WfPtxFlags) -I"$(OptixSdkPath)\include"</WfPtxFlags>
-      <WfPtxFlags>$(WfPtxFlags) -I"$(CudaToolkitPath)\include"</WfPtxFlags>
-      <WfPtxFlags>$(WfPtxFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</WfPtxFlags>
-      <WfPtxFlags>$(WfPtxFlags) -I"$(MSBuildProjectDirectory)\..\src\shared"</WfPtxFlags>
-      <WfPtxOut>$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_programs.ptx</WfPtxOut>
+      <_RtComputeCap>$([System.Text.RegularExpressions.Regex]::Match('$(_RtComputeCapRaw)', '\d+\.\d+').Value.Replace('.', ''))</_RtComputeCap>
+      <CudaObjArchFlags Condition="'$(_RtComputeCap)' != ''">-gencode=arch=compute_$(_RtComputeCap),code=sm_$(_RtComputeCap)</CudaObjArchFlags>
     </PropertyGroup>
-
-    <Exec Command='"$(NvccPath)" $(WfPtxFlags) "$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_programs.cu" -o "$(WfPtxOut)"'
-          WorkingDirectory="$(MSBuildThisFileDirectory)"
-          IgnoreExitCode="false"
-          ConsoleToMSBuild="true" />
-
-    <Message Text="[OptiX] Generated PTX: $(WfPtxOut)" Importance="High" />
-  </Target>
-
-  <!-- ===================================================================== -->
-  <!-- Compile sppm_programs.cu -> sppm_programs.ptx                         -->
-  <!-- ===================================================================== -->
-  <Target Name="CompileSppmPtx"
-          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          BeforeTargets="Build"
-          Inputs="@(SppmPtxSource);@(CudaHeaderDeps)"
-          Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.ptx">
-
-    <Message Text="[OptiX] Compiling sppm_programs.cu to PTX..." Importance="High" />
-
-    <PropertyGroup>
-      <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <SppmPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</SppmPtxFlags>
-      <SppmPtxFlags>$(SppmPtxFlags) -I"$(OptixSdkPath)\include"</SppmPtxFlags>
-      <SppmPtxFlags>$(SppmPtxFlags) -I"$(CudaToolkitPath)\include"</SppmPtxFlags>
-      <SppmPtxFlags>$(SppmPtxFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</SppmPtxFlags>
-      <SppmPtxFlags>$(SppmPtxFlags) -I"$(MSBuildProjectDirectory)\..\src\shared"</SppmPtxFlags>
-      <SppmPtxOut>$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.ptx</SppmPtxOut>
-    </PropertyGroup>
-
-    <Exec Command='"$(NvccPath)" $(SppmPtxFlags) "$(MSBuildProjectDirectory)\..\gpu\optix\sppm_programs.cu" -o "$(SppmPtxOut)"'
-          WorkingDirectory="$(MSBuildThisFileDirectory)"
-          IgnoreExitCode="false"
-          ConsoleToMSBuild="true" />
-
-    <Message Text="[OptiX] Generated PTX: $(SppmPtxOut)" Importance="High" />
-  </Target>
-
-  <!-- ===================================================================== -->
-  <!-- Compile the wavefront_kernels_*.cu split files + wavefront_launch.cu  -->
-  <!-- -> .obj (one item per file in @(WavefrontObjSource) above)            -->
-  <!-- (linked into optix_renderer.lib via AdditionalDependencies)           -->
-  <!-- ===================================================================== -->
-  <Target Name="CompileWavefrontKernels"
-          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          BeforeTargets="Lib"
-          Inputs="@(WavefrontObjSource);@(CudaHeaderDeps)"
-          Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\%(WavefrontObjSource.Filename).obj">
-
-    <Message Text="[CUDA] Compiling %(WavefrontObjSource.Filename).cu to obj..." Importance="High" />
-
-    <PropertyGroup>
-      <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <!-- Two gencode entries: native sm_86 SASS (Ampere) and native
-           sm_120 SASS (Blackwell). Plain arch=sm_86 only emits sm_86 SASS
-           with no fallback, so these plain CUDA kernels (unlike the OptiX
-           ptx modules, which are always PTX and JIT to any architecture)
-           fail with "no device code available" on any GPU that isn't
-           sm_86, including the RTX 5080 (sm_120) this was found on. Can't
-           embed compute_86 PTX instead for forward compat: these files use
-           relocatable device code, and the dlink step below only emits
-           resolved SASS, dropping any embedded PTX, so each supported
-           architecture needs its own explicit gencode entry here (and
-           below) rather than relying on JIT. -->
-      <WfObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120 --std=c++17</WfObjFlags>
-      <WfObjFlags Condition="'$(Configuration)'=='Debug'">$(WfObjFlags) -Xcompiler /MDd</WfObjFlags>
-      <WfObjFlags Condition="'$(Configuration)'=='Release'">$(WfObjFlags) -Xcompiler /MD</WfObjFlags>
-      <WfObjFlags>$(WfObjFlags) -I"$(OptixSdkPath)\include"</WfObjFlags>
-      <WfObjFlags>$(WfObjFlags) -I"$(CudaToolkitPath)\include"</WfObjFlags>
-      <WfObjFlags>$(WfObjFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</WfObjFlags>
-      <WfObjFlags>$(WfObjFlags) -I"$(MSBuildProjectDirectory)\..\src\shared"</WfObjFlags>
-      <WfObjSrc>$(MSBuildProjectDirectory)\..\gpu\optix\%(WavefrontObjSource.Filename)%(WavefrontObjSource.Extension)</WfObjSrc>
-      <WfObjOut>$(MSBuildProjectDirectory)\..\gpu\optix\%(WavefrontObjSource.Filename).obj</WfObjOut>
-    </PropertyGroup>
-
-    <Exec Command='"$(NvccPath)" $(WfObjFlags) "$(WfObjSrc)" -o "$(WfObjOut)"'
-          WorkingDirectory="$(MSBuildThisFileDirectory)"
-          IgnoreExitCode="false"
-          ConsoleToMSBuild="true" />
-
-    <Message Text="[CUDA] Compiled: $(WfObjOut)" Importance="High" />
+    <Message Importance="High" Text="[CUDA] local-architecture-only build: sm_$(_RtComputeCap) (development builds only - the kernels will not run on other GPUs)" Condition="'$(_RtComputeCap)' != ''" />
+    <Warning Text="RtCudaLocalArchOnly was requested but nvidia-smi gave no compute capability; building for the default architectures." Condition="'$(_RtComputeCap)' == ''" />
   </Target>
 
   <!-- ===================================================================== -->
@@ -216,7 +135,7 @@
   <!-- ===================================================================== -->
   <Target Name="DeviceLinkWavefront"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          AfterTargets="CompileWavefrontKernels"
+          AfterTargets="CompileCudaSources"
           BeforeTargets="Lib"
           Inputs="@(WavefrontObjSource->'$(MSBuildProjectDirectory)\..\gpu\optix\%(Filename).obj')"
           Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_dlink.obj">
@@ -236,7 +155,7 @@
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <DlinkFlags>-dlink -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120</DlinkFlags>
+      <DlinkFlags>-dlink $(CudaObjArchFlags)</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Debug'">$(DlinkFlags) -Xcompiler /MDd -G</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Release'">$(DlinkFlags) -Xcompiler /MD</DlinkFlags>
       <DlinkInputs>@(WavefrontObjSource->'"$(MSBuildProjectDirectory)\..\gpu\optix\%(Filename).obj"', ' ')</DlinkInputs>
@@ -252,49 +171,13 @@
   </Target>
 
   <!-- ===================================================================== -->
-  <!-- Compile sppm_kernels.cu + sppm_launch.cu -> .obj                      -->
-  <!-- (linked into optix_renderer.lib via AdditionalDependencies)           -->
-  <!-- ===================================================================== -->
-  <Target Name="CompileSppmKernels"
-          Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          BeforeTargets="Lib"
-          Inputs="@(SppmObjSource);@(CudaHeaderDeps)"
-          Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\%(SppmObjSource.Filename).obj">
-
-    <Message Text="[CUDA] Compiling %(SppmObjSource.Filename).cu to obj..." Importance="High" />
-
-    <PropertyGroup>
-      <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <!-- Same two-gencode rationale as CompileWavefrontKernels above (plain
-           CUDA kernels need explicit SASS per architecture, unlike OptiX's
-           always-PTX/always-JIT modules). -->
-      <SppmObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120 --std=c++17</SppmObjFlags>
-      <SppmObjFlags Condition="'$(Configuration)'=='Debug'">$(SppmObjFlags) -Xcompiler /MDd</SppmObjFlags>
-      <SppmObjFlags Condition="'$(Configuration)'=='Release'">$(SppmObjFlags) -Xcompiler /MD</SppmObjFlags>
-      <SppmObjFlags>$(SppmObjFlags) -I"$(OptixSdkPath)\include"</SppmObjFlags>
-      <SppmObjFlags>$(SppmObjFlags) -I"$(CudaToolkitPath)\include"</SppmObjFlags>
-      <SppmObjFlags>$(SppmObjFlags) -I"$(MSBuildProjectDirectory)\..\gpu\optix"</SppmObjFlags>
-      <SppmObjFlags>$(SppmObjFlags) -I"$(MSBuildProjectDirectory)\..\src\shared"</SppmObjFlags>
-      <SppmObjSrc>$(MSBuildProjectDirectory)\..\gpu\optix\%(SppmObjSource.Filename)%(SppmObjSource.Extension)</SppmObjSrc>
-      <SppmObjOut>$(MSBuildProjectDirectory)\..\gpu\optix\%(SppmObjSource.Filename).obj</SppmObjOut>
-    </PropertyGroup>
-
-    <Exec Command='"$(NvccPath)" $(SppmObjFlags) "$(SppmObjSrc)" -o "$(SppmObjOut)"'
-          WorkingDirectory="$(MSBuildThisFileDirectory)"
-          IgnoreExitCode="false"
-          ConsoleToMSBuild="true" />
-
-    <Message Text="[CUDA] Compiled: $(SppmObjOut)" Importance="High" />
-  </Target>
-
-  <!-- ===================================================================== -->
   <!-- Device-link SPPM .obj files -> sppm_dlink.obj                         -->
   <!-- Resolves __cudaRegisterLinkedBinary_* for the host linker.            -->
   <!-- This must run after both .cu -> .obj compiles and before Lib.         -->
   <!-- ===================================================================== -->
   <Target Name="DeviceLinkSppm"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          AfterTargets="CompileSppmKernels"
+          AfterTargets="CompileCudaSources"
           BeforeTargets="Lib"
           Inputs="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_kernels.obj;$(MSBuildProjectDirectory)\..\gpu\optix\sppm_launch.obj"
           Outputs="$(MSBuildProjectDirectory)\..\gpu\optix\sppm_dlink.obj">
@@ -303,7 +186,7 @@
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
-      <DlinkFlags>-dlink -gencode=arch=compute_86,code=sm_86 -gencode=arch=compute_120,code=sm_120</DlinkFlags>
+      <DlinkFlags>-dlink $(CudaObjArchFlags)</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Debug'">$(DlinkFlags) -Xcompiler /MDd -G</DlinkFlags>
       <DlinkFlags Condition="'$(Configuration)'=='Release'">$(DlinkFlags) -Xcompiler /MD</DlinkFlags>
       <SppmDlinkIn1>$(MSBuildProjectDirectory)\..\gpu\optix\sppm_kernels.obj</SppmDlinkIn1>
@@ -335,6 +218,7 @@
       <OptixObjFiles Include="$(OptixOutputDir)\wavefront_dlink.obj;$(OptixOutputDir)\sppm_dlink.obj" />
     </ItemGroup>
     <Delete Files="@(OptixPtxFiles);@(OptixObjFiles)" />
+    <RemoveDir Directories="$(OptixOutputDir)\.cudadeps" />
     <Message Text="[OptiX] Cleaned PTX and CUDA obj files" Importance="High" />
   </Target>
 

@@ -315,7 +315,10 @@ foreach ($job in $jobs) {
 	$passedMatch = [regex]::Match($content, '\[\s*PASSED\s*\]\s*(\d+)')
 	$failedMatch = [regex]::Match($content, '\[\s*FAILED\s*\]\s*(\d+)')
 	$passedCount = if ($passedMatch.Success) { [int]$passedMatch.Groups[1].Value } else { 0 }
-	$failedCount = if ($failedMatch.Success) { [int]$failedMatch.Groups[1].Value } else { 0 }
+	# --gtest_brief=1 omits gtest's own "N FAILED TESTS" summary, so count the per-test "[  FAILED  ] Suite.Test (N ms)" lines too
+	# (without this a failing test left the shard "0 failed" and showed up only as an unexplained exit code 1).
+	$failedNames = @([regex]::Matches($content, '(?m)^\[\s*FAILED\s*\]\s+(\S+\.\S+)\s+\(\d+ ms\)') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+	$failedCount = [Math]::Max($(if ($failedMatch.Success) { [int]$failedMatch.Groups[1].Value } else { 0 }), $failedNames.Count)
 	$totalPassed += $passedCount
 	$totalFailed += $failedCount
 
@@ -328,7 +331,7 @@ foreach ($job in $jobs) {
 	$crashedOrHung = ($job.State -eq "Stopped") -or ($null -ne $exitCode -and $exitCode -ne 0) -or (-not $passedMatch.Success)
 	if ($crashedOrHung -or $failedCount -gt 0) {
 		$failedShards += $job.Name
-		$reason = if ($crashedOrHung) { "crashed/timed out (exit code: $exitCode)" } else { "$failedCount test(s) failed" }
+		$reason = if ($failedCount -gt 0) { "$failedCount test(s) failed: $($failedNames -join ', ')" } elseif ($crashedOrHung) { "crashed/timed out (exit code: $exitCode)" } else { "failed" }
 		Write-Host "[FAIL] $($job.Name): $passedCount passed, $failedCount failed - $reason - see $logFile" -ForegroundColor Red
 	} else {
 		Write-Host "[OK] $($job.Name): $passedCount passed" -ForegroundColor Green

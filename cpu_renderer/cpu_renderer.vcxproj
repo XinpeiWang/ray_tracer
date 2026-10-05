@@ -96,7 +96,12 @@
     <ClInclude Include="..\src\TheRestOfYourLife\*.h" />
     <ClCompile Include="..\src\external\stb_image_impl.cpp" />
     <ClCompile Include="..\src\external\tinyexr_impl.cpp" />
-    <ClCompile Include="..\src\external\miniz.c" />
+    <!-- Compiled as C++ on purpose. A /TC compile is a SECOND cl task whose command line differs from the C++ files' (no /std:c++17), and
+         both tasks write the same CL.*.tlog tracking files, so each overwrote the other's entries and every build recompiled this whole
+         project. One command line for every file keeps MSBuild's up-to-date check working (see Directory.Build.props). -->
+    <ClCompile Include="..\src\external\miniz.c">
+      <CompileAs>CompileAsCpp</CompileAs>
+    </ClCompile>
     <ClInclude Include="..\src\external\*.h" />
     <ClInclude Include="..\src\external\*.hh" />
   </ItemGroup>
