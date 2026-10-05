@@ -1426,6 +1426,13 @@ struct MaterialData {
 	float3 chromaSigmaA = {0.0f, 0.0f, 0.0f};
 	float3 chromaSigmaS = {0.0f, 0.0f, 0.0f};
 	float3 chromaLe     = {0.0f, 0.0f, 0.0f};
+	// Wavefront (spectral) twin of chromaSigmaA/S: the coefficients (c0, c1, c2) of the sigmoid polynomial of each coefficient's
+	// unbounded RGB->spectrum uplift, value(lambda) = scale * s(c0*lambda^2 + c1*lambda + c2), baked on the host so the shadow any-hit
+	// program (which has no uplift tables) can evaluate sigma(lambda) per wavelength. scale == 0 means that coefficient is zero.
+	float3 chromaCoefA  = {0.0f, 0.0f, 0.0f};
+	float3 chromaCoefS  = {0.0f, 0.0f, 0.0f};
+	float  chromaScaleA = 0.0f;
+	float  chromaScaleS = 0.0f;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

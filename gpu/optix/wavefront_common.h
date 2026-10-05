@@ -369,6 +369,12 @@ struct WfShadowPayload {
 	// any-hit: once a candidate is reported it returns THAT candidate's own
 	// hit distance, not the ray's original requested bound.
 	float tMax;
+	// The originating item's hero wavelengths, and the running per-wavelength transmittance through CHROMATIC homogeneous media
+	// (wf_medium_is_chromatic): the any-hit multiplies exp(-sigma_t(lambda) * chord) into tr[], and __raygen__wf_shadow scales the
+	// item's spectral Ld by it afterwards (`transmittance` above stays the scalar product for every grey medium).
+	float lambda[kWFNWavelengths];
+	float tr[kWFNWavelengths];
+	int   chromatic;
 };
 
 // BSSRDF probe walk (MaterialType::Subsurface, wavefront backend Phase 2) -

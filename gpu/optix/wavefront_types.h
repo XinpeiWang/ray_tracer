@@ -635,6 +635,84 @@ struct ProbeCacheHitWorkItem {
 };
 
 // ============================================================================
+// Per-channel homogeneous media, spectral flavour (see MaterialData::chromaSigmaA and sample_homogeneous_event in
+// src/shared/volume_scattering.h, which this mirrors with the kWFNWavelengths hero wavelengths standing in for the RGB channels):
+// one wavelength is picked uniformly to sample the free flight, and the balance heuristic over the wavelengths weights the result.
+// ============================================================================
+CPU_GPU inline bool wf_medium_is_chromatic(const MaterialData& m) {
+	return (m.chromaSigmaA.x + m.chromaSigmaA.y + m.chromaSigmaA.z + m.chromaSigmaS.x + m.chromaSigmaS.y + m.chromaSigmaS.z) > 0.0f;
+}
+
+// scale * sigmoid(c0*l^2 + c1*l + c2) - the baked unbounded uplift of one coefficient, evaluated at `lambda` (nm).
+CPU_GPU inline float wf_chroma_poly(const float3& coef, float scale, float lambda) {
+	if (!(scale > 0.0f)) return 0.0f;
+	const float x = coef.z + lambda * (coef.y + lambda * coef.x);
+	const float s = (fabsf(x) > 3.0e38f) ? (x > 0.0f ? 1.0f : 0.0f) : 0.5f + x / (2.0f * sqrtf(1.0f + x * x));
+	return scale * s;
+}
+
+CPU_GPU inline float wf_chroma_sigma_a(const MaterialData& m, float lambda) { return wf_chroma_poly(m.chromaCoefA, m.chromaScaleA, lambda); }
+CPU_GPU inline float wf_chroma_sigma_s(const MaterialData& m, float lambda) { return wf_chroma_poly(m.chromaCoefS, m.chromaScaleS, lambda); }
+
+struct WfChromaEvent {
+	bool  collided;
+	float t;
+	float w[kWFNWavelengths];   // collision path weight (sigma_s T / pdf), or the pass-through weight when !collided
+	float e[kWFNWavelengths];   // emission weight sigma_a T / pdf (collision only)
+};
+
+CPU_GPU inline WfChromaEvent wf_chroma_event(const MaterialData& m, const float* lambda, float d, float u_channel, float u_dist) {
+	WfChromaEvent ev;
+	ev.collided = false;
+	ev.t = 0.0f;
+	float sa[kWFNWavelengths], ss[kWFNWavelengths], sig[kWFNWavelengths];
+	bool any = false;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		ev.w[i] = 1.0f;
+		ev.e[i] = 0.0f;
+		sa[i] = wf_chroma_sigma_a(m, lambda[i]);
+		ss[i] = wf_chroma_sigma_s(m, lambda[i]);
+		sig[i] = sa[i] + ss[i];
+		if (sig[i] > 0.0f) any = true;
+	}
+	if (!any) return ev;
+
+	int k = static_cast<int>(u_channel * static_cast<float>(kWFNWavelengths));
+	if (k > kWFNWavelengths - 1) k = kWFNWavelengths - 1;
+	const bool unbounded = d >= 1e29f;
+	float t = 1e30f;
+	if (sig[k] > 0.0f) t = -logf(fmaxf(1e-8f, 1.0f - u_dist)) / sig[k];
+
+	if (t < d) {
+		float Tc[kWFNWavelengths];
+		float pdf = 0.0f;
+		for (int i = 0; i < kWFNWavelengths; ++i) {
+			Tc[i] = (sig[i] > 0.0f) ? expf(-sig[i] * t) : 1.0f;
+			pdf += sig[i] * Tc[i];
+		}
+		pdf /= static_cast<float>(kWFNWavelengths);
+		if (!(pdf > 0.0f)) return ev;
+		ev.collided = true;
+		ev.t = t;
+		for (int i = 0; i < kWFNWavelengths; ++i) {
+			ev.w[i] = ss[i] * Tc[i] / pdf;
+			ev.e[i] = sa[i] * Tc[i] / pdf;
+		}
+		return ev;
+	}
+
+	float Tp[kWFNWavelengths];
+	float pass = 0.0f;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		Tp[i] = (sig[i] > 0.0f) ? (unbounded ? 0.0f : expf(-sig[i] * d)) : 1.0f;
+		pass += Tp[i];
+	}
+	pass /= static_cast<float>(kWFNWavelengths);
+	for (int i = 0; i < kWFNWavelengths; ++i) ev.w[i] = (pass > 0.0f) ? Tp[i] / pass : 0.0f;
+	return ev;
+}
+
+// ============================================================================
 // WorkQueue<T> — device-side append-only queue with an atomic size counter
 // ============================================================================
 

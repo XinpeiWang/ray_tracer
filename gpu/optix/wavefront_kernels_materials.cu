@@ -899,8 +899,22 @@ extern "C" __global__ void evaluate_materials(
 		float sigma_t = mat.ior;
 		mediumMeanFreePath = wf_restir_volume_mean_free_path(sigma_t);
 		float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / sigma_t) : 1e30f;
+
+		// Per-channel extinction (see MaterialData::chromaSigmaA): the free flight is drawn per hero wavelength with the balance-heuristic
+		// estimator (wf_chroma_event); chroma_w is the collision's path weight, or the pass-through weight when the ray gets through.
+		const bool chroma = wf_medium_is_chromatic(mat);
+		bool chroma_collided = false;
+		SS chroma_w(1.f), chroma_e(0.f);
+		if (chroma) {
+			const float cu_channel = wf_rand(seed);
+			const float cu_dist = wf_rand(seed);
+			const WfChromaEvent cev = wf_chroma_event(mat, swl.lambda, dist_inside, cu_channel, cu_dist);
+			chroma_collided = cev.collided;
+			free_path = cev.collided ? cev.t : 1e30f;
+			for (int i = 0; i < kWFNWavelengths; ++i) { chroma_w[i] = cev.w[i]; chroma_e[i] = cev.e[i]; }
+		}
 		float3 unit_dir = normalize(h.rayDir);
-		if (free_path < dist_inside) {
+		if (chroma ? chroma_collided : (free_path < dist_inside)) {
 			float medium_t = t_near + free_path;
 			hit_point     = h.rayOrigin + medium_t * unit_dir;
 			// Real NEE+MIS at the phase-function scatter event, matching
@@ -922,7 +936,7 @@ extern "C" __global__ void evaluate_materials(
 			// GPU-recursive (which multiply the raw RGB). unboundedSpectrum() is the
 			// right uplift for an unbounded weight. A grey medium (albedo<=1) was
 			// never affected, which is how this was isolated.
-			attenuation   = unboundedSpectrum(mat.albedo);
+			attenuation   = chroma ? chroma_w : unboundedSpectrum(mat.albedo);
 			is_specular   = false;
 			// MakeNamedMedium's own "rgb Le"/"float Lescale" (pbrt-v4) - see
 			// MaterialData::medium_emission's own comment (optix_types.h) for
@@ -941,12 +955,15 @@ extern "C" __global__ void evaluate_materials(
 			// the MIS gate the comment above describes) - it skips the
 			// dev_srgb_to_coeffs/per-wavelength-loop spectral uplift entirely
 			// for the common case of a plain fog Medium with no "Le" at all.
-			if (mat.medium_emission.x > 0.0f || mat.medium_emission.y > 0.0f || mat.medium_emission.z > 0.0f)
+			if (chroma) {
+					if (mat.chromaLe.x > 0.0f || mat.chromaLe.y > 0.0f || mat.chromaLe.z > 0.0f)
+						radiance = radiance + throughput * (wf_lift_rgb_to_spectrum(mat.chromaLe, swl, /*isIlluminant=*/true) * chroma_e);
+				} else if (mat.medium_emission.x > 0.0f || mat.medium_emission.y > 0.0f || mat.medium_emission.z > 0.0f)
 				radiance = radiance + throughput * wf_lift_rgb_to_spectrum(mat.medium_emission, swl, /*isIlluminant=*/true);
 		} else {
 			hit_point     = h.rayOrigin + t_far * unit_dir;
 			scattered_dir = unit_dir;  // straight through, no interaction
-			attenuation   = SS(1.f);
+			attenuation   = chroma ? chroma_w : SS(1.f);
 			is_specular   = true;  // no interaction - a free/non-scattering pass-through
 			// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
 			// specular flag) survives it instead of being reset as if a specular bounce had happened.
@@ -1387,8 +1404,22 @@ extern "C" __global__ void evaluate_materials(
 			float sigma_t = mat.eta_c.x;  // dielectric_medium_extra.sigma_t
 			mediumMeanFreePath = wf_restir_volume_mean_free_path(sigma_t);
 			float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / sigma_t) : 1e30f;
+
+			// Per-channel extinction (see MaterialData::chromaSigmaA): the free flight is drawn per hero wavelength with the balance-heuristic
+			// estimator (wf_chroma_event); chroma_w is the collision's path weight, or the pass-through weight when the ray gets through.
+			const bool chroma = wf_medium_is_chromatic(mat);
+			bool chroma_collided = false;
+			SS chroma_w(1.f), chroma_e(0.f);
+			if (chroma) {
+				const float cu_channel = wf_rand(seed);
+				const float cu_dist = wf_rand(seed);
+				const WfChromaEvent cev = wf_chroma_event(mat, swl.lambda, dist_inside, cu_channel, cu_dist);
+				chroma_collided = cev.collided;
+				free_path = cev.collided ? cev.t : 1e30f;
+				for (int i = 0; i < kWFNWavelengths; ++i) { chroma_w[i] = cev.w[i]; chroma_e[i] = cev.e[i]; }
+			}
 			float3 unit_dir = normalize(h.rayDir);
-			if (free_path < dist_inside) {
+			if (chroma ? chroma_collided : (free_path < dist_inside)) {
 				float medium_t = t_near + free_path;
 				hit_point     = h.rayOrigin + medium_t * unit_dir;
 				// Real NEE+MIS at the phase-function scatter event, matching
@@ -1402,13 +1433,15 @@ extern "C" __global__ void evaluate_materials(
 				// (via wf_sample_phase_scatter()) and flip is_specular.
 				scattered_dir = wf_sample_phase_scatter(unit_dir, mat.fuzz, seed, phaseWo, phaseG, brdf_pdf_override);
 				// Unbounded uplift - see MaterialType::Medium's identical site above.
-				attenuation   = unboundedSpectrum(mat.albedo);
+				attenuation   = chroma ? chroma_w : unboundedSpectrum(mat.albedo);
 				is_specular = false;
 			} else if (is_rough) {
 				hit_point = h.rayOrigin + t_far * unit_dir;
+					if (chroma) throughput = throughput * chroma_w;   // crossed the interior: the exit surface's direct light carries the pass weight
 				if (!roughDielectricMediumScatter(false)) { scattered = false; break; }
 			} else {
 				hit_point     = h.rayOrigin + t_far * unit_dir;
+					if (chroma) throughput = throughput * chroma_w;   // crossed the interior: the exit surface's direct light carries the pass weight
 				attenuation   = SS(1.f);
 				if (is_thin) {
 					scattered_dir = wf_thin_dielectric_scatter(h.rayDir, normal, mat.ior, seed);
