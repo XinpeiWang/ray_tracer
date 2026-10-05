@@ -65,6 +65,10 @@
 // empirical check for that, same as material_cpu_gpu_parity_tests.cpp's
 // own calibration process was.
 //
+// METAL_PARITY_MODELS=1 also sweeps the Models-category scenes (G1-G25, Stanford bunny/dragon/etc.), which are
+// skipped by default because they need the OBJ files in models/. Last full run: 23 of the 24 with assets pass and
+// one (G18) is marginal - Metal handles real meshes as well as the procedural scenes.
+//
 // Single-scene isolation for calibration/debugging: set
 // METAL_PARITY_ONLY_SCENE_ID to a scene id (e.g. "B9") to render only
 // that one - same mechanism and purpose as MATPARITY_ONLY_SCENE_ID in the
@@ -357,14 +361,22 @@ std::vector<const SceneDescriptor*> testable_scenes() {
 		SceneCategories::Materials, SceneCategories::Volumes, SceneCategories::Textures,
 		SceneCategories::Lights, SceneCategories::Cameras, SceneCategories::Geometry,
 		SceneCategories::Basics,
+		SceneCategories::Models,   // only reached with METAL_PARITY_MODELS=1 (below): needs the models/ assets
 	};
+	// Scenes that need external mesh files (Models, large scenes) are skipped by default - CI and most
+	// checkouts do not have the assets. METAL_PARITY_MODELS=1 includes the Models-category scenes (their
+	// OBJ files live in models/).
+	const bool includeModels = std::getenv("METAL_PARITY_MODELS") != nullptr;
 	std::vector<const SceneDescriptor*> out;
 	for (const SceneDescriptor& s : get_scene_registry()) {
 		bool inSweptCategory = false;
 		for (const char* cat : kSweptCategories) {
 			if (std::strcmp(s.category, cat) == 0) { inSweptCategory = true; break; }
 		}
-		if (!inSweptCategory || s.requires_files) continue;
+		const bool isModels = std::strcmp(s.category, SceneCategories::Models) == 0;
+		if (!inSweptCategory) continue;
+		if (isModels && !includeModels) continue;
+		if (s.requires_files && !(isModels && includeModels)) continue;
 		if (!metal_supports_scene(s.id)) continue;
 		const SceneDescriptor* found = find_scene(s.id);
 		if (found) out.push_back(found);
