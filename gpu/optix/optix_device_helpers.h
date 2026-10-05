@@ -994,13 +994,18 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 	float cos_i = wi_x*wm_x + wi_y*wm_y + wi_z*wm_z;
 	float F = FrDielectric(cos_i, 1.0f / rd_ri);
 
+	// A rejected continuation sample (a reflection that lands below the horizon, a refraction that lands on the wrong
+	// side) must not skip this vertex's NEE: pbrt takes the direct-light sample at every vertex whether or not the
+	// BSDF sample that follows succeeds. Returning false here used to drop NEE too, losing the rejection probability
+	// of the interior side of a rough glass object - 15-40% of the glass pixels at roughness 0.25-0.6.
+	bool rd_rej = false;
 	float3 wo_local;
 	if (random_float(seed) < F) {
 		// Reflect
 		float wo_x = 2.0f*cos_i*wm_x - wi_x;
 		float wo_y = 2.0f*cos_i*wm_y - wi_y;
 		float wo_z = 2.0f*cos_i*wm_z - wi_z;
-		if (wo_z <= 0.0f) return false;
+		if (wo_z <= 0.0f) rd_rej = true;
 		wo_local = make_float3(wo_x, wo_y, wo_z);
 	} else {
 		// Refract
@@ -1011,7 +1016,7 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 			float wo_x = 2.0f*cos_i*wm_x - wi_x;
 			float wo_y = 2.0f*cos_i*wm_y - wi_y;
 			float wo_z = 2.0f*cos_i*wm_z - wi_z;
-			if (wo_z <= 0.0f) return false;
+			if (wo_z <= 0.0f) rd_rej = true;
 			wo_local = make_float3(wo_x, wo_y, wo_z);
 		} else {
 			// Transmitted direction (pbrt-v4 Refract in local frame):
@@ -1023,18 +1028,23 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 			float wo_z = -(rd_ri*wi_z  - (rd_ri*cos_i - cos_t)*wm_z);
 			// pbrt-v4 rejects a refracted sample that ends up on the same side as wo (DielectricBxDF::Sample_f: SameHemisphere(wo, wi)), which a strongly tilted
 			// microfacet produces at grazing incidence. Keeping it added ~7% to the albedo leaving glass at 75 degrees.
-			if (wo_z >= 0.0f) return false;
+			if (wo_z >= 0.0f) rd_rej = true;
 			wo_local = make_float3(wo_x, wo_y, wo_z);
 			// pbrt-v4 etaScale - a genuine transmission (not the TIR
 			// fallback-to-reflect branch above), eta = rd_ri exactly
 			// like plain Dielectric's own eta.
-			eta = rd_ri;
+			if (!rd_rej) eta = rd_ri;
 		}
 	}
-	scattered_dir = normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
+	// Dispersive glass and the effectively-smooth lobe keep the old behaviour (no NEE on a rejected sample): the dispersive
+	// channel is only fixed once a sample is accepted, and a smooth lobe has no NEE at all.
+	if (rd_rej && ((allowDispersion && mat.dispersive_extra.cauchy_A > 0.0f) || rd_dist.EffectivelySmooth())) return false;
+	scattered_dir = rd_rej ? n : normalize(wo_local.x*tan + wo_local.y*bitan + wo_local.z*n);
 	// pbrt-v4 RoughDielectricBxDF: BSDF weight with VNDF sampling = G(wo,wi)/G1(wi)
 	// (the D, cos, and pdf terms cancel; only shadow-masking ratio remains)
-	{
+	if (rd_rej) {
+		attenuation = make_float3(0.0f, 0.0f, 0.0f);  // the path ends after this vertex's NEE below
+	} else {
 		float wo_x = wo_local.x, wo_y = wo_local.y, wo_z = fabsf(wo_local.z);
 		float G2 = rd_dist.G(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z);
 		float G1_wi = rd_dist.G1(wi_x, wi_y, wi_z);
@@ -1068,7 +1078,7 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 		// contract (src/shared/bxdfs_conductor.h) - matches
 		// wavefront_kernels.cu's identical computation, which passes
 		// wo_local's components through unmodified.
-		brdf_pdf_override = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_local.x, wo_local.y, wo_local.z);
+		brdf_pdf_override = rd_rej ? -1.0f : rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, wo_local.x, wo_local.y, wo_local.z);
 
 		{
 			float3 to_light, sampled_light_emission; float max_dist, light_pdf;

@@ -1,0 +1,30 @@
+# rough-glass-from-inside.pbrt -- the camera sits INSIDE a big rough glass sphere and looks at its far wall, with a lamp
+# straight outside the wall. Every pixel is an interior vertex where the ray leaves the glass.
+#
+# At such a vertex a large share of BSDF samples is rejected (a reflection that lands below the horizon, a refraction that
+# lands on the wrong side: ~30-45% at roughness 0.6). pbrt, and the CPU, still take the direct-light (NEE) sample at the
+# vertex; both GPU backends returned before it, so they lost exactly the rejection probability of the whole image:
+# 80% of the CPU at roughness 0.25, 63% at 0.6, 50% at 1.0 (1 / (1 + alpha^2), alpha = sqrt(roughness)). Now all three
+# agree to 0.2% at every roughness. A scene whose glass is seen from outside mostly shows the lamp itself (94% of the image
+# energy in rough-glass-lamp.pbrt), which hid the problem from whole-image means.
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 0    0 0 -1    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 200 ] "integer yresolution" [ 200 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 0 -48
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 200 200 200 ]
+  Shape "sphere" "float radius" [ 4 ]
+AttributeEnd
+
+AttributeBegin
+  Material "dielectric" "float eta" [ 1.5 ] "float roughness" [ 0.6 ]
+  Shape "sphere" "float radius" [ 20 ]
+AttributeEnd
