@@ -34,6 +34,7 @@ kernel void primaryRayKernel(
     // over dropping the material" tier every other pbrt-loaded image
     // here already uses.
     texture2d<float, access::sample> pbrtDiffuseTexture [[texture(7)]],
+    texture2d<float, access::sample> pbrtTransmitTexture [[texture(8)]],
     instance_acceleration_structure accelStructure [[buffer(0)]],
     constant Uniforms& uniforms [[buffer(1)]],
     device const TriangleMaterial* triMaterials [[buffer(2)]],
@@ -1147,6 +1148,17 @@ kernel void primaryRayKernel(
                 float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
                                       : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 albedo = pbrtDiffuseTexture.sample(textureSampler, float2(uv.x, 1.0 - uv.y)).rgb * mat.roughness;
+            } else if (mat.materialType == 12u && mat.conductorK.y > 8.5) {
+                // DiffuseTransmission with image-textured reflectance (diffuse slot) and/or transmittance
+                // (second slot) - J2. conductorK.x = 1 when reflectance is an image, conductorK.z = 1 when
+                // transmittance is; otherwise the flat colour in color / transmitColor is used. The shade
+                // function reads mat.transmitColor, so the sampled transmittance is written back into it.
+                float2 uv9 = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                albedo = (mat.conductorK.x > 0.5)
+                    ? pbrtDiffuseTexture.sample(textureSampler, float2(uv9.x, 1.0 - uv9.y)).rgb
+                    : float3(mat.color);
+                if (mat.conductorK.z > 0.5)
+                    mat.transmitColor = packed_float3(pbrtTransmitTexture.sample(textureSampler, float2(uv9.x, 1.0 - uv9.y)).rgb);
             } else {
                 albedo = float3(mat.color);
             }

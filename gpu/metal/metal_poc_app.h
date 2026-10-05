@@ -307,6 +307,13 @@ struct MetalPocApp {
     // "texture reflectance" bound to a bare "imagemap" Texture (F5/F9,
     // section 166) - same "one shared slot, first material wins"
     // constraint as every other pbrt-loaded image above.
+    // A SECOND image slot (texture index 8) for a DiffuseTransmission material whose "texture transmittance" is an
+    // imagemap while its reflectance is a different one (J2): reflectance uses the diffuse slot above, transmittance this.
+    bool havePbrtTransmitImage = false;
+    std::vector<float> pbrtTransmitImagePixels;
+    int pbrtTransmitImageWidth = 0;
+    int pbrtTransmitImageHeight = 0;
+    std::string pbrtTransmitImageFilename;
     bool havePbrtDiffuseImage = false;
     std::vector<float> pbrtDiffuseImagePixels;
     int pbrtDiffuseImageWidth = 0;
