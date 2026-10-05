@@ -300,7 +300,7 @@ float regional_tolerance_for(float wholeImageTolerance) {
 // either way (METAL_PARITY_STRICT doesn't distinguish the two - both
 // count as "not a clean pass" if that's ever enabled).
 const char* const kKnownGapScenes[] = {
-	"B9", "B10", "B11", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
+	"B9", "B11", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
 	"F1", "F4", "F7", "F8", "F14",            // unsupported shape (cone/paraboloid/bilinear patch/curve) -> silently dropped
 	// C17 (Portal Light): portal-light.pbrt reads sssdragon/textures/small_rural_road_equiarea.exr,
 	// which is not tracked in this repo (only the sssdragon benchmark checkout has it). Both
@@ -329,6 +329,12 @@ const char* const kKnownGapScenes[] = {
 	// medium on a cylinder; heterogeneous rgbgrid on a sphere). The interface boundary is now transparent
 	// instead of an opaque gray shape, but the volume scattering is missing.
 	"E6", "E7",
+	// A9 (Final Scene), E3, E11, E12: glass (dielectric / thindielectric / rough dielectric) that also bounds a
+	// homogeneous medium (A9: a blue-fog sphere and a radius-5000 world-haze sphere). Metal models only the
+	// medium's TRUE absorption (sigma_a, Beer-Lambert on exit); its in-scattering - the glow/haze CPU shows - needs
+	// per-path "currently inside a medium" state and is not modelled. (Separately fixed here: pbrt dielectrics
+	// used to absorb 0.5 per unit because the generic material colour leaked into the absorption slot.)
+	"A9", "E3", "E11", "E12",
 };
 
 bool is_known_gap_scene(const std::string& id) {
