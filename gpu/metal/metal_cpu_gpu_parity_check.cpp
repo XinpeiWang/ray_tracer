@@ -309,6 +309,11 @@ const char* const kKnownGapScenes[] = {
 	// different failure modes, not two renderers on the same scene. Re-triage (including whether
 	// Metal honours the portal restriction at all) once the EXR is available.
 	"C17",
+	// C2 (Spotlight Cornell): the sphere is a "conductor" given only a reflectance (no named metal
+	// spectrum). CPU approximates that with a fuzzy-mirror `metal` material (pbrt_cpu_builder.h), which
+	// cannot show a highlight from a delta (spot/point) light; Metal uses the real GGX conductor
+	// (closer to pbrt-v4), so it shows one. Direct lighting everywhere else matches CPU block-for-block.
+	"C2",
 };
 
 bool is_known_gap_scene(const std::string& id) {

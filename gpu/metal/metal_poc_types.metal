@@ -1046,29 +1046,19 @@ struct SpherePayload {
     // attenuated correctly in expectation. The heterogeneous kinds
     // (29/30) are still ignored entirely for shadow rays (they slightly
     // OVER-light what's behind them).
-    // Defaults to TRUE deliberately: the ~50 existing shadow-ray call
-    // sites across every metal_poc_materials_*.metal shading function
-    // never construct a SpherePayload at all (Metal's own 3-argument
-    // `intersect(ray, accel, table)` overload implicitly supplies a
-    // default-initialized one to any function in the table that
-    // declares a `[[payload]]` parameter - confirmed by this exact
-    // mechanism already being relied on before this field existed,
-    // since sphereIntersectionFunction's own payload parameter was
-    // already mandatory and every one of those call sites already
-    // omitted it) - true-by-default means every one of them
-    // automatically gets the correct "shadow ray" treatment with NO
-    // changes needed at any of those ~50 sites. The one place this
-    // must be FALSE - the primary/continuation ray that needs to
-    // actually ENTER a medium sphere - constructs its own payload
-    // explicitly already (F11, section 167), so it overrides this
-    // default deliberately, not by omission.
+    // A shadow ray must set this TRUE. Do NOT rely on the default: the
+    // 3-argument `intersect(ray, accel, table)` overload does NOT apply this
+    // struct's default member initialisers to the payload it hands the
+    // intersection function, so every shadow-ray call site goes through
+    // traceShadowAny()/traceShadowAnyP() (metal_poc_sampling.metal), which
+    // construct the payload explicitly. (An implicit payload made a sphere's
+    // shadow extend well past its true extent - C4, point-light Cornell box.)
+    // The primary/continuation ray that must actually ENTER a medium sphere
+    // passes isShadowRay=false explicitly (F11, section 167).
     bool isShadowRay = true;
     // B14/section 184: which sphere primitive (if any) a shadow ray must
     // treat as invisible/non-occluding, REGARDLESS of isShadowRay/
-    // materialType - -1 (every call site before this one, via the same
-    // "3-arg intersect() implicitly default-constructs this" mechanism
-    // isShadowRay's own comment documents) means "ignore nothing,
-    // unchanged behaviour". Exists specifically for a sphere-shaped area
+    // materialType - -1 means "ignore nothing". Exists specifically for a sphere-shaped area
     // light's own NEE shadow ray: unlike a quad light (a flat triangle a
     // `max_distance` epsilon-short-stop reliably clears), a curved
     // sphere's own surface is close enough to a shadow ray's intended
