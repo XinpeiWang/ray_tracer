@@ -14,6 +14,11 @@
 #include "pbrt_load.h"
 
 #include <cstdio>
+#ifdef _WIN32
+#include <process.h>
+#else
+#include <unistd.h>
+#endif
 #include <fstream>
 #include <string>
 
@@ -25,7 +30,8 @@ class TempTree : public ::testing::Test {
 protected:
 	void SetUp() override {
 		const char *tmp = std::getenv("TEMP");
-		root_ = std::string(tmp ? tmp : ".") + "/pbrt_load_tests/";
+		// Per-process directory: scripts/run_tests_parallel.ps1 runs shards of this suite concurrently.
+		root_ = std::string(tmp ? tmp : ".") + "/pbrt_load_tests_" + std::to_string(processId()) + "/";
 		makeDir(root_);
 		makeDir(root_ + "geometry/");
 		makeDir(root_ + "textures/");
@@ -45,6 +51,13 @@ protected:
 	std::string path(const std::string &relative) const { return root_ + relative; }
 
 private:
+	static int processId() {
+	#ifdef _WIN32
+		return static_cast<int>(_getpid());
+	#else
+		return static_cast<int>(getpid());
+	#endif
+	}
 	static void makeDir(const std::string &d) {
 	#ifdef _WIN32
 		std::string cmd = "if not exist \"" + d + "\" mkdir \"" + d + "\" >nul 2>&1";

@@ -37,10 +37,10 @@
     <!-- Wavefront CUDA compute kernels -> .obj (linked into optix_renderer.lib).
          The 6 wavefront_kernels_*.cu entries are wavefront_kernels.cu's own
          per-kernel-family split (see wavefront_device_helpers.h's own header
-         comment) - each recompiles independently based on its own mtime via
-         this item list's per-item Inputs/Outputs in CompileWavefrontKernels
-         below, so editing one kernel no longer forces recompiling all of
-         them. -->
+         comment) - each recompiles independently (CompileCudaSources below
+         decides per file from its own source, the headers nvcc reports it
+         included, and its flags), so editing one kernel does not force
+         recompiling the others. -->
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_camera.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_materials.cu" />
     <WavefrontObjSource Include="$(MSBuildProjectDirectory)\..\gpu\optix\wavefront_kernels_materials_simple.cu" />
