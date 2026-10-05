@@ -41,6 +41,7 @@
 
 #include <gtest/gtest.h>
 #include <cmath>
+#include <cstdio>
 #include <vector>
 
 extern "C" {
@@ -154,8 +155,25 @@ TEST(LivePreviewRestirLightBvhTest, RestirOnAndOffAgreeOnMean) {
 	// ordinary disagreement at 150 frames of 1 spp each, while still failing
 	// fast and hard on any reintroduction of that class of bug.
 	const double ratio = restirOnMean / restirOffMean;
-	EXPECT_GT(ratio, 0.5) << "ReSTIR DI mean (" << restirOnMean << ") is far below classic NEE's ("
+	EXPECT_GT(ratio, 0.95) << "ReSTIR DI mean (" << restirOnMean << ") is far below classic NEE's ("
 						  << restirOffMean << ") - looks like a light-selection pdf/MIS-weight bug.";
-	EXPECT_LT(ratio, 2.0) << "ReSTIR DI mean (" << restirOnMean << ") is far above classic NEE's ("
+	EXPECT_LT(ratio, 1.05) << "ReSTIR DI mean (" << restirOnMean << ") is far above classic NEE's ("
 						  << restirOffMean << ") - looks like a light-selection pdf/MIS-weight bug.";
+}
+
+// ReSTIR DI (and DI+GI) against classic NEE as linear means, on Lambertian, rough-glass, coated and rough-metal Cornell boxes. Measured
+// at 300 frames: DI reads +0.6..+1.3% and DI+GI -0.9..-0.1% of the classic mean on every scene, so +-3% leaves room for noise while
+// failing on a real light-selection or MIS-weight error (the A1-only test above, at 150 frames, used to require just 0.5..2.0 and now 0.95..1.05).
+TEST(LivePreviewRestirLightBvhTest, RestirOnAndOffAgreeToThreePercentAcrossMaterials) {
+	const int width = 64, height = 64;
+	constexpr int kNumFrames = 300;
+	for (const char* scene : {"A1", "B3", "B5", "B7", "B2"}) {
+		const double off  = renderMeanBrightness(scene, width, height, kNumFrames, false, false);
+		const double di   = renderMeanBrightness(scene, width, height, kNumFrames, true,  false);
+		const double digi = renderMeanBrightness(scene, width, height, kNumFrames, true,  true);
+		ASSERT_GT(off, 0.0);
+		std::printf("[restir] %s: off %.4f  DI %.1f%%  DI+GI %.1f%%\n", scene, off, 100.0 * di / off, 100.0 * digi / off);
+		EXPECT_NEAR(di / off, 1.0, 0.03) << scene << ": ReSTIR DI vs classic NEE";
+		EXPECT_NEAR(digi / off, 1.0, 0.03) << scene << ": ReSTIR DI+GI vs classic NEE";
+	}
 }
