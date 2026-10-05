@@ -60,7 +60,7 @@ materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D check
 |---|---|---|
 | C2, F2 | reflectance-only conductor | CPU renders a fuzzy mirror (no highlight from point/spot lights); Metal renders real GGX metal. A CPU-side decision. |
 | B24 | CPU shadow rays pass through glass | CPU's `shadow_ray_hit` walks through glass; Metal blocks like pbrt-v4. Matching needs material-aware shadow tracing (~70 call sites). |
-| A9, B13, E11, E12 | glass + scattering medium, remaining differences | the medium is simulated now (E3 matches CPU to 2%); E12's *rough* glass blocks shadow rays while CPU lights through it; A9 also has a radius-5000 "world haze" sphere. |
+| A9, B13, E12 | glass + scattering medium, remaining differences | the medium is simulated (E3 matches CPU to 2%, E11 thin glass now passes after keeping the MIS state across the boundary); E12's rough glass is ~2-3x too bright inside (CPU sits between Metal's blocked and pass-through shadow behaviour, also at roughness 0); A9 also has a radius-5000 "world haze" sphere; B13 is just past the regional tolerance. |
 | E6 | cylinder medium | a homogeneous medium bounded by a cylinder is not representable (only sphere-bounded media are); the boundary is transparent. (E7, the pbrt rgbgrid medium, now renders and passes.) |
 | C11 | image-textured disk/cylinder lights | only the image's average colour is used; the per-pixel pattern (and so the red channel, ~1/3 low) is not reproduced. |
 | B11 | hair "black fur" | float32 hair BSDF instability for high absorption + narrow lobes; red channel ~1.4x CPU. |

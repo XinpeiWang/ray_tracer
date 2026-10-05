@@ -1176,7 +1176,7 @@ SphereIntersectionResult sphereIntersectionFunction(
     {
         uint mt = sphereMaterials[primitiveIndex].materialType;
         if (payload.isShadowRay && (mt == 29u || mt == 30u)) return result;
-        const bool glassWithMedium = (mt == 2u || mt == 11u) && sphereMaterials[primitiveIndex].conductorK.y > 0.5;
+        const bool glassWithMedium = (mt == 2u || mt == 5u || mt == 11u) && sphereMaterials[primitiveIndex].conductorK.y > 0.5;
         if (payload.isShadowRay && (mt == 28u || glassWithMedium)) {
             // Homogeneous medium sphere vs a shadow ray: not an opaque
             // blocker, but it does attenuate. Visibility through it is

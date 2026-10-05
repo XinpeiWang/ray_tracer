@@ -319,12 +319,15 @@ const char* const kKnownGapScenes[] = {
 	// bounded media are). The interface boundary is transparent instead of an opaque gray shape, but the volume
 	// scattering is missing. (E7, the pbrt rgbgrid medium on a sphere, now renders: see the loader.)
 	"E6",
-	// A9 (Final Scene), B13 (wax/jade spheres), E11 (thin dielectric), E12 (rough dielectric): glass spheres that bound a
-	// scattering medium. The medium is now simulated (per-path "inside a glass medium" state, hero colour channel for
-	// chromatic media, shadow rays through the sphere attenuated stochastically - E3 now matches CPU to 2%), but these
-	// still differ: E12's ROUGH glass blocks shadow rays on Metal while CPU lights through it; A9 also has a
-	// radius-5000 "world haze" glass sphere enclosing the scene; B13/E11 sit just past the regional tolerance.
-	"A9", "B13", "E11", "E12",
+	// A9 (Final Scene), B13 (wax/jade spheres), E12 (rough dielectric): glass spheres that bound a scattering medium.
+	// The medium is simulated (per-path "inside a glass medium" state, hero colour channel for chromatic media, shadow
+	// rays through the sphere attenuated stochastically, and the MIS state of a scattered path kept across the glass
+	// boundary so a light reached straight through is not counted twice - E3 matches CPU to 2%, E11 now passes), but
+	// these still differ. E12 (rough glass) is ~2-3x too bright inside the sphere; CPU sits between Metal's blocked and
+	// pass-through shadow-ray behaviours, and the gap persists at roughness 0, so it is a semantics difference in how CPU
+	// lights chromatic scattering media behind a refracting boundary rather than a rough-glass bug. A9 also has a
+	// radius-5000 "world haze" glass sphere enclosing the scene; B13 sits just past the regional tolerance.
+	"A9", "B13", "E12",
 	// C11 (Textured Two-Sided Lights): image-textured disk and cylinder lights. The image can only be mapped
 	// per-pixel on a quad light (one shared texture slot, uv from the quad); for disk/cylinder lights Metal
 	// uses the image's average colour x scale (rows weighted by radius for the disk, as pbrt maps row -> radius)
