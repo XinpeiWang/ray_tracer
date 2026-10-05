@@ -224,12 +224,15 @@ extern "C" __global__ void __closesthit__wf_triangle() {
 	// pbrt "texture displacement" bump map (grayscale height image): perturb the shading normal here so every
 	// downstream use sees it (BSDF sampling, NEE cosines, MIS pdfs), as the CPU's bump_map_material does -
 	// see gpu_bump_map.h. `front_face` above keeps deciding the side from the unperturbed normal, as on the
-	// CPU. Skipped for emitters and for a mesh without UVs.
+	// CPU. Skipped for emitters. A mesh without UVs is bumped too, through the barycentric fallback UV and the
+	// degenerate-UV branch of gpu_triangle_dpdu_dpdv() (zero UVs), as the CPU's triangle does.
 	{
 		const MaterialData& hitMat = wf_params.materials[tri.materialIdx];
-		if (hitMat.bumpTexIdx >= 0 && tri.hasUVs && hitMat.type != MaterialType::DiffuseLight) {
+		if (hitMat.bumpTexIdx >= 0 && hitMat.type != MaterialType::DiffuseLight) {
 			float3 bump_dpdu, bump_dpdv;
-			gpu_triangle_dpdu_dpdv(tri.p0, tri.p1, tri.p2, tri.uv0, tri.uv1, tri.uv2, normal, bump_dpdu, bump_dpdv);
+			gpu_triangle_dpdu_dpdv(tri.p0, tri.p1, tri.p2,
+				tri.hasUVs ? tri.uv0 : make_float2(0.0f, 0.0f), tri.hasUVs ? tri.uv1 : make_float2(0.0f, 0.0f),
+				tri.hasUVs ? tri.uv2 : make_float2(0.0f, 0.0f), normal, bump_dpdu, bump_dpdv);
 			if (instBase >= 0) {
 				bump_dpdu = optixTransformVectorFromObjectToWorldSpace(bump_dpdu);
 				bump_dpdv = optixTransformVectorFromObjectToWorldSpace(bump_dpdv);
