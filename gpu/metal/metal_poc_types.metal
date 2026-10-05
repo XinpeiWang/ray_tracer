@@ -315,6 +315,8 @@ struct Uniforms {
     float filterIntegral;
     float filterConditionalCDF[32][32];
     float filterMarginalCDF[32];
+    // See metal_poc_gpu_types.h. <= 0 means unbounded.
+    float fireflyClamp;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -711,36 +713,12 @@ inline float3 goniometricLightRadiance(float3 wiFromLight, packed_float3 lightFo
 // short of a real occluder.
 constant float kDirectionalLightMaxDistance = 10.0f;
 
-// A "firefly" clamp: a rare, extremely bright single-sample outlier
-// (a shadow ray that happens to graze very close to a light's own edge,
-// giving it a tiny solid-angle pdf and therefore a huge NEE weight, or a
-// specular chain that happens to line up with a light just so) that,
-// left alone, dominates that pixel's own average out of proportion to
-// its real probability - the classic "salt and pepper" bright-pixel
-// noise a path tracer shows at low sample counts even where the true
-// expected radiance is modest. Clamping each SAMPLE's own total
-// radiance (not the final image, and not per-bounce-contribution) to
-// this ceiling before folding it into the accumulator introduces a
-// small, well-known, deliberately-accepted BIAS (a true outlier's own
-// excess energy is discarded, not redistributed) in exchange for a much
-// faster-converging, far less noisy image - the standard practical
-// trade-off production renderers already make, not a free lunch. Scaled
-// per-channel (preserves the sample's own hue, only caps its
-// brightness) rather than a flat per-channel clamp, which would shift
-// colour at the point of clamping. Tuned by actually rendering at a
-// deliberately low (16) sample count and comparing, not picked from
-// theory alone - 60 (comfortably above every light's own top emission
-// magnitude, ~15-20) turned out too high to visibly touch this scene's
-// own worst noise cluster (a fog/volumetric NEE hotspot near the spot
-// light's own cone) at all; 3 visibly dimmed the ceiling lights'
-// legitimate direct-view brightness, an unacceptable bias. 20 is the
-// honest middle ground: still occasionally clips a LEGITIMATE bright
-// sample (a direct, unlucky view of a light source's own upper range),
-// not "guaranteed never to touch a real value" the way a much higher
-// threshold would be, but the reduction in visible low-sample-count
-// noise is real and worth that small trade, and it is invisible at this
-// scene's own committed high-quality sample counts either way.
-constant float kFireflyClampLuminance = 20.0f;
+// Per-sample firefly clamp: the kernel caps each sample's max(r,g,b) at
+// Uniforms::fireflyClamp, which the pbrt loader sets from the scene's Film
+// "maxcomponentvalue" (default unbounded, exactly like the CPU path). This used
+// to be a fixed constant of 20 tuned for the old hand-authored room; a pbrt scene
+// can legitimately exceed it (the ceiling right above a point light reads
+// 100-260), so Metal rendered those scenes ~35% too dark.
 
 // Adaptive sampling's own convergence parameters, ported directly from
 // this project's own CPU integrator (src/shared/adaptive_sampling.h) -
