@@ -149,6 +149,9 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 		             "tracer instead if the ambient fog matters for this render.\n";
 	}
 
+	// Per-channel extinction is the default path tracer's only (see chromatic_media_integrator_warning()).
+	std::cerr << chromatic_media_integrator_warning(*scene_desc, scene_id, "--bdpt/--mlt");
+
 	return scene_desc;
 }
 
