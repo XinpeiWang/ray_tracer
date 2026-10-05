@@ -385,6 +385,43 @@ void MetalPocApp::loadPbrtScene() {
                 // default below instead of misrendering it. Also excludes
                 // m.checkerIs3D: a 3D checker is handled by its own case just above
                 // (it needs a texture-space point, not UV tile frequencies).
+                // pbrt-v4 procedural reflectance textures, each a mode of materialType 25 (conductorK.y):
+                //   3 fbm, 4 windy, 5 wrinkled (both keyed on the pbrt-world hit point with NO scale, like CPU),
+                //   6 dots (uv), 7 bilerp (uv). The world-point ones fold the scene rescale/recentre into
+                //   t = k*p_metal + off exactly as marble does (k = 1/sceneScale,
+                //   off = bboxCenter - sceneOffset/sceneScale; conductorK.x = k, conductorEta = off).
+                //   wrinkled: transmitColor = (octaves, omega, 0). dots: color = inside, transmitColor =
+                //   outside (flat colours only). bilerp: color = v00, transmitColor = v01, conductorEta = v10,
+                //   v11 = (conductorK.x, roughness, conductorK.z).
+                if (m.hasWindyReflectance || m.hasWrinkledReflectance || m.hasFbmReflectance) {
+                    TriangleMaterial mat{PackedFloat3{0.5f, 0.5f, 0.5f}, /*materialType=*/25u, /*ior=*/1.0f,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    mat.conductorK = PackedFloat3{1.0f / sceneScale, m.hasFbmReflectance ? 3.0f : (m.hasWindyReflectance ? 4.0f : 5.0f), 0.0f};
+                    mat.conductorEta = PackedFloat3{bboxCenter.x - sceneOffset.x / sceneScale,
+                                                     bboxCenter.y - sceneOffset.y / sceneScale,
+                                                     bboxCenter.z - sceneOffset.z / sceneScale};
+                    if (m.hasWrinkledReflectance)
+                        mat.transmitColor = PackedFloat3{(float)m.wrinkledOctaves, (float)m.wrinkledRoughness, 0.0f};
+                    if (m.hasFbmReflectance)   // fbm (mode 3): transmitColor = (octaves, omega, 0), scale 1 like CPU
+                        mat.transmitColor = PackedFloat3{(float)m.fbmOctaves, (float)m.fbmRoughness, 0.0f};
+                    return mat;
+                }
+                if (m.hasDotsReflectance && m.dotsInsideTexFilename.empty() && m.dotsOutsideTexFilename.empty()) {
+                    TriangleMaterial mat{PackedFloat3{(float)m.dotsInsideColor[0], (float)m.dotsInsideColor[1], (float)m.dotsInsideColor[2]},
+                                         /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    mat.transmitColor = PackedFloat3{(float)m.dotsOutsideColor[0], (float)m.dotsOutsideColor[1], (float)m.dotsOutsideColor[2]};
+                    mat.conductorK = PackedFloat3{0.0f, 6.0f, 0.0f};
+                    return mat;
+                }
+                if (m.hasBilerpReflectance) {
+                    TriangleMaterial mat{PackedFloat3{(float)m.bilerpV00[0], (float)m.bilerpV00[1], (float)m.bilerpV00[2]},
+                                         /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1,
+                                         /*roughness=*/(float)m.bilerpV11[1]};
+                    mat.transmitColor = PackedFloat3{(float)m.bilerpV01[0], (float)m.bilerpV01[1], (float)m.bilerpV01[2]};
+                    mat.conductorEta = PackedFloat3{(float)m.bilerpV10[0], (float)m.bilerpV10[1], (float)m.bilerpV10[2]};
+                    mat.conductorK = PackedFloat3{(float)m.bilerpV11[0], 7.0f, (float)m.bilerpV11[2]};
+                    return mat;
+                }
                 // pbrt-v4 "marble" reflectance texture (A5/A7): FBm-perturbed sine through a colour
                 // spline, ported from CPU's marble_texture. Like CPU it is keyed on the (pbrt-world)
                 // hit point times `marbleScale`, so the same fold as the 3D checker applies: the
@@ -412,6 +449,48 @@ void MetalPocApp::loadPbrtScene() {
                 // fold that into the transform once here: t = k*p_metal + off with k = s/sceneScale
                 // and off = s*(bboxCenter - sceneOffset/sceneScale) (conductorK.x = k,
                 // conductorEta = off). Works on triangles and spheres alike (A2's ground is a sphere).
+                // 2D checkerboard whose tex1 is a bare imagemap (J3), or a NESTED checkerboard whose own tex1
+                // is one (J6, two levels): pbrt evaluates nested textures with the same (u,v), each checker
+                // with its own uscale/vscale. materialType 25 mode 8 (conductorK.y = 8), using the single
+                // diffuse-image slot (the first image filename wins, as for materialType 26):
+                //   color = outer tex2, transmitColor = nested tex2, conductorEta = (outer uscale, vscale,
+                //   nested?1:0), conductorK = (nested uscale, 8, nested vscale).
+                if (m.hasCheckerReflectance && !m.checkerIs3D && m.checkerTex2Filename.empty()) {
+                    std::string imgFile;
+                    bool nestedLevel = false;
+                    double nU = 1.0, nV = 1.0;
+                    double nTex2[3] = {0, 0, 0};
+                    const pbrt_flatten::NestedProceduralTexture& nt = m.checkerTex1Nested;
+                    if (!m.checkerTex1Filename.empty()) {
+                        imgFile = m.checkerTex1Filename;
+                    } else if (nt.kind == "checkerboard" && !nt.tex1Filename.empty() && nt.tex2Filename.empty()) {
+                        imgFile = nt.tex1Filename; nestedLevel = true; nU = nt.uscale; nV = nt.vscale;
+                        for (int c = 0; c < 3; ++c) nTex2[c] = nt.color2[c];
+                    }
+                    if (!imgFile.empty() && (!havePbrtDiffuseImage || imgFile == pbrtDiffuseImageFilename)) {
+                        if (!havePbrtDiffuseImage) {
+                            std::string bytes;
+                            if (pbrt_load::loadFileNear(pbrtScenePath, imgFile, bytes) &&
+                                pbrt_load::detail::decodeInfiniteLightImage(imgFile, bytes,
+                                    pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                                havePbrtDiffuseImage = true;
+                                pbrtDiffuseImageFilename = imgFile;
+                            } else {
+                                fprintf(stderr, "loadPbrtScene: checkerboard's image texture '%s' could not be "
+                                                "read/decoded; falling back to its flat colour\n", imgFile.c_str());
+                            }
+                        }
+                        if (havePbrtDiffuseImage) {
+                            TriangleMaterial mat{
+                                PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]},
+                                /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                            mat.transmitColor = PackedFloat3{(float)nTex2[0], (float)nTex2[1], (float)nTex2[2]};
+                            mat.conductorEta = PackedFloat3{(float)m.checkerUScale, (float)m.checkerVScale, nestedLevel ? 1.0f : 0.0f};
+                            mat.conductorK = PackedFloat3{(float)nU, 8.0f, (float)nV};
+                            return mat;
+                        }
+                    }
+                }
                 if (m.hasCheckerReflectance && m.checkerIs3D &&
                     m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
                     const double* w2t = m.checkerWorldToTexture;
