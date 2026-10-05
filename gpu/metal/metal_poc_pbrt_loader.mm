@@ -655,6 +655,14 @@ void MetalPocApp::loadPbrtScene() {
                 // no "reflectance"): passing it through made every pbrt glass absorb 0.5/unit.
                 // Clear by default; loadPbrtSpheres() sets a real coefficient for a glass sphere
                 // that bounds a homogeneous medium.
+                if (m.roughness_u > 0.0 || m.roughness_v > 0.0) {
+                    // Rough (frosted) dielectric -> materialType 5 (GGX microfacet interface). Same alpha
+                    // convention as the conductor mapping above (the shader squares `roughness`).
+                    const double rr = std::max(m.roughness_u, m.roughness_v);
+                    const float a = (float)(m.remapRoughness ? std::sqrt(rr) : rr);
+                    return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/5u, /*ior=*/(float)m.ior,
+                                             PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/a};
+                }
                 return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/2u, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
             case pbrt_flatten::MaterialKind::ThinDielectric:
@@ -1140,18 +1148,34 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             mat = TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/28u, /*ior (sigma_t)=*/0.0f,
                                    PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/0.0f};
         }
-        // A dielectric (glass) sphere that also bounds a homogeneous medium (E3/E11/E12/A9:
-        // "tinted glass / fog in glass"): approximate the volume as pure Beer-Lambert
-        // attenuation by the extinction coefficient (the shader's existing exit-time
-        // absorption), per channel and rescaled like sigma_t elsewhere. In-scattering is
-        // not modelled, so a strongly scattering fog reads as darker tinted glass rather
-        // than a glowing haze.
-        if (mat.materialType == 2u && s.medium >= 0 && s.medium < (int)scene.media.size() &&
+        // A glass sphere (dielectric / thin / rough) that also bounds a homogeneous medium (E3/E11/E12/
+        // A9/B13): the medium is simulated for real. The kernel tracks "inside a glass medium" per path and
+        // free-flight-samples scattering inside the sphere; shadow rays pass through the sphere with
+        // stochastic attenuation (sphereIntersectionFunction), as CPU's do. Parameters ride in this
+        // material's spare fields: conductorEta = per-channel sigma_t, conductorK = (g, 1 = has medium, chromatic), transmitColor = per-channel
+        // single-scattering albedo; sigma_t is the RGB mean divided by sceneScale (like the camera fog).
+        // `color` (the exit-time Beer-Lambert absorption of a plain dielectric) is zeroed - absorption is now
+        // part of the medium (albedo < 1), and applying both would double count.
+        if ((mat.materialType == 2u || mat.materialType == 5u || mat.materialType == 11u) &&
+            s.medium >= 0 && s.medium < (int)scene.media.size() &&
             scene.media[s.medium].type == "homogeneous") {
             const pbrt_flatten::Medium& gm = scene.media[s.medium];
-            mat.color = PackedFloat3{(float)(gm.sigma_a[0] / sceneScale),
-                                     (float)(gm.sigma_a[1] / sceneScale),
-                                     (float)(gm.sigma_a[2] / sceneScale)};
+            double gSigmaT[3], gMeanSigmaT = 0.0;
+            for (int c = 0; c < 3; ++c) { gSigmaT[c] = gm.sigma_a[c] + gm.sigma_s[c]; gMeanSigmaT += gSigmaT[c]; }
+            gMeanSigmaT /= 3.0;
+            mat.color = PackedFloat3{0, 0, 0};
+            mat.transmitColor = PackedFloat3{gSigmaT[0] > 1e-9 ? (float)(gm.sigma_s[0] / gSigmaT[0]) : 0.0f,
+                                             gSigmaT[1] > 1e-9 ? (float)(gm.sigma_s[1] / gSigmaT[1]) : 0.0f,
+                                             gSigmaT[2] > 1e-9 ? (float)(gm.sigma_s[2] / gSigmaT[2]) : 0.0f};
+            // conductorEta = per-channel sigma_t; conductorK = (g, has-medium flag, chromatic flag). A chromatic
+            // medium makes each path pick ONE colour channel when it enters the sphere (see the kernel), a grey one
+            // needs no such colour noise.
+            const double gMaxSig = std::max(gSigmaT[0], std::max(gSigmaT[1], gSigmaT[2]));
+            const double gMinSig = std::min(gSigmaT[0], std::min(gSigmaT[1], gSigmaT[2]));
+            const bool chromatic = (gMaxSig - gMinSig) > 0.02 * std::max(gMaxSig, 1e-12);
+            mat.conductorEta = PackedFloat3{(float)(gSigmaT[0] / sceneScale), (float)(gSigmaT[1] / sceneScale), (float)(gSigmaT[2] / sceneScale)};
+            mat.conductorK = PackedFloat3{(float)gm.g, 1.0f, chromatic ? 1.0f : 0.0f};
+            (void)gMeanSigmaT;
         }
         if (s.areaLight >= 0 && s.areaLight < (int)scene.areaLights.size()) {
             // Emissive hit handled here; NEE registration (a real sphere light

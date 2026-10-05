@@ -315,12 +315,12 @@ const char* const kKnownGapScenes[] = {
 	// medium on a cylinder; heterogeneous rgbgrid on a sphere). The interface boundary is now transparent
 	// instead of an opaque gray shape, but the volume scattering is missing.
 	"E6", "E7",
-	// A9 (Final Scene), B13 (wax/jade spheres), E3, E11, E12: glass (dielectric / thindielectric / rough dielectric) that also bounds a
-	// homogeneous medium (A9: a blue-fog sphere and a radius-5000 world-haze sphere). Metal models only the
-	// medium's TRUE absorption (sigma_a, Beer-Lambert on exit); its in-scattering - the glow/haze CPU shows - needs
-	// per-path "currently inside a medium" state and is not modelled. (Separately fixed here: pbrt dielectrics
-	// used to absorb 0.5 per unit because the generic material colour leaked into the absorption slot.)
-	"A9", "B13", "E3", "E11", "E12",
+	// A9 (Final Scene), B13 (wax/jade spheres), E11 (thin dielectric), E12 (rough dielectric): glass spheres that bound a
+	// scattering medium. The medium is now simulated (per-path "inside a glass medium" state, hero colour channel for
+	// chromatic media, shadow rays through the sphere attenuated stochastically - E3 now matches CPU to 2%), but these
+	// still differ: E12's ROUGH glass blocks shadow rays on Metal while CPU lights through it; A9 also has a
+	// radius-5000 "world haze" glass sphere enclosing the scene; B13/E11 sit just past the regional tolerance.
+	"A9", "B13", "E11", "E12",
 	// C11 (Textured Two-Sided Lights): image-textured disk and cylinder lights. The image can only be mapped
 	// per-pixel on a quad light (one shared texture slot, uv from the quad); for disk/cylinder lights Metal
 	// uses the image's average colour x scale (rows weighted by radius for the disk, as pbrt maps row -> radius)
