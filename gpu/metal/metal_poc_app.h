@@ -216,6 +216,10 @@ struct MetalPocApp {
     float3 pbrtFogAlbedo{1, 1, 1};
     float pbrtFogAsymmetryG = 0.0f;
 
+    // pbrt-v4 Film "maxcomponentvalue" (FlatScene::maxComponentValue), applied by
+    // the kernel as a per-sample firefly clamp. 1e9 = pbrt's default (unbounded).
+    float pbrtMaxComponentValue = 1e9f;
+
     // Set by loadPbrtScene() from the scene's own resolved PixelFilter
     // (pbrt_flatten::FlatScene::filter - already per-kind-default-
     // resolved by flatten(), the SAME struct gpu/optix/scene_builder.cpp

@@ -509,9 +509,14 @@ kernel void primaryRayKernel(
             // environment-map feature - that render came back an
             // unexplained near-black speckled mess, and tracing why
             // surfaced this.
-            if (!scatteredInMedium && !passedThroughMediumSphere &&
-                uniforms.fogSigmaT > 0.0 && result.type != intersection_type::none) {
-                float surfaceDist = result.distance;
+            // UPDATE: the fog is now only ever enabled by a pbrt scene's camera medium
+            // (the hand-authored room is gone), and a pbrt camera medium extends to
+            // infinity: a ray that escapes the scene still scatters with probability 1
+            // (CPU does the same). So a miss ray gets an unbounded free-flight limit
+            // instead of being skipped - without this the sky region of a foggy scene
+            // (E10) rendered black instead of haze-lit.
+            if (!scatteredInMedium && !passedThroughMediumSphere && uniforms.fogSigmaT > 0.0) {
+                float surfaceDist = (result.type == intersection_type::none) ? INFINITY : result.distance;
                 float u = randFloat(rngState);
                 float t = sampleFreePathDistance(u, uniforms.fogSigmaT);
                 if (t < surfaceDist) {
@@ -1321,16 +1326,22 @@ kernel void primaryRayKernel(
             }
         }
 
-        // Firefly clamp - see kFireflyClampLuminance's own comment.
+        // Firefly clamp - see Uniforms::fireflyClamp (metal_poc_gpu_types.h).
         // Applied once per SAMPLE, here, not per NEE contribution inside
         // the bounce loop above - simpler (one clamp site, not scattered
         // across every light-sampling branch) and still catches the same
         // outliers, since an extreme single-bounce contribution dominates
         // this sample's own total `radiance` regardless of which branch
         // produced it.
+        // The threshold is the scene's own Film "maxcomponentvalue" (pbrt's default
+        // is unbounded, as on CPU), NOT a fixed constant (the old one, 20, was
+        // tuned for the old hand-authored room), and a pbrt scene can
+        // legitimately exceed it (the ceiling right above a point light reads
+        // 100-260), which made Metal render such scenes ~35% too dark.
+        float fireflyLimit = uniforms.fireflyClamp > 0.0 ? uniforms.fireflyClamp : INFINITY;
         float sampleMax = max(radiance.x, max(radiance.y, radiance.z));
-        if (sampleMax > kFireflyClampLuminance) {
-            radiance *= kFireflyClampLuminance / sampleMax;
+        if (sampleMax > fireflyLimit) {
+            radiance *= fireflyLimit / sampleMax;
         }
         // Filter-weighted accumulation - mirrors CPU's camera.h render
         // loop exactly (weighted_color += w*sample; weight_sum += w;

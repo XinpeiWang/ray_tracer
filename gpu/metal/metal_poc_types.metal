@@ -315,6 +315,8 @@ struct Uniforms {
     float filterIntegral;
     float filterConditionalCDF[32][32];
     float filterMarginalCDF[32];
+    // See metal_poc_gpu_types.h. <= 0 means unbounded.
+    float fireflyClamp;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -711,36 +713,12 @@ inline float3 goniometricLightRadiance(float3 wiFromLight, packed_float3 lightFo
 // short of a real occluder.
 constant float kDirectionalLightMaxDistance = 10.0f;
 
-// A "firefly" clamp: a rare, extremely bright single-sample outlier
-// (a shadow ray that happens to graze very close to a light's own edge,
-// giving it a tiny solid-angle pdf and therefore a huge NEE weight, or a
-// specular chain that happens to line up with a light just so) that,
-// left alone, dominates that pixel's own average out of proportion to
-// its real probability - the classic "salt and pepper" bright-pixel
-// noise a path tracer shows at low sample counts even where the true
-// expected radiance is modest. Clamping each SAMPLE's own total
-// radiance (not the final image, and not per-bounce-contribution) to
-// this ceiling before folding it into the accumulator introduces a
-// small, well-known, deliberately-accepted BIAS (a true outlier's own
-// excess energy is discarded, not redistributed) in exchange for a much
-// faster-converging, far less noisy image - the standard practical
-// trade-off production renderers already make, not a free lunch. Scaled
-// per-channel (preserves the sample's own hue, only caps its
-// brightness) rather than a flat per-channel clamp, which would shift
-// colour at the point of clamping. Tuned by actually rendering at a
-// deliberately low (16) sample count and comparing, not picked from
-// theory alone - 60 (comfortably above every light's own top emission
-// magnitude, ~15-20) turned out too high to visibly touch this scene's
-// own worst noise cluster (a fog/volumetric NEE hotspot near the spot
-// light's own cone) at all; 3 visibly dimmed the ceiling lights'
-// legitimate direct-view brightness, an unacceptable bias. 20 is the
-// honest middle ground: still occasionally clips a LEGITIMATE bright
-// sample (a direct, unlucky view of a light source's own upper range),
-// not "guaranteed never to touch a real value" the way a much higher
-// threshold would be, but the reduction in visible low-sample-count
-// noise is real and worth that small trade, and it is invisible at this
-// scene's own committed high-quality sample counts either way.
-constant float kFireflyClampLuminance = 20.0f;
+// Per-sample firefly clamp: the kernel caps each sample's max(r,g,b) at
+// Uniforms::fireflyClamp, which the pbrt loader sets from the scene's Film
+// "maxcomponentvalue" (default unbounded, exactly like the CPU path). This used
+// to be a fixed constant of 20 tuned for the old hand-authored room; a pbrt scene
+// can legitimately exceed it (the ceiling right above a point light reads
+// 100-260), so Metal rendered those scenes ~35% too dark.
 
 // Adaptive sampling's own convergence parameters, ported directly from
 // this project's own CPU integrator (src/shared/adaptive_sampling.h) -
@@ -1068,29 +1046,19 @@ struct SpherePayload {
     // attenuated correctly in expectation. The heterogeneous kinds
     // (29/30) are still ignored entirely for shadow rays (they slightly
     // OVER-light what's behind them).
-    // Defaults to TRUE deliberately: the ~50 existing shadow-ray call
-    // sites across every metal_poc_materials_*.metal shading function
-    // never construct a SpherePayload at all (Metal's own 3-argument
-    // `intersect(ray, accel, table)` overload implicitly supplies a
-    // default-initialized one to any function in the table that
-    // declares a `[[payload]]` parameter - confirmed by this exact
-    // mechanism already being relied on before this field existed,
-    // since sphereIntersectionFunction's own payload parameter was
-    // already mandatory and every one of those call sites already
-    // omitted it) - true-by-default means every one of them
-    // automatically gets the correct "shadow ray" treatment with NO
-    // changes needed at any of those ~50 sites. The one place this
-    // must be FALSE - the primary/continuation ray that needs to
-    // actually ENTER a medium sphere - constructs its own payload
-    // explicitly already (F11, section 167), so it overrides this
-    // default deliberately, not by omission.
+    // A shadow ray must set this TRUE. Do NOT rely on the default: the
+    // 3-argument `intersect(ray, accel, table)` overload does NOT apply this
+    // struct's default member initialisers to the payload it hands the
+    // intersection function, so every shadow-ray call site goes through
+    // traceShadowAny()/traceShadowAnyP() (metal_poc_sampling.metal), which
+    // construct the payload explicitly. (An implicit payload made a sphere's
+    // shadow extend well past its true extent - C4, point-light Cornell box.)
+    // The primary/continuation ray that must actually ENTER a medium sphere
+    // passes isShadowRay=false explicitly (F11, section 167).
     bool isShadowRay = true;
     // B14/section 184: which sphere primitive (if any) a shadow ray must
     // treat as invisible/non-occluding, REGARDLESS of isShadowRay/
-    // materialType - -1 (every call site before this one, via the same
-    // "3-arg intersect() implicitly default-constructs this" mechanism
-    // isShadowRay's own comment documents) means "ignore nothing,
-    // unchanged behaviour". Exists specifically for a sphere-shaped area
+    // materialType - -1 means "ignore nothing". Exists specifically for a sphere-shaped area
     // light's own NEE shadow ray: unlike a quad light (a flat triangle a
     // `max_distance` epsilon-short-stop reliably clears), a curved
     // sphere's own surface is close enough to a shadow ray's intended

@@ -601,6 +601,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uniforms.envMapHeight = envMapHeight;
     uniforms.ggxEnergyRoughRes = (uint32_t)ggxEnergyTable.roughRes;
     uniforms.ggxEnergyMuRes = (uint32_t)ggxEnergyTable.muRes;
+    uniforms.fireflyClamp = pbrtMaxComponentValue;
 
     if (havePbrtCamera) {
         // A real pbrt scene was loaded (loadPbrtScene()) - override every

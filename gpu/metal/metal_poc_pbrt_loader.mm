@@ -475,6 +475,7 @@ void MetalPocApp::loadPbrtScene() {
     loadPbrtObjectInstances(scene, toWorld, materialFor);
     loadPbrtPunctualLights(scene, toWorld, sceneScale);
     loadPbrtMedium(scene, sceneScale);
+    pbrtMaxComponentValue = (float)scene.maxComponentValue;
     loadPbrtInfiniteLight(scene);
     loadPbrtCamera(scene, toWorld, bboxCenter, sceneScale, sceneOffset);
 
@@ -702,6 +703,8 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
         // optical depth = sigma_t * distance must survive the rescale.
         // Other medium types (cloud/rgbgrid/...) and a real surface material
         // on a medium-bounded sphere are not covered here.
+        const bool interfaceSphere = s.areaLight < 0 && s.material >= 0 && s.material < (int)scene.materials.size() &&
+            scene.materials[s.material].kind == pbrt_flatten::MaterialKind::Interface;
         if (s.medium >= 0 && s.medium < (int)scene.media.size() && s.areaLight < 0 &&
             s.material >= 0 && s.material < (int)scene.materials.size() &&
             scene.materials[s.material].kind == pbrt_flatten::MaterialKind::Interface &&
@@ -715,15 +718,19 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             for (int c = 0; c < 3; ++c) a[c] = sigmaT[c] > 1e-9 ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
             mat = TriangleMaterial{albedo, /*materialType=*/28u, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
                                    PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/(float)m.g};
+        } else if (interfaceSphere) {
+            // An interface sphere whose medium this loader cannot represent (rgbgrid/
+            // nanovdb/cloud/..., or no medium at all). The gray-Lambertian fallback
+            // would make it an OPAQUE ball; the boundary itself has no BSDF, so make it
+            // transparent instead: a zero-density medium sphere. The volume's own
+            // scattering is missing, but the surrounding scene is no longer blocked.
+            mat = TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/28u, /*ior (sigma_t)=*/0.0f,
+                                   PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/0.0f};
         }
         if (s.areaLight >= 0 && s.areaLight < (int)scene.areaLights.size()) {
-            // Same "emissive, but not NEE-registered" tier loadPbrtDisks()
-            // just above already established for a disk-shaped
-            // AreaLightSource (that function's own comment) - this loader
-            // has no sphere-shaped analytic light in its own `lights[]`
-            // NEE list either, so a sphere area light is visible (direct
-            // hit or a BSDF-sampled bounce landing on it) but not
-            // explicitly sampled. `sphereMaterials` is plain
+            // Emissive hit handled here; NEE registration (a real sphere light
+            // in `lights[]`) follows below. (Originally this tier was "visible
+            // but not explicitly sampled", like a disk light still is.) `sphereMaterials` is plain
             // TriangleMaterial, so the SAME unconditional direct-hit
             // emissive/MIS-weight code every other emissive material
             // already goes through handles this correctly with no
@@ -741,6 +748,34 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
+            // Register it for NEE as a real sphere light (AreaLightData::kind 1,
+            // uniform-area sampling - the B14 mechanism in sampleAreaLight()).
+            // Left unregistered, a sphere light is only ever found by BSDF-
+            // sampled rays: unbiased, but a fog scatter point (which can only
+            // reach a light via NEE) never sees it at all (E10 rendered
+            // near-black), and everything else is far noisier than CPU.
+            // Registered, `lightId` must be set too so the emissive-hit MIS
+            // weight pairs with the NEE strategy instead of double counting.
+            // Skipped for a moving sphere (the light list holds a fixed
+            // position) and an image-textured light (not representable here).
+            const bool movingSphere = sd.centerDelta1.x != 0.0f || sd.centerDelta1.y != 0.0f || sd.centerDelta1.z != 0.0f;
+            if (!movingSphere && em.filename.empty()) {
+                const int32_t lightId = (int32_t)lights.size();
+                const float lightArea = 4.0f * (float)M_PI * sd.radius * sd.radius;
+                lights.push_back(AreaLightData{
+                    PackedFloat3{center.x, center.y, center.z},
+                    PackedFloat3{sd.radius, 0.0f, 0.0f},      // edgeU.x = radius for a sphere light
+                    PackedFloat3{0.0f, 0.0f, 0.0f},
+                    PackedFloat3{0.0f, 0.0f, 0.0f},
+                    lightArea,
+                    mat.emission,
+                    /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                    /*twoSided=*/0.0f, /*useTexture=*/0.0f,
+                    /*pmf=*/0.0f, /*aliasProb=*/1.0f, /*aliasIndex=*/0u,
+                    /*kind=*/1.0f,
+                    /*spherePrimId=*/(int32_t)spheres.size() - 1});
+                mat.lightId = lightId;
+            }
         }
         sphereMaterials.push_back(mat);
     }
@@ -779,7 +814,12 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
 void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
     const PbrtMaterialForFn& materialFor, float sceneScale) {
     size_t skippedDisks = 0;
+    auto isInterfaceMaterial = [&scene](int idx) {
+        return idx >= 0 && idx < (int)scene.materials.size() &&
+               scene.materials[idx].kind == pbrt_flatten::MaterialKind::Interface;
+    };
     for (const pbrt_flatten::Disk& d : scene.disks) {
+        if (isInterfaceMaterial(d.material)) continue;   // medium boundary only: transparent, not an opaque gray disk
         if (d.innerRadius != 0.0 || d.phiMaxDeg != 360.0) { ++skippedDisks; continue; }
 
         pbrt_scene::Matrix4 dxform;
@@ -844,7 +884,12 @@ void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const Pbrt
 void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
     const PbrtMaterialForFn& materialFor, float sceneScale) {
     size_t skippedCylinders = 0;
+    auto isInterfaceMaterial = [&scene](int idx) {
+        return idx >= 0 && idx < (int)scene.materials.size() &&
+               scene.materials[idx].kind == pbrt_flatten::MaterialKind::Interface;
+    };
     for (const pbrt_flatten::Cylinder& cy : scene.cylinders) {
+        if (isInterfaceMaterial(cy.material)) continue;   // medium boundary only: transparent, not an opaque gray tube
         if (cy.phiMaxDeg != 360.0) { ++skippedCylinders; continue; }
 
         pbrt_scene::Matrix4 cxform;
