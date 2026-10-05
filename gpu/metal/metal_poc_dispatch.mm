@@ -262,7 +262,10 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     }
     NSString* earthPath = [imagesDir stringByAppendingPathComponent:@"earthmap.jpg"];
     int earthW = 0, earthH = 0, earthChannels = 0;
-    unsigned char* earthPixels = stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
+    // The earth map only feeds the demo room (back wall, demo sky/projection light, its env importance sampling);
+    // useEnvironmentMap is forced to 0 for a pbrt scene, so skip the ~30 ms JPEG decode + ~70 ms CDF build for it
+    // and fall through to the 1x1 white placeholder below.
+    unsigned char* earthPixels = skipDemoRoom ? nullptr : stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
     id<MTLTexture> earthTexture = nil;
     // Environment-map importance sampling (phase 2 - see section 69 for
     // phase 1's own host-side EnvDistribution2D, built and independently
@@ -289,8 +292,9 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         stbi_image_free(earthPixels);
         fprintf(stderr, "Loaded %s: %dx%d, %d channels\n", earthPath.UTF8String, earthW, earthH, earthChannels);
     } else {
-        fprintf(stderr, "Could not load %s - back wall will read black/undefined texture data.\n",
-            earthPath.UTF8String);
+        if (!skipDemoRoom)
+            fprintf(stderr, "Could not load %s - back wall will read black/undefined texture data.\n",
+                earthPath.UTF8String);
         // A 1x1 white fallback keeps the shader's unconditional
         // texture bind valid (Metal requires SOME texture at the
         // bound slot) even if the JPEG is missing. `_sRGB` for
@@ -534,12 +538,9 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // here - this is a host-only precompute of a smooth, low-frequency
     // table, not a per-pixel render decision that needs to match the
     // shader's own RNG stream bit-for-bit.
-    std::mt19937 ggxEnergyRng(1337);
-    std::uniform_real_distribution<float> ggxEnergyDist(0.0f, 1.0f);
-    auto ggxEnergyRandFn = [&]() { return ggxEnergyDist(ggxEnergyRng); };
-    GGXEnergyTable ggxEnergyTable;
-    buildGGXEnergyTable(/*roughRes=*/32, /*muRes=*/32, /*samplesPerCell=*/2048,
-                        ggxEnergyTable, ggxEnergyRandFn);
+    // Built on a background thread started at the top of buildScene() (see startGgxEnergyTableBuild()) so its ~80 ms
+    // overlaps scene/AS building; the values are identical (same seed, same sequence).
+    GGXEnergyTable ggxEnergyTable = takeGgxEnergyTable();
     id<MTLBuffer> ggxEnergyTableBuffer = [device newBufferWithBytes:ggxEnergyTable.E.data()
         length:ggxEnergyTable.E.size() * sizeof(float) options:MTLResourceStorageModeShared];
 
@@ -867,10 +868,19 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     const uint32_t cy0 = (cropX1 >= 0) ? (uint32_t)cropY0 : 0;
     const uint32_t cy1 = (cropX1 >= 0) ? (uint32_t)cropY1 : height;
     const uint32_t cropRows = cy1 - cy0;
-    const uint32_t numBands = std::min<uint32_t>(20, std::max<uint32_t>(1, cropRows));
-    const uint32_t bandHeight = (cropRows + numBands - 1) / numBands;
+    // Band sizing. Every band is its own command buffer that must fully drain before the next starts, and that
+    // tail costs ~16 ms: a fixed 20 bands made a 1.7 s render ~17% slower than one band (measured on an M2). But
+    // bands also give the GUI progress ticks and keep each GPU submission short (watchdog). So: one small
+    // calibration band, then bands sized to ~kTargetBandSeconds of GPU time from the measured rows/second - a few
+    // percent overhead, and finer progress than before on long renders. METAL_BANDS=N forces N equal bands.
+    constexpr double kTargetBandSeconds = 0.3;
+    const char* bandsEnv = getenv("METAL_BANDS");
+    const bool fixedBands = bandsEnv != nullptr;
+    const uint32_t forcedBands =
+        fixedBands ? std::min<uint32_t>((uint32_t)std::max(1, atoi(bandsEnv)), std::max<uint32_t>(1, cropRows)) : 0;
+    uint32_t bandHeight = fixedBands ? (cropRows + forcedBands - 1) / forcedBands : std::max<uint32_t>(1, cropRows / 40);
     Uniforms* uniformsShared = (Uniforms*)uniformBuffer.contents;
-    for (uint32_t bandStart = 0; bandStart < cropRows; bandStart += bandHeight) {
+    for (uint32_t bandStart = 0; bandStart < cropRows;) {
         const uint32_t thisBandHeight = std::min(bandHeight, cropRows - bandStart);
         // uniformBuffer is MTLResourceStorageModeShared (Apple Silicon
         // unified memory) - writing directly into its own backing
@@ -934,8 +944,16 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         [enc useResource:suzanneAS usage:MTLResourceUsageRead];
 
         MTLSize gridSize = MTLSizeMake(width, thisBandHeight, 1);
-        NSUInteger w = pipeline.threadExecutionWidth;
-        NSUInteger h = pipeline.maxTotalThreadsPerThreadgroup / w;
+        // Threadgroup shape: ONE SIMD group per threadgroup, as a square-ish tile (8 x execWidth/8 = 8x4 on Apple
+        // GPUs), instead of the pipeline's maximum (32x12 = 384 threads). Measured on an M2: every SIMD-sized shape
+        // (8x4, 4x4, 16x2, 32x1, ...) is equally fast and 10-22% faster than 32x12 (A1 3.9s -> 3.5s, G1 2.7s ->
+        // 2.1s), because big threadgroups tie a whole 384-thread group to its slowest path. The image is
+        // unchanged (per-pixel RNG streams). METAL_TG_W/METAL_TG_H override it for tuning.
+        NSUInteger w = 8;
+        NSUInteger h = std::max<NSUInteger>(1, pipeline.threadExecutionWidth / w);
+        if (const char* tgw = getenv("METAL_TG_W")) w = (NSUInteger)atoi(tgw);
+        if (const char* tgh = getenv("METAL_TG_H")) h = (NSUInteger)atoi(tgh);
+        if (getenv("METAL_TG_PRINT")) fprintf(stderr, "[perf] execWidth=%lu maxThreads=%lu staticTG=%lu -> tg %lux%lu\n", (unsigned long)pipeline.threadExecutionWidth, (unsigned long)pipeline.maxTotalThreadsPerThreadgroup, (unsigned long)pipeline.staticThreadgroupMemoryLength, (unsigned long)w, (unsigned long)h);
         MTLSize threadgroupSize = MTLSizeMake(w, h, 1);
         [enc dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
         [enc endEncoding];
@@ -955,6 +973,16 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         const uint32_t rowsDone = bandStart + thisBandHeight;
         fprintf(stderr, "Scanlines remaining: %u\r", cropRows - rowsDone);
         fflush(stderr);
+
+        // Re-size the next band from this one's measured GPU time (rows/second), growing by at most 4x per step.
+        if (!fixedBands) {
+            const double secs = renderCmd.GPUEndTime - renderCmd.GPUStartTime;
+            if (secs > 0.0) {
+                const double target = (double)thisBandHeight / secs * kTargetBandSeconds;
+                bandHeight = (uint32_t)std::max(1.0, std::min({target, (double)thisBandHeight * 4.0, (double)cropRows}));
+            }
+        }
+        bandStart += thisBandHeight;
     }
 
     // --- Read back into `pixels` (post-processed and written to disk
