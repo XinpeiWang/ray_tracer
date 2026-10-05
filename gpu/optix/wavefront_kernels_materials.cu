@@ -643,9 +643,14 @@ extern "C" __global__ void evaluate_materials(
 		WfGuidedGlossySample c_sample = wf_sample_guided_glossy(
 			c_dist, cwi_x, cwi_y, cwi_z, ctan, cbitan, cn, c_alpha_x, c_alpha_y,
 			hit_point, guidingGridMeta, guidingHistograms, guidingProbes, seed);
-		if (!c_sample.scattered) { scattered = false; break; }
-		float3 c_F = FrConductorRGB(c_sample.wm_dot_wi, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
-		scattered_dir = normalize(c_sample.wo_x*ctan + c_sample.wo_y*cbitan + c_sample.wo_z*cn);
+		// A rejected continuation sample must not skip this vertex's NEE - pbrt takes the direct-light sample at every vertex whether or
+		// not the sample that follows succeeds. It carries zero weight and the path ends after wf_finish_material_scatter()'s NEE; the
+		// effectively-smooth lobe has no NEE and keeps the old early exit.
+		const bool c_rej = !c_sample.scattered;
+		if (c_rej && c_dist.EffectivelySmooth()) { scattered = false; break; }
+		float3 c_F = c_rej ? make_float3(0.0f, 0.0f, 0.0f)
+		                   : FrConductorRGB(c_sample.wm_dot_wi, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
+		scattered_dir = c_rej ? cn : normalize(c_sample.wo_x*ctan + c_sample.wo_y*cbitan + c_sample.wo_z*cn);
 		scattered   = true;
 
 		// Real NEE/MIS for glossy (non-EffectivelySmooth) conductors, via
@@ -658,13 +663,13 @@ extern "C" __global__ void evaluate_materials(
 		// evalGlossyF's `wi_world` convention).
 		if (!c_dist.EffectivelySmooth()) {
 			is_specular = false;
-			brdf_pdf_override = c_sample.pdf;
+			brdf_pdf_override = c_rej ? -1.0f : c_sample.pdf;
 			phaseWo = cwi;
 		} else {
 			is_specular = true;
 		}
 		// Use average Fresnel weight as scalar (conductor is specular, color from albedo)
-		attenuation = albedoSpectrum(make_float3(c_F.x * c_sample.weight, c_F.y * c_sample.weight, c_F.z * c_sample.weight));
+		attenuation = c_rej ? SS(0.f) : albedoSpectrum(make_float3(c_F.x * c_sample.weight, c_F.y * c_sample.weight, c_F.z * c_sample.weight));
 		break;
 	}
 	case MaterialType::RoughMetal: {
@@ -691,8 +696,12 @@ extern "C" __global__ void evaluate_materials(
 		WfGuidedGlossySample rm_sample = wf_sample_guided_glossy(
 			rm_dist, rmwi_x, rmwi_y, rmwi_z, rmtan, rmbitan, rmn, rm_alpha, rm_alpha,
 			hit_point, guidingGridMeta, guidingHistograms, guidingProbes, seed);
-		if (!rm_sample.scattered) { scattered = false; break; }
-		scattered_dir = normalize(rm_sample.wo_x*rmtan + rm_sample.wo_y*rmbitan + rm_sample.wo_z*rmn);
+		// A rejected continuation sample must not skip this vertex's NEE - pbrt takes the direct-light sample at every vertex whether or
+		// not the sample that follows succeeds. It carries zero weight and the path ends after wf_finish_material_scatter()'s NEE; the
+		// effectively-smooth lobe has no NEE and keeps the old early exit.
+		const bool rm_rej = !rm_sample.scattered;
+		if (rm_rej && rm_dist.EffectivelySmooth()) { scattered = false; break; }
+		scattered_dir = rm_rej ? rmn : normalize(rm_sample.wo_x*rmtan + rm_sample.wo_y*rmbitan + rm_sample.wo_z*rmn);
 		scattered   = true;
 
 		// Real NEE/MIS for glossy (non-EffectivelySmooth) rough metal, via
@@ -700,12 +709,12 @@ extern "C" __global__ void evaluate_materials(
 		// MaterialType::Conductor's identical-shape block above.
 		if (!rm_dist.EffectivelySmooth()) {
 			is_specular = false;
-			brdf_pdf_override = rm_sample.pdf;
+			brdf_pdf_override = rm_rej ? -1.0f : rm_sample.pdf;
 			phaseWo = rmwi;
 		} else {
 			is_specular = true;
 		}
-		attenuation = albedoSpectrum(make_float3(mat.albedo.x * rm_sample.weight, mat.albedo.y * rm_sample.weight, mat.albedo.z * rm_sample.weight));
+		attenuation = rm_rej ? SS(0.f) : albedoSpectrum(make_float3(mat.albedo.x * rm_sample.weight, mat.albedo.y * rm_sample.weight, mat.albedo.z * rm_sample.weight));
 		break;
 	}
 	case MaterialType::CoatedDiffuse: {

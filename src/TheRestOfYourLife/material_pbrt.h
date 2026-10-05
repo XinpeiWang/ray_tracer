@@ -211,12 +211,10 @@ class conductor : public material {
     // camera.h's Strategy B (BSDF-sampled continuation) always multiplies
     // by the FIXED srec.attenuation set here, with no per-direction hook
     // (unlike the NEE strategies, which do call scattering_attenuation()).
-    // Rather than leaving Strategy B's continuation weight wrong, this uses
-    // Fresnel evaluated at the fixed view angle (dot(wo, normal), i.e.
-    // Schlick-style single-value Fresnel) as a documented approximation --
-    // real per-half-vector variation is only exact within a single
-    // GGX lobe's variance, and this is a large improvement over the
-    // previous skip_pdf=true (zero NEE at any roughness) baseline.
+    // srec.attenuation is therefore only the Fresnel at the view-normal
+    // cosine; camera.h now asks scattering_attenuation() (overridden below)
+    // for the half-vector Fresnel of the direction actually being evaluated,
+    // in the NEE strategies and in the BSDF-sampled continuation alike.
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
         auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
@@ -267,6 +265,28 @@ class conductor : public material {
         frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
         double shape = ggx_reflection_shape(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, alpha_x, alpha_y);
         return shape * wo_z;
+    }
+
+    // pbrt's ConductorBxDF::f() evaluates the Fresnel term at the half-vector, |wo . wm| with wm = normalize(wi + wo) -
+    // a different value for every direction pair. scatter() can only store one colour per hit (Fresnel at the view-normal
+    // cosine), which over-brightened rough metal (+4% at alpha 0.5, +8% at alpha 1 against a pbrt-v4 path-level
+    // reference, more where the view is grazing), so the colour for the direction actually being evaluated - an NEE
+    // direction or the resampled BSDF continuation - comes from here, paired with scattering_pdf()'s shape * cos.
+    color scattering_attenuation(const ray& r_in, const hit_record& rec, const ray& scattered,
+                                  const color& srec_attenuation) const override {
+        if (effectively_smooth()) return srec_attenuation;
+        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
+        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
+        double wi_x, wi_y, wi_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+        const vec3 dir = unit_vector(scattered.direction());
+        double wo_x, wo_y, wo_z;
+        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
+        double hx = wi_x + wo_x, hy = wi_y + wo_y, hz = wi_z + wo_z;
+        const double hlen = std::sqrt(hx * hx + hy * hy + hz * hz);
+        if (hlen < 1e-12) return srec_attenuation;
+        const double c = std::fabs((wi_x * hx + wi_y * hy + wi_z * hz) / hlen);
+        return color(FrComplex(c, eta_r, k_r), FrComplex(c, eta_g, k_g), FrComplex(c, eta_b, k_b));
     }
 
     double get_roughness()  const { return alpha_x * alpha_x; }
@@ -1304,6 +1324,17 @@ class mix_material : public material {
             return mat_a->scattering_attenuation(rec, scattered, srec_attenuation);
         else
             return mat_b->scattering_attenuation(rec, scattered, srec_attenuation);
+    }
+
+    // The incoming-direction form, forwarded the same way (a conductor inside a mix needs it).
+    color scattering_attenuation(const ray& r_in, const hit_record& rec, const ray& scattered,
+                                  const color& srec_attenuation) const override {
+        double w = weight_tex->value(rec.u, rec.v, rec.p).x();
+        w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
+        if (branch_hash01(rec.p) >= w)
+            return mat_a->scattering_attenuation(r_in, rec, scattered, srec_attenuation);
+        else
+            return mat_b->scattering_attenuation(r_in, rec, scattered, srec_attenuation);
     }
 
     // Same deterministic branch as scatter() above - without this override,

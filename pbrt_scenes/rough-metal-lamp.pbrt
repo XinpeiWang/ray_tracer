@@ -1,0 +1,34 @@
+# rough-metal-lamp.pbrt -- a rough copper sphere lit only by a small lamp that is OUT OF VIEW above the frame, so the whole
+# image is the sphere's highlight (nothing but glossy direct light, nothing hides an error in it).
+#
+# Two defects this guards, each found against an independent pbrt-v4 path-level reference (the pbrt ConductorBxDF with the
+# repo's Cu constants, BSDF sampling only; rough sphere under a lamp, sphere-pixel energy at roughness 0.25 / 1.0):
+#  - both GPU backends skipped a vertex's NEE whenever the BSDF *continuation* sample was rejected (a reflection that lands
+#    below the horizon, common at high roughness), because the kernel returned before the NEE step: GPU read 86% / 75% of
+#    the CPU. pbrt takes the direct-light sample at every vertex regardless.
+#  - the CPU took the conductor's Fresnel term once per hit at the view-normal cosine, where pbrt (and the GPU) evaluate it
+#    at the half-vector |wo . wm| of the direction actually being evaluated, so grazing views were too bright: CPU 104% /
+#    108% of the reference. scattering_attenuation() now supplies it per direction, for NEE and the continuation alike.
+# All three backends now agree with each other and with the reference to ~1-2%.
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 2 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 200 ] "integer yresolution" [ 200 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 9 3
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 40 40 40 ]
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 0 1.5 0
+  Material "conductor" "float roughness" [ 0.6 ]
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd

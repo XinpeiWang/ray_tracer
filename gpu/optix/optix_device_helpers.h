@@ -1768,13 +1768,17 @@ __device__ __forceinline__ void shade_material(
 			float cwo_x = 2.0f*c_dot*cwm_x - cwi_x;
 			float cwo_y = 2.0f*c_dot*cwm_y - cwi_y;
 			float cwo_z = 2.0f*c_dot*cwm_z - cwi_z;
-			if (cwo_z <= 0.0f) { scattered = false; break; }
+			// A rejected continuation sample (a reflection that lands below the horizon) must not skip this vertex's NEE - pbrt takes the
+			// direct-light sample at every vertex whether or not the sample that follows succeeds. It carries zero weight and the path
+			// ends after the NEE below; the effectively-smooth lobe has no NEE and keeps the old early exit.
+			const bool c_rej = (cwo_z <= 0.0f);
+			if (c_rej && c_dist.EffectivelySmooth()) { scattered = false; break; }
 			float c_G1_wi  = c_dist.G1(cwi_x, cwi_y, cwi_z);
 			float c_G_wowi = c_dist.G(cwo_x, cwo_y, cwo_z, cwi_x, cwi_y, cwi_z);
 			float c_weight = (c_G1_wi > 1e-8f) ? c_G_wowi / c_G1_wi : 0.0f;
 			float3 c_F = FrConductorRGB(c_dot, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
-			attenuation = make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight);
-			scattered_dir = normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
+			attenuation = c_rej ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(c_F.x * c_weight, c_F.y * c_weight, c_F.z * c_weight);
+			scattered_dir = c_rej ? cn : normalize(cwo_x*ctan + cwo_y*cbitan + cwo_z*cn);
 			scattered     = true;
 
 			// Real NEE/MIS for glossy (non-EffectivelySmooth) conductors,
@@ -1794,7 +1798,7 @@ __device__ __forceinline__ void shade_material(
 				ConductorBxDF<float> c_bxdf{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
 											  mat.k_c.x, mat.k_c.y, mat.k_c.z,
 											  c_alpha_x, c_alpha_y };
-				brdf_pdf_override = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z);
+				brdf_pdf_override = c_rej ? -1.0f : c_bxdf.pdf(cwi_x, cwi_y, cwi_z, cwo_x, cwo_y, cwo_z);
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
@@ -1870,12 +1874,16 @@ __device__ __forceinline__ void shade_material(
 			float rmwo_x = 2.0f*rm_dot*rmwm_x - rmwi_x;
 			float rmwo_y = 2.0f*rm_dot*rmwm_y - rmwi_y;
 			float rmwo_z = 2.0f*rm_dot*rmwm_z - rmwi_z;
-			if (rmwo_z <= 0.0f) { scattered = false; break; }
+			// A rejected continuation sample (a reflection that lands below the horizon) must not skip this vertex's NEE - pbrt takes the
+			// direct-light sample at every vertex whether or not the sample that follows succeeds. It carries zero weight and the path
+			// ends after the NEE below; the effectively-smooth lobe has no NEE and keeps the old early exit.
+			const bool rm_rej = (rmwo_z <= 0.0f);
+			if (rm_rej && rm_dist.EffectivelySmooth()) { scattered = false; break; }
 			float rm_G1_wi  = rm_dist.G1(rmwi_x, rmwi_y, rmwi_z);
 			float rm_G_wowi = rm_dist.G(rmwo_x, rmwo_y, rmwo_z, rmwi_x, rmwi_y, rmwi_z);
 			float rm_weight = (rm_G1_wi > 1e-8f) ? rm_G_wowi / rm_G1_wi : 0.0f;
-			attenuation = make_float3(mat.albedo.x * rm_weight, mat.albedo.y * rm_weight, mat.albedo.z * rm_weight);
-			scattered_dir = normalize(rmwo_x*rmtan + rmwo_y*rmbitan + rmwo_z*rmn);
+			attenuation = rm_rej ? make_float3(0.0f, 0.0f, 0.0f) : make_float3(mat.albedo.x * rm_weight, mat.albedo.y * rm_weight, mat.albedo.z * rm_weight);
+			scattered_dir = rm_rej ? rmn : normalize(rmwo_x*rmtan + rmwo_y*rmbitan + rmwo_z*rmn);
 			scattered     = true;
 
 			// Real NEE/MIS for glossy (non-EffectivelySmooth) rough metal -
@@ -1884,7 +1892,7 @@ __device__ __forceinline__ void shade_material(
 			if (!rm_dist.EffectivelySmooth()) {
 				is_specular = false;
 				RoughMetalBxDF<float> rm_bxdf{ mat.albedo.x, mat.albedo.y, mat.albedo.z, rm_alpha, rm_alpha };
-				brdf_pdf_override = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, rmwo_x, rmwo_y, rmwo_z);
+				brdf_pdf_override = rm_rej ? -1.0f : rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, rmwo_x, rmwo_y, rmwo_z);
 
 				{
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
