@@ -1113,9 +1113,18 @@ GpuRestirTemporalContext WavefrontPathTracer::buildRestirTemporalContext() const
 	return ctx;
 }
 
+// Whether a medium scatter point's reservoir is carried across frames (temporal combine) and between pixels (the spatial pass that feeds it).
+// OFF: a scatter point is redrawn along the ray every frame, so the previous frame's reservoir at the reprojected pixel belongs to a different
+// point of the volume - its contribution weight W is for another target function, which temporal reuse then applies at this one. Measured on
+// E1 (a fog sphere nearly filling the Cornell box, Live Preview, 300 frames): that reuse read the frame 3.4% dark with ReSTIR DI and 5% with
+// DI+GI in every colour channel (a grey fog the same), and 0.6% / -0.5% with it off; the noise of a single frame is the same either way
+// (E1 465% vs 437% of the mean raw at 1 spp, E3 and A8 identical), so it bought nothing. The within-frame resampling at the scatter point
+// (kRestirCandidateCount candidates) is unchanged.
+static constexpr bool kVolumeRestirHistoryReuse = false;
+
 GpuVolumeRestirTemporalContext WavefrontPathTracer::buildVolumeRestirTemporalContext() const {
 	GpuVolumeRestirTemporalContext ctx;
-	if (!restirEnabled_) return ctx;  // default: historyValid=false, a safe no-op
+	if (!restirEnabled_ || !kVolumeRestirHistoryReuse) return ctx;  // default: historyValid=false, a safe no-op
 	ctx.history = reinterpret_cast<const GpuVolumeReservoir*>(d_volumeReservoirsHistory_);
 	ctx.worldPosHistory = reinterpret_cast<const float4*>(d_worldPosHistory_);
 	ctx.prevCamera = prevRestirCamera_;
@@ -1408,7 +1417,8 @@ void WavefrontPathTracer::launchRestirVolumeSpatialReuse(
 		const SphereData* d_spheres, const QuadData* d_quads, const TriangleData* d_triangles,
 		const BilinearPatchData* d_bilinearPatches, const DiskData* d_disks, const CylinderData* d_cylinders,
 		const MaterialData* d_materials) {
-	if (!restirEnabled_) return;
+	// Its only consumer is the temporal combine above (it writes the history that combine reads) - see kVolumeRestirHistoryReuse.
+	if (!restirEnabled_ || !kVolumeRestirHistoryReuse) return;
 	wf_launch_restir_volume_spatial_reuse(
 		reinterpret_cast<const GpuVolumeReservoir*>(d_volumeReservoirs_),
 		reinterpret_cast<const int*>(d_volumeMatIdx_),

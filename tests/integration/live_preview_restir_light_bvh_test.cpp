@@ -210,18 +210,17 @@ TEST(LivePreviewRestirLightBvhTest, RestirOnAndOffAgreeToThreePercentAcrossMater
 // ReSTIR DI and DI+GI against classic NEE, per colour channel, on scenes with a chromatic participating medium (Live Preview renders through
 // the wavefront backend, whose per-wavelength media these use). The volumetric ReSTIR only resamples LIGHT candidates (phase-function proxy;
 // the extinction never enters its target), so a chromatic medium must not move one channel against the others. Measured at 300 frames:
-// E3 (strongly chromatic glass fog) 100.0/100.0/99.9%, E11 98.7-99.3%, A8 100.1% - every channel within 1.5% of classic.
+// E3 (strongly chromatic glass fog) 99.8-100.9%, E11 98-103% (a noisy scene), A8 98.7-100.2%, E1 (a fog sphere nearly filling the Cornell box)
+// 99.5-101.3% - every channel within ~3% of classic.
 //
-// E1 (a fog sphere nearly filling the Cornell box) is a separate, colour-independent shortfall: DI reads 96.6-96.8% and DI+GI 94.8-95.5% in
-// every channel, and a GREY fog of the same density reads the same (97.8% / 96.5%). Switching the volumetric reservoirs off (no temporal or
-// spatial reuse at a phase vertex) brings DI to 99.4%, so it is that reuse - a scatter point redrawn every frame has no frame-to-frame
-// correspondence, so the reused sample's weight belongs to a different target - not the media model. Bounded loosely here (0.93..1.03) so a
-// regression still fails, and documented in docs/PBRT_SUPPORT.md.
+// E1 used to read 96-97% (DI) and 95% (DI+GI) in every channel - a grey fog the same - because a medium scatter point's reservoir was carried
+// across frames, and the scatter point is redrawn every frame (see kVolumeRestirHistoryReuse, wavefront_path_tracer.cpp). That reuse is off
+// now; this test is what catches it coming back.
 TEST(LivePreviewRestirLightBvhTest, ChromaticMediaRestirOnAndOffAgreePerChannel) {
 	const int width = 64, height = 64;
 	constexpr int kNumFrames = 300;
 	struct Case { const char* scene; double lo, hi; };
-	for (const Case& cs : {Case{"E3", 0.97, 1.03}, Case{"E11", 0.97, 1.03}, Case{"A8", 0.97, 1.03}, Case{"E1", 0.93, 1.03}}) {
+	for (const Case& cs : {Case{"E3", 0.97, 1.03}, Case{"E11", 0.97, 1.03}, Case{"A8", 0.97, 1.03}, Case{"E1", 0.97, 1.03}}) {
 		double off[3], di[3], digi[3];
 		ASSERT_TRUE(renderChannelMeans(cs.scene, width, height, kNumFrames, false, false, off));
 		ASSERT_TRUE(renderChannelMeans(cs.scene, width, height, kNumFrames, true, false, di));
