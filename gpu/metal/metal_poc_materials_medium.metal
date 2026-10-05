@@ -44,8 +44,21 @@ inline void shadeHomogeneousMediumSphere(
     thread bool& scatteredInMedium, thread bool& passedThroughMediumSphere) {
     SphereData mediumSphere = spheres[mediumPrimId];
     float3 sphereCenter = float3(mediumSphere.center) + shutterT * float3(mediumSphere.centerDelta1);
+    // `entryDistance` is the first root the intersection function accepted
+    // (> min_distance). For a ray that starts OUTSIDE the sphere that is
+    // the near root (entry), and the far root follows from the roots' sum
+    // (2*dot(C-O,D)). For a ray that starts INSIDE it - e.g. the
+    // continuation ray right after a scatter event inside this very
+    // sphere - the near root is behind the origin, so the accepted root IS
+    // the exit, and the path inside begins at distance 0. Without this
+    // branch the exit came out negative and the ray was stepped backwards.
     float entryT = entryDistance;
     float exitT = 2.0 * dot(sphereCenter - rayOrigin, rayDir) - entryT;
+    float3 ocMedium = rayOrigin - sphereCenter;
+    if (dot(ocMedium, ocMedium) < mediumSphere.radius * mediumSphere.radius) {
+        exitT = entryDistance;
+        entryT = 0.0;
+    }
     float sigmaT = mediumMat.ior;
     float u = randFloat(rngState);
     float tScatter = sampleFreePathDistance(u, sigmaT);
@@ -100,7 +113,14 @@ inline void shadeHomogeneousMediumSphere(
                 // warm-amber one and finding them
                 // indistinguishable, not assumed correct
                 // from the formula alone.
-                float transmittance = exp(-sigmaT * dist);
+                // Transmittance along the shadow ray is no longer applied
+                // here as exp(-sigmaT*dist): that charged the FULL scatter-
+                // to-light distance even where the ray had already left
+                // this sphere. sphereIntersectionFunction now blocks the
+                // shadow ray with probability 1 - exp(-sigma_t*chord) for
+                // each medium sphere it actually crosses (same expectation,
+                // correct chord), so a surviving ray is already weighted.
+                const float transmittance = 1.0;
                 radiance += throughput * float3(mediumMat.color) * phaseValue * ls.emission * transmittance
                             / pdfSolidAngle * weight;
             }

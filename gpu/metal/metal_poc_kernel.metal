@@ -348,6 +348,12 @@ kernel void primaryRayKernel(
         // bounce's next hit); bsdfPdf is only meaningful when false.
         bool specularBounce = true;
         float bsdfPdf = 0.0;
+        // Distance this ray has already travelled since the last real bounce or
+        // scatter, but which rayOrigin no longer reflects: stepping THROUGH a medium
+        // sphere moves rayOrigin to its exit point. The emissive-hit MIS weight
+        // needs the true distance from the previous bounce (that is what the NEE
+        // strategy it is weighed against measured), not from the exit point.
+        float mediumSkippedDist = 0.0;
         // Recursive-backend dispersion state (materialType 22, B23/B24) -
         // kRgbChannelUnset means "no dispersive hit yet, this sample
         // stays full RGB". See shadeDispersiveDielectric()'s own
@@ -433,6 +439,7 @@ kernel void primaryRayKernel(
             // black flecks on an otherwise-empty room instead of
             // recognisable haze - a real correctness gap, not a
             // cosmetic one, fixed properly rather than shipped.
+            const float3 mediumOriginBefore = rayOrigin;
             bool scatteredInMedium = false;
             bool passedThroughMediumSphere = false;
             if (result.type == intersection_type::bounding_box && result.geometry_id == 0u) {
@@ -458,6 +465,9 @@ kernel void primaryRayKernel(
                         scatteredInMedium, passedThroughMediumSphere);
                 }
             }
+
+            if (passedThroughMediumSphere) mediumSkippedDist += length(rayOrigin - mediumOriginBefore);
+            else if (scatteredInMedium) mediumSkippedDist = 0.0;
 
             // Homogeneous-medium free-flight distance sampling: draws a
             // random scattering distance from the medium's own
@@ -686,6 +696,7 @@ kernel void primaryRayKernel(
                 }
             }
 
+            if (scatteredInMedium) mediumSkippedDist = 0.0;  // global-fog scatter: new segment
             if (!scatteredInMedium && !passedThroughMediumSphere) {
             if (result.type == intersection_type::none) {
                 if (uniforms.useEnvironmentMap != 0u) {
@@ -1133,7 +1144,8 @@ kernel void primaryRayKernel(
                     // the same area-to-solid-angle conversion the NEE
                     // branches below use.
                     AreaLight light = lights[mat.lightId];
-                    float distSq = result.distance * result.distance;
+                    const float hitDistFromBounce = result.distance + mediumSkippedDist;
+                    float distSq = hitDistFromBounce * hitDistFromBounce;
                     // abs(), not the old max(dot(...), 0.0001) alone - a
                     // real, previously-latent bug found by code review
                     // (section 106), exposed once section 104's own
@@ -1272,6 +1284,7 @@ kernel void primaryRayKernel(
                                       isect, accelStructure, functionTable,
                                       rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             }
+                mediumSkippedDist = 0.0;  // a real bounce starts a new segment
             } // !scatteredInMedium && !passedThroughMediumSphere
 
             // Russian roulette after a few bounces, same "let cheap paths

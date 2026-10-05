@@ -1060,16 +1060,14 @@ struct SphereData {
 // within that same sample.
 struct SpherePayload {
     float shutterT;
-    // A8/section 176: a real bounded medium sphere (materialType 28)
-    // must stay INVISIBLE to a pure occlusion (shadow-ray) test - it's
-    // a semi-transparent volume, not an opaque surface, and this POC
-    // has no per-shadow-ray fog-transmittance integration to do the
-    // physically-correct partial-attenuation version (the same
-    // "ignore it entirely for shadow-ray purposes, slightly OVER-light
-    // what's behind it" approximation gpu/optix/scene_builder.cpp's
-    // own build_cornell_smoke_gpu() precedent this whole feature
-    // already follows would make too, if OptiX's own shadow rays had
-    // the identical gap - not a new approximation invented here).
+    // A8/section 176: a real bounded medium sphere is a semi-transparent
+    // volume, not an opaque surface. For a pure occlusion (shadow-ray)
+    // test a homogeneous one (materialType 28) is blocked only
+    // stochastically, with probability 1 - exp(-sigma_t * chord) - see
+    // sphereIntersectionFunction() - so visibility through it is
+    // attenuated correctly in expectation. The heterogeneous kinds
+    // (29/30) are still ignored entirely for shadow rays (they slightly
+    // OVER-light what's behind them).
     // Defaults to TRUE deliberately: the ~50 existing shadow-ray call
     // sites across every metal_poc_materials_*.metal shading function
     // never construct a SpherePayload at all (Metal's own 3-argument
@@ -1197,7 +1195,42 @@ SphereIntersectionResult sphereIntersectionFunction(
     // so it's unaffected by this check.
     {
         uint mt = sphereMaterials[primitiveIndex].materialType;
-        if (payload.isShadowRay && (mt == 28u || mt == 29u || mt == 30u)) return result;
+        if (payload.isShadowRay && (mt == 29u || mt == 30u)) return result;
+        if (payload.isShadowRay && mt == 28u) {
+            // Homogeneous medium sphere vs a shadow ray: not an opaque
+            // blocker, but it does attenuate. Visibility through it is
+            // exp(-sigma_t * chord), and a binary occlusion test can
+            // reproduce that in expectation: block with probability
+            // 1 - exp(-sigma_t * chord). Done here (not at the ~70 NEE
+            // call sites) because every one of them already treats "no
+            // hit" as "light visible". The random number is a hash of the
+            // ray itself - each NEE ray differs, so the decisions are
+            // independent across samples - and of the primitive, so two
+            // overlapping medium spheres decide independently.
+            SphereData ms = spheres[primitiveIndex];
+            float3 msCenter = float3(ms.center) + payload.shutterT * float3(ms.centerDelta1);
+            float3 msOc = origin - msCenter;
+            float msA = dot(direction, direction);
+            float msB = dot(msOc, direction);
+            float msDisc = msB * msB - msA * (dot(msOc, msOc) - ms.radius * ms.radius);
+            if (msDisc <= 0.0) return result;
+            float msSqrt = sqrt(msDisc);
+            float t0 = max((-msB - msSqrt) / msA, minDistance);
+            float t1 = min((-msB + msSqrt) / msA, maxDistance);
+            if (t1 <= t0) return result;
+            float chord = (t1 - t0) * sqrt(msA);
+            float transmittance = exp(-sphereMaterials[primitiveIndex].ior * chord);
+            uint h = as_type<uint>(origin.x) * 73856093u ^ as_type<uint>(origin.y) * 19349663u
+                   ^ as_type<uint>(origin.z) * 83492791u ^ as_type<uint>(direction.x) * 2654435761u
+                   ^ as_type<uint>(direction.y) * 40503u ^ as_type<uint>(direction.z) * 668265263u
+                   ^ primitiveIndex * 374761393u;
+            h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
+            float xi = float(h >> 8) * (1.0 / 16777216.0);
+            if (xi < transmittance) return result;   // passed through: not blocked
+            result.accept = true;                    // absorbed/scattered away: blocked
+            result.distance = t0;
+            return result;
+        }
     }
     // A sphere light's own NEE shadow ray excludes ITS OWN primitive
     // outright (SpherePayload::shadowIgnorePrimId's own comment) rather
