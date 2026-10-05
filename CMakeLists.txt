@@ -636,11 +636,13 @@ if(RT_BUILD_METAL)
     # be scanned first there also wins outright, which is why this ordering
     # sensitivity never surfaced until this target added a direct caller.
     target_link_libraries(metal_cpu_gpu_parity_check PRIVATE metal_renderer cpu_renderer)
-    # Informational by default (metal_cpu_gpu_parity_check.cpp's own
-    # "CURRENT STATUS" header comment) - always exits 0 unless
-    # METAL_PARITY_STRICT=1 is set in the environment, in which case a
-    # nonzero exit already fails ctest on its own (PASS_REGULAR_EXPRESSION
-    # only gates the exit-0 case, same as every other Metal test here).
+    # A real gate: METAL_PARITY_STRICT=1 (set below) makes the sweep exit non-zero - which fails
+    # ctest on its own, PASS_REGULAR_EXPRESSION only gates the exit-0 case - when a scene that is
+    # NOT a documented known gap exceeds tolerance. The sweep is reproducible (fixed RNG seed for
+    # both backends) and a regional miss under 1.5x the tolerance is only "marginal", so sampling
+    # noise on another machine does not turn this red, while a genuine regression (whole-image
+    # brightness, per-channel, NaN pixels, or a gross regional miss) does. Run the binary directly
+    # WITHOUT METAL_PARITY_STRICT for the informational per-scene report.
     # The "no Metal device" early-exit also returns 0, printing a
     # different message (never reaches the summary/"PASS (informational)"
     # line) - matched here too so this test alone, outside the CI
@@ -651,5 +653,6 @@ if(RT_BUILD_METAL)
     add_test(NAME metal_poc_cpu_gpu_parity COMMAND metal_cpu_gpu_parity_check)
     set_tests_properties(metal_poc_cpu_gpu_parity PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
-        PASS_REGULAR_EXPRESSION "PASS \\(informational\\)|No Metal device available")
+        ENVIRONMENT "METAL_PARITY_STRICT=1"
+        PASS_REGULAR_EXPRESSION "PASS \\((informational|strict)\\)|No Metal device available")
 endif()
