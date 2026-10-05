@@ -27,6 +27,7 @@
 
 #include <gtest/gtest.h>
 #include "../../src/external/tinyexr.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -228,7 +229,7 @@ static bool loadLinearMean(const std::string& path, double& mean) {
 // runs: 1.572, 1.572, 1.613 - a heavy-tailed point light in fog, noise rather than bias). bump-mapped-plane and normal-mapped-cornell were
 // 98.4-99.0% and 100.9% until the CPU stopped requantizing the decoded height image to bytes and both backends began reading normal
 // maps linear, as pbrt does.
-static void expectBackendsAgree(const char* stem, int spp, double lo, double hi) {
+static void expectBackendsAgree(const char* stem, int spp, double lo, double hi, int cpuRepeats = 1) {
 	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
 	const SceneDescriptor* s = find_example_scene(stem);
 	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
@@ -251,9 +252,21 @@ static void expectBackendsAgree(const char* stem, int spp, double lo, double hi)
 
 	const std::string base = std::string("pbrt_agree_") + stem;
 	double c = 0.0, rec = 0.0, wf = 0.0;
-	ASSERT_EQ(cpu_render_main(64, 64, spp, 8, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
-	const bool cpuOk = loadLinearMean(base + "_cpu.exr", c);
-	std::remove((base + "_cpu.exr").c_str());
+	// The CPU reference is the median of `cpuRepeats` renders: a scene whose CPU estimate has a heavy tail (a point light in fog) lands
+	// on a different mean every run, and one draw is not a reference.
+	std::vector<double> cpuMeans;
+	bool cpuOk = true;
+	for (int i = 0; i < cpuRepeats && cpuOk; ++i) {
+		ASSERT_EQ(cpu_render_main(64, 64, spp, 8, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+		double m = 0.0;
+		cpuOk = loadLinearMean(base + "_cpu.exr", m);
+		cpuMeans.push_back(m);
+		std::remove((base + "_cpu.exr").c_str());
+	}
+	if (cpuOk) {
+		std::sort(cpuMeans.begin(), cpuMeans.end());
+		c = cpuMeans[cpuMeans.size() / 2];
+	}
 	const bool recOk = renderGpu("0", base + "_rec.exr", rec);
 	const bool wfOk = renderGpu("1", base + "_wf.exr", wf);
 	setWavefront("0");
@@ -409,7 +422,10 @@ TEST(PbrtBackendAgreementTest, HairSphereDimSkyAgreesAcrossBackends) {
 // twice, recursive GPU ignored the scattering albedo (and its builder dropped sigma_s/sigma_t), wavefront GPU had no
 // camera medium at all. See the scene's header for the Monte Carlo numbers they now match.
 TEST(PbrtBackendAgreementTest, CameraMediumAbsorbingAgreesAcrossBackends) {
-	expectBackendsAgree("camera-medium-absorbing", 128, 0.97, 1.04);
+	// 16 CPU renders of this scene: 1.537-1.683, median 1.577 (a point light in fog: heavy tail, upward). The GPU backends read 99.7%
+	// (recursive) and 102% (wavefront) of that median, so the CPU reference is the median of five draws and the bounds leave room for
+	// the spread of that median.
+	expectBackendsAgree("camera-medium-absorbing", 128, 0.95, 1.06, /*cpuRepeats=*/5);
 }
 
 // Disk and cylinder area lights. The CPU's cylinder pdf counted only the first of a ray's two crossings of the
