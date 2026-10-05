@@ -262,7 +262,10 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     }
     NSString* earthPath = [imagesDir stringByAppendingPathComponent:@"earthmap.jpg"];
     int earthW = 0, earthH = 0, earthChannels = 0;
-    unsigned char* earthPixels = stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
+    // The earth map only feeds the demo room (back wall, demo sky/projection light, its env importance sampling);
+    // useEnvironmentMap is forced to 0 for a pbrt scene, so skip the ~30 ms JPEG decode + ~70 ms CDF build for it
+    // and fall through to the 1x1 white placeholder below.
+    unsigned char* earthPixels = skipDemoRoom ? nullptr : stbi_load(earthPath.UTF8String, &earthW, &earthH, &earthChannels, 4);
     id<MTLTexture> earthTexture = nil;
     // Environment-map importance sampling (phase 2 - see section 69 for
     // phase 1's own host-side EnvDistribution2D, built and independently
@@ -289,8 +292,9 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         stbi_image_free(earthPixels);
         fprintf(stderr, "Loaded %s: %dx%d, %d channels\n", earthPath.UTF8String, earthW, earthH, earthChannels);
     } else {
-        fprintf(stderr, "Could not load %s - back wall will read black/undefined texture data.\n",
-            earthPath.UTF8String);
+        if (!skipDemoRoom)
+            fprintf(stderr, "Could not load %s - back wall will read black/undefined texture data.\n",
+                earthPath.UTF8String);
         // A 1x1 white fallback keeps the shader's unconditional
         // texture bind valid (Metal requires SOME texture at the
         // bound slot) even if the JPEG is missing. `_sRGB` for
@@ -534,12 +538,9 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // here - this is a host-only precompute of a smooth, low-frequency
     // table, not a per-pixel render decision that needs to match the
     // shader's own RNG stream bit-for-bit.
-    std::mt19937 ggxEnergyRng(1337);
-    std::uniform_real_distribution<float> ggxEnergyDist(0.0f, 1.0f);
-    auto ggxEnergyRandFn = [&]() { return ggxEnergyDist(ggxEnergyRng); };
-    GGXEnergyTable ggxEnergyTable;
-    buildGGXEnergyTable(/*roughRes=*/32, /*muRes=*/32, /*samplesPerCell=*/2048,
-                        ggxEnergyTable, ggxEnergyRandFn);
+    // Built on a background thread started at the top of buildScene() (see startGgxEnergyTableBuild()) so its ~80 ms
+    // overlaps scene/AS building; the values are identical (same seed, same sequence).
+    GGXEnergyTable ggxEnergyTable = takeGgxEnergyTable();
     id<MTLBuffer> ggxEnergyTableBuffer = [device newBufferWithBytes:ggxEnergyTable.E.data()
         length:ggxEnergyTable.E.size() * sizeof(float) options:MTLResourceStorageModeShared];
 

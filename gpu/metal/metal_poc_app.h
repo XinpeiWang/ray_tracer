@@ -28,6 +28,7 @@
 #include <fstream>
 #include <sstream>
 #include <string>
+#include <future>
 #include <random>
 #include <simd/simd.h>
 
@@ -104,6 +105,25 @@ struct MetalPocApp {
     // the pbrt scene is added, so the acceleration structure holds ONLY the pbrt geometry. Set by metal_render_main().
     // False (default) keeps the demo room for the standalone metal_poc CLI.
     bool skipDemoRoom = false;
+
+    // The GGX energy-compensation table: 32x32 cells x 2048 VNDF samples (~80 ms single-threaded) and fully
+    // deterministic, so it is computed on a worker thread from the start of buildScene() and joined where the
+    // buffer is created. takeGgxEnergyTable() computes it inline if nothing was started.
+    std::future<GGXEnergyTable> ggxEnergyTableFuture;
+    void startGgxEnergyTableBuild() {
+        ggxEnergyTableFuture = std::async(std::launch::async, [] { return buildGgxEnergyTableDefault(); });
+    }
+    GGXEnergyTable takeGgxEnergyTable() {
+        return ggxEnergyTableFuture.valid() ? ggxEnergyTableFuture.get() : buildGgxEnergyTableDefault();
+    }
+    static GGXEnergyTable buildGgxEnergyTableDefault() {
+        std::mt19937 rng(1337);
+        std::uniform_real_distribution<float> dist(0.0f, 1.0f);
+        auto randFn = [&]() { return dist(rng); };
+        GGXEnergyTable table;
+        buildGGXEnergyTable(/*roughRes=*/32, /*muRes=*/32, /*samplesPerCell=*/2048, table, randFn);
+        return table;
+    }
     // Starting value of the per-pixel RNG stream (Uniforms::frameSeed, folded
     // into every pixel's initial rngState in primaryRayKernel). 1u is the value
     // this backend has always hardcoded, so a render that never asks for a
