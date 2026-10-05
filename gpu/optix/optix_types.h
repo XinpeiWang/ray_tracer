@@ -1417,6 +1417,22 @@ struct MaterialData {
 	float condRoughnessV = -1.0f;
 	// CoatedConductor only: pbrt's layer "thickness" (Beer-Lambert attenuation through the coat, unit extinction).
 	float layerThickness = 0.01f;
+
+	// Medium / DielectricMedium only: the PER-CHANNEL coefficients of a homogeneous medium whose extinction differs between colour
+	// channels (sigma_t = chromaSigmaA + chromaSigmaS). All zero (the default) for a grey medium, which keeps using the scalar
+	// extinction (`ior`/`sigma_t`) and the tint albedo above exactly as before - medium_is_chromatic() is the one test. chromaLe is
+	// MakeNamedMedium's RAW "rgb Le" (not the sigma_a/sigma_t-weighted `medium_emission` above): the per-channel event sampler
+	// weights it per collision (see sample_homogeneous_event in src/shared/volume_scattering.h, which CPU's constant_medium uses too).
+	float3 chromaSigmaA = {0.0f, 0.0f, 0.0f};
+	float3 chromaSigmaS = {0.0f, 0.0f, 0.0f};
+	float3 chromaLe     = {0.0f, 0.0f, 0.0f};
+	// Wavefront (spectral) twin of chromaSigmaA/S: the coefficients (c0, c1, c2) of the sigmoid polynomial of each coefficient's
+	// unbounded RGB->spectrum uplift, value(lambda) = scale * s(c0*lambda^2 + c1*lambda + c2), baked on the host so the shadow any-hit
+	// program (which has no uplift tables) can evaluate sigma(lambda) per wavelength. scale == 0 means that coefficient is zero.
+	float3 chromaCoefA  = {0.0f, 0.0f, 0.0f};
+	float3 chromaCoefS  = {0.0f, 0.0f, 0.0f};
+	float  chromaScaleA = 0.0f;
+	float  chromaScaleS = 0.0f;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

@@ -370,3 +370,92 @@ TEST(HGPhaseFunction, GParameterEstimate) {
 		EXPECT_NEAR(g, gEst, 0.05) << "g=" << g;
 	}
 }
+
+// ============================================================
+// sample_homogeneous_event<double>: single-sample MIS over the colour channels
+// ============================================================
+
+namespace {
+// Mean per-channel path weight of `n` stratified-ish draws of one free flight of length d: what the estimator contributes in
+// expectation, split into the collision part (w, e) and the pass-through part.
+struct EventMeans { double collide_w[3] = {0, 0, 0}, collide_e[3] = {0, 0, 0}, pass_w[3] = {0, 0, 0}; };
+
+EventMeans measure_events(const HomogeneousMediumData<double>& m, double d, int n) {
+	EventMeans out;
+	uint32_t s = 20260705u;
+	auto u = [&]() { s = s * 1664525u + 1013904223u; return ((s >> 8) + 0.5) / double(1u << 24); };
+	for (int i = 0; i < n; ++i) {
+		const HomogeneousEvent<double> ev = sample_homogeneous_event<double>(m, d, u(), u());
+		for (int c = 0; c < 3; ++c) {
+			if (ev.collided) { out.collide_w[c] += ev.w[c] / n; out.collide_e[c] += ev.e[c] / n; }
+			else             { out.pass_w[c] += ev.w[c] / n; }
+		}
+	}
+	return out;
+}
+}
+
+// A pure absorber thicker in blue than red: collisions carry no scattering weight, and the pass-through weights must average to the
+// per-channel Beer-Lambert transmittance (not the luminance-collapsed one the scalar model gives every channel).
+TEST(HomogeneousEvent, PureAbsorberPassesPerChannelBeerLambert) {
+	HomogeneousMediumData<double> m(0.1, 0.4, 0.9, 0.0, 0.0, 0.0, 0.0);
+	const double d = 2.0;
+	const EventMeans mean = measure_events(m, d, 400000);
+	const double sig[3] = {0.1, 0.4, 0.9};
+	for (int c = 0; c < 3; ++c) {
+		EXPECT_NEAR(mean.pass_w[c], std::exp(-sig[c] * d), 0.004) << "channel " << c;
+		EXPECT_DOUBLE_EQ(mean.collide_w[c], 0.0) << "an absorber never scatters, channel " << c;
+	}
+}
+
+// Emission of an absorber: the integral of sigma_a * T over the chord is 1 - T for a pure absorber, per channel.
+TEST(HomogeneousEvent, AbsorberEmissionWeightsIntegrateToOneMinusTransmittance) {
+	HomogeneousMediumData<double> m(0.1, 0.4, 0.9, 0.0, 0.0, 0.0, 0.0);
+	const double d = 2.0;
+	const EventMeans mean = measure_events(m, d, 400000);
+	const double sig[3] = {0.1, 0.4, 0.9};
+	for (int c = 0; c < 3; ++c)
+		EXPECT_NEAR(mean.collide_e[c], 1.0 - std::exp(-sig[c] * d), 0.004) << "channel " << c;
+}
+
+// A pure scatterer with channel-dependent sigma_s: a ray ends up either scattered or through, and in expectation each channel's
+// scattered + transmitted weight is exactly 1 (nothing absorbed).
+TEST(HomogeneousEvent, PureScattererConservesEnergyPerChannel) {
+	HomogeneousMediumData<double> m(0.0, 0.0, 0.0, 0.3, 0.8, 1.5, 0.0);
+	const double d = 1.7;
+	const EventMeans mean = measure_events(m, d, 400000);
+	const double sig[3] = {0.3, 0.8, 1.5};
+	for (int c = 0; c < 3; ++c) {
+		EXPECT_NEAR(mean.pass_w[c], std::exp(-sig[c] * d), 0.004) << "channel " << c;
+		EXPECT_NEAR(mean.collide_w[c] + mean.pass_w[c], 1.0, 0.006) << "channel " << c;
+	}
+}
+
+// A grey medium is the old model exactly: the collision weight is the single-scattering albedo, the pass weight is 1, and the
+// collision distance is the usual -log(1-u)/sigma_t.
+TEST(HomogeneousEvent, GreyMediumReducesToTheScalarModel) {
+	HomogeneousMediumData<double> m(0.5, 0.5, 0.5, 1.5, 1.5, 1.5, 0.0);
+	EXPECT_FALSE(m.is_chromatic());
+	for (double ud : {0.05, 0.4, 0.9}) {
+		const HomogeneousEvent<double> ev = sample_homogeneous_event<double>(m, 3.0, 0.5, ud);
+		const double t = -std::log(1.0 - ud) / 2.0;
+		if (t < 3.0) {
+			ASSERT_TRUE(ev.collided);
+			EXPECT_NEAR(ev.t, t, 1e-12);
+			for (int c = 0; c < 3; ++c) EXPECT_NEAR(ev.w[c], 0.75, 1e-12);
+		} else {
+			EXPECT_FALSE(ev.collided);
+			for (int c = 0; c < 3; ++c) EXPECT_NEAR(ev.w[c], 1.0, 1e-12);
+		}
+	}
+}
+
+// An unbounded flight (d >= 1e29) through a medium that is clear in one channel: only that channel survives, and the weights still
+// average to the true transmittance (0, 0, 1).
+TEST(HomogeneousEvent, UnboundedFlightKeepsTheClearChannel) {
+	HomogeneousMediumData<double> m(0.0, 0.5, 0.5, 0.0, 0.0, 0.0, 0.0);
+	const EventMeans mean = measure_events(m, 1e30, 200000);
+	EXPECT_NEAR(mean.pass_w[0], 1.0, 0.01);
+	EXPECT_NEAR(mean.pass_w[1], 0.0, 1e-12);
+	EXPECT_NEAR(mean.pass_w[2], 0.0, 1e-12);
+}

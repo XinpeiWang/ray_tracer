@@ -218,6 +218,21 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		// wavefront's WfShadowPayload::tMax holds.
 		const float segFar = fminf(t_far, shadow_state_from_payload()->maxDistance);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
+		if (medium_is_chromatic(mat)) {
+			// Per-channel Beer-Lambert: the scalar `transmittance` stays 1 and the running colour product goes in `rgb`.
+			ShadowRayState* st = shadow_state_from_payload();
+			st->rgb = make_float3(
+				st->rgb.x * expf(-(mat.chromaSigmaA.x + mat.chromaSigmaS.x) * segLen),
+				st->rgb.y * expf(-(mat.chromaSigmaA.y + mat.chromaSigmaS.y) * segLen),
+				st->rgb.z * expf(-(mat.chromaSigmaA.z + mat.chromaSigmaS.z) * segLen));
+			if (st->rgb.x <= 0.0f && st->rgb.y <= 0.0f && st->rgb.z <= 0.0f) {
+				st->occluded = 1;  // every channel fully attenuated - treat as occluded
+				optixTerminateRay();
+				return;
+			}
+			optixIgnoreIntersection();
+			return;
+		}
 		float transmittance = shadow_state_from_payload()->transmittance;
 		transmittance *= expf(-sigma_t * segLen);
 		shadow_state_from_payload()->transmittance = transmittance;  // memory write: survives optixIgnoreIntersection (a payload-register write would not)
@@ -387,6 +402,21 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		// t inside an any-hit) - see __anyhit__shadow_sphere's identical comment.
 		const float segFar = fminf(t_far, shadow_state_from_payload()->maxDistance);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
+		if (medium_is_chromatic(mat)) {
+			// Per-channel Beer-Lambert: the scalar `transmittance` stays 1 and the running colour product goes in `rgb`.
+			ShadowRayState* st = shadow_state_from_payload();
+			st->rgb = make_float3(
+				st->rgb.x * expf(-(mat.chromaSigmaA.x + mat.chromaSigmaS.x) * segLen),
+				st->rgb.y * expf(-(mat.chromaSigmaA.y + mat.chromaSigmaS.y) * segLen),
+				st->rgb.z * expf(-(mat.chromaSigmaA.z + mat.chromaSigmaS.z) * segLen));
+			if (st->rgb.x <= 0.0f && st->rgb.y <= 0.0f && st->rgb.z <= 0.0f) {
+				st->occluded = 1;  // every channel fully attenuated - treat as occluded
+				optixTerminateRay();
+				return;
+			}
+			optixIgnoreIntersection();
+			return;
+		}
 		float transmittance = shadow_state_from_payload()->transmittance;
 		transmittance *= expf(-sigma_t * segLen);
 		shadow_state_from_payload()->transmittance = transmittance;  // memory write: survives optixIgnoreIntersection (a payload-register write would not)

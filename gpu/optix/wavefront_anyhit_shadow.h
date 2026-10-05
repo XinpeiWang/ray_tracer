@@ -92,6 +92,19 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 		const float sigma_t = mat.sigma_t;
 		const float segFar = fminf(t_far, sp->tMax);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
+		if (wf_medium_is_chromatic(mat)) {
+			// Per-wavelength Beer-Lambert through this chord: tr[] carries the colour product, `transmittance` stays the scalar one.
+			bool alive = false;
+			for (int i = 0; i < kWFNWavelengths; ++i) {
+				const float sigma = wf_chroma_sigma_a(mat, sp->lambda[i]) + wf_chroma_sigma_s(mat, sp->lambda[i]);
+				sp->tr[i] *= expf(-sigma * segLen);
+				if (sp->tr[i] > 0.0f) alive = true;
+			}
+			sp->chromatic = 1;
+			if (!alive) { sp->transmittance = 0.0f; optixTerminateRay(); return; }
+			optixIgnoreIntersection();
+			return;
+		}
 		sp->transmittance *= expf(-sigma_t * segLen);
 		if (sp->transmittance <= 0.0f) { optixTerminateRay(); return; }
 		optixIgnoreIntersection();
@@ -422,6 +435,19 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 		wf_medium_cylinder_near_far(ray_orig, ray_dir, cyl, t_near, t_far);
 		const float segFar = fminf(t_far, sp->tMax);
 		const float segLen = fmaxf(0.0f, segFar - fmaxf(0.0f, t_near));
+		if (wf_medium_is_chromatic(mat)) {
+			// Per-wavelength Beer-Lambert through this chord: tr[] carries the colour product, `transmittance` stays the scalar one.
+			bool alive = false;
+			for (int i = 0; i < kWFNWavelengths; ++i) {
+				const float sigma = wf_chroma_sigma_a(mat, sp->lambda[i]) + wf_chroma_sigma_s(mat, sp->lambda[i]);
+				sp->tr[i] *= expf(-sigma * segLen);
+				if (sp->tr[i] > 0.0f) alive = true;
+			}
+			sp->chromatic = 1;
+			if (!alive) { sp->transmittance = 0.0f; optixTerminateRay(); return; }
+			optixIgnoreIntersection();
+			return;
+		}
 		const float sigma_t = mat.sigma_t;
 		sp->transmittance *= expf(-sigma_t * segLen);
 		if (sp->transmittance <= 0.0f) { optixTerminateRay(); return; }

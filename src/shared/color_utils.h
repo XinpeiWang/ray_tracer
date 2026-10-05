@@ -235,6 +235,11 @@ struct RGBSigmoidPolynomial {
 		return s(EvaluatePolynomial(lambda, c2, c1, c0));
 	}
 
+	// The three polynomial coefficients (c0*l^2 + c1*l + c2), for code that bakes them into a device-side record.
+	CPU_GPU float C0() const { return c0; }
+	CPU_GPU float C1() const { return c1; }
+	CPU_GPU float C2() const { return c2; }
+
 	// Maximum reflectance over the visible range [360, 830] nm.
 	// pbrt-v4: RGBSigmoidPolynomial::MaxValue()
 	CPU_GPU float MaxValue() const {

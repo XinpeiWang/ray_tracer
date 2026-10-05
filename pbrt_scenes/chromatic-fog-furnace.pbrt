@@ -1,0 +1,27 @@
+# chromatic-fog-furnace.pbrt -- a non-absorbing fog whose scattering differs by colour, under a uniform sky.
+#
+# The chromatic twin of fog-furnace.pbrt: sigma_s = (0.2, 0.35, 0.5), sigma_a = 0, albedo 1 in every channel, so a path either
+# scatters or passes and the sphere stays invisible against the sky: every channel must read the sky (1.0) whatever the
+# per-channel sampling does inside. It is what catches a weight that is not conserved between the channels (a collision weight
+# that does not average to 1 - transmittance), and, run per channel, a colour cast the fog should not have.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 14 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+MakeNamedMedium "fog" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.2 0.35 0.5 ] "float g" [ 0.3 ]
+
+AttributeBegin
+  Material "interface"
+  MediumInterface "fog" ""
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

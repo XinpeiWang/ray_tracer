@@ -273,6 +273,12 @@ class camera {
     // this field at all yet.
     shared_ptr<ambient_medium> camera_medium;
 
+    // The scene's per-shape homogeneous media whose extinction differs between colour channels (BuildResult::chromaticMedia). ray_color()
+    // samples these itself (constant_medium::sample_event()) against the nearest surface, because the single-extinction free-flight
+    // that constant_medium::hit() does cannot represent a medium that is thicker in one channel than another. Empty (the default) for
+    // every grey-medium scene, and ignored by ray_color_spectral() and the other integrators.
+    std::vector<shared_ptr<constant_medium>> shape_media;
+
     double vfov     = 90;              // Vertical view angle (field of view)
     point3 lookfrom = point3(0,0,0);   // Point camera is looking from
     point3 lookat   = point3(0,0,-1);  // Point camera is looking at
@@ -1617,6 +1623,24 @@ class camera {
         point3 prev_surface_p     = r.origin(); // pbrt-v4: prevIntrCtx shading point
         int    medium_boundary_crossings = 0;
 
+        // While this path runs, the chromatic per-shape media are sampled here (below) and hidden from hit() - see
+        // constant_medium.h's g_chromatic_media_integrator_managed.
+        struct ChromaticMediaScope {
+            bool prev;
+            explicit ChromaticMediaScope(bool on) : prev(g_chromatic_media_integrator_managed) {
+                if (on) g_chromatic_media_integrator_managed = true;
+            }
+            ~ChromaticMediaScope() { g_chromatic_media_integrator_managed = prev; }
+        } chromatic_media_scope(!shape_media.empty());
+
+        // Deterministic per-channel transmittance through the chromatic shape media along a shadow ray, up to parameter t_max: what
+        // the NEE strategies below multiply in (the media are invisible to shadow_ray_hit() while the scope above is active).
+        auto shape_media_trans = [&](const ray& sr, double t_max) -> color {
+            color T(1, 1, 1);
+            for (const auto& m : shape_media) T = T * m->transmittance_along(sr, t_max);
+            return T;
+        };
+
         // Russian roulette below only fires when a path's throughput has
         // dropped under 1.0 - it terminates/reweights *dim* paths, but does
         // nothing when throughput has grown large. General defensive
@@ -1658,6 +1682,50 @@ class camera {
             hit_record rec;
             bool hit_something = world.hit(current_ray, interval(0.001, infinity), rec);
 
+            // Per-channel-extinction shape media: one free-flight event per medium over its chord up to the nearest surface, in
+            // order of entry (a collision ends the walk and replaces rec; a pass multiplies beta by its importance weight).
+            if (!shape_media.empty()) {
+                const constant_medium* order_buf[8];
+                std::size_t n = 0;
+                std::vector<const constant_medium*> order_heap;
+                const constant_medium** order = order_buf;
+                if (shape_media.size() > 8) {
+                    order_heap.resize(shape_media.size());
+                    order = order_heap.data();
+                }
+                for (const auto& m : shape_media) order[n++] = m.get();
+                if (n > 1) {
+                    double entry[64];
+                    std::vector<double> entry_heap;
+                    double* ent = entry;
+                    if (n > 64) { entry_heap.resize(n); ent = entry_heap.data(); }
+                    for (std::size_t i = 0; i < n; ++i) {
+                        double t0, t1;
+                        ent[i] = order[i]->chord(current_ray, t0, t1) ? t0 : infinity;
+                    }
+                    for (std::size_t i = 1; i < n; ++i) {   // insertion sort, n is tiny
+                        for (std::size_t j = i; j > 0 && ent[j] < ent[j - 1]; --j) {
+                            std::swap(ent[j], ent[j - 1]);
+                            std::swap(order[j], order[j - 1]);
+                        }
+                    }
+                }
+                double t_limit = hit_something ? rec.t : infinity;
+                for (std::size_t i = 0; i < n; ++i) {
+                    double entry_t = 0.0;
+                    bool collided = false;
+                    hit_record ev_rec;
+                    color w(1, 1, 1);
+                    if (!order[i]->sample_event(current_ray, t_limit, entry_t, collided, ev_rec, w)) continue;
+                    if (collided) {
+                        rec = ev_rec;
+                        hit_something = true;
+                        break;
+                    }
+                    beta = beta * w;
+                }
+            }
+
             // pbrt-v4's own "camera medium" (camera::camera_medium's own
             // comment) - an unbounded ambient medium the camera itself
             // starts inside. Tested here, AFTER world.hit() already ran, so
@@ -1680,8 +1748,11 @@ class camera {
                 // so the no-scatter branch doesn't need a second sqrt for
                 // the same value.
                 double ray_length = 0.0;
-                if (camera_medium->sample_scatter(current_ray, surface_t, rec, &ray_length)) {
+                color  pass_weight(1, 1, 1);   // only a per-channel-extinction medium sets this
+                if (camera_medium->sample_scatter(current_ray, surface_t, rec, &ray_length, &pass_weight)) {
                     hit_something = true;
+                } else {
+                    beta = beta * pass_weight;
                 }
                 // No scatter: the ray reaches the surface (or escapes) with weight 1. The free-flight sample
                 // above already decides scatter-or-pass with probabilities 1 - T and T, so multiplying beta by
@@ -1908,8 +1979,13 @@ class camera {
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0) {
                                 color atten = rec.mat->scattering_attenuation(current_ray, rec, shadow_ray, srec.attenuation);
-                                color med_trans = camera_medium_trans(
-                                    light_rec.t * shadow_ray.direction().length());
+                                // shadow_ray_hit() restarts its ray at every transmissive surface it walks through (an interface
+                                // shell, glass), so light_rec.t is measured from the LAST of those, not from shadow_ray's origin.
+                                // The distance to the light's hit point is the real extent of the segment the media see.
+                                const double dir_len = shadow_ray.direction().length();
+                                const double t_light = (light_rec.p - shadow_ray.origin()).length() / dir_len;
+                                color med_trans = camera_medium_trans(t_light * dir_len)
+                                    * shape_media_trans(shadow_ray, t_light);
                                 L += beta * w_l * atten * trans * med_trans * f_pdf * Le_d / pdf_l;
                             }
                         }
@@ -1945,7 +2021,7 @@ class camera {
                             portal->eval_Le_rgb(rec.p.x(), rec.p.y(), rec.p.z(), wx, wy, wz, lr, lg, lb);
                             color Le_portal(lr, lg, lb);
                             color atten = rec.mat->scattering_attenuation(current_ray, rec, portal_shadow, srec.attenuation);
-                            color med_trans = camera_medium_trans(infinity);
+                            color med_trans = camera_medium_trans(infinity) * shape_media_trans(portal_shadow, infinity);
                             L += beta * w_portal * atten * trans * med_trans * f_pdf * Le_portal / pdf_portal;
                         }
                     }
@@ -1967,7 +2043,7 @@ class camera {
                         if (!shadow_ray_hit(world, sky_shadow, sky_rec, infinity, &trans)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
                             color atten = rec.mat->scattering_attenuation(current_ray, rec, sky_shadow, srec.attenuation);
-                            color med_trans = camera_medium_trans(infinity);
+                            color med_trans = camera_medium_trans(infinity) * shape_media_trans(sky_shadow, infinity);
                             L += beta * w_sky * atten * trans * med_trans * f_pdf * Le_sky / pdf_sky;
                         }
                     }
@@ -1991,7 +2067,7 @@ class camera {
                     if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max, &trans)) {
                         // delta light: pdf=1, no MIS weight needed
                         color atten = rec.mat->scattering_attenuation(current_ray, rec, punct_ray, srec.attenuation);
-                        color med_trans = camera_medium_trans(ps.t_max);
+                        color med_trans = camera_medium_trans(ps.t_max) * shape_media_trans(punct_ray, shadow_t_max);
                         L += beta * atten * trans * med_trans * f_pdf * ps.Li;
                     }
                 });

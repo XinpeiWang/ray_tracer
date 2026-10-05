@@ -658,6 +658,10 @@ struct BuildResult {
 	// camera_t::camera_medium (camera.h) directly, same "null = none, no
 	// existing scene's behavior changes" convention as `sky`/`portal` above.
 	std::shared_ptr<ambient_medium> cameraMedium;
+	// The per-shape homogeneous media whose extinction differs between colour channels (constant_medium::chromatic()). camera::ray_color()
+	// samples these itself against the nearest surface (constant_medium::sample_event()); the same objects are in the world, where their
+	// hit() reports nothing while that integrator runs. Empty for every grey-medium scene.
+	std::vector<std::shared_ptr<constant_medium>> chromaticMedia;
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
 	std::size_t diskCount = 0;
@@ -948,13 +952,13 @@ inline void buildCameraMedium(const pbrt_flatten::FlatScene &scene, BuildResult 
 		// scattering-only single-scattering-albedo direction), Le passed RAW
 		// since ambient_medium's own constructor (mirroring constant_medium's)
 		// already does the sigma_a/sigma_t weighting.
-		const double sig_a = luminance(m.sigma_a);
-		const double sig_s = luminance(m.sigma_s);
-		const color tint = (sig_s > 1e-9)
-			? color(m.sigma_s[0] / sig_s, m.sigma_s[1] / sig_s, m.sigma_s[2] / sig_s)
-			: color(1, 1, 1);
+		// Per-channel coefficients go to ambient_medium as they are: it keeps the scalar-extinction model for the integrators that use
+		// it and samples the real per-channel one in camera::ray_color() (see constant_medium's RGB constructor). `luminance` is no
+		// longer needed here.
+		(void)luminance;
 		out.cameraMedium = std::make_shared<ambient_medium>(
-			sig_a, sig_s, tint, m.g, color(m.Le[0], m.Le[1], m.Le[2]));
+			color(m.sigma_a[0], m.sigma_a[1], m.sigma_a[2]), color(m.sigma_s[0], m.sigma_s[1], m.sigma_s[2]),
+			m.g, color(m.Le[0], m.Le[1], m.Le[2]));
 	}
 }
 
@@ -1803,11 +1807,6 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			return;
 		}
 
-		const double sig_a = luminance(md.sigma_a);
-		const double sig_s = luminance(md.sigma_s);
-		const color albedo = (sig_s > 1e-9)
-			? color(md.sigma_s[0] / sig_s, md.sigma_s[1] / sig_s, md.sigma_s[2] / sig_s)
-			: color(1, 1, 1);
 		// "rgb Le"/"float Lescale" (pbrt_flatten::Medium::Le's own comment) -
 		// passed RAW (not pre-weighted by sigma_a/sigma_t) - constant_medium's
 		// own constructor already computes sigma_t for ss_albedo just above
@@ -1818,7 +1817,13 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		// than this call site deriving an independent, redundant copy of
 		// sigma_t just to pre-weight it here.
 		const color Le(md.Le[0], md.Le[1], md.Le[2]);
-		world.add(std::make_shared<constant_medium>(shape, sig_a, sig_s, albedo, md.g, Le));
+		// Per-channel sigma_a/sigma_s go in as written; constant_medium keeps the scalar model (the luminance of sigma_t and a tint from
+		// sigma_s - what this site used to build) for hit() and the other integrators, and samples the real per-channel one in the
+		// default path tracer when the extinction differs between channels.
+		auto medium = std::make_shared<constant_medium>(shape,
+			color(md.sigma_a[0], md.sigma_a[1], md.sigma_a[2]), color(md.sigma_s[0], md.sigma_s[1], md.sigma_s[2]), md.g, Le);
+		world.add(medium);
+		if (medium->chromatic()) out.chromaticMedia.push_back(medium);
 	};
 
 	// ---- spheres ---------------------------------------------------------

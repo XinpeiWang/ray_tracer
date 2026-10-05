@@ -621,7 +621,23 @@ extern "C" __global__ void __closesthit__sphere() {
 			float sigma_t = mat.ior;
 			float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t) : 1e30f;
 
-			if (free_path < dist_inside) {
+			// Per-channel extinction (see MaterialData::chromaSigmaA): one event sampled with the channel-MIS estimator replaces the scalar free
+			// path above; chroma_w is the collision's path weight, or the pass-through weight when the ray gets through.
+			const bool chroma = medium_is_chromatic(mat);
+			bool chroma_collided = false;
+			float3 chroma_w = make_float3(1.0f, 1.0f, 1.0f);
+			float3 chroma_le = make_float3(0.0f, 0.0f, 0.0f);
+			if (chroma) {
+				const float cu_channel = random_float(seed);
+				const float cu_dist = random_float(seed);
+				const HomogeneousEvent<float> cev = chroma_medium_event(mat, dist_inside, cu_channel, cu_dist);
+				chroma_collided = cev.collided;
+				free_path = cev.collided ? cev.t : 1e30f;
+				chroma_w = make_float3(cev.w[0], cev.w[1], cev.w[2]);
+				chroma_le = mat.chromaLe * make_float3(cev.e[0], cev.e[1], cev.e[2]);
+			}
+
+			if (chroma ? chroma_collided : (free_path < dist_inside)) {
 				medium_t_hit = t_near + free_path;
 				// sample_henyey_greenstein's `wo` is the outgoing direction
 				// (toward where the ray came from), matching CPU's
@@ -631,7 +647,7 @@ extern "C" __global__ void __closesthit__sphere() {
 				// bias for any anisotropic medium.
 				float3 wo = -unit_dir;
 				scattered_dir = sample_henyey_greenstein(wo, mat.fuzz, seed);
-				attenuation = mat.albedo;
+				attenuation = chroma ? chroma_w : mat.albedo;
 				// Real NEE+MIS at the phase-function scatter event, plus
 				// MakeNamedMedium's own "rgb Le" self-emission (folded into
 				// medium_phase_nee_mis()'s own return value now - see that
@@ -641,12 +657,12 @@ extern "C" __global__ void __closesthit__sphere() {
 				// time).
 				float3 medium_point = ray_orig + medium_t_hit * unit_dir;
 				emission = emission + medium_phase_nee_mis(
-					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
+					medium_point, wo, mat.fuzz, attenuation, scattered_dir, seed, brdf_pdf_override, chroma ? chroma_le : mat.medium_emission, optixGetRayTime());
 				is_specular = false;
 			} else {
 				medium_t_hit = t_far;
 				scattered_dir = unit_dir;  // straight through, no interaction
-				attenuation = make_float3(1.0f, 1.0f, 1.0f);
+				attenuation = chroma ? chroma_w : make_float3(1.0f, 1.0f, 1.0f);
 				is_specular = true;  // no interaction - a free/non-scattering pass-through
 				// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
 				// specular flag) survives it instead of being reset as if a specular bounce had happened.
@@ -1026,7 +1042,23 @@ extern "C" __global__ void __closesthit__sphere() {
 				float sigma_t = mat.eta_c.x;
 				float free_path = (sigma_t > 1e-8f) ? (-logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t) : 1e30f;
 
-				if (free_path < dist_inside) {
+				// Per-channel extinction (see MaterialData::chromaSigmaA): one event sampled with the channel-MIS estimator replaces the scalar free
+				// path above; chroma_w is the collision's path weight, or the pass-through weight when the ray gets through.
+				const bool chroma = medium_is_chromatic(mat);
+				bool chroma_collided = false;
+				float3 chroma_w = make_float3(1.0f, 1.0f, 1.0f);
+				float3 chroma_le = make_float3(0.0f, 0.0f, 0.0f);
+				if (chroma) {
+					const float cu_channel = random_float(seed);
+					const float cu_dist = random_float(seed);
+					const HomogeneousEvent<float> cev = chroma_medium_event(mat, dist_inside, cu_channel, cu_dist);
+					chroma_collided = cev.collided;
+					free_path = cev.collided ? cev.t : 1e30f;
+					chroma_w = make_float3(cev.w[0], cev.w[1], cev.w[2]);
+					chroma_le = mat.chromaLe * make_float3(cev.e[0], cev.e[1], cev.e[2]);
+				}
+
+				if (chroma ? chroma_collided : (free_path < dist_inside)) {
 					medium_t_hit  = t_near + free_path;
 					float3 medium_point = ray_orig + medium_t_hit * unit_dir;
 					float g = mat.fuzz;  // Medium/DielectricMedium: HG asymmetry
@@ -1038,7 +1070,7 @@ extern "C" __global__ void __closesthit__sphere() {
 					// NEE/MIS.
 					float3 wo = -unit_dir;
 					scattered_dir = sample_henyey_greenstein(wo, g, seed);
-					attenuation   = mat.albedo;
+					attenuation   = chroma ? chroma_w : mat.albedo;
 					is_medium     = true;
 
 					// Real NEE+MIS at the phase-function scatter event - see
@@ -1057,7 +1089,7 @@ extern "C" __global__ void __closesthit__sphere() {
 					// zero for the native scene_builder.cpp::add_dielectric_
 					// medium() path, which never had a reason to set it.
 					emission = emission + medium_phase_nee_mis(
-						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, mat.medium_emission, optixGetRayTime());
+						medium_point, wo, g, attenuation, scattered_dir, seed, brdf_pdf_override, chroma ? chroma_le : mat.medium_emission, optixGetRayTime());
 					is_specular = false;
 				} else if (is_rough) {
 					rdm_scatter_ok = rough_dielectric_scatter_and_nee(
@@ -1077,6 +1109,12 @@ extern "C" __global__ void __closesthit__sphere() {
 						if (dot(scattered_dir, normal) < 0.0f) out_eta = front_face ? (1.0f / mat.ior) : mat.ior;
 					}
 					is_specular = true;
+				}
+							if (chroma && !chroma_collided) {
+					// The ray crossed the interior without a collision: its path weight, and the direct light the exit surface just gathered
+					// (which that attenuated path carries), take the per-channel pass-through weight.
+					attenuation = attenuation * chroma_w;
+					emission = emission * chroma_w;
 				}
 			}
 			scattered = rdm_scatter_ok;

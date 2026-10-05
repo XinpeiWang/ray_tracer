@@ -564,6 +564,9 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 				cam.camera_medium = scene_desc->build_camera_medium();
 			}
 		}
+		// Per-channel-extinction media: sampled by ray_color() only (the spectral tracer has no media at all).
+		if (scene_desc->build_shape_media && !options.spectral)
+			cam.shape_media = scene_desc->build_shape_media();
 		// Apply optional alternate camera model from scene descriptor
 		if (scene_desc->setup_camera)
 			scene_desc->setup_camera(cam);

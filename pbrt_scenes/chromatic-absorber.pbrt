@@ -1,0 +1,29 @@
+# chromatic-absorber.pbrt -- a pure absorber that is thicker in blue than in red, seen end-on under a uniform sky.
+#
+# sigma_a = (0.1, 0.4, 0.9) per unit length, no scattering, a unit sphere bounded with Material "interface". The camera looks
+# through the middle of the sphere with a 2 degree field of view, so every pixel's chord is 2 (1.9945 on average) and the picture
+# is exp(-sigma_a * chord) per channel against a sky of 1: (0.819, 0.449, 0.165). A medium model with ONE extinction for all
+# three channels (the luminance of sigma_t) renders this grey at ~0.47; per-channel sampling reads the right colours. The
+# wavefront backend is spectral, so its strongly chromatic extinction lands a few percent off the per-channel closed form
+# (0.77/0.44/0.15 measured), which is why the test gives it a wider bound.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 2 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+MakeNamedMedium "dye" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0.1 0.4 0.9 ] "rgb sigma_s" [ 0 0 0 ]
+
+AttributeBegin
+  Material "interface"
+  MediumInterface "dye" ""
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

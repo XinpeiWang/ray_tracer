@@ -211,6 +211,11 @@ extern "C" __global__ void __raygen__wf_shadow() {
 	sp.transmittance = 1.0f;
 	sp.seed = s.seed;
 	sp.tMax = s.tMax;
+	sp.chromatic = 0;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		sp.lambda[i] = s.wavelengths[i];
+		sp.tr[i] = 1.0f;
+	}
 
 	unsigned int p0, p1;
 	packPointer(&sp, p0, p1);
@@ -252,6 +257,12 @@ extern "C" __global__ void __raygen__wf_shadow() {
 	// a ray that crossed one or more participating media.
 	float* transmittance = (float*)wf_params.framebuffer;
 	float T = sp.transmittance;
+	// Chromatic media crossed: the surviving fraction differs per wavelength, so it scales the item's spectral Ld here (the queue
+	// items are writable device memory, and accumulate_shadow reads Ld next).
+	if (sp.chromatic) {
+		ShadowRayWorkItem& mutableItem = sq.items[idx];
+		for (int i = 0; i < kWFNWavelengths; ++i) mutableItem.Ld[i] *= sp.tr[i];
+	}
 	// pbrt's camera medium attenuates every shadow ray over its whole length (the CPU/recursive NEE sites'
 	// camera_medium_shadow_trans); a ray to infinity (the sky) is fully extinguished.
 	if (wf_params.cameraMediumSigmaT > 0.0f)

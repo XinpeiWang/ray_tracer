@@ -8,6 +8,7 @@
 #include "optix_types.h"
 #include "optix_math_helpers.h"
 #include "../../src/shared/fresnel.h"    // Shared exact Fresnel (CPU+GPU)
+#include "../../src/shared/volume_scattering.h" // HomogeneousMediumData/sample_homogeneous_event (CPU+GPU) - per-channel media
 #include "../../src/shared/ray_hash.h"  // pbrt-v4 stochastic alpha test hash (CPU+GPU)
 #include "../../src/shared/microfacet.h" // GGX TrowbridgeReitz (CPU+GPU)
 #include "../../src/shared/bxdfs.h"      // HairBxDF<T> (CPU+GPU) - see MaterialType::Hair
@@ -688,6 +689,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 	float& out_brdf_pdf_override,
 	float3& emission)
 {
+	float3 nee_shadow_rgb = make_float3(1.0f, 1.0f, 1.0f);  // per-channel transmittance of the last NEE shadow ray through chromatic media (trace_shadow_ray_stochastic)
 	float nf_eta = eta;
 	float inv_eta = 1.0f / nf_eta;
 	float nf_c = 1.0f - 2.0f * FresnelMoment1(inv_eta);
@@ -706,7 +708,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 	{
 		float3 to_light, light_emission; float max_dist, light_pdf;
 		if (sample_nee_light(hit_point, seed, to_light, light_emission, max_dist, light_pdf, optixGetRayTime())) {
-			bool visible = trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed);
+			bool visible = trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb);
 			if (visible) {
 				float cos_to_light = fmaxf(dot(to_light, normal), 0.0f);
 				if (cos_to_light > 0.0f) {
@@ -716,7 +718,7 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 					float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf_l);
 
 					float3 direct_light = mis_weight * brdf_val * light_emission * cos_to_light / light_pdf;
-					emission = emission + direct_light * camera_medium_shadow_trans(max_dist);
+					emission = emission + direct_light * (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb);
 				}
 			}
 		}
@@ -731,13 +733,13 @@ __device__ __forceinline__ void shade_normalized_fresnel(
 			sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 			float  cos_sky = dot(sky_dir, normal);
 			if (cos_sky > 0.0f && pdf_sky > 0.0f) {
-				if (trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
+				if (trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb)) {
 					float fr_sky       = FrDielectric(cos_sky, nf_eta);
 					float brdf_val_sky = (1.0f - fr_sky) / (nf_c * 3.14159265358979323846f);
 					float brdf_pdf_sky = brdf_val_sky * cos_sky;
 					float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 					emission = emission + mis_weight * brdf_val_sky * sky_Le_val * cos_sky / pdf_sky
-						* camera_medium_shadow_trans(1e30f);
+						* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb);
 				}
 			}
 		}
@@ -934,6 +936,7 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 	float3& attenuation, float3& scattered_dir, bool& is_specular,
 	float& brdf_pdf_override, float3& emission, float& eta)
 {
+	float3 nee_shadow_rgb = make_float3(1.0f, 1.0f, 1.0f);  // per-channel transmittance of the last NEE shadow ray through chromatic media (trace_shadow_ray_stochastic)
 	// RoughnessToAlpha (sqrt), unless pbrt-v4 "remaproughness" is false (see
 	// MaterialData::remapRoughness) - then flatRoughness/mat.roughnessV
 	// already ARE the alpha values. mat.textureIdx>=0 means "roughness" was
@@ -1085,12 +1088,12 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 			if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 				float llx = dot(to_light, tan), lly = dot(to_light, bitan), llz = dot(to_light, n);
 				if (rd_flip) { llx=-llx; lly=-lly; llz=-llz; }
-				if (llz != 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
+				if (llz != 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb)) {
 					float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
 					float brdf_pdf = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, llx, lly, llz);
 					float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 					emission = emission + mis_weight * make_float3(fval, fval, fval) * sampled_light_emission * fabsf(llz) / light_pdf
-						* camera_medium_shadow_trans(max_dist);
+						* (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb);
 				}
 			}
 		}
@@ -1101,9 +1104,9 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 			float plx = dot(wi_p, tan), ply = dot(wi_p, bitan), plz = dot(wi_p, n);
 			if (rd_flip) { plx=-plx; ply=-ply; plz=-plz; }
 			if (plz == 0.0f) continue;
-			if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
+			if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed, nee_shadow_rgb)) {
 				float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, plx, ply, plz);
-				emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz) * camera_medium_shadow_trans(t_max_p);
+				emission = emission + make_float3(fval, fval, fval) * Li_p * fabsf(plz) * (camera_medium_shadow_trans(t_max_p) * nee_shadow_rgb);
 			}
 		}
 
@@ -1114,12 +1117,12 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 				sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 				float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bitan), skz = dot(sky_dir, n);
 				if (rd_flip) { skx=-skx; sky_y=-sky_y; skz=-skz; }
-				if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
+				if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb)) {
 					float fval = rd_bxdf.f(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 					float brdf_pdf_sky = rd_bxdf.pdf(wi_x, wi_y, wi_z, rd_ri, skx, sky_y, skz);
 					float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 					emission = emission + mis_weight * make_float3(fval, fval, fval) * sky_Le_val * fabsf(skz) / pdf_sky
-						* camera_medium_shadow_trans(1e30f);
+						* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb);
 				}
 			}
 		}
@@ -1150,6 +1153,7 @@ __device__ __forceinline__ bool layered_scatter_and_nee(
 	unsigned int& seed, float3& attenuation, float3& scattered_dir, bool& is_specular,
 	float& brdf_pdf_override, float3& emission)
 {
+	float3 nee_shadow_rgb = make_float3(1.0f, 1.0f, 1.0f);  // per-channel transmittance of the last NEE shadow ray through chromatic media (trace_shadow_ray_stochastic)
 	float3 n = normal;
 	float3 tan, bit;
 	BuildDpduTangentFrame(n.x, n.y, n.z, dpdu.x, dpdu.y, dpdu.z, tan.x, tan.y, tan.z, bit.x, bit.y, bit.z);
@@ -1178,14 +1182,14 @@ __device__ __forceinline__ bool layered_scatter_and_nee(
 		float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 		if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 			const float llx = dot(to_light, tan), lly = dot(to_light, bit), llz = dot(to_light, n);
-			if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
+			if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb)) {
 				uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 				float fr, fg, fb;
 				bx.f(wi_x, wi_y, wi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
 				const float brdf_pdf = bx.pdf(wi_x, wi_y, wi_z, llx, lly, llz);
 				const float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 				emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
-					* camera_medium_shadow_trans(max_dist);
+					* (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb);
 			}
 		}
 	}
@@ -1195,11 +1199,11 @@ __device__ __forceinline__ bool layered_scatter_and_nee(
 		if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
 		const float plx = dot(wi_p, tan), ply = dot(wi_p, bit), plz = dot(wi_p, n);
 		if (plz <= 0.0f) continue;
-		if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
+		if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed, nee_shadow_rgb)) {
 			uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 			float fr, fg, fb;
 			bx.f(wi_x, wi_y, wi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
-			emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
+			emission = emission + make_float3(fr, fg, fb) * Li_p * plz * (camera_medium_shadow_trans(t_max_p) * nee_shadow_rgb);
 		}
 	}
 
@@ -1209,14 +1213,14 @@ __device__ __forceinline__ bool layered_scatter_and_nee(
 			float3 sky_dir, sky_Le_val; float pdf_sky;
 			sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 			const float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bit), skz = dot(sky_dir, n);
-			if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
+			if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb)) {
 				uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
 				float fr, fg, fb;
 				bx.f(wi_x, wi_y, wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
 				const float brdf_pdf_sky = bx.pdf(wi_x, wi_y, wi_z, skx, sky_y, skz);
 				const float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 				emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
-					* camera_medium_shadow_trans(1e30f);
+					* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb);
 			}
 		}
 	}
@@ -1313,6 +1317,7 @@ __device__ __forceinline__ void shade_material(
 	// the same resolved dispersive ior through, for a consistent result.
 	unsigned int& inout_rgb_channel
 ) {
+	float3 nee_shadow_rgb = make_float3(1.0f, 1.0f, 1.0f);  // per-channel transmittance of the last NEE shadow ray through chromatic media (trace_shadow_ray_stochastic)
 	float3 attenuation;
 	float3 scattered_dir;
 	bool scattered = false;
@@ -1349,7 +1354,7 @@ __device__ __forceinline__ void shade_material(
 				float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 				if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 					// Check if light is visible (shadow ray)
-					bool visible = trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed);
+					bool visible = trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb);
 
 					if (visible) {
 						// Evaluate BRDF PDF for this direction
@@ -1385,7 +1390,7 @@ __device__ __forceinline__ void shade_material(
 						float3 direct_light = mis_weight * brdf * light_emission * cos_theta / light_pdf;
 
 						// Add to emission (raygen will apply throughput)
-						emission = emission + direct_light * camera_medium_shadow_trans(max_dist);
+						emission = emission + direct_light * (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb);
 					}
 				}
 			}
@@ -1436,12 +1441,12 @@ __device__ __forceinline__ void shade_material(
 					// (src/TheRestOfYourLife/camera.h) and medium_phase_nee_
 					// mis()'s own pdf_sky>0.0f check just above in this file.
 					if (cos_sky > 0.0f && pdf_sky > 0.0f) {
-						if (trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
+						if (trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb)) {
 							float brdf_pdf_sky = cosine_pdf(sky_dir, normal);
 							float mis_weight    = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							float3 brdf = attenuation / 3.14159265358979323846f;
 							emission = emission + mis_weight * brdf * sky_Le_val * cos_sky / pdf_sky
-								* camera_medium_shadow_trans(1e30f);
+								* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb);
 						}
 					}
 				}
@@ -1766,13 +1771,13 @@ __device__ __forceinline__ void shade_material(
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, ctan), lly = dot(to_light, cbitan), llz = dot(to_light, cn);
-						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
+						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb)) {
 							float fr, fg, fb;
 							c_bxdf.f(cwi_x, cwi_y, cwi_z, llx, lly, llz, fr, fg, fb);
 							float brdf_pdf = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, llx, lly, llz);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
-								* camera_medium_shadow_trans(max_dist);
+								* (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb);
 						}
 					}
 				}
@@ -1782,10 +1787,10 @@ __device__ __forceinline__ void shade_material(
 					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
 					float plx = dot(wi_p, ctan), ply = dot(wi_p, cbitan), plz = dot(wi_p, cn);
 					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
+					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed, nee_shadow_rgb)) {
 						float fr, fg, fb;
 						c_bxdf.f(cwi_x, cwi_y, cwi_z, plx, ply, plz, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * (camera_medium_shadow_trans(t_max_p) * nee_shadow_rgb);
 					}
 				}
 
@@ -1795,13 +1800,13 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, ctan), sky_y = dot(sky_dir, cbitan), skz = dot(sky_dir, cn);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb)) {
 							float fr, fg, fb;
 							c_bxdf.f(cwi_x, cwi_y, cwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = c_bxdf.pdf(cwi_x, cwi_y, cwi_z, skx, sky_y, skz);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
-								* camera_medium_shadow_trans(1e30f);
+								* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb);
 						}
 					}
 				}
@@ -1860,13 +1865,13 @@ __device__ __forceinline__ void shade_material(
 					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
 					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
 						float llx = dot(to_light, rmtan), lly = dot(to_light, rmbitan), llz = dot(to_light, rmn);
-						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
+						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb)) {
 							float fr, fg, fb;
 							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz, fr, fg, fb);
 							float brdf_pdf = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, llx, lly, llz);
 							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
-								* camera_medium_shadow_trans(max_dist);
+								* (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb);
 						}
 					}
 				}
@@ -1876,10 +1881,10 @@ __device__ __forceinline__ void shade_material(
 					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
 					float plx = dot(wi_p, rmtan), ply = dot(wi_p, rmbitan), plz = dot(wi_p, rmn);
 					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
+					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed, nee_shadow_rgb)) {
 						float fr, fg, fb;
 						rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, plx, ply, plz, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
+						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * (camera_medium_shadow_trans(t_max_p) * nee_shadow_rgb);
 					}
 				}
 
@@ -1889,13 +1894,13 @@ __device__ __forceinline__ void shade_material(
 						float3 sky_dir, sky_Le_val; float pdf_sky;
 						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
 						float skx = dot(sky_dir, rmtan), sky_y = dot(sky_dir, rmbitan), skz = dot(sky_dir, rmn);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
+						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb)) {
 							float fr, fg, fb;
 							rm_bxdf.f(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz, fr, fg, fb);
 							float brdf_pdf_sky = rm_bxdf.pdf(rmwi_x, rmwi_y, rmwi_z, skx, sky_y, skz);
 							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
 							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
-								* camera_medium_shadow_trans(1e30f);
+								* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb);
 						}
 					}
 				}

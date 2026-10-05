@@ -27,6 +27,7 @@
 
 #include <gtest/gtest.h>
 #include "../../src/external/tinyexr.h"
+#include <algorithm>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -228,7 +229,7 @@ static bool loadLinearMean(const std::string& path, double& mean) {
 // runs: 1.572, 1.572, 1.613 - a heavy-tailed point light in fog, noise rather than bias). bump-mapped-plane and normal-mapped-cornell were
 // 98.4-99.0% and 100.9% until the CPU stopped requantizing the decoded height image to bytes and both backends began reading normal
 // maps linear, as pbrt does.
-static void expectBackendsAgree(const char* stem, int spp, double lo, double hi) {
+static void expectBackendsAgree(const char* stem, int spp, double lo, double hi, int cpuRepeats = 1) {
 	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
 	const SceneDescriptor* s = find_example_scene(stem);
 	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
@@ -251,9 +252,21 @@ static void expectBackendsAgree(const char* stem, int spp, double lo, double hi)
 
 	const std::string base = std::string("pbrt_agree_") + stem;
 	double c = 0.0, rec = 0.0, wf = 0.0;
-	ASSERT_EQ(cpu_render_main(64, 64, spp, 8, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
-	const bool cpuOk = loadLinearMean(base + "_cpu.exr", c);
-	std::remove((base + "_cpu.exr").c_str());
+	// The CPU reference is the median of `cpuRepeats` renders: a scene whose CPU estimate has a heavy tail (a point light in fog) lands
+	// on a different mean every run, and one draw is not a reference.
+	std::vector<double> cpuMeans;
+	bool cpuOk = true;
+	for (int i = 0; i < cpuRepeats && cpuOk; ++i) {
+		ASSERT_EQ(cpu_render_main(64, 64, spp, 8, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+		double m = 0.0;
+		cpuOk = loadLinearMean(base + "_cpu.exr", m);
+		cpuMeans.push_back(m);
+		std::remove((base + "_cpu.exr").c_str());
+	}
+	if (cpuOk) {
+		std::sort(cpuMeans.begin(), cpuMeans.end());
+		c = cpuMeans[cpuMeans.size() / 2];
+	}
 	const bool recOk = renderGpu("0", base + "_rec.exr", rec);
 	const bool wfOk = renderGpu("1", base + "_wf.exr", wf);
 	setWavefront("0");
@@ -265,6 +278,88 @@ static void expectBackendsAgree(const char* stem, int spp, double lo, double hi)
 	EXPECT_LT(rec, hi * c) << stem << ": GPU-recursive too bright vs CPU";
 	EXPECT_GT(wf, lo * c) << stem << ": GPU-wavefront too dark vs CPU";
 	EXPECT_LT(wf, hi * c) << stem << ": GPU-wavefront too bright vs CPU";
+}
+
+// Per-channel linear means of an EXR (non-finite samples ignored): what a chromatic scene is judged on, since the mean over the three
+// channels hides a medium that is thicker in one of them.
+static bool loadLinearChannelMeans(const std::string& path, double mean[3]) {
+	float* rgba = nullptr;
+	int w = 0, h = 0;
+	const char* err = nullptr;
+	if (LoadEXR(&rgba, &w, &h, path.c_str(), &err) != TINYEXR_SUCCESS) {
+		if (err) FreeEXRErrorMessage(err);
+		return false;
+	}
+	double sum[3] = {0.0, 0.0, 0.0};
+	for (int i = 0; i < w * h; ++i)
+		for (int c = 0; c < 3; ++c) {
+			const float v = rgba[4 * i + c];
+			if (std::isfinite(v)) sum[c] += v;
+		}
+	free(rgba);
+	for (int c = 0; c < 3; ++c) mean[c] = (w > 0 && h > 0) ? sum[c] / (static_cast<double>(w) * h) : 0.0;
+	return true;
+}
+
+// One bundled scene on all three backends, each channel's linear mean against a known answer (a closed form, or a furnace's 1.0):
+// the CPU and recursive backends sample in RGB and must be within `tol` of it, the spectral wavefront backend within `tolWavefront`
+// (its uplifted sigma(lambda) is not exactly the per-channel exp(-sigma t) - see pbrt_scenes/chromatic-absorber.pbrt).
+static void expectChannelMeans(const char* stem, int spp, int depth, const double expected[3], double tol, double tolWavefront) {
+	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
+	const SceneDescriptor* s = find_example_scene(stem);
+	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
+
+	const auto setWavefront = [](const char* v) {
+#ifdef _WIN32
+		_putenv_s("RAY_TRACER_WAVEFRONT", v);
+#else
+		setenv("RAY_TRACER_WAVEFRONT", v, 1);
+#endif
+	};
+	const std::string base = std::string("pbrt_chroma_") + stem;
+	double cpu[3], rec[3], wf[3];
+	ASSERT_EQ(cpu_render_main(64, 64, spp, depth, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	const bool cpuOk = loadLinearChannelMeans(base + "_cpu.exr", cpu);
+	std::remove((base + "_cpu.exr").c_str());
+	bool gpuOk[2];
+	double* gpuMeans[2] = {rec, wf};
+	const char* gpuMode[2] = {"0", "1"};
+	const char* gpuTag[2] = {"_rec.exr", "_wf.exr"};
+	for (int g = 0; g < 2; ++g) {
+		setWavefront(gpuMode[g]);
+		EXPECT_EQ(optix_render_main(64, 64, spp, depth, (base + gpuTag[g]).c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+		gpuOk[g] = loadLinearChannelMeans(base + gpuTag[g], gpuMeans[g]);
+		std::remove((base + gpuTag[g]).c_str());
+	}
+	setWavefront("0");
+	ASSERT_TRUE(cpuOk && gpuOk[0] && gpuOk[1]) << stem << ": a render produced no readable EXR";
+	std::printf("[chroma] %s: expected %.4f %.4f %.4f | cpu %.4f %.4f %.4f | recursive %.4f %.4f %.4f | wavefront %.4f %.4f %.4f\n", stem,
+	            expected[0], expected[1], expected[2], cpu[0], cpu[1], cpu[2], rec[0], rec[1], rec[2], wf[0], wf[1], wf[2]);
+	static const char* const kChannel[3] = {"R", "G", "B"};
+	for (int c = 0; c < 3; ++c) {
+		EXPECT_NEAR(cpu[c], expected[c], tol * expected[c]) << stem << " CPU " << kChannel[c];
+		EXPECT_NEAR(rec[c], expected[c], tol * expected[c]) << stem << " GPU-recursive " << kChannel[c];
+		EXPECT_NEAR(wf[c], expected[c], tolWavefront * expected[c]) << stem << " GPU-wavefront " << kChannel[c];
+	}
+}
+
+// A medium thicker in blue than in red used to render GREY on every backend: the models took one extinction (the luminance of
+// sigma_t) for all three channels and only tinted the albedo. sigma_a = (0.1, 0.4, 0.9) over a chord of 2 is exp(-sigma * 2)
+// = (0.819, 0.449, 0.165); the scalar model read 0.47 in each. See pbrt_scenes/chromatic-absorber.pbrt.
+TEST(PbrtBackendAgreementTest, ChromaticAbsorberFollowsBeerLambertPerChannel) {
+	const double chord = 1.9945;   // mean over the 2-degree frame
+	const double expected[3] = {std::exp(-0.1 * chord), std::exp(-0.4 * chord), std::exp(-0.9 * chord)};
+	// Measured: CPU and recursive within 0.1% of the closed form; wavefront 0.780/0.446/0.153 (-4.8%, -0.9%, -7.8%) - spectral rendering
+	// of a strongly chromatic sigma, whose uplift is not the per-channel exp (the sRGB matrix has negative lobes), as in pbrt.
+	expectChannelMeans("chromatic-absorber", 128, 8, expected, 0.01, 0.09);
+}
+
+// A fog whose scattering differs by colour but absorbs nothing is invisible under a uniform sky in every channel. A collision weight
+// that does not average to the transmittance (the balance heuristic across channels, volume_scattering.h) shows up here as a cast.
+TEST(PbrtBackendAgreementTest, ChromaticFogFurnaceStaysInvisibleInEveryChannel) {
+	const double expected[3] = {1.0, 1.0, 1.0};
+	// Measured: every backend within 0.3% of 1 in every channel.
+	expectChannelMeans("chromatic-fog-furnace", 128, 24, expected, 0.01, 0.01);
 }
 
 // A finite light sitting closer to the surface behind it than the GPU's 0.01 shadow-ray nudge. The GPU
@@ -327,7 +422,10 @@ TEST(PbrtBackendAgreementTest, HairSphereDimSkyAgreesAcrossBackends) {
 // twice, recursive GPU ignored the scattering albedo (and its builder dropped sigma_s/sigma_t), wavefront GPU had no
 // camera medium at all. See the scene's header for the Monte Carlo numbers they now match.
 TEST(PbrtBackendAgreementTest, CameraMediumAbsorbingAgreesAcrossBackends) {
-	expectBackendsAgree("camera-medium-absorbing", 128, 0.97, 1.04);
+	// 16 CPU renders of this scene: 1.537-1.683, median 1.577 (a point light in fog: heavy tail, upward). The GPU backends read 99.7%
+	// (recursive) and 102% (wavefront) of that median, so the CPU reference is the median of five draws and the bounds leave room for
+	// the spread of that median.
+	expectBackendsAgree("camera-medium-absorbing", 128, 0.95, 1.06, /*cpuRepeats=*/5);
 }
 
 // Disk and cylinder area lights. The CPU's cylinder pdf counted only the first of a ray's two crossings of the
