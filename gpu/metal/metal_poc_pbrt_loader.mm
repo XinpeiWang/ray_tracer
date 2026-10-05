@@ -568,6 +568,37 @@ void MetalPocApp::loadPbrtScene() {
 
 // --- Area lights: only the "single quad, 2 triangles" shape - see
 // this function's own header comment.
+// Flat emission (radiance) for an area light. A plain light is L*scale. An image-textured one
+// (AreaLightSource "diffuse" "string filename") can only be mapped per-pixel on a QUAD here
+// (the shared texture slot); for any other shape the pattern is dropped, but using the
+// image's AVERAGE colour * scale instead of a flat L (default 1, i.e. white) keeps the
+// light's total energy right - white*scale made such lights ~2x too bright (C11).
+// `radialRowWeight` is for a DISK: pbrt maps image row -> radius (row/H = r/R), so the area-uniform
+// average weights each row by its radius (~ row+0.5), not equally.
+static PackedFloat3 pbrtFlatLightEmission(const std::string& pbrtScenePath, const pbrt_flatten::Emission& em,
+                                          bool radialRowWeight = false) {
+    if (!em.filename.empty()) {
+        std::string bytes;
+        std::vector<float> px;
+        int w = 0, h = 0;
+        if (pbrt_load::loadFileNear(pbrtScenePath, em.filename, bytes) &&
+            pbrt_load::detail::decodeInfiniteLightImage(em.filename, bytes, px, w, h) && w > 0 && h > 0 &&
+            px.size() >= (size_t)w * h * 3) {
+            double sum[3] = {0, 0, 0}, wsum = 0.0;
+            for (int y = 0; y < h; ++y) {
+                const double wgt = radialRowWeight ? (y + 0.5) : 1.0;
+                for (int x = 0; x < w; ++x) {
+                    const size_t i = (size_t)y * w + x;
+                    sum[0] += wgt * px[i * 3 + 0]; sum[1] += wgt * px[i * 3 + 1]; sum[2] += wgt * px[i * 3 + 2];
+                    wsum += wgt;
+                }
+            }
+            return PackedFloat3{(float)(sum[0] / wsum * em.scale), (float)(sum[1] / wsum * em.scale), (float)(sum[2] / wsum * em.scale)};
+        }
+    }
+    return PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+}
+
 void MetalPocApp::loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
     const PbrtMaterialForFn& materialFor, std::vector<bool>& triangleHandled,
     std::unordered_map<int, std::pair<float3, bool>>& unhandledLightEmission) {
@@ -583,7 +614,8 @@ void MetalPocApp::loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const
         const int lightIdx = entry.first;
         const std::vector<int>& idxs = entry.second;
         const pbrt_flatten::Emission& em = scene.areaLights[lightIdx];
-        float3 emission{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+        const PackedFloat3 flatEm = pbrtFlatLightEmission(pbrtScenePath, em);
+        float3 emission{flatEm.x, flatEm.y, flatEm.z};
         uint32_t quadMaterialType = 0u;
         float useTextureFlag = 0.0f;
         bool handled = false;
@@ -682,7 +714,7 @@ void MetalPocApp::loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const
             // alias table, so large triangles get more samples. pbrtEmissiveTriangleLightId
             // hands each triangle its light index so the emissive-hit MIS weight pairs with NEE
             // instead of double counting. Image-textured lights keep the old unsampled tier.
-            if (em.filename.empty()) {
+            {
                 for (int idx : idxs) {
                     const pbrt_flatten::Triangle& tl = scene.triangles[idx];
                     const float3 a = vertexAt(tl.v, 0), b = vertexAt(tl.v, 1), c = vertexAt(tl.v, 2);
@@ -868,7 +900,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             // disk-shaped case's own already-correct "noisier but
             // present" tier.
             const pbrt_flatten::Emission& em = scene.areaLights[s.areaLight];
-            mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+            mat.emission = pbrtFlatLightEmission(pbrtScenePath, em);
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
             // Register it for NEE as a real sphere light (AreaLightData::kind 1,
@@ -882,7 +914,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             // Skipped for a moving sphere (the light list holds a fixed
             // position) and an image-textured light (not representable here).
             const bool movingSphere = sd.centerDelta1.x != 0.0f || sd.centerDelta1.y != 0.0f || sd.centerDelta1.z != 0.0f;
-            if (!movingSphere && em.filename.empty()) {
+            if (!movingSphere) {
                 const int32_t lightId = (int32_t)lights.size();
                 const float lightArea = 4.0f * (float)M_PI * sd.radius * sd.radius;
                 lights.push_back(AreaLightData{
@@ -975,13 +1007,13 @@ void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const Pbrt
             // #100 fixed already handles this correctly with no further
             // shader changes.
             const pbrt_flatten::Emission& em = scene.areaLights[d.areaLight];
-            mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+            mat.emission = pbrtFlatLightEmission(pbrtScenePath, em, /*radialRowWeight=*/true);
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
             // Register as a real disk light (AreaLightData kind 2, uniform-area sampling),
             // with lightId set so the emissive-hit MIS weight pairs with NEE. Image-textured
             // lights keep the old "emissive but unsampled" tier.
-            if (em.filename.empty()) {
+            {
                 const float diskRadius = sceneScale * scaleX * (float)d.radius;
                 const int32_t lightId = (int32_t)lights.size();
                 lights.push_back(AreaLightData{
@@ -1061,12 +1093,12 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
             // just above already established - visible (direct hit or a
             // BSDF-sampled bounce) but not explicitly sampled.
             const pbrt_flatten::Emission& em = scene.areaLights[cy.areaLight];
-            mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
+            mat.emission = pbrtFlatLightEmission(pbrtScenePath, em);
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
             // Register as a real cylinder light (AreaLightData kind 3, lateral surface only,
             // uniform-area sampling); lightId set so emissive-hit MIS pairs with NEE.
-            if (em.filename.empty()) {
+            {
                 const float cylRadius = sceneScale * scaleX * (float)cy.radius;
                 const int32_t lightId = (int32_t)lights.size();
                 lights.push_back(AreaLightData{

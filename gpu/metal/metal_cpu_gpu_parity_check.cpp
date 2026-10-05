@@ -325,12 +325,23 @@ const char* const kKnownGapScenes[] = {
 	// medium on a cylinder; heterogeneous rgbgrid on a sphere). The interface boundary is now transparent
 	// instead of an opaque gray shape, but the volume scattering is missing.
 	"E6", "E7",
-	// A9 (Final Scene), E3, E11, E12: glass (dielectric / thindielectric / rough dielectric) that also bounds a
+	// A9 (Final Scene), B13 (wax/jade spheres), E3, E11, E12: glass (dielectric / thindielectric / rough dielectric) that also bounds a
 	// homogeneous medium (A9: a blue-fog sphere and a radius-5000 world-haze sphere). Metal models only the
 	// medium's TRUE absorption (sigma_a, Beer-Lambert on exit); its in-scattering - the glow/haze CPU shows - needs
 	// per-path "currently inside a medium" state and is not modelled. (Separately fixed here: pbrt dielectrics
 	// used to absorb 0.5 per unit because the generic material colour leaked into the absorption slot.)
-	"A9", "E3", "E11", "E12",
+	"A9", "B13", "E3", "E11", "E12",
+	// C11 (Textured Two-Sided Lights): image-textured disk and cylinder lights. The image can only be mapped
+	// per-pixel on a quad light (one shared texture slot, uv from the quad); for disk/cylinder lights Metal
+	// uses the image's average colour x scale (rows weighted by radius for the disk, as pbrt maps row -> radius)
+	// as a flat emission and NEE-samples them. Total energy is right (was ~1.7x too bright with flat white), but
+	// the visible pattern - and so the red channel, ~1/3 low - is not reproduced.
+	"C11",
+	// B7 (Cornell Coated Conductor): the loader maps CoatedConductor to a plain GGX conductor (its documented
+	// Approx tier - the coat layer itself is not modelled); CPU now renders pbrt-v4's real LayeredBxDF.
+	// J2 (DiffuseTransmission Texture): reflectance AND transmittance are bound to two different image textures;
+	// Metal has a single diffuse-image slot, so it renders flat colours.
+	"B7", "J2",
 };
 
 bool is_known_gap_scene(const std::string& id) {
