@@ -1171,6 +1171,58 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             for (int c = 0; c < 3; ++c) a[c] = sigmaT[c] > 1e-9 ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
             mat = TriangleMaterial{albedo, /*materialType=*/28u, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
                                    PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/(float)m.g};
+        } else if (interfaceSphere && s.medium >= 0 && s.medium < (int)scene.media.size() &&
+                   scene.media[s.medium].type == "rgbgrid" && scene.media[s.medium].nx > 0 &&
+                   scene.media[s.medium].ny > 0 && scene.media[s.medium].nz > 0) {
+            // pbrt "rgbgrid" medium (E7): a per-voxel RGB scattering grid inside the interface sphere, rendered by
+            // shadeRgbGridMediumSphere (materialType 30; this sphere is its trigger volume, the grid's own AABB
+            // clips the actual medium). Distances are rescaled by sceneScale, so every sigma is divided by it.
+            // pbrt gives the medium sigma_a = 1 when the scene has no sigma_a grid (a mostly ABSORBING nebula, which
+            // is what CPU renders), so that is the constant absorption here; a sigma_a grid is approximated by its
+            // mean (the shader has no per-voxel absorption).
+            const pbrt_flatten::Medium& gm = scene.media[s.medium];
+            const size_t voxels = (size_t)gm.nx * gm.ny * gm.nz;
+            const bool hasScatter = gm.sigma_s_r.size() == voxels && gm.sigma_s_g.size() == voxels && gm.sigma_s_b.size() == voxels;
+            const bool hasAbsorb = gm.sigma_a_r.size() == voxels && gm.sigma_a_g.size() == voxels && gm.sigma_a_b.size() == voxels;
+            const float invScale = 1.0f / sceneScale;
+            GpuRgbGridMedium grid{};
+            for (int i = 0; i < 3; ++i) { grid.boundsMin[i] = (float)gm.p0[i]; grid.boundsMax[i] = (float)gm.p1[i]; }
+            // pbrt world p = (pMetal - sceneOffset)/sceneScale + bboxCenter; medium = M p + t.
+            const float3 cOff = -toWorld(float3{0.0f, 0.0f, 0.0f}) * invScale;   // = bboxCenter - sceneOffset/sceneScale
+            for (int r = 0; r < 3; ++r) {
+                for (int c = 0; c < 3; ++c) grid.worldToMediumMat[r * 3 + c] = (float)gm.toMediumMat[r * 3 + c] * invScale;
+                grid.worldToMediumTranslate[r] = (float)gm.toMediumTranslate[r]
+                    + (float)(gm.toMediumMat[r * 3 + 0] * cOff.x + gm.toMediumMat[r * 3 + 1] * cOff.y + gm.toMediumMat[r * 3 + 2] * cOff.z);
+            }
+            grid.nx = gm.nx; grid.ny = gm.ny; grid.nz = gm.nz;
+            grid.dataOffset = (int)rgbGridData.size();
+            grid.sigmaScale = invScale;
+            grid.phaseG = (float)gm.g;
+            float maxS = 0.0f;
+            for (const std::vector<double>* ch : {&gm.sigma_s_r, &gm.sigma_s_g, &gm.sigma_s_b}) {
+                if (hasScatter) {
+                    for (double v : *ch) { rgbGridData.push_back((float)v); maxS = std::max(maxS, (float)v); }
+                } else {
+                    rgbGridData.insert(rgbGridData.end(), voxels, 1.0f);   // pbrt's default sigma_s grid value
+                    maxS = std::max(maxS, 1.0f);
+                }
+            }
+            double absSum = 0.0;
+            if (hasAbsorb) {
+                for (const std::vector<double>* ch : {&gm.sigma_a_r, &gm.sigma_a_g, &gm.sigma_a_b})
+                    for (double v : *ch) absSum += v;
+                absSum /= 3.0 * (double)voxels;
+            } else {
+                absSum = 1.0;
+            }
+            grid.sigmaAConst = (float)absSum * invScale;
+            grid.sigmaMaj = (maxS * invScale + grid.sigmaAConst) * 1.01f;
+            const int gridIdx = (int)rgbGridMediums.size();
+            rgbGridMediums.push_back(grid);
+            mat = TriangleMaterial{};
+            mat.materialType = 30u;
+            mat.lightId = -1;
+            mat.conductorEta = PackedFloat3{(float)gridIdx, 0.0f, 0.0f};
         } else if (interfaceSphere) {
             // An interface sphere whose medium this loader cannot represent (rgbgrid/
             // nanovdb/cloud/..., or no medium at all). The gray-Lambertian fallback

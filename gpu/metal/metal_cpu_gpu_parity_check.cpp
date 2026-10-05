@@ -315,10 +315,10 @@ const char* const kKnownGapScenes[] = {
 	// F2 (Triangle Mesh): same cause as C2 - its icosahedron is a reflectance-only conductor. Verified:
 	// with that mesh swapped to diffuse, CPU and Metal agree to ~1.0-1.2x everywhere.
 	"F2",
-	// E6 (Cylinder Medium), E7 (RGB Grid Medium): the medium itself is not representable on Metal (homogeneous
-	// medium on a cylinder; heterogeneous rgbgrid on a sphere). The interface boundary is now transparent
-	// instead of an opaque gray shape, but the volume scattering is missing.
-	"E6", "E7",
+	// E6 (Cylinder Medium): a homogeneous medium bounded by a CYLINDER is not representable on Metal (only sphere-
+	// bounded media are). The interface boundary is transparent instead of an opaque gray shape, but the volume
+	// scattering is missing. (E7, the pbrt rgbgrid medium on a sphere, now renders: see the loader.)
+	"E6",
 	// A9 (Final Scene), B13 (wax/jade spheres), E11 (thin dielectric), E12 (rough dielectric): glass spheres that bound a
 	// scattering medium. The medium is now simulated (per-path "inside a glass medium" state, hero colour channel for
 	// chromatic media, shadow rays through the sphere attenuated stochastically - E3 now matches CPU to 2%), but these
@@ -413,7 +413,7 @@ MPImage render_cpu_once(const SceneDescriptor& s, int spp) {
 	cpu_render_main(kWidth, kHeight, spp, kDepth, fn.c_str(), s.id.c_str(),
 	                 s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z, /*force_camera_override=*/0, parity_options());
 	MPImage img = mp_load_exr(fn.c_str());
-	std::remove(fn.c_str());
+	if (!std::getenv("METAL_PARITY_KEEP")) std::remove(fn.c_str());  // METAL_PARITY_KEEP=1 keeps the EXRs for inspection
 	return img;
 }
 
@@ -422,7 +422,7 @@ MPImage render_metal_once(const SceneDescriptor& s, int spp) {
 	metal_render_main(kWidth, kHeight, spp, kDepth, fn.c_str(), s.id.c_str(),
 	                   s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z, /*force_camera_override=*/0, parity_options());
 	MPImage img = mp_load_exr(fn.c_str());
-	std::remove(fn.c_str());
+	if (!std::getenv("METAL_PARITY_KEEP")) std::remove(fn.c_str());  // METAL_PARITY_KEEP=1 keeps the EXRs for inspection
 	return img;
 }
 

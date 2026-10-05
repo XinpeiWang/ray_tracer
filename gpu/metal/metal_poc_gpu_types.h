@@ -473,6 +473,7 @@ struct GpuRgbGridMedium {
     float sigmaScale;
     float sigmaMaj;
     float phaseG;
+    float sigmaAConst;  // see metal_poc_types.metal
 };
 
 // Mirrors metal_poc.metal's SphereData byte-for-byte. centerDelta1

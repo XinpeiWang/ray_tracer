@@ -451,11 +451,12 @@ inline void shadeRgbGridMediumSphere(
             float dg = gpuRgbGridTrilinear(gData, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z);
             float db = gpuRgbGridTrilinear(bData, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z);
             float sr = dr * grid.sigmaScale, sg = dg * grid.sigmaScale, sb = db * grid.sigmaScale;
-            float sigmaTLocal = max(sr, max(sg, sb));
+            const float aConst = grid.sigmaAConst;
+            float sigmaTLocal = max(sr + aConst, max(sg + aConst, sb + aConst));
             if (randFloat(rngState) < sigmaTLocal / sigmaMaj) {
                 didScatter = true;
                 mediumPoint = p;
-                float maxc = max(sr, max(sg, max(sb, 1e-6)));
+                float maxc = max(sigmaTLocal, 1e-6);
                 scatterColor = float3(sr, sg, sb) / maxc;
             }
         }
