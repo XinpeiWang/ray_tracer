@@ -361,6 +361,16 @@ kernel void primaryRayKernel(
         // per-sample clamp (40) - it is applied only to paths that touched hair, so every other material
         // stays unclamped.
         bool pathTouchedHair = false;
+        // Glass-bounded medium state (a dielectric/thin/rough SPHERE whose material carries a homogeneous
+        // medium in conductorEta = (sigma_t, g, 1) and transmitColor = albedo): true while this path
+        // travels inside such a sphere. Updated after every dielectric event from the NEW direction vs the
+        // outward normal. While true, the free-flight block below uses these parameters instead of the
+        // camera medium's.
+        bool inGlass = false;
+        float3 glassSigmaT3 = float3(0.0);
+        float glassG = 0.0;
+        float3 glassAlbedo = float3(1.0);
+        int glassChan = -1;   // hero colour channel for a chromatic glass medium, else -1
         // Recursive-backend dispersion state (materialType 22, B23/B24) -
         // kRgbChannelUnset means "no dispersive hit yet, this sample
         // stays full RGB". See shadeDispersiveDielectric()'s own
@@ -522,10 +532,17 @@ kernel void primaryRayKernel(
             // (CPU does the same). So a miss ray gets an unbounded free-flight limit
             // instead of being skipped - without this the sky region of a foggy scene
             // (E10) rendered black instead of haze-lit.
-            if (!scatteredInMedium && !passedThroughMediumSphere && uniforms.fogSigmaT > 0.0) {
+            if (!scatteredInMedium && !passedThroughMediumSphere && (inGlass || uniforms.fogSigmaT > 0.0)) {
+                const float curSigmaT = inGlass ? (glassChan >= 0 ? glassSigmaT3[glassChan] : glassSigmaT3.x) : uniforms.fogSigmaT;
+                const float curG = inGlass ? glassG : uniforms.fogAsymmetryG;
+                const float3 curAlbedo = inGlass ? glassAlbedo : float3(uniforms.fogAlbedo);
+                // Transmittance along shadow rays: a glass sphere's own medium is attenuated stochastically in
+                // sphereIntersectionFunction, so only the camera fog is applied analytically here.
+                const float shadowSigmaT = inGlass ? 0.0f : uniforms.fogSigmaT;
+                shadowSpherePayload.shadowChannel = inGlass ? glassChan : -1;
                 float surfaceDist = (result.type == intersection_type::none) ? INFINITY : result.distance;
                 float u = randFloat(rngState);
-                float t = sampleFreePathDistance(u, uniforms.fogSigmaT);
+                float t = sampleFreePathDistance(u, curSigmaT);
                 if (t < surfaceDist) {
                     scatteredInMedium = true;
                     float3 scatterPoint = rayOrigin + rayDir * t;
@@ -574,11 +591,11 @@ kernel void primaryRayKernel(
                             // pdf, no separate pdf expression needed the
                             // way a surface BRDF's importance-sampled pdf
                             // usually differs from its raw value.
-                            float phaseValue = henyeyGreensteinPhase(dot(wo, wi), uniforms.fogAsymmetryG);
+                            float phaseValue = henyeyGreensteinPhase(dot(wo, wi), curG);
                             float weight = (pdfSolidAngle * pdfSolidAngle)
                                 / (pdfSolidAngle * pdfSolidAngle + phaseValue * phaseValue);
-                            float transmittance = exp(-uniforms.fogSigmaT * dist);
-                            // `* float3(uniforms.fogAlbedo)`: this scattering
+                            float transmittance = exp(-shadowSigmaT * dist);
+                            // `* curAlbedo`: this scattering
                             // event's own albedo weight - the SAME real bug
                             // materialType 28's own NEE block once had
                             // (section 176's own comment on that fix, found
@@ -591,7 +608,7 @@ kernel void primaryRayKernel(
                             // one and all 4 delta-light ones) rendered as
                             // the LIGHT's own colour with no tint from the
                             // fog's own albedo at all.
-                            radiance += throughput * float3(uniforms.fogAlbedo) * phaseValue * ls.emission * transmittance
+                            radiance += throughput * curAlbedo * phaseValue * ls.emission * transmittance
                                         / pdfSolidAngle * weight;
                         }
                     }
@@ -612,10 +629,10 @@ kernel void primaryRayKernel(
                         intersection_result<instancing, triangle_data> plShadowResult =
                             traceShadowAnyP(isect, plShadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (plShadowResult.type == intersection_type::none) {
-                            float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), uniforms.fogAsymmetryG);
-                            float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
+                            float plPhaseValue = henyeyGreensteinPhase(dot(wo, plWi), curG);
+                            float plTransmittance = exp(-shadowSigmaT * plDist);
                             float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
-                            radiance += throughput * float3(uniforms.fogAlbedo) * plPhaseValue * float3(pl.emission) * plSpot * plTransmittance / plDistSq;
+                            radiance += throughput * curAlbedo * plPhaseValue * float3(pl.emission) * plSpot * plTransmittance / plDistSq;
                         }
                     }
 
@@ -635,10 +652,10 @@ kernel void primaryRayKernel(
                         intersection_result<instancing, triangle_data> dlShadowResult =
                             traceShadowAnyP(isect, dlShadowRay, accelStructure, functionTable, shadowSpherePayload);
                         if (dlShadowResult.type == intersection_type::none) {
-                            float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), uniforms.fogAsymmetryG);
-                            float dlExitDist = rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
-                            float dlTransmittance = exp(-uniforms.fogSigmaT * dlExitDist);
-                            radiance += throughput * float3(uniforms.fogAlbedo) * dlPhaseValue * float3(dl.emission) * dlTransmittance;
+                            float dlPhaseValue = henyeyGreensteinPhase(dot(wo, dlWi), curG);
+                            float dlExitDist = inGlass ? 0.0f : rayBoxExitDistance(scatterPoint, dlWi, kRoomBoundsMin, kRoomBoundsMax);
+                            float dlTransmittance = exp(-shadowSigmaT * dlExitDist);
+                            radiance += throughput * curAlbedo * dlPhaseValue * float3(dl.emission) * dlTransmittance;
                         }
                     }
 
@@ -664,9 +681,9 @@ kernel void primaryRayKernel(
                             intersection_result<instancing, triangle_data> pjShadowResult =
                                 traceShadowAnyP(isect, pjShadowRay, accelStructure, functionTable, shadowSpherePayload);
                             if (pjShadowResult.type == intersection_type::none) {
-                                float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), uniforms.fogAsymmetryG);
-                                float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
-                                radiance += throughput * float3(uniforms.fogAlbedo) * pjPhaseValue * pjRadiance * pjTransmittance / pjDistSq;
+                                float pjPhaseValue = henyeyGreensteinPhase(dot(wo, pjWi), curG);
+                                float pjTransmittance = exp(-shadowSigmaT * pjDist);
+                                radiance += throughput * curAlbedo * pjPhaseValue * pjRadiance * pjTransmittance / pjDistSq;
                             }
                         }
                     }
@@ -692,18 +709,18 @@ kernel void primaryRayKernel(
                             intersection_result<instancing, triangle_data> glShadowResult =
                                 traceShadowAnyP(isect, glShadowRay, accelStructure, functionTable, shadowSpherePayload);
                             if (glShadowResult.type == intersection_type::none) {
-                                float glPhaseValue = henyeyGreensteinPhase(dot(wo, glWi), uniforms.fogAsymmetryG);
-                                float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
-                                radiance += throughput * float3(uniforms.fogAlbedo) * glPhaseValue * glRadiance * glTransmittance / glDistSq;
+                                float glPhaseValue = henyeyGreensteinPhase(dot(wo, glWi), curG);
+                                float glTransmittance = exp(-shadowSigmaT * glDist);
+                                radiance += throughput * curAlbedo * glPhaseValue * glRadiance * glTransmittance / glDistSq;
                             }
                         }
                     }
 
-                    float3 newDir = sampleHenyeyGreenstein(wo, uniforms.fogAsymmetryG, rngState);
+                    float3 newDir = sampleHenyeyGreenstein(wo, curG, rngState);
                     rayDir = newDir;
                     rayOrigin = scatterPoint;
-                    throughput *= float3(uniforms.fogAlbedo);
-                    bsdfPdf = henyeyGreensteinPhase(dot(wo, newDir), uniforms.fogAsymmetryG);
+                    throughput *= curAlbedo;
+                    bsdfPdf = henyeyGreensteinPhase(dot(wo, newDir), curG);
                     specularBounce = false;
                 }
             }
@@ -1365,6 +1382,33 @@ kernel void primaryRayKernel(
                                       rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             }
                 mediumSkippedDist = 0.0;  // a real bounce starts a new segment
+                // After a dielectric event on a glass sphere that carries a medium: the path is now inside
+                // the sphere iff its new direction points against the outward normal (true for refraction in,
+                // reflection inside, and a thin dielectric passing straight through). `normal` is the sphere's
+                // outward normal here.
+                if (isSphere && mat.conductorK.y > 0.5 &&
+                    (mat.materialType == 2u || mat.materialType == 5u || mat.materialType == 11u)) {
+                    const bool wasInGlass = inGlass;
+                    inGlass = dot(rayDir, normal) < 0.0;
+                    if (inGlass) {
+                        glassSigmaT3 = float3(mat.conductorEta);
+                        glassG = mat.conductorK.x;
+                        glassAlbedo = float3(mat.transmitColor);
+                        if (!wasInGlass) {
+                            // Entering. A chromatic medium: follow ONE colour channel for this path (chosen
+                            // uniformly, weight x3 on it) so free flight and shadow attenuation can use that
+                            // channel's sigma_t; averaged over paths every channel is recovered. A grey medium
+                            // needs no such colour noise.
+                            if (mat.conductorK.z > 0.5) {
+                                glassChan = min(int(randFloat(rngState) * 3.0), 2);
+                                float3 chanMask = float3(glassChan == 0 ? 3.0 : 0.0, glassChan == 1 ? 3.0 : 0.0, glassChan == 2 ? 3.0 : 0.0);
+                                throughput *= chanMask;
+                            } else {
+                                glassChan = -1;
+                            }
+                        }
+                    }
+                }
             } // !scatteredInMedium && !passedThroughMediumSphere
 
             // Russian roulette after a few bounces, same "let cheap paths
