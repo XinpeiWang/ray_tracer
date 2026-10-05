@@ -563,3 +563,61 @@ TEST(BxDFWhiteFurnace, CoatedConductorEnergyConservation) {
 	EXPECT_GT(estimate, 0.1)
 		<< "CoatedConductorBxDF total reflectance implausibly low: " << estimate;
 }
+
+// ===========================================================================
+// RoughDielectricBxDF: f() and pdf() must be consistent in ABSOLUTE terms, not just as a ratio.
+//
+// run_dielectric_energy_conservation() above checks f*cos/pdf averaged over the VALID samples, which is blind to a common
+// factor in f() and pdf() (it cancels) and to rejected samples (they are dropped from the denominator). The
+// transmission lobe of both used to carry an extra eta^2: f() was pbrt's radiance-mode BTDF, which this renderer's path
+// throughput does not match, and pdf() was eta^2 times the density sample_local() really draws from. NEE then used
+// f() with the wrong factor at every vertex where a ray leaves glass (+17-22% for a rough glass sphere under a small
+// lamp, +2-3% under a sky, against a pbrt-v4 path-level reference), and MIS weighed it against the wrong magnitude.
+//
+// Two absolute checks: (1) the mean of f*|cos|/pdf over samples drawn from sample_local(), a rejected sample
+// counting as zero, equals the integral of f*|cos| over the sphere - which is only true if pdf() is the density the
+// samples come from; (2) that integral is the BSDF's albedo, so it cannot exceed 1 (it was 1.75 leaving glass).
+// ===========================================================================
+static double rough_dielectric_integral_f_cos(const RoughDielectricBxDF<double>& bxdf, double eta,
+											   double wi_x, double wi_y, double wi_z) {
+	const int nt = 500, np = 500;
+	const double pi = 3.14159265358979323846;
+	double sum = 0.0;
+	for (int a = 0; a < nt; ++a) {
+		const double t = (a + 0.5) / nt * pi;
+		for (int b = 0; b < np; ++b) {
+			const double p = (b + 0.5) / np * 2.0 * pi;
+			const double wo_x = std::sin(t) * std::cos(p), wo_y = std::sin(t) * std::sin(p), wo_z = std::cos(t);
+			sum += bxdf.f(wi_x, wi_y, wi_z, eta, wo_x, wo_y, wo_z) * std::fabs(wo_z) * std::sin(t);
+		}
+	}
+	return sum * (pi / nt) * (2.0 * pi / np);
+}
+
+TEST(BxDFWhiteFurnace, RoughDielectricPdfIsTheSamplingDensityAndFIntegratesToTheAlbedo) {
+	const double pi = 3.14159265358979323846;
+	for (double alpha : { 0.5, 0.77 }) {
+		for (double eta : { 1.0 / 1.5, 1.5 }) {
+			for (double deg : { 5.0, 45.0, 75.0 }) {
+				RoughDielectricBxDF<double> bxdf{ 1.5, alpha, alpha };
+				const double wi_x = std::sin(deg * pi / 180.0), wi_y = 0.0, wi_z = std::cos(deg * pi / 180.0);
+				const int n = 200000;
+				double sum = 0.0;
+				for (int j = 0; j < n; ++j) {
+					auto s = bxdf.sample_local(wi_x, wi_y, wi_z, eta, ri2(j + 1), ri3(j + 1), ri5(j + 1));
+					if (!s.valid) continue;  // rejected: contributes zero, and stays in the denominator
+					const double pdf = bxdf.pdf(wi_x, wi_y, wi_z, eta, s.wo_x, s.wo_y, s.wo_z);
+					if (pdf <= 0.0) continue;
+					sum += bxdf.f(wi_x, wi_y, wi_z, eta, s.wo_x, s.wo_y, s.wo_z) * std::fabs(s.wo_z) / pdf;
+				}
+				const double sampled = sum / n;
+				const double integral = rough_dielectric_integral_f_cos(bxdf, eta, wi_x, wi_y, wi_z);
+				EXPECT_NEAR(sampled / integral, 1.0, 0.03)
+					<< "pdf() is not the density sample_local() draws from: alpha=" << alpha << " eta=" << eta
+					<< " wi=" << deg << "deg  E[f cos/pdf]=" << sampled << "  integral(f cos)=" << integral;
+				EXPECT_LE(integral, 1.01) << "the albedo of a lossless dielectric cannot exceed 1: alpha=" << alpha
+										  << " eta=" << eta << " wi=" << deg << "deg";
+			}
+		}
+	}
+}

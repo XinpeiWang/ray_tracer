@@ -281,6 +281,9 @@ struct RoughDielectricBxDF {
 				wo_x =  eta*(-wi_x) + (eta*cos_i - cos_t)*wm_x;
 				wo_y =  eta*(-wi_y) + (eta*cos_i - cos_t)*wm_y;
 				wo_z = -(eta*wi_z   - (eta*cos_i - cos_t)*wm_z);
+				// pbrt-v4 rejects a refracted sample that ends up on the same side as wo (DielectricBxDF::Sample_f: SameHemisphere(wo, wi)), which a strongly tilted
+				// microfacet produces at grazing incidence. Keeping it added ~7% to the albedo leaving glass at 75 degrees.
+				if (wo_z >= T(0)) { res.valid = false; return res; }
 				// Genuine transmission -- record eta for the integrator's
 				// etaScale/Russian-roulette bookkeeping (pbrt-v4 bs->eta).
 				// Previously left at the res{} default (0), which the
@@ -341,6 +344,10 @@ struct RoughDielectricBxDF {
 		T cos_wi_wm = wi_x*hx + wi_y*hy + wi_z*hz;
 		T cos_wo_wm = wo_x*hx + wo_y*hy + wo_z*hz;
 		if (cos_wi_wm == T(0) || cos_wo_wm == T(0)) return T(0);
+		// Discard back-facing microfacets, as pbrt-v4's DielectricBxDF::f() and ::PDF() both do. Without this f() kept a
+		// value for half-vectors that the sampler never produces (VNDF sampling only draws facets facing wi), so its
+		// integral over the sphere exceeded what sample_local() draws from by up to 20% at grazing angles.
+		if (cos_wi_wm * wi_z < T(0) || cos_wo_wm * wo_z < T(0)) return T(0);
 
 		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		T D = dist.D(hx, hy, hz);
@@ -363,22 +370,17 @@ struct RoughDielectricBxDF {
 			if (std::fabs(denom) < T(1e-12)) return T(0);
 			T ft = D * (T(1) - F) * G * std::fabs(cos_wi_wm * cos_wo_wm / denom);
 #endif
-			// NOTE: no extra 1/eta^2 "radiance transport" factor here --
-			// unlike pbrt-v4's DielectricBxDF::f(), which divides by
-			// Sqr(etap) (their own, differently-scoped per-call ratio).
-			// Deriving this formula directly from Walter et al. 2007's
-			// transmission BTDF using ONLY the relative eta=eta_i/eta_t
-			// (never absolute eta_i/eta_t separately, since this struct is
-			// never given them) shows the medium-IOR-squared factor cancels
-			// out entirely once denom_base is expressed in relative-eta
-			// form -- confirmed empirically via the dedicated energy-
-			// conservation test in tests/unit/bsdf_chi2_tests.cpp
-			// (BxDFWhiteFurnace.RoughDielectric*): including a 1/eta^2
-			// term here measurably broke energy conservation (~2.2x over
-			// for eta<1, ~0.45x under for eta>1, matching 1/eta^2 exactly),
-			// and removing it brings every tested eta/alpha combination
-			// back to the expected ~1.0.
-			return ft;
+			// Importance-transport form: the 1/eta'^2 that pbrt-v4's DielectricBxDF::f() applies for TransportMode::Radiance is
+			// NOT in here, because this renderer's path throughput does not carry the matching factors either - a sampled
+			// refraction's weight is G2/G1 (the ratio f*cos/pdf, which this f() and pdf() below keep exactly), and the
+			// entering (1/eta'^2) and leaving (eta'^2) factors cancel over a full traversal of a closed glass object. NEE at
+			// the vertex where the ray leaves has to use the same convention. With the Walter BTDF written in this
+			// struct's relative eta = eta_i/eta_t, that is the expression above divided by eta^2.
+			// (Evaluating the radiance-mode value here, as this function used to, over-counted NEE at every exit vertex by
+			// eta^2 = 2.25 for glass: a rough glass sphere under a small lamp read 17-22% bright against a pbrt-v4
+			// path-level reference, and 2-3% bright under a sky. The old white-furnace test missed it because it only
+			// checks the f/pdf ratio.)
+			return ft / (eta * eta);
 		}
 	}
 
@@ -405,6 +407,7 @@ struct RoughDielectricBxDF {
 		T cos_wi_wm = wi_x*hx + wi_y*hy + wi_z*hz;
 		T cos_wo_wm = wo_x*hx + wo_y*hy + wo_z*hz;
 		if (cos_wi_wm == T(0)) return T(0);
+		if (cos_wi_wm * wi_z < T(0) || cos_wo_wm * wo_z < T(0)) return T(0);  // back-facing microfacet, as in f()
 
 		TrowbridgeReitz<T> dist(alpha_x, alpha_y);
 		T F = FrDielectric(cos_wi_wm, T(1) / eta);
@@ -425,7 +428,11 @@ struct RoughDielectricBxDF {
 #else
 			T dwm_dwo = std::fabs(cos_wo_wm) / denom;
 #endif
-			return pdf_wm * dwm_dwo * (T(1) - F);
+			// The true sampling density of the refracted lobe (what sample_local()/the GPU's inline sampler actually draw
+			// from): dwm_dwo above is built from denom_base, which is eta times the generalized-half-vector denominator pbrt
+			// uses, so it is eta^2 too large - hence the division, matching f()'s own convention above. MIS weighs this
+			// against a light-sampling pdf, so its magnitude matters, not just the f/pdf ratio.
+			return pdf_wm * dwm_dwo * (T(1) - F) / (eta * eta);
 		}
 	}
 

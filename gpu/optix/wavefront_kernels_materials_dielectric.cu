@@ -297,6 +297,9 @@ extern "C" __global__ void evaluate_materials_dielectric(
 			float eta = rd_front_face ? (1.0f / dispersiveIor) : dispersiveIor;
 			float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta);
 			wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
+			// pbrt-v4 rejects a refracted sample that ends up on the same side as wo (DielectricBxDF::Sample_f: SameHemisphere(wo, wi)), which a strongly tilted
+			// microfacet produces at grazing incidence. Keeping it added ~7% to the albedo leaving glass at 75 degrees.
+			if (wo_z >= 0.0f) { scattered = false; break; }
 			scattered_dir = refracted;
 			// pbrt-v4 etaScale - see this function's own eventEta local comment.
 			eventEta = eta;
