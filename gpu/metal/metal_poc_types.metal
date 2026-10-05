@@ -1005,6 +1005,9 @@ struct GpuRgbGridMedium {
     float sigmaScale;
     float sigmaMaj;
     float phaseG;
+    // Constant absorption coefficient added to every channel (already in this scene's distance units). pbrt's
+    // RGBGridMedium defaults sigma_a to 1 when the scene gives no sigma_a grid; 0 = pure scattering (old behaviour).
+    float sigmaAConst;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
