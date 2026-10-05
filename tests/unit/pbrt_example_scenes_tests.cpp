@@ -364,3 +364,11 @@ TEST(PbrtBackendAgreementTest, RoughGlassUnderALampAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, RoughGlassFromInsideAgreesAcrossBackends) {
 	expectBackendsAgree("rough-glass-from-inside", 128, 0.97, 1.03);
 }
+
+// A rough copper sphere lit by an out-of-view lamp, so the whole image is glossy direct light. Both GPU backends skipped NEE
+// at vertices whose BSDF continuation sample was rejected (86% / 75% of the CPU at roughness 0.25 / 1.0), and the CPU took the
+// conductor's Fresnel at the view-normal cosine instead of the half-vector (104% / 108% of a pbrt-v4 path-level reference).
+// See pbrt_scenes/rough-metal-lamp.pbrt.
+TEST(PbrtBackendAgreementTest, RoughMetalLampAgreesAcrossBackends) {
+	expectBackendsAgree("rough-metal-lamp", 512, 0.96, 1.04);
+}

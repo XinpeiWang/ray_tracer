@@ -1907,7 +1907,7 @@ class camera {
                             color Le_d = light_rec.mat->emitted(
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d.x() > 0 || Le_d.y() > 0 || Le_d.z() > 0) {
-                                color atten = rec.mat->scattering_attenuation(rec, shadow_ray, srec.attenuation);
+                                color atten = rec.mat->scattering_attenuation(current_ray, rec, shadow_ray, srec.attenuation);
                                 color med_trans = camera_medium_trans(
                                     light_rec.t * shadow_ray.direction().length());
                                 L += beta * w_l * atten * trans * med_trans * f_pdf * Le_d / pdf_l;
@@ -1944,7 +1944,7 @@ class camera {
                             double lr, lg, lb;
                             portal->eval_Le_rgb(rec.p.x(), rec.p.y(), rec.p.z(), wx, wy, wz, lr, lg, lb);
                             color Le_portal(lr, lg, lb);
-                            color atten = rec.mat->scattering_attenuation(rec, portal_shadow, srec.attenuation);
+                            color atten = rec.mat->scattering_attenuation(current_ray, rec, portal_shadow, srec.attenuation);
                             color med_trans = camera_medium_trans(infinity);
                             L += beta * w_portal * atten * trans * med_trans * f_pdf * Le_portal / pdf_portal;
                         }
@@ -1966,7 +1966,7 @@ class camera {
                             render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
                         if (!shadow_ray_hit(world, sky_shadow, sky_rec, infinity, &trans)) {
                             color Le_sky = sky->Le(unit_vector(sky_dir));
-                            color atten = rec.mat->scattering_attenuation(rec, sky_shadow, srec.attenuation);
+                            color atten = rec.mat->scattering_attenuation(current_ray, rec, sky_shadow, srec.attenuation);
                             color med_trans = camera_medium_trans(infinity);
                             L += beta * w_sky * atten * trans * med_trans * f_pdf * Le_sky / pdf_sky;
                         }
@@ -1990,7 +1990,7 @@ class camera {
                         render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
                     if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max, &trans)) {
                         // delta light: pdf=1, no MIS weight needed
-                        color atten = rec.mat->scattering_attenuation(rec, punct_ray, srec.attenuation);
+                        color atten = rec.mat->scattering_attenuation(current_ray, rec, punct_ray, srec.attenuation);
                         color med_trans = camera_medium_trans(ps.t_max);
                         L += beta * atten * trans * med_trans * f_pdf * ps.Li;
                     }
@@ -2036,7 +2036,7 @@ class camera {
                 }
 
                 // Russian Roulette after first bounce
-                color new_beta = clamp_throughput(beta * srec.attenuation * f_pdf / pdf_b);
+                color new_beta = clamp_throughput(beta * rec.mat->scattering_attenuation(current_ray, rec, bsdf_ray, srec.attenuation) * f_pdf / pdf_b);
                 if (bounces_left < depth) {
                     // pbrt-v4: rrBeta = beta * etaScale
                     color rr_beta = new_beta * eta_scale;
@@ -2368,7 +2368,7 @@ class camera {
                             color Le_d_rgb = light_rec.mat->emitted(
                                 shadow_ray, light_rec, light_rec.u, light_rec.v, light_rec.p);
                             if (Le_d_rgb.x() > 0 || Le_d_rgb.y() > 0 || Le_d_rgb.z() > 0) {
-                                color atten_rgb = rec.mat->scattering_attenuation(rec, shadow_ray, srec.attenuation);
+                                color atten_rgb = rec.mat->scattering_attenuation(current_ray, rec, shadow_ray, srec.attenuation);
                                 float scale = static_cast<float>(w_l * f_pdf / pdf_l);
                                 L += beta * scale * albedo(atten_rgb) * albedo(trans) * illuminant(Le_d_rgb);
                             }
@@ -2398,7 +2398,7 @@ class camera {
                         if (!shadow_ray_hit(world, portal_shadow, portal_rec, infinity, &trans)) {
                             double lr, lg, lb;
                             portal->eval_Le_rgb(rec.p.x(), rec.p.y(), rec.p.z(), wx, wy, wz, lr, lg, lb);
-                            color atten_rgb = rec.mat->scattering_attenuation(rec, portal_shadow, srec.attenuation);
+                            color atten_rgb = rec.mat->scattering_attenuation(current_ray, rec, portal_shadow, srec.attenuation);
                             float scale = static_cast<float>(w_portal * f_pdf / pdf_portal);
                             L += beta * scale * albedo(atten_rgb) * albedo(trans)
                                * illuminant(color(lr, lg, lb));
@@ -2420,7 +2420,7 @@ class camera {
                         if (render_stats::enabled())
                             render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
                         if (!shadow_ray_hit(world, sky_shadow, sky_rec, infinity, &trans)) {
-                            color atten_rgb = rec.mat->scattering_attenuation(rec, sky_shadow, srec.attenuation);
+                            color atten_rgb = rec.mat->scattering_attenuation(current_ray, rec, sky_shadow, srec.attenuation);
                             float scale = static_cast<float>(w_sky * f_pdf / pdf_sky);
                             L += beta * scale * albedo(atten_rgb) * albedo(trans)
                                * illuminant(sky->Le(unit_vector(sky_dir)));
@@ -2442,7 +2442,7 @@ class camera {
                     if (render_stats::enabled())
                         render_stats::shadow_rays().fetch_add(1, std::memory_order_relaxed);
                     if (!shadow_ray_hit(world, punct_ray, shadow_rec, shadow_t_max, &trans)) {
-                        color atten_rgb = rec.mat->scattering_attenuation(rec, punct_ray, srec.attenuation);
+                        color atten_rgb = rec.mat->scattering_attenuation(current_ray, rec, punct_ray, srec.attenuation);
                         L += beta * static_cast<float>(f_pdf) * albedo(atten_rgb) * albedo(trans) * illuminant(ps.Li);
                     }
                 });
@@ -2467,7 +2467,7 @@ class camera {
                 }
 
                 SS new_beta = clamp_throughput(
-                    beta * albedo(srec.attenuation) * static_cast<float>(f_pdf / pdf_b));
+                    beta * albedo(rec.mat->scattering_attenuation(current_ray, rec, bsdf_ray, srec.attenuation)) * static_cast<float>(f_pdf / pdf_b));
                 if (bounces_left < depth) {
                     SS rr_beta = new_beta * static_cast<float>(eta_scale);
                     float rr_max = rr_beta.MaxComponentValue();

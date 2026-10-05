@@ -224,6 +224,16 @@ class material {
         return srec_attenuation;
     }
 
+    // The same, for a material whose colour depends on the INCOMING direction as well (a conductor's Fresnel term is a
+    // function of the half-vector between r_in and `scattered`). camera.h calls this one - for the NEE strategies AND
+    // for the BSDF-sampled continuation, which resamples a fresh direction and so needs the colour of THAT direction,
+    // not whatever scatter() stored. Defaults to the 3-argument form, so every other material is unchanged.
+    virtual color scattering_attenuation(const ray& r_in, const hit_record& rec, const ray& scattered,
+                                          const color& srec_attenuation) const {
+        (void)r_in;
+        return scattering_attenuation(rec, scattered, srec_attenuation);
+    }
+
     // Whether a SHADOW ray's occlusion test should treat a hit on this
     // material as "nothing there" and keep going, rather than as a blocker.
     // Default false (opaque) is the conservative, correct default for
