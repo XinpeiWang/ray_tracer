@@ -170,6 +170,15 @@ MPImage mp_load_exr(const char* path) {
 	return img;
 }
 
+// Number of NaN/Inf samples. A single one makes every mean NaN, and every
+// `rel > tol` comparison below is then false - i.e. a render full of NaNs
+// would be reported as a PASS - so this is checked explicitly, first.
+size_t mp_count_nonfinite(const MPImage& img) {
+	size_t n = 0;
+	for (float v : img.pixels) if (!std::isfinite(v)) ++n;
+	return n;
+}
+
 float mp_avg_brightness(const MPImage& img) {
 	if (img.pixels.empty()) return 0.0f;
 	const float s = std::accumulate(img.pixels.begin(), img.pixels.end(), 0.0f);
@@ -408,9 +417,17 @@ int main() {
 		bool sceneFailed = false;
 		char why[512] = {};
 
+		const size_t cpuBad = mp_count_nonfinite(cpuImg);
+		const size_t metalBad = mp_count_nonfinite(metalImg);
+		if (cpuBad > 0 || metalBad > 0) {
+			sceneFailed = true;
+			snprintf(why, sizeof(why), "non-finite pixels (NaN/Inf): cpu=%zu metal=%zu of %zu samples",
+			         cpuBad, metalBad, cpuImg.pixels.size());
+		}
+
 		const float cpuB = mp_avg_brightness(cpuImg);
 		const float metalB = mp_avg_brightness(metalImg);
-		if (std::max(cpuB, metalB) >= kMinComparableValue) {
+		if (!sceneFailed && std::max(cpuB, metalB) >= kMinComparableValue) {
 			const float relDiff = std::abs(cpuB - metalB) / std::max(cpuB, metalB);
 			if (relDiff > wholeTol) {
 				sceneFailed = true;

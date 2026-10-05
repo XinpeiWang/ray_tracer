@@ -154,6 +154,25 @@ void MetalPocApp::loadPbrtScene() {
     std::function<TriangleMaterial(const pbrt_flatten::Material&, int)> mapMaterial =
         [this, &warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
+        // Complex IOR for a GGX conductor (materialType 4). A named metal spectrum or
+        // explicit eta/k (m.hasConductorPreset) is used directly. Otherwise the scene gave
+        // only a "reflectance" (`color`, a normal-incidence value), and m.conductorEta/K
+        // are left at their {0,0,0} defaults - copying those verbatim makes the shader's
+        // complex Fresnel divide by |eta+ik|^4 = 0 and produce NaN. Use the same
+        // eta=1 / k=2*sqrt(r)/sqrt(1-r) conversion CPU's reflectanceToConductorK() does.
+        auto setConductorOptics = [&color](TriangleMaterial& mat, const pbrt_flatten::Material& cm) {
+            if (cm.hasConductorPreset) {
+                mat.conductorEta = PackedFloat3{(float)cm.conductorEta[0], (float)cm.conductorEta[1], (float)cm.conductorEta[2]};
+                mat.conductorK = PackedFloat3{(float)cm.conductorK[0], (float)cm.conductorK[1], (float)cm.conductorK[2]};
+            } else {
+                auto reflectanceToK = [](float r) {
+                    r = r < 0.0f ? 0.0f : (r > 0.9999f ? 0.9999f : r);
+                    return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
+                };
+                mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+                mat.conductorK = PackedFloat3{reflectanceToK(color.x), reflectanceToK(color.y), reflectanceToK(color.z)};
+            }
+        };
         switch (m.kind) {
             case pbrt_flatten::MaterialKind::Diffuse: {
                 // A "reflectance" bound to a "checkerboard" Texture (B22,
@@ -258,8 +277,7 @@ void MetalPocApp::loadPbrtScene() {
                 const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
                 TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
-                mat.conductorEta = PackedFloat3{(float)m.conductorEta[0], (float)m.conductorEta[1], (float)m.conductorEta[2]};
-                mat.conductorK = PackedFloat3{(float)m.conductorK[0], (float)m.conductorK[1], (float)m.conductorK[2]};
+                setConductorOptics(mat, m);
                 return mat;
             }
             case pbrt_flatten::MaterialKind::CoatedConductor: {
@@ -284,17 +302,7 @@ void MetalPocApp::loadPbrtScene() {
                 const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
                 TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
-                if (m.hasConductorPreset) {
-                    mat.conductorEta = PackedFloat3{(float)m.conductorEta[0], (float)m.conductorEta[1], (float)m.conductorEta[2]};
-                    mat.conductorK = PackedFloat3{(float)m.conductorK[0], (float)m.conductorK[1], (float)m.conductorK[2]};
-                } else {
-                    auto reflectanceToK = [](float r) {
-                        r = r < 0.0f ? 0.0f : (r > 0.9999f ? 0.9999f : r);
-                        return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
-                    };
-                    mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
-                    mat.conductorK = PackedFloat3{reflectanceToK(color.x), reflectanceToK(color.y), reflectanceToK(color.z)};
-                }
+                setConductorOptics(mat, m);
                 return mat;
             }
             case pbrt_flatten::MaterialKind::Dielectric:
