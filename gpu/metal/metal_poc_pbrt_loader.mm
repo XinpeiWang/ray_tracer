@@ -365,7 +365,13 @@ void MetalPocApp::loadPbrtScene() {
                 return mat;
             }
             case pbrt_flatten::MaterialKind::Dielectric:
-                return TriangleMaterial{color, /*materialType=*/2u, /*ior=*/(float)m.ior,
+                // materialType 2 reads `color` as a per-unit-distance ABSORPTION coefficient
+                // (Beer-Lambert on exit), where {0,0,0} is perfectly clear glass. `color` here is
+                // pbrt's generic material colour, which defaults to 0.5 for a dielectric (it has
+                // no "reflectance"): passing it through made every pbrt glass absorb 0.5/unit.
+                // Clear by default; loadPbrtSpheres() sets a real coefficient for a glass sphere
+                // that bounds a homogeneous medium.
+                return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/2u, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
             case pbrt_flatten::MaterialKind::ThinDielectric:
                 // materialType 11 - `color` is unused by this material
@@ -785,6 +791,19 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             // scattering is missing, but the surrounding scene is no longer blocked.
             mat = TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/28u, /*ior (sigma_t)=*/0.0f,
                                    PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/0.0f};
+        }
+        // A dielectric (glass) sphere that also bounds a homogeneous medium (E3/E11/E12/A9:
+        // "tinted glass / fog in glass"): approximate the volume as pure Beer-Lambert
+        // attenuation by the extinction coefficient (the shader's existing exit-time
+        // absorption), per channel and rescaled like sigma_t elsewhere. In-scattering is
+        // not modelled, so a strongly scattering fog reads as darker tinted glass rather
+        // than a glowing haze.
+        if (mat.materialType == 2u && s.medium >= 0 && s.medium < (int)scene.media.size() &&
+            scene.media[s.medium].type == "homogeneous") {
+            const pbrt_flatten::Medium& gm = scene.media[s.medium];
+            mat.color = PackedFloat3{(float)(gm.sigma_a[0] / sceneScale),
+                                     (float)(gm.sigma_a[1] / sceneScale),
+                                     (float)(gm.sigma_a[2] / sceneScale)};
         }
         if (s.areaLight >= 0 && s.areaLight < (int)scene.areaLights.size()) {
             // Emissive hit handled here; NEE registration (a real sphere light
