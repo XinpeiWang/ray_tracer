@@ -164,6 +164,7 @@ bool MetalPocApp::parseArgsAndCreateDevice(int argc, const char** argv) {
 
 // --- Stage 2: build the scene's own host-side data ----------------------
 void MetalPocApp::buildScene() {
+    startGgxEnergyTableBuild();
     // --- Scene: a Cornell-box-like room, world units ~[-1,1] --------
     // Matches this project's CPU Cornell box in spirit (floor/ceiling/
     // back wall + coloured side walls + an object), not in exact
@@ -299,7 +300,7 @@ void MetalPocApp::buildScene() {
     }
     NSString* suzannePath = [modelsDir stringByAppendingPathComponent:@"suzanne.obj"];
     const float3 bronze{0.55f, 0.35f, 0.15f};
-    if (!loadObjMesh(suzannePath.UTF8String, suzanneVerts, suzanneNormals, suzanneUVs, suzanneMaterials, bronze,
+    if (!skipDemoRoom && !loadObjMesh(suzannePath.UTF8String, suzanneVerts, suzanneNormals, suzanneUVs, suzanneMaterials, bronze,
                       /*center=*/float3{0.0f, 0.0f, 0.0f}, /*targetSize=*/0.75f)) {
         fprintf(stderr, "Continuing without Suzanne - check RT_MODELS_DIR / models/suzanne.obj.\n");
     }
@@ -319,7 +320,7 @@ void MetalPocApp::buildScene() {
     // result: the world map's grid lines and coastlines have to follow
     // spot's actual surface curvature for this to look right at all.
     NSString* spotPath = [modelsDir stringByAppendingPathComponent:@"spot.obj"];
-    if (!loadObjMesh(spotPath.UTF8String, verts, normals, uvs, materials, white,
+    if (!skipDemoRoom && !loadObjMesh(spotPath.UTF8String, verts, normals, uvs, materials, white,
                       /*center=*/float3{0.78f, -0.75f, 0.6f}, /*targetSize=*/0.42f,
                       /*materialType=*/3)) {
         fprintf(stderr, "Continuing without Spot - check RT_MODELS_DIR / models/spot.obj.\n");
