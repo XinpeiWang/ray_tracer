@@ -33,6 +33,7 @@ inline const char* const* metalShaderFileNames(int* outCount) {
     static const char* const kFiles[] = {
         "metal_poc_types.metal",
         "metal_poc_sampling.metal",
+        "metal_poc_layered_bxdf.metal",
         "metal_poc_materials_specular.metal",
         "metal_poc_materials_diffuse.metal",
         "metal_poc_materials_layered.metal",

@@ -1,88 +1,28 @@
+// CoatedConductorBxDF (pbrt-v4): a dielectric coat over a GGX conductor, pbrt's LayeredBxDF - see metal_poc_layered_bxdf.metal for
+// the walk and metal_poc_materials_layered.metal's CoatedDiffuse comment for how its three pieces (Sample_f, PDF(), f()) are
+// integrated. `mat.conductorEta`/`mat.conductorK` = the metal's own complex IOR; as in pbrt's CoatedConductorMaterial::GetBxDF the
+// conductor sits INSIDE the coat, so both are divided by the coat's IOR (done in layeredCoatedConductorParts()). `mat.color` is
+// unused. `mat.ior`/`mat.roughness` are the coat's real IOR and PRECOMPUTED GGX alpha, which also serves as the conductor's
+// (pbrt's separate conductor.roughness is not plumbed to Metal).
 inline float3 layeredCoatedConductorF(float3 wiLocal, float3 woLocal, float eta, float alpha,
                                        float3 conductorEta, float3 conductorK, thread uint& rngState) {
-    if (wiLocal.z <= 0.0 || woLocal.z <= 0.0) return float3(0.0);
-    float3 result = float3(0.0);
+    LayerTop top; LayerBottom bottom;
+    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom);
+    return layeredF(top, bottom, kLayerThickness, woLocal, wiLocal, rngState);
+}
 
-    {
-        float3 h = wiLocal + woLocal;
-        float hlen = length(h);
-        if (hlen > 1e-8) {
-            h /= hlen;
-            float D = ggxD(h, alpha, alpha);
-            float G = ggxG(woLocal, wiLocal, alpha, alpha);
-            float cosWiH = dot(wiLocal, h);
-            float F0 = frDielectric(cosWiH, eta);
-            float val = D * G * F0 / max(4.0 * wiLocal.z * woLocal.z, 1e-8);
-            result = float3(val);
-        }
-    }
+inline float layeredCoatedConductorPdf(float3 woLocal, float3 wiLocal, float eta, float alpha,
+                                        float3 conductorEta, float3 conductorK) {
+    LayerTop top; LayerBottom bottom;
+    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom);
+    return layeredPdf(top, bottom, woLocal, wiLocal);
+}
 
-    const int kMaxDepth = 10;
-    const float kThickness = 0.01;
-
-    float3 wm = sampleGGXVNDF(wiLocal, alpha, alpha, rngState);
-    float cosI = dot(wiLocal, wm);
-    float Fin = frDielectric(cosI, eta);
-    float3 w = 2.0 * cosI * wm - wiLocal;
-    w.z = -abs(w.z);
-    if (w.z == 0.0) return result;
-
-    float3 beta = float3(1.0 - Fin);
-    float3 accum = float3(0.0);
-
-    for (int depth = 0; depth < kMaxDepth; ++depth) {
-        if (depth > 3) {
-            float rrBeta = max(beta.x, max(beta.y, beta.z));
-            if (rrBeta < 0.25) {
-                float q = max(0.0, 1.0 - rrBeta);
-                if (randFloat(rngState) < q) break;
-                beta /= max(1.0 - q, 1e-6);
-            }
-        }
-
-        beta *= exp(-kThickness / max(abs(w.z), 1e-6));
-        bool atBottom = (w.z < 0.0);
-
-        if (atBottom) {
-            // GGX-conductor bottom bounce (ConductorBottomBounce::bounce()) -
-            // flip to the conductor's own "incoming from above" frame,
-            // sample a VNDF half-vector, reflect, weight by real complex
-            // Fresnel times the height-correlated G/G1 ratio, and always
-            // leave `w` pointing back upward.
-            float3 fw = -w;
-            float3 bwm = sampleGGXVNDF(fw, alpha, alpha, rngState);
-            float cosC = dot(fw, bwm);
-            float3 rwo = 2.0 * cosC * bwm - fw;
-            float G1c = ggxG1(fw, alpha, alpha);
-            float Gc = ggxG(rwo, fw, alpha, alpha);
-            float wtC = (G1c > 1e-8) ? Gc / G1c : 0.0;
-            beta *= frComplexRGB(cosC, conductorEta, conductorK) * wtC;
-            w = float3(rwo.x, rwo.y, abs(rwo.z));
-        } else {
-            float3 h2 = w + woLocal;
-            float hlen2 = length(h2);
-            if (hlen2 > 1e-8) {
-                h2 /= hlen2;
-                float D2 = ggxD(h2, alpha, alpha);
-                float G2 = ggxG(woLocal, w, alpha, alpha);
-                float cosWH = dot(w, h2);
-                float Fexit = frDielectric(cosWH, eta);
-                float shape = D2 * G2 / max(4.0 * w.z * woLocal.z, 1e-8);
-                accum += beta * (shape * (1.0 - Fexit)) * woLocal.z;
-            }
-
-            float3 wm2 = sampleGGXVNDF(w, alpha, alpha, rngState);
-            float cos2 = dot(w, wm2);
-            float Fout = frDielectric(cos2, eta);
-            float3 r2 = 2.0 * cos2 * wm2 - w;
-            r2.z = -abs(r2.z);
-            w = r2;
-            beta *= Fout;
-        }
-    }
-
-    result += accum;
-    return result;
+inline LayerSample layeredCoatedConductorSample(float3 woLocal, float eta, float alpha,
+                                                 float3 conductorEta, float3 conductorK, thread uint& rngState) {
+    LayerTop top; LayerBottom bottom;
+    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom);
+    return layeredSample(top, bottom, kLayerThickness, woLocal, rngState);
 }
 
 inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 facingNormal,
@@ -111,8 +51,7 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                             thread float3& rayDir, thread float3& rayOrigin,
                             thread float3& throughput, thread float3& radiance,
                             thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState) {
-    float alpha = max(mat.roughness, 0.0001);
-    bool effectivelySmooth = alpha < 0.001;
+    float alpha = max(mat.roughness, 0.0);
 
     float3 tangent, bitangent;
     buildAnisotropicOnb(facingNormal, tangent, bitangent);
@@ -122,7 +61,13 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
     float3 conductorEta = float3(mat.conductorEta);
     float3 conductorK = float3(mat.conductorK);
 
-    if (!effectivelySmooth && all(mat.emission == float3(0.0))) {
+    // pbrt's Flags(): a smooth coat over a smooth conductor is a delta lobe (no light samples, no MIS); any roughness at all, on the
+    // coat or the conductor, gets light samples. Here the one alpha serves both interfaces.
+    LayerTop deltaTop; LayerBottom deltaBottom;
+    layeredCoatedConductorParts(mat.ior, alpha, conductorEta, conductorK, deltaTop, deltaBottom);
+    const bool takesLightSamples = !layerIsDelta(deltaTop, deltaBottom);
+
+    if (takesLightSamples && all(mat.emission == float3(0.0))) {
         LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - hitPoint;
         float distSq = dot(toLight, toLight);
@@ -142,7 +87,7 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                 float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
                 float3 f = layeredCoatedConductorF(wiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
-                float pdfBsdf = coatedDiffuseProxyPdf(woLocal, wiLocal, alpha);
+                float pdfBsdf = layeredCoatedConductorPdf(woLocal, wiLocal, mat.ior, alpha, conductorEta, conductorK);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -261,65 +206,21 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
         }
     }
 
-    // Continuation ray: entrance test at the coat's own top surface,
-    // then either a specular GGX reflection (probability F_in) or a
-    // transmit -> single-bounce GGX-conductor reflection -> deterministic
-    // exit test (probability 1-F_in) - NO retry loop needed (unlike
-    // materialType 19's own diffuse-escape loop), since a conductor's
-    // own bottom bounce is a single specular direction, not a spread
-    // that can miss the coat's own exit cone and need another try.
-    float3 wm = sampleGGXVNDF(woLocal, alpha, alpha, rngState);
-    float cosI = dot(woLocal, wm);
-    float Fin = frDielectric(cosI, mat.ior);
-    float3 newDirLocal;
-    float3 beta;
-    if (randFloat(rngState) < Fin) {
-        float3 reflLocal = 2.0 * cosI * wm - woLocal;
-        if (reflLocal.z <= 0.0) return false;
-        float G1 = ggxG1(woLocal, alpha, alpha);
-        float G = ggxG(reflLocal, woLocal, alpha, alpha);
-        float w = (G1 > 1e-8) ? G / G1 : 0.0;
-        float fw = Fin * w;
-        beta = float3(fw, fw, fw);
-        newDirLocal = reflLocal;
-    } else {
-        float3 wDown = 2.0 * cosI * wm - woLocal;
-        if (wDown.z > 0.0) wDown.z = -wDown.z;
-        if (wDown.z == 0.0) return false;
-
-        float3 fw = -wDown;
-        float3 bwm = sampleGGXVNDF(fw, alpha, alpha, rngState);
-        float cosC = dot(fw, bwm);
-        if (cosC <= 0.0) return false;
-        float3 rwo = 2.0 * cosC * bwm - fw;
-        if (rwo.z <= 0.0) return false;
-
-        float G1c = ggxG1(fw, alpha, alpha);
-        float Gc = ggxG(rwo, fw, alpha, alpha);
-        float wtC = (G1c > 1e-8) ? Gc / G1c : 0.0;
-        float3 Fc = frComplexRGB(cosC, conductorEta, conductorK) * wtC;
-
-        // Coat-to-air exit test - inverted eta, matching OptiX's own
-        // sample loop exactly (same convention shadeCoatedDiffuse()'s
-        // own diffuse-escape loop uses, but a single deterministic test
-        // here, not a retry loop - see this function's own header
-        // comment).
-        float Fout = frDielectric(rwo.z, 1.0 / mat.ior);
-        float Tout = 1.0 - Fout;
-        float Tin = 1.0 - Fin;
-        beta = Fc * (Tin * Tout);
-        newDirLocal = rwo;
-    }
-
+    // Continuation ray: pbrt's LayeredBxDF::Sample_f random walk. A failed walk ends the path here (the light samples above were
+    // already taken); a smooth coat's mirror reflection - or the whole chain of a delta lobe - is a specular sample (no MIS).
+    LayerSample smp = layeredCoatedConductorSample(woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+    if (!smp.valid) return false;
+    float3 beta = smp.f * (abs(smp.wi.z) / smp.pdf);
+    float3 newDirLocal = smp.wi;
     float3 newDirWorld = normalize(newDirLocal.x * tangent + newDirLocal.y * bitangent + newDirLocal.z * facingNormal);
     rayDir = newDirWorld;
     rayOrigin = hitPoint + facingNormal * 0.001f;
     throughput *= beta;
-    if (!effectivelySmooth) {
-        bsdfPdf = coatedDiffuseProxyPdf(woLocal, newDirLocal, alpha);
-        specularBounce = false;
-    } else {
+    if (smp.specular) {
         specularBounce = true;
+    } else {
+        bsdfPdf = layeredCoatedConductorPdf(woLocal, newDirLocal, mat.ior, alpha, conductorEta, conductorK);
+        specularBounce = false;
     }
     return true;
 }
