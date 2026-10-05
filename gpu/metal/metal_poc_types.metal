@@ -557,13 +557,23 @@ inline float3 projectionLightRadiance(float3 wiFromLight, packed_float3 lightFor
     if (abs(sx) > 1.0 || abs(sy) > 1.0) {
         return float3(0.0); // Outside the projector's own frustum.
     }
-    // Screen space [-1,1]^2 -> image UV [0,1]^2. Y flipped (screen +Y is
-    // "up," image +V is conventionally "down," the same flip every other
-    // texture-sampling UV convention in this file already assumes) so
-    // the projected image reads right-side-up from the projector's own
-    // point of view, not mirrored top-to-bottom.
-    float2 uv = float2(sx * 0.5 + 0.5, 0.5 - sy * 0.5);
-    return image.sample(s, uv).rgb * scale;
+    // Screen space [-1,1]^2 -> image UV [0,1]^2, matching pbrt-v4
+    // (screenBounds.Offset(), no Y flip) and the CPU port in
+    // src/shared/projection_light.h so the slide lands identically on
+    // every backend. Two details differ from a naive "up is up" mapping:
+    //  - V is NOT flipped: pbrt feeds screen +Y straight into the image's
+    //    row index, so the image's row 0 sits at screen -Y.
+    //  - U runs against `lightRight`: pbrt's LookAt derives its right axis
+    //    as cross(up, dir), while the loader builds `lightRight` as
+    //    cross(forward, up) (the convention the goniometric light uses),
+    //    i.e. the opposite sign.
+    float2 uv = float2(0.5 - sx * 0.5, sy * 0.5 + 0.5);
+    // Nearest-neighbour, clamped: pbrt-v4 and src/shared/projection_light.h
+    // (image_lookup_rgb) both fetch the single texel under uv rather than
+    // filtering. Bilinear (the caller's `s`) smears a low-resolution slide
+    // (e.g. an 8x4 checker) into pastel blobs instead of crisp cells.
+    constexpr sampler nearestSampler(coord::normalized, address::clamp_to_edge, filter::nearest);
+    return image.sample(nearestSampler, uv).rgb * scale;
 }
 
 // pbrt-v4's own equal-area octahedral sphere<->square mapping

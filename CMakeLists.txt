@@ -531,20 +531,22 @@ if(RT_BUILD_METAL)
     # metal_poc_main.mm's own comment) and so has no way to reach this flag;
     # it only exists on the ray_tracer --gpu path (launcher/launcher_args.h ->
     # render_options_from_args() -> MetalPocApp::isolatePbrtLighting). Renders
-    # C9 (goniometric-projection.pbrt) - the scene this flag was purpose-built
-    # for - at a small, fast size/quality, just to confirm the flag's own real
+    # C19 (projection-light-nonsquare.pbrt, a projector-lit slab) at a small,
+    # fast size/quality. (C9, the scene this flag was purpose-built for, is
+    # near-black by design - mean ~0.0005 on CPU - so it can't tell a working
+    # render from an empty one.) Just to confirm the flag's own real
     # code path (skipping every hardcoded-room light, including the two
     # zero-size-buffer bugs section 199 found and fixed) still runs clean, not
     # to check any specific pixel output. WORKING_DIRECTORY is needed here
     # (unlike the metal_poc tests above, which use only hand-authored scenes
     # with no file to load) since cpu_scene_pbrt_path_by_id() resolves
-    # pbrt_scenes/goniometric-projection.pbrt as a path relative to the
+    # pbrt_scenes/projection-light-nonsquare.pbrt as a path relative to the
     # process's own CWD, not to CMAKE_SOURCE_DIR - ctest's own default CWD is
     # the build directory, which has no pbrt_scenes/ of its own.
     set(METAL_ISOLATE_LIGHTING_OUTPUT "${CMAKE_BINARY_DIR}/metal_isolate_lighting_smoke_test.png")
     add_test(NAME metal_poc_isolate_pbrt_lighting_smoke
         COMMAND ray_tracer --gpu --isolate-pbrt-lighting
-            --output "${METAL_ISOLATE_LIGHTING_OUTPUT}" 64 4 2 C9)
+            --output "${METAL_ISOLATE_LIGHTING_OUTPUT}" 64 4 2 C19)
     set_tests_properties(metal_poc_isolate_pbrt_lighting_smoke PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}")
     add_test(NAME metal_poc_isolate_pbrt_lighting_validate

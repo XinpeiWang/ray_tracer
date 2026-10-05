@@ -292,6 +292,13 @@ float regional_tolerance_for(float wholeImageTolerance) {
 const char* const kKnownGapScenes[] = {
 	"B9", "B10", "B11", "B14", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
 	"F1", "F4", "F7", "F8", "F14",            // unsupported shape (cone/paraboloid/bilinear patch/curve) -> silently dropped
+	// C17 (Portal Light): portal-light.pbrt reads sssdragon/textures/small_rural_road_equiarea.exr,
+	// which is not tracked in this repo (only the sssdragon benchmark checkout has it). Both
+	// backends log "could not be read; using its constant colour instead", but then diverge on
+	// that fallback (CPU renders black, cpu=0.0000; Metal 0.5884), so the sweep is comparing two
+	// different failure modes, not two renderers on the same scene. Re-triage (including whether
+	// Metal honours the portal restriction at all) once the EXR is available.
+	"C17",
 };
 
 bool is_known_gap_scene(const std::string& id) {
