@@ -868,10 +868,19 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     const uint32_t cy0 = (cropX1 >= 0) ? (uint32_t)cropY0 : 0;
     const uint32_t cy1 = (cropX1 >= 0) ? (uint32_t)cropY1 : height;
     const uint32_t cropRows = cy1 - cy0;
-    const uint32_t numBands = std::min<uint32_t>(20, std::max<uint32_t>(1, cropRows));
-    const uint32_t bandHeight = (cropRows + numBands - 1) / numBands;
+    // Band sizing. Every band is its own command buffer that must fully drain before the next starts, and that
+    // tail costs ~16 ms: a fixed 20 bands made a 1.7 s render ~17% slower than one band (measured on an M2). But
+    // bands also give the GUI progress ticks and keep each GPU submission short (watchdog). So: one small
+    // calibration band, then bands sized to ~kTargetBandSeconds of GPU time from the measured rows/second - a few
+    // percent overhead, and finer progress than before on long renders. METAL_BANDS=N forces N equal bands.
+    constexpr double kTargetBandSeconds = 0.3;
+    const char* bandsEnv = getenv("METAL_BANDS");
+    const bool fixedBands = bandsEnv != nullptr;
+    const uint32_t forcedBands =
+        fixedBands ? std::min<uint32_t>((uint32_t)std::max(1, atoi(bandsEnv)), std::max<uint32_t>(1, cropRows)) : 0;
+    uint32_t bandHeight = fixedBands ? (cropRows + forcedBands - 1) / forcedBands : std::max<uint32_t>(1, cropRows / 40);
     Uniforms* uniformsShared = (Uniforms*)uniformBuffer.contents;
-    for (uint32_t bandStart = 0; bandStart < cropRows; bandStart += bandHeight) {
+    for (uint32_t bandStart = 0; bandStart < cropRows;) {
         const uint32_t thisBandHeight = std::min(bandHeight, cropRows - bandStart);
         // uniformBuffer is MTLResourceStorageModeShared (Apple Silicon
         // unified memory) - writing directly into its own backing
@@ -964,6 +973,16 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         const uint32_t rowsDone = bandStart + thisBandHeight;
         fprintf(stderr, "Scanlines remaining: %u\r", cropRows - rowsDone);
         fflush(stderr);
+
+        // Re-size the next band from this one's measured GPU time (rows/second), growing by at most 4x per step.
+        if (!fixedBands) {
+            const double secs = renderCmd.GPUEndTime - renderCmd.GPUStartTime;
+            if (secs > 0.0) {
+                const double target = (double)thisBandHeight / secs * kTargetBandSeconds;
+                bandHeight = (uint32_t)std::max(1.0, std::min({target, (double)thisBandHeight * 4.0, (double)cropRows}));
+            }
+        }
+        bandStart += thisBandHeight;
     }
 
     // --- Read back into `pixels` (post-processed and written to disk
