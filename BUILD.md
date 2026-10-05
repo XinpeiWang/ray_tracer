@@ -91,6 +91,32 @@ For more control, use the PowerShell script:
 
 **Qt GUI:** To complete the package, build the Qt GUI separately (see Qt GUI Build section) and run `.\scripts\deploy_qt_gui.ps1` to add Qt dependencies.
 
+### Fast incremental builds and a quick test loop (Windows)
+
+How long a rebuild takes depends on what you touched. Measured on this repo (Release, `/m:4`):
+
+| You changed | Rebuild |
+|---|---|
+| nothing | ~2 s |
+| one test `.cpp` | ~4 s |
+| `src/TheRestOfYourLife/camera.h` (18 sources include it) | ~40 s |
+| one wavefront kernel `.cu` | ~50 s (the biggest, `wavefront_kernels_materials.cu`; the others take 2-20 s) |
+| a host-only header (e.g. `src/shared/pbrt_flatten.h`) | C++ dependents only, **no** CUDA recompile |
+| a header the device code includes (e.g. `src/shared/volume_scattering.h`) | all CUDA files that include it (~2 min, the recursive `optix_programs.cu` is the longest) plus the C++ dependents |
+
+Things that make this work, and what to keep in mind:
+
+- **Change tracking.** `Directory.Build.props`/`Directory.Build.targets` use MSBuild's one-`cl`-per-file mode (`UseMultiToolTask`) instead of `/MP`. With `/MP` the tracking logs lost each project's first source, so every build recompiled the entire solution (~95 s with nothing changed). A project that mixes C and C++ files needs one command line for all of them (`miniz.c` is compiled as C++ for this reason), or the two compile tasks overwrite each other's tracking entries again.
+- **CUDA.** `build_optix.targets` hands all 16 `.cu` files to `scripts/cuda_build.ps1`, which runs the compiles in parallel (`RT_CUDA_JOBS`, default 6) and rebuilds a file only when its source, a header it actually included (nvcc's own `-MD` dependency files, kept in `gpu/optix/.cudadeps/`) or its flags changed. `nvcc -t0` compiles the two target architectures concurrently.
+- **Development-only speed-up.** `msbuild /p:RtCudaLocalArchOnly=true` (or `RT_CUDA_LOCAL_ARCH_ONLY=1`) compiles the plain CUDA kernels only for the GPU in this machine. The result runs only on that GPU, so do not package it; the default builds sm_86 and sm_120.
+- **Running one scene's parity test.** `MaterialCpuGpuParityTest` renders only the scenes your `--gtest_filter` selects (one scene ~4 s; the full sweep ~140 s is unchanged):
+
+```powershell
+.in\Releaseay_tracer_tests.exe --gtest_filter="*BrightnessAndChannelsConsistentAcrossBackends/Scene21_*"
+```
+
+- **If a build ever recompiles everything with no changes**, diagnose it instead of living with it: `msbuild ray_tracer.sln ... /v:diag` and search the log for `command line has changed` / `No output for` - those say which project's tracking is inconsistent. Also check for stale `cl.exe`/`Tracker.exe` processes left by a killed build (`Get-Process cl, Tracker`).
+
 ## Project Structure
 
 The solution contains the following projects:

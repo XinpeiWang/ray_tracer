@@ -454,3 +454,9 @@ tests/generated/
 
 # Stray output dir from RenderIntegrationTest.NonExistentDirectory
 /nonexistent_dir/
+
+# nvcc dependency (.d) and flags files written by scripts/cuda_build.ps1 (see build_optix.targets)
+gpu/optix/.cudadeps/
+# outputs the pbrt agreement tests write to the working directory (left behind if an assertion aborts a test before it cleans up)
+pbrt_agree_*.exr
+pbrt_chroma_*.exr
