@@ -199,6 +199,12 @@ struct Uniforms {
     float filterIntegral = 0.0f;
     float filterConditionalCDF[32][32] = {};
     float filterMarginalCDF[32] = {};
+
+    // Per-sample firefly clamp (max of r/g/b), pbrt-v4 Film "maxcomponentvalue".
+    // Appended at the very end, same reasoning as the fields above. 0 (or any
+    // value <= 0) means unbounded - the pbrt default - so zero-initialised
+    // Uniforms (shader tests) are not clamped to black.
+    float fireflyClamp = 0.0f;
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single

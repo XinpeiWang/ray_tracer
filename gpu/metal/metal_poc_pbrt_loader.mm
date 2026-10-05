@@ -475,6 +475,7 @@ void MetalPocApp::loadPbrtScene() {
     loadPbrtObjectInstances(scene, toWorld, materialFor);
     loadPbrtPunctualLights(scene, toWorld, sceneScale);
     loadPbrtMedium(scene, sceneScale);
+    pbrtMaxComponentValue = (float)scene.maxComponentValue;
     loadPbrtInfiniteLight(scene);
     loadPbrtCamera(scene, toWorld, bboxCenter, sceneScale, sceneOffset);
 
