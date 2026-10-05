@@ -661,7 +661,7 @@ struct BuildResult {
 	// The per-shape homogeneous media whose extinction differs between colour channels (constant_medium::chromatic()). camera::ray_color()
 	// samples these itself against the nearest surface (constant_medium::sample_event()); the same objects are in the world, where their
 	// hit() reports nothing while that integrator runs. Empty for every grey-medium scene.
-	std::vector<std::shared_ptr<constant_medium>> chromaticMedia;
+	std::vector<std::shared_ptr<event_medium>> chromaticMedia;
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
 	std::size_t diskCount = 0;
@@ -1454,8 +1454,12 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 				md.nx, md.ny, md.nz, bounds, /*sigma_scale=*/1.0, md.Le_scale, md.g);
 			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
 			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
-			world.add(std::make_shared<rgb_grid_medium_hittable>(
-				grid, md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate));
+			auto gridMedium = std::make_shared<rgb_grid_medium_hittable>(
+				grid, md.g, world_min, world_max, md.toMediumMat, md.toMediumTranslate);
+			world.add(gridMedium);
+			// camera::ray_color() samples a grid itself, per channel (rgb_grid_medium_hittable::sample_event); every other integrator
+			// keeps the max-channel delta tracking of hit().
+			out.chromaticMedia.push_back(gridMedium);
 			return;
 		}
 		if (md.type == "uniformgrid") {

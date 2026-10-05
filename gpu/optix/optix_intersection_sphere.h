@@ -37,14 +37,14 @@ __device__ __forceinline__ float gpu_cloud_density(const CloudMedium<float>& clo
 	return fminf(1.0f, fmaxf(0.0f, d + extra));
 }
 
-// Clamped voxel fetch for gpu_rgb_grid_trilinear below - `d` is one channel
+// Voxel fetch (zero outside the grid) for gpu_rgb_grid_trilinear below - `d` is one channel
 // block (nx*ny*nz floats) of LaunchParams::rgbGridData, offset by the
 // caller.
 __device__ __forceinline__ float gpu_rgb_grid_at(const float* d, int nx, int ny, int nz,
 												   int x, int y, int z) {
-	x = x < 0 ? 0 : (x >= nx ? nx-1 : x);
-	y = y < 0 ? 0 : (y >= ny ? ny-1 : y);
-	z = z < 0 ? 0 : (z >= nz ? nz-1 : z);
+	// Out-of-range voxels read as zero, as pbrt-v4's SampledGrid::Lookup(Point3i) and the CPU's SampledGrid do (the lookup interpolates towards
+	// zero beyond the outermost voxel centres); this used to clamp to the edge voxel, which made a grid denser at its border than on the CPU.
+	if (x < 0 || x >= nx || y < 0 || y >= ny || z < 0 || z >= nz) return 0.0f;
 	return d[x + nx * (y + ny * z)];
 }
 
@@ -797,45 +797,43 @@ extern "C" __global__ void __closesthit__sphere() {
 
 			bool did_scatter = false;
 			float3 selfEmission = make_float3(0.0f, 0.0f, 0.0f);
+			// Running product of the null-collision weights of this flight: the path weight of a ray that gets through (no real collision).
+			float3 grid_w = make_float3(1.0f, 1.0f, 1.0f);
 			if (has_seg && grid.sigma_maj > 0.0f) {
 				if (segMin < 0.0f) segMin = 0.0f;
 				float tt = segMin;
 				const int voxelCount = grid.nx * grid.ny * grid.nz;
-				const float* rData = params.rgbGridData + grid.dataOffset;
-				const float* gData = rData + voxelCount;
-				const float* bData = gData + voxelCount;
+				const float* sRData = params.rgbGridData + grid.dataOffset;
+				const float* sGData = sRData + voxelCount;
+				const float* sBData = sGData + voxelCount;
+				const bool hasSa = grid.saDataOffset >= 0;
+				const float* aRData = hasSa ? params.rgbGridData + grid.saDataOffset : nullptr;
+				const float* aGData = hasSa ? aRData + voxelCount : nullptr;
+				const float* aBData = hasSa ? aGData + voxelCount : nullptr;
 				for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
 					float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / grid.sigma_maj;
 					tt += dt;
 					if (tt >= segMax) break;
 					float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
-					float dr = gpu_rgb_grid_trilinear(rData, grid.nx, grid.ny, grid.nz, px, py, pz);
-					float dg = gpu_rgb_grid_trilinear(gData, grid.nx, grid.ny, grid.nz, px, py, pz);
-					float db = gpu_rgb_grid_trilinear(bData, grid.nx, grid.ny, grid.nz, px, py, pz);
-					float sr = dr * grid.sigma_scale, sg = dg * grid.sigma_scale, sb = db * grid.sigma_scale;
-					float sigma_t_local = fmaxf(sr, fmaxf(sg, sb));
-					if (random_float(seed) < sigma_t_local / grid.sigma_maj) {
+					// Per-channel sigma_s / sigma_a at the tentative point; an absent sigma_a grid is pbrt's default of 1.
+					const float ss[3] = { gpu_rgb_grid_trilinear(sRData, grid.nx, grid.ny, grid.nz, px, py, pz) * grid.sigma_scale,
+					                      gpu_rgb_grid_trilinear(sGData, grid.nx, grid.ny, grid.nz, px, py, pz) * grid.sigma_scale,
+					                      gpu_rgb_grid_trilinear(sBData, grid.nx, grid.ny, grid.nz, px, py, pz) * grid.sigma_scale };
+					const float sa[3] = { (hasSa ? gpu_rgb_grid_trilinear(aRData, grid.nx, grid.ny, grid.nz, px, py, pz) : 1.0f) * grid.sigma_scale,
+					                      (hasSa ? gpu_rgb_grid_trilinear(aGData, grid.nx, grid.ny, grid.nz, px, py, pz) : 1.0f) * grid.sigma_scale,
+					                      (hasSa ? gpu_rgb_grid_trilinear(aBData, grid.nx, grid.ny, grid.nz, px, py, pz) : 1.0f) * grid.sigma_scale };
+					float w3[3] = { grid_w.x, grid_w.y, grid_w.z }, cw[3], ce[3];
+					const float u_real = random_float(seed);
+					if (heterogeneous_tracking_step<3, float>(sa, ss, grid.sigma_maj, u_real, w3, cw, ce)) {
 						did_scatter = true;
 						medium_t_hit  = tt;
-						// See the Medium branch's comment above: `wo` must be
-						// the negated (outgoing) direction to match CPU's
+						// See the Medium branch's comment above: `wo` must be the negated (outgoing) direction to match CPU's
 						// hg_phase_material convention.
 						scattered_dir = sample_henyey_greenstein(-unit_dir3, grid.phase_g, seed);
-						float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
-						attenuation = make_float3(sr/maxc, sg/maxc, sb/maxc);
-						// Real per-voxel "rgb Le" (grid.leDataOffset's own,
-						// much longer comment, optix_types.h - read that one
-						// for the full "why" and its brightness-vs-CPU
-						// consequence) sampled at this exact accepted scatter
-						// point, from the SAME rgbGridData buffer the
-						// sigma_s lookups above use. Emits the FULL Le on
-						// every accepted collision (weight 1), not the
-						// sigma_a/sigma_t-weighted fraction CPU's
-						// RGBGridMediumData::sample_point() uses - GPU has no
-						// sigma_a grid at all, so that fraction is always 0
-						// here and CPU's exact formula would make this a
-						// silent no-op; weight 1 is the deliberate tradeoff
-						// that keeps the feature visible instead.
+						attenuation = make_float3(cw[0], cw[1], cw[2]);
+						// Real per-voxel "rgb Le" at this accepted collision, weighted by this event's absorption share exactly as the CPU
+						// does (rgb_grid_medium_hittable::sample_event): Le_c * w_c * sigma_a_c / mean(sigma_t). (It used to be the full Le at
+						// weight 1 because this grid had no sigma_a at all.)
 						if (grid.leDataOffset >= 0) {
 							const float* leRData = params.rgbGridData + grid.leDataOffset;
 							const float* leGData = leRData + voxelCount;
@@ -843,8 +841,10 @@ extern "C" __global__ void __closesthit__sphere() {
 							float ler = gpu_rgb_grid_trilinear(leRData, grid.nx, grid.ny, grid.nz, px, py, pz);
 							float leg = gpu_rgb_grid_trilinear(leGData, grid.nx, grid.ny, grid.nz, px, py, pz);
 							float leb = gpu_rgb_grid_trilinear(leBData, grid.nx, grid.ny, grid.nz, px, py, pz);
-							selfEmission = make_float3(ler, leg, leb) * grid.Le_scale;
+							selfEmission = make_float3(ler * ce[0], leg * ce[1], leb * ce[2]) * grid.Le_scale;
 						}
+					} else {
+						grid_w = make_float3(w3[0], w3[1], w3[2]);
 					}
 				}
 				if (!did_scatter) medium_t_hit = segMax;
@@ -866,7 +866,7 @@ extern "C" __global__ void __closesthit__sphere() {
 				is_specular = false;
 			} else {
 				scattered_dir = unit_dir3;
-				attenuation   = make_float3(1.0f, 1.0f, 1.0f);
+				attenuation   = grid_w;   // pass weight of the null collisions (1 for a grey grid with no null events)
 				is_specular   = true;  // no interaction - a free/non-scattering pass-through
 				// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
 				// specular flag) survives it instead of being reset as if a specular bounce had happened.

@@ -459,3 +459,82 @@ TEST(HomogeneousEvent, UnboundedFlightKeepsTheClearChannel) {
 	EXPECT_NEAR(mean.pass_w[1], 0.0, 1e-12);
 	EXPECT_NEAR(mean.pass_w[2], 0.0, 1e-12);
 }
+
+// ============================================================
+// heterogeneous_tracking_step / heterogeneous_ratio_step: spectral tracking with a shared scalar majorant
+// ============================================================
+
+namespace {
+// One flight of length L through a medium with the given constant per-channel coefficients, tracked against `majorant` (> max sigma_t, so
+// null events happen): accumulates, per channel, the expected weight of a path that scatters (collide_w), emits (collide_e), and passes (pass_w).
+void track_flights(const double sa[3], const double ss[3], double majorant, double L, int n, double collide_w[3], double collide_e[3], double pass_w[3]) {
+	uint32_t s = 91827364u;
+	auto u = [&]() { s = s * 1664525u + 1013904223u; return ((s >> 8) + 0.5) / double(1u << 24); };
+	for (int c = 0; c < 3; ++c) collide_w[c] = collide_e[c] = pass_w[c] = 0.0;
+	for (int i = 0; i < n; ++i) {
+		double w[3] = {1.0, 1.0, 1.0}, cw[3], ce[3];
+		double t = 0.0;
+		bool real = false;
+		for (;;) {
+			t += -std::log(1.0 - u()) / majorant;
+			if (t >= L) break;
+			if (heterogeneous_tracking_step<3, double>(sa, ss, majorant, u(), w, cw, ce)) { real = true; break; }
+		}
+		for (int c = 0; c < 3; ++c) {
+			if (real) { collide_w[c] += cw[c] / n; collide_e[c] += ce[c] / n; }
+			else      { pass_w[c] += w[c] / n; }
+		}
+	}
+}
+}
+
+// A pure absorber thicker in blue: the null-collision weights of the flights that do not end in a real (absorbing) event must average to the
+// per-channel Beer-Lambert transmittance, although every flight is tracked against one scalar majorant.
+TEST(HeterogeneousTracking, NullWeightsGivePerChannelBeerLambert) {
+	const double sa[3] = {0.1, 0.4, 0.9}, ss[3] = {0.0, 0.0, 0.0};
+	double cw[3], ce[3], pw[3];
+	track_flights(sa, ss, /*majorant=*/1.3, /*L=*/2.0, 300000, cw, ce, pw);
+	for (int c = 0; c < 3; ++c) {
+		EXPECT_NEAR(pw[c], std::exp(-sa[c] * 2.0), 0.004) << "channel " << c;
+		EXPECT_DOUBLE_EQ(cw[c], 0.0) << "an absorber never scatters, channel " << c;
+		EXPECT_NEAR(ce[c], 1.0 - std::exp(-sa[c] * 2.0), 0.004) << "emission weight integrates to 1 - T, channel " << c;
+	}
+}
+
+// Pure scatterer, different per channel: scattered + passed weight is exactly 1 per channel (nothing absorbed).
+TEST(HeterogeneousTracking, ScattererConservesEnergyPerChannel) {
+	const double sa[3] = {0.0, 0.0, 0.0}, ss[3] = {0.2, 0.35, 0.5};
+	double cw[3], ce[3], pw[3];
+	track_flights(sa, ss, 0.9, 2.0, 300000, cw, ce, pw);
+	for (int c = 0; c < 3; ++c) {
+		EXPECT_NEAR(pw[c], std::exp(-ss[c] * 2.0), 0.004) << "channel " << c;
+		EXPECT_NEAR(cw[c] + pw[c], 1.0, 0.006) << "channel " << c;
+	}
+}
+
+// The old model (extinction of the brightest channel, albedo sigma_s / max sigma_s) lost energy in the lesser channels; with absorption the
+// scattered share is sigma_s / sigma_t per channel, i.e. a mixed medium's scatter + pass weight is the transmittance plus the scattered fraction.
+TEST(HeterogeneousTracking, AbsorbingScattererMatchesTheHomogeneousClosedForm) {
+	const double sa[3] = {0.05, 0.1, 0.2}, ss[3] = {0.3, 0.2, 0.1};
+	double cw[3], ce[3], pw[3];
+	track_flights(sa, ss, 0.7, 1.5, 300000, cw, ce, pw);
+	for (int c = 0; c < 3; ++c) {
+		const double st = sa[c] + ss[c], T = std::exp(-st * 1.5);
+		EXPECT_NEAR(pw[c], T, 0.004) << "channel " << c;
+		EXPECT_NEAR(cw[c], (ss[c] / st) * (1.0 - T), 0.005) << "scatter share, channel " << c;
+		EXPECT_NEAR(ce[c], (sa[c] / st) * (1.0 - T), 0.005) << "absorbed share, channel " << c;
+	}
+}
+
+// A grey medium reduces to ordinary delta tracking: the null weight is 1 for every channel.
+TEST(HeterogeneousTracking, GreyMediumNullWeightIsOne) {
+	const double sa[3] = {0.1, 0.1, 0.1}, ss[3] = {0.4, 0.4, 0.4};
+	double w[3] = {1.0, 1.0, 1.0}, cw[3], ce[3];
+	// u large enough to force a null event: u * majorant >= mean sigma_t (0.5)
+	EXPECT_FALSE((heterogeneous_tracking_step<3, double>(sa, ss, 1.0, 0.9, w, cw, ce)));
+	for (int c = 0; c < 3; ++c) EXPECT_NEAR(w[c], 1.0, 1e-12);
+	const double tr_in[3] = {1.0, 1.0, 1.0};
+	double tr[3] = {tr_in[0], tr_in[1], tr_in[2]};
+	heterogeneous_ratio_step<3, double>(sa, ss, 1.0, tr);
+	for (int c = 0; c < 3; ++c) EXPECT_NEAR(tr[c], 0.5, 1e-12);
+}

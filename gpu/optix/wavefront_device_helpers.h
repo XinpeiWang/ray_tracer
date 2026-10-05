@@ -177,9 +177,9 @@ __device__ __forceinline__ void wf_write_world_pos(float4* worldPosBuffer, int p
 // this is a separate translation unit from optix_programs.cu.
 __device__ __forceinline__ float gpu_rgb_grid_at(const float* d, int nx, int ny, int nz,
 												   int x, int y, int z) {
-	x = x < 0 ? 0 : (x >= nx ? nx-1 : x);
-	y = y < 0 ? 0 : (y >= ny ? ny-1 : y);
-	z = z < 0 ? 0 : (z >= nz ? nz-1 : z);
+	// Out-of-range voxels read as zero, as pbrt-v4's SampledGrid::Lookup(Point3i) and the CPU's SampledGrid do (the lookup interpolates towards
+	// zero beyond the outermost voxel centres); this used to clamp to the edge voxel, which made a grid denser at its border than on the CPU.
+	if (x < 0 || x >= nx || y < 0 || y >= ny || z < 0 || z >= nz) return 0.0f;
 	return d[x + nx * (y + ny * z)];
 }
 

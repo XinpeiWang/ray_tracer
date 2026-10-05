@@ -340,3 +340,44 @@ CPU_GPU HomogeneousEvent<T> sample_homogeneous_event(const HomogeneousMediumData
 #undef VS_LOG
 	return ev;
 }
+
+// ---------------------------------------------------------------------------
+// One tentative collision of spectral (per-channel) tracking in a HETEROGENEOUS medium with a shared scalar majorant.
+//
+// The medium's sigma_a/sigma_s at the tentative point differ between the N channels (RGB, or the hero wavelengths), and `majorant` bounds
+// the largest channel's sigma_t everywhere along the segment. A real event happens with probability mean_c(sigma_t_c) / majorant, a null
+// event otherwise, and the weights keep each channel unbiased:
+//   real: collide_w[c] = w[c] * sigma_s_c / mean(sigma_t)   (the scatter's path weight; absorption ends the path)
+//         collide_e[c] = w[c] * sigma_a_c / mean(sigma_t)   (the emission weight of the absorbed share)
+//   null: w[c] *= (majorant - sigma_t_c) / (majorant - mean(sigma_t)),   at most N for any channel
+// `w` is the running product of the null weights of the flight so far; on a real event it is left as it was. A grey medium reduces to
+// ordinary delta tracking with albedo sigma_s / sigma_t. Returns true on a real event. u in [0,1) draws real-or-null.
+// ---------------------------------------------------------------------------
+template<int N, typename T>
+CPU_GPU bool heterogeneous_tracking_step(const T* sa, const T* ss, T majorant, T u, T* w, T* collide_w, T* collide_e) {
+	T mean_t = T(0);
+	for (int c = 0; c < N; ++c) mean_t += sa[c] + ss[c];
+	mean_t /= T(N);
+	if (u * majorant < mean_t) {
+		const T inv = T(1) / mean_t;
+		for (int c = 0; c < N; ++c) {
+			collide_w[c] = w[c] * ss[c] * inv;
+			collide_e[c] = w[c] * sa[c] * inv;
+		}
+		return true;
+	}
+	const T null_mean = majorant - mean_t;   // > 0 here: a null event needs u * majorant >= mean_t
+	if (null_mean > T(1e-30))
+		for (int c = 0; c < N; ++c) w[c] *= (majorant - (sa[c] + ss[c])) / null_mean;
+	return false;
+}
+
+// Ratio-tracking step for a SHADOW ray through the same medium: every tentative collision multiplies each channel's transmittance by
+// 1 - sigma_t_c / majorant (clamped at 0, the majorant being a coarse global bound).
+template<int N, typename T>
+CPU_GPU void heterogeneous_ratio_step(const T* sa, const T* ss, T majorant, T* tr) {
+	for (int c = 0; c < N; ++c) {
+		const T f = T(1) - (sa[c] + ss[c]) / majorant;
+		tr[c] *= f > T(0) ? f : T(0);
+	}
+}

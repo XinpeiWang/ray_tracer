@@ -1,0 +1,34 @@
+# chromatic-rgbgrid-absorber.pbrt -- a 2x2x2 RGB voxel grid that only absorbs, thicker in blue than in red.
+#
+# The grid holds the same sigma_a = (0.1, 0.4, 0.9) in every voxel (sigma_s = 0), spanning the cube [-1,1]^3, seen end-on under a uniform sky
+# with a 2 degree field of view. The grid lookup is trilinear and reads ZERO beyond the outermost voxel centres (pbrt-v4's SampledGrid), so
+# the density along the central line is 0.5 -> 1 -> 0.5 and its mean over the 2 units is 0.875: each channel is exp(-sigma_a * 2 * 0.875) =
+# (0.840, 0.497, 0.207). Before the per-channel grid sampling the CPU gave one grey value, and both GPU backends ignored sigma_a in a grid
+# entirely (the absorber was invisible).
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 2 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+AttributeBegin
+  Translate -1 -1 -1
+  Scale 2 2 2
+  MakeNamedMedium "grid" "string type" [ "rgbgrid" ]
+    "integer nx" [ 2 ] "integer ny" [ 2 ] "integer nz" [ 2 ]
+    "rgb sigma_a" [ 0.1 0.4 0.9 0.1 0.4 0.9 0.1 0.4 0.9 0.1 0.4 0.9 0.1 0.4 0.9 0.1 0.4 0.9 0.1 0.4 0.9 0.1 0.4 0.9 ]
+    "rgb sigma_s" [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+AttributeEnd
+
+AttributeBegin
+  Material "interface"
+  MediumInterface "grid" ""
+  Shape "sphere" "float radius" [ 1.8 ]
+AttributeEnd

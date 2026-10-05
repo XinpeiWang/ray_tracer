@@ -11,6 +11,7 @@
 #include <cuda_runtime.h>
 #include "optix_types.h"
 #include "gpu_bump_map.h"   // GpuBumpFootprint (WavefrontLaunchParams::bumpFootprint)
+#include "../../src/shared/volume_scattering.h"   // heterogeneous_tracking_step / heterogeneous_ratio_step - RGB grid media
 #else
 // Minimal float3 stub for host-only compilation
 #ifndef __VECTOR_TYPES_H__
@@ -720,6 +721,31 @@ CPU_GPU inline WfChromaEvent wf_chroma_event(const MaterialData& m, const float*
 	pass /= static_cast<float>(kWFNWavelengths);
 	for (int i = 0; i < kWFNWavelengths; ++i) ev.w[i] = (pass > 0.0f) ? Tp[i] / pass : 0.0f;
 	return ev;
+}
+
+// ============================================================================
+// Heterogeneous RGB grid media on the spectral backend. A per-voxel RGB coefficient is spread over wavelength with a piecewise-linear
+// PARTITION OF UNITY (blue below ~436 nm, green at ~545, red above ~640; the three weights sum to 1 everywhere), so a grey grid is exactly
+// flat in wavelength - the furnace conserves energy - and a chromatic one varies smoothly. It is plain arithmetic, which the shadow
+// any-hit program needs (it has no RGB->spectrum uplift tables); the homogeneous media keep their sigmoid uplift (wf_chroma_sigma_a/s).
+// ============================================================================
+CPU_GPU inline void wf_rgb_wavelength_basis(float lambda, float b[3]) {
+	// Control points fitted so exp(-sigma(lambda) t), seen through the CIE 1931 observer and the sRGB matrix, stays closest to the per-channel
+	// exp(-sigma_c t) over a spread of chromatic test sigmas (a grey-flat illuminant; the piecewise-linear 450/545/620 guess read red 5% high).
+	const float lb = 436.0f, lg = 545.0f, lr = 640.0f;
+	if (lambda <= lb)      { b[0] = 0.0f; b[1] = 0.0f; b[2] = 1.0f; }
+	else if (lambda < lg)  { const float t = (lambda - lb) / (lg - lb); b[0] = 0.0f; b[1] = t; b[2] = 1.0f - t; }
+	else if (lambda < lr)  { const float t = (lambda - lg) / (lr - lg); b[0] = t; b[1] = 1.0f - t; b[2] = 0.0f; }
+	else                   { b[0] = 1.0f; b[1] = 0.0f; b[2] = 0.0f; }
+}
+
+// rgb -> the coefficient at each hero wavelength.
+CPU_GPU inline void wf_rgb_to_wavelengths(const float rgb[3], const float* lambda, float* out) {
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		float b[3];
+		wf_rgb_wavelength_basis(lambda[i], b);
+		out[i] = rgb[0] * b[0] + rgb[1] * b[1] + rgb[2] * b[2];
+	}
 }
 
 // ============================================================================

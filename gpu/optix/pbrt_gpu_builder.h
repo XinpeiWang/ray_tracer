@@ -492,17 +492,13 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			return idx;
 		}
 		if (md.type == "rgbgrid") {
-			// Scattering channels only - GpuRgbGridMedium/add_rgb_grid_
-			// medium's own single (r,g,b) triple shape (see optix_types.h's
-			// GpuRgbGridMedium - one dataOffset, not two) has no separate
-			// absorption-grid slot the way CPU's RGBGridMediumData (real
-			// sigma_a_grids alongside sigma_s_grids) does - a real,
-			// GPU-specific simplification beyond CPU's fuller support, not
-			// something this pbrt-loader path is introducing on its own.
 			const std::size_t voxels = static_cast<std::size_t>(md.nx)
 				* static_cast<std::size_t>(md.ny) * static_cast<std::size_t>(md.nz);
+			// pbrt (and the CPU's RGBGridMediumData) default an absent "rgb sigma_s" / "rgb sigma_a" grid to 1 in every channel.
 			const bool hasScattering = md.sigma_s_r.size() == voxels
 				&& md.sigma_s_g.size() == voxels && md.sigma_s_b.size() == voxels;
+			const bool hasAbsorption = md.sigma_a_r.size() == voxels
+				&& md.sigma_a_g.size() == voxels && md.sigma_a_b.size() == voxels;
 			GpuRgbGridMedium meta{};
 			for (int i = 0; i < 3; ++i) {
 				meta.bounds_min[i] = static_cast<float>(md.worldMin[i]);
@@ -513,37 +509,40 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			meta.nx = md.nx; meta.ny = md.ny; meta.nz = md.nz;
 			meta.sigma_scale = 1.0f;
 			meta.phase_g = static_cast<float>(md.g);
-			std::vector<float> rf, gf, bf;
-			float max_density = 0.0f;
+			const auto toFloats = [](const std::vector<double> &v) {
+				std::vector<float> f(v.size());
+				std::transform(v.begin(), v.end(), f.begin(), [](double x) { return static_cast<float>(x); });
+				return f;
+			};
+			std::vector<float> rf, gf, bf;       // sigma_s
 			if (hasScattering) {
-				// resize+transform, not .assign(begin,end): assigning a
-				// double-iterator range directly into a vector<float> narrows
-				// per element the same way, just without an explicit cast MSVC
-				// can see - C4244 either way, this form just silences it.
-				rf.resize(md.sigma_s_r.size());
-				std::transform(md.sigma_s_r.begin(), md.sigma_s_r.end(), rf.begin(),
-					[](double v) { return static_cast<float>(v); });
-				gf.resize(md.sigma_s_g.size());
-				std::transform(md.sigma_s_g.begin(), md.sigma_s_g.end(), gf.begin(),
-					[](double v) { return static_cast<float>(v); });
-				bf.resize(md.sigma_s_b.size());
-				std::transform(md.sigma_s_b.begin(), md.sigma_s_b.end(), bf.begin(),
-					[](double v) { return static_cast<float>(v); });
-				for (float v : rf) max_density = std::fmax(max_density, v);
-				for (float v : gf) max_density = std::fmax(max_density, v);
-				for (float v : bf) max_density = std::fmax(max_density, v);
+				rf = toFloats(md.sigma_s_r); gf = toFloats(md.sigma_s_g); bf = toFloats(md.sigma_s_b);
 			} else {
-				// No scattering data (an absorption-only "rgbgrid" scene,
-				// or a size mismatch already warned about at flatten() time)
-				// - degrade to an empty, effectively invisible grid rather
-				// than reading past the end of an empty vector.
-				rf.assign(voxels, 0.0f); gf.assign(voxels, 0.0f); bf.assign(voxels, 0.0f);
+				rf.assign(voxels, 1.0f); gf.assign(voxels, 1.0f); bf.assign(voxels, 1.0f);
+			}
+			std::vector<float> arf, agf, abf;    // sigma_a (only when the scene gave one)
+			if (hasAbsorption) {
+				arf = toFloats(md.sigma_a_r); agf = toFloats(md.sigma_a_g); abf = toFloats(md.sigma_a_b);
+			}
+			// Global majorant: the largest sigma_a + sigma_s over every voxel and channel (a trilinear lookup of a sum never exceeds the
+			// largest voxel value of that sum), with the usual small safety margin.
+			float max_density = 0.0f;
+			for (std::size_t v = 0; v < voxels; ++v) {
+				const float sa_r = hasAbsorption ? arf[v] : 1.0f, sa_g = hasAbsorption ? agf[v] : 1.0f, sa_b = hasAbsorption ? abf[v] : 1.0f;
+				max_density = std::fmax(max_density, std::fmax(sa_r + rf[v], std::fmax(sa_g + gf[v], sa_b + bf[v])));
 			}
 			meta.sigma_maj = max_density * meta.sigma_scale * 1.01f;   // small safety margin, matches scene_builder.cpp's own convention
 			meta.dataOffset = static_cast<int>(out.rgbGridData.size());
 			out.rgbGridData.insert(out.rgbGridData.end(), rf.begin(), rf.end());
 			out.rgbGridData.insert(out.rgbGridData.end(), gf.begin(), gf.end());
 			out.rgbGridData.insert(out.rgbGridData.end(), bf.begin(), bf.end());
+			meta.saDataOffset = -1;
+			if (hasAbsorption) {
+				meta.saDataOffset = static_cast<int>(out.rgbGridData.size());
+				out.rgbGridData.insert(out.rgbGridData.end(), arf.begin(), arf.end());
+				out.rgbGridData.insert(out.rgbGridData.end(), agf.begin(), agf.end());
+				out.rgbGridData.insert(out.rgbGridData.end(), abf.begin(), abf.end());
+			}
 			// Real per-voxel "rgb Le"/"float Lescale" (pbrt-v4 RGBGridMedium::
 			// LeGrid/LeScale) - previously silently dropped entirely on GPU
 			// (both backends), unlike CPU's real RGBGridMediumData::Le_grids

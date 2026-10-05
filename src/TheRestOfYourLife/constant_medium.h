@@ -204,7 +204,23 @@ inline thread_local bool g_chromatic_media_integrator_managed = false;
 // Homogeneous participating medium (fog, smoke, clouds).
 // pbrt-v4 reference: HomogeneousMedium + delta-tracking free-path sampling.
 // ---------------------------------------------------------------------------
-class constant_medium : public hittable {
+// A participating medium that camera::ray_color() samples ITSELF, event by event, instead of through hittable::hit(): its free flight over
+// the chord up to the nearest surface (sample_event) returns either a collision (a medium-scatter hit_record carrying that collision's own
+// path and emission weights) or a pass-through weight for the path, and shadow rays take its deterministic per-channel transmittance. A
+// medium whose extinction differs between colour channels cannot be a plain hittable: hit() has no way to hand back the weight of a flight
+// that did NOT collide. Implemented by constant_medium (per-channel homogeneous) and rgb_grid_medium_hittable (per-voxel RGB grid).
+class event_medium {
+  public:
+    virtual ~event_medium() = default;
+    // Entry/exit [t0, t1] of `r` through the medium in ray-parameter units, t0 clamped to the ray start; false if it never enters.
+    virtual bool chord(const ray& r, double& t0, double& t1) const = 0;
+    // One free-flight event over the medium's part of [0, t_surface]; see constant_medium::sample_event for the contract.
+    virtual bool sample_event(const ray& r, double t_surface, double& entry_t, bool& collided, hit_record& rec, color& weight) const = 0;
+    // Deterministic per-channel transmittance of the part of `r` between its start and parameter t_max that lies inside the medium.
+    virtual color transmittance_along(const ray& r, double t_max) const = 0;
+};
+
+class constant_medium : public hittable, public event_medium {
   public:
     // Legacy constructor (isotropic, g=0): density is sigma_t = sigma_a + sigma_s.
     // We treat density as sigma_s only (purely scattering medium) for compatibility
@@ -285,7 +301,7 @@ class constant_medium : public hittable {
     bool chromatic() const { return chromatic_; }
 
     // Entry/exit [t0, t1] of `r` through this medium in ray-parameter units, t0 clamped to the ray start; false if it never enters.
-    bool chord(const ray& r, double& t0, double& t1) const {
+    bool chord(const ray& r, double& t0, double& t1) const override {
         if (boundary->supports_volume_bounds()) {
             if (!boundary->volume_bounds(r, t0, t1)) return false;
         } else {
@@ -304,7 +320,7 @@ class constant_medium : public hittable {
     // whether a collision happened (then `rec` is a medium-scatter hit at its position, carrying the collision's path weight and
     // emission weight - see hit_record::has_medium_event) or not (then `weight` is the pass-through weight to multiply onto beta).
     // Media must be tested in order of entry; a collision ends the walk.
-    bool sample_event(const ray& r, double t_surface, double& entry_t, bool& collided, hit_record& rec, color& weight) const {
+    bool sample_event(const ray& r, double t_surface, double& entry_t, bool& collided, hit_record& rec, color& weight) const override {
         double t0, t1;
         if (!chord(r, t0, t1)) return false;
         if (t0 >= t_surface) return false;
@@ -334,7 +350,7 @@ class constant_medium : public hittable {
 
     // Deterministic per-channel transmittance of the part of `r` between its start and parameter t_max that lies inside this
     // medium - what a light sample's shadow ray needs (it is a visibility estimate, not a path).
-    color transmittance_along(const ray& r, double t_max) const {
+    color transmittance_along(const ray& r, double t_max) const override {
         double t0, t1;
         if (!chord(r, t0, t1)) return color(1, 1, 1);
         if (t1 > t_max) t1 = t_max;
