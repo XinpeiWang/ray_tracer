@@ -775,6 +775,8 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 						 "--sppm - the scene will render without it; use the default path tracer "
 						 "instead if the ambient fog matters for this render.\n";
 		}
+		// Per-channel extinction is the default path tracer's only (see chromatic_media_integrator_warning()).
+		std::cerr << chromatic_media_integrator_warning(*scene_desc, scene_id, "--sppm");
 		if (scene_desc->setup_camera)
 			scene_desc->setup_camera(cam);
 

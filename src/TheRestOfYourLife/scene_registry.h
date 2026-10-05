@@ -224,6 +224,23 @@ struct SceneDescriptor {
     bool is_pbrt_backed = false;
 };
 
+// The warning a non-default integrator prints for a scene with a participating medium whose extinction differs between colour channels,
+// or "" when there is none. BDPT/MLT/SPPM draw a medium event from constant_medium::hit() (one extinction, the luminance of sigma_t, with the
+// colour only in the albedo): a free flight cannot carry the per-channel pass-through weight of the default path tracer (camera::ray_color(),
+// constant_medium::sample_event()), and their strategy weights are built from path pdfs that a per-channel mixture would change, so such a
+// medium renders attenuated by the grey luminance extinction there. `flags` names the integrator, e.g. "--bdpt/--mlt".
+inline std::string chromatic_media_integrator_warning(const SceneDescriptor& d, const std::string& scene_id, const std::string& flags) {
+    bool chromatic = d.build_shape_media && !d.build_shape_media().empty();
+    if (!chromatic && d.build_camera_medium) {
+        const auto cm = d.build_camera_medium();
+        chromatic = cm && cm->chromatic();
+    }
+    if (!chromatic) return "";
+    return "Warning: scene '" + scene_id + "' has a participating medium whose extinction differs between colour channels, which "
+           + flags + " model with a single (luminance) extinction and a tint albedo - a medium thicker in one channel than another renders "
+           "attenuated by the grey average instead of per channel; use the default path tracer if the colour of the medium matters for this render.\n";
+}
+
 // paths() is defined at the bottom of this file; forward-declared here so a
 // curated builtin entry can register its own .pbrt path the same way
 // pbrt_scene_registry::append() does for dynamically-discovered ones.

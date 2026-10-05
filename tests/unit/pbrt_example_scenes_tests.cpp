@@ -371,6 +371,24 @@ TEST(PbrtBackendAgreementTest, ChromaticCameraMediumRoomAgreesPerChannel) {
 	expectChannelMeans("chromatic-camera-medium", 256, 8, nullptr, 0.04, 0.04);
 }
 
+// BDPT, MLT and SPPM draw a medium event from constant_medium::hit() - one luminance extinction - so a chromatic medium renders attenuated
+// by the grey average there (the chromatic absorber reads 0.47 in every channel under --bdpt, --mlt and --sppm instead of 0.82/0.45/0.17). They
+// say so instead of silently greying it: the warning names the scene and the integrator, and a grey medium or a medium-free scene gets none.
+TEST(ChromaticMediaIntegratorWarningTest, NamesChromaticMediaAndOnlyThose) {
+	const auto warn = [](const char* stem, const char* flags) {
+		const SceneDescriptor* s = find_example_scene(stem);
+		return s ? chromatic_media_integrator_warning(*s, stem, flags) : std::string("<scene missing>");
+	};
+	for (const char* stem : {"chromatic-absorber", "chromatic-camera-medium-absorber", "chromatic-camera-medium", "dielectric-medium-showcase"}) {
+		const std::string w = warn(stem, "--bdpt/--mlt");
+		EXPECT_NE(w.find("extinction differs between colour channels"), std::string::npos) << stem << ": " << w;
+		EXPECT_NE(w.find(stem), std::string::npos) << stem << " should be named";
+		EXPECT_NE(w.find("--bdpt/--mlt"), std::string::npos) << stem;
+	}
+	for (const char* stem : {"fog-furnace", "absorbing-fog", "camera-medium-absorbing", "flush-ceiling-light"})
+		EXPECT_EQ(warn(stem, "--sppm"), "") << stem << " has no chromatic medium";
+}
+
 // A fog whose scattering differs by colour but absorbs nothing is invisible under a uniform sky in every channel. A collision weight
 // that does not average to the transmittance (the balance heuristic across channels, volume_scattering.h) shows up here as a cast.
 TEST(PbrtBackendAgreementTest, ChromaticFogFurnaceStaysInvisibleInEveryChannel) {
