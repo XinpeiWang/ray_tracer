@@ -291,11 +291,12 @@ float regional_tolerance_for(float wholeImageTolerance) {
 // either way (METAL_PARITY_STRICT doesn't distinguish the two - both
 // count as "not a clean pass" if that's ever enabled).
 const char* const kKnownGapScenes[] = {
-	"B9", "B11", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
-	// F8 (Curve + Hair Tuft): its curves are now tessellated, but they carry pbrt's "hair" material, which the Metal
-	// loader does not map (gray Lambertian fallback; Metal's hair shader also assumes the fibre tangent is the
-	// shading normal, which is wrong on real curve geometry).
-	"F8",
+	"B9", "B16",  // unsupported material kind -> gray Lambertian fallback
+	// B11 (Hair Fibers, "black fur"): the pbrt hair material IS mapped now (materialType 31, with the real fibre
+	// tangent for curves), but Metal's hair BSDF is float32 and, for high absorption + narrow lobes, is unstable (see
+	// shadeHair's regularisation note); paths that touch hair get a per-sample clamp of 40 to tame the resulting
+	// outliers. B11 lands ~1.4x CPU in the red channel (just over tolerance); B20 and F8 are within it.
+	"B11",
 	// C17 (Portal Light): portal-light.pbrt reads sssdragon/textures/small_rural_road_equiarea.exr,
 	// which is not tracked in this repo (only the sssdragon benchmark checkout has it). Both
 	// backends log "could not be read; using its constant colour instead", but then diverge on

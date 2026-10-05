@@ -354,6 +354,13 @@ kernel void primaryRayKernel(
         // needs the true distance from the previous bounce (that is what the NEE
         // strategy it is weighed against measured), not from the exit point.
         float mediumSkippedDist = 0.0;
+        // Set when this path bounced off a hair (materialType 31) surface. Metal's hair BSDF is float32,
+        // where the near-cancelling logI0 terms occasionally produce absurd weights (single samples of
+        // ~1e4 where CPU's double-precision hair peaks near 4); those compound across bounces. The scene-
+        // driven Film maxcomponentvalue below is unbounded by default, so hair paths get the old fixed
+        // per-sample clamp (40) - it is applied only to paths that touched hair, so every other material
+        // stays unclamped.
+        bool pathTouchedHair = false;
         // Recursive-backend dispersion state (materialType 22, B23/B24) -
         // kRgbChannelUnset means "no dispersive hit yet, this sample
         // stays full RGB". See shadeDispersiveDielectric()'s own
@@ -1267,6 +1274,7 @@ kernel void primaryRayKernel(
                 if (!shadePrincipled(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
             } else if (mat.materialType == 31u) {
+                pathTouchedHair = true;
                 if (!shadeHair(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
             } else if (mat.materialType == 18u) {
@@ -1352,6 +1360,7 @@ kernel void primaryRayKernel(
         // legitimately exceed it (the ceiling right above a point light reads
         // 100-260), which made Metal render such scenes ~35% too dark.
         float fireflyLimit = uniforms.fireflyClamp > 0.0 ? uniforms.fireflyClamp : INFINITY;
+        if (pathTouchedHair) fireflyLimit = min(fireflyLimit, 40.0f);
         float sampleMax = max(radiance.x, max(radiance.y, radiance.z));
         if (sampleMax > fireflyLimit) {
             radiance *= fireflyLimit / sampleMax;

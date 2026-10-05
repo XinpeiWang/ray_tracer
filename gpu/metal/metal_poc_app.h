@@ -214,6 +214,9 @@ struct MetalPocApp {
     // triangle index (FlatScene::triangles) -> NEE light index, for the triangles of a
     // non-quad emissive mesh registered as per-triangle lights (AreaLightData kind 4).
     std::unordered_map<int, int32_t> pbrtEmissiveTriangleLightId;
+    // triangle index -> unit fibre tangent for the tube triangles tessellated from pbrt curves, so the
+    // hair shader (materialType 31) gets the real fibre direction instead of the normal-as-tangent proxy.
+    std::unordered_map<int, PackedFloat3> pbrtTriangleFiberTangent;
     bool havePbrtMedium = false;
     float pbrtFogSigmaT = 0.0f;
     float3 pbrtFogAlbedo{1, 1, 1};
