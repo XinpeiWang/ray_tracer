@@ -13,17 +13,21 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 
+// A shared-storage buffer holding `v`, or a valid 1-element placeholder when `v` is empty: an empty
+// std::vector's data() may be null and newBufferWithBytes:length:0 then returns nil. The placeholder is never
+// read (every count/geometry size is driven by the vector's own true size, 0 here). Needed now that a pbrt scene
+// renders WITHOUT the hardcoded demo room (skipDemoRoom), so any of these can legitimately be empty.
+template <typename T>
+static id<MTLBuffer> sharedBufferOrPlaceholder(id<MTLDevice> device, const std::vector<T>& v) {
+    return v.empty() ? [device newBufferWithLength:sizeof(T) options:MTLResourceStorageModeShared]
+                     : [device newBufferWithBytes:v.data() length:v.size() * sizeof(T) options:MTLResourceStorageModeShared];
+}
+
 // --- Stage 3: upload GPU buffers + build acceleration structures --------
 bool MetalPocApp::buildGPUResources() {
-    vertexBuffer = [device newBufferWithBytes:verts.data()
-        length:verts.size() * sizeof(PackedFloat3)
-        options:MTLResourceStorageModeShared];
-    normalBuffer = [device newBufferWithBytes:normals.data()
-        length:normals.size() * sizeof(PackedFloat3)
-        options:MTLResourceStorageModeShared];
-    uvBuffer = [device newBufferWithBytes:uvs.data()
-        length:uvs.size() * sizeof(PackedFloat2)
-        options:MTLResourceStorageModeShared];
+    vertexBuffer = sharedBufferOrPlaceholder(device, verts);
+    normalBuffer = sharedBufferOrPlaceholder(device, normals);
+    uvBuffer = sharedBufferOrPlaceholder(device, uvs);
     // point/directional/projection/goniometric lights, and area lights
     // (`lights`), were ALL genuinely always non-empty in practice before
     // isolatePbrtLighting existed (section 197/199) - buildScene()'s own
@@ -103,17 +107,11 @@ bool MetalPocApp::buildGPUResources() {
     goniometricTexture = [device newTextureWithDescriptor:goniometricDesc];
     [goniometricTexture replaceRegion:MTLRegionMake2D(0, 0, (NSUInteger)goniometricImageSize, (NSUInteger)goniometricImageSize)
         mipmapLevel:0 withBytes:goniometricImage.data() bytesPerRow:(NSUInteger)goniometricImageSize];
-    materialBuffer = [device newBufferWithBytes:materials.data()
-        length:materials.size() * sizeof(TriangleMaterial)
-        options:MTLResourceStorageModeShared];
-    sphereBuffer = [device newBufferWithBytes:spheres.data()
-        length:spheres.size() * sizeof(SphereData) options:MTLResourceStorageModeShared];
-    sphereMaterialBuffer = [device newBufferWithBytes:sphereMaterials.data()
-        length:sphereMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
-    diskBuffer = [device newBufferWithBytes:disks.data()
-        length:disks.size() * sizeof(DiskData) options:MTLResourceStorageModeShared];
-    diskMaterialBuffer = [device newBufferWithBytes:diskMaterials.data()
-        length:diskMaterials.size() * sizeof(TriangleMaterial) options:MTLResourceStorageModeShared];
+    materialBuffer = sharedBufferOrPlaceholder(device, materials);
+    sphereBuffer = sharedBufferOrPlaceholder(device, spheres);
+    sphereMaterialBuffer = sharedBufferOrPlaceholder(device, sphereMaterials);
+    diskBuffer = sharedBufferOrPlaceholder(device, disks);
+    diskMaterialBuffer = sharedBufferOrPlaceholder(device, diskMaterials);
     // Genuinely empty for every scene but the handful with a real pbrt
     // Shape "cylinder" - the SAME "empty std::vector::data() can return
     // null, newBufferWithBytes:length:0 then returns nil" pitfall
@@ -237,8 +235,7 @@ bool MetalPocApp::buildGPUResources() {
         bounds.max = MTLPackedFloat3Make(s.center.x + s.radius, s.center.y + s.radius, s.center.z + s.radius);
         sphereBoundsList.push_back(bounds);
     }
-    id<MTLBuffer> boundingBoxBuffer = [device newBufferWithBytes:sphereBoundsList.data()
-        length:sphereBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
+    id<MTLBuffer> boundingBoxBuffer = sharedBufferOrPlaceholder(device, sphereBoundsList);
 
     MTLAccelerationStructureBoundingBoxGeometryDescriptor* bboxGeomDesc =
         [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
@@ -280,8 +277,7 @@ bool MetalPocApp::buildGPUResources() {
         bounds.max = MTLPackedFloat3Make(d.center.x + r, d.center.y + r, d.center.z + r);
         diskBoundsList.push_back(bounds);
     }
-    id<MTLBuffer> diskBoundingBoxBuffer = [device newBufferWithBytes:diskBoundsList.data()
-        length:diskBoundsList.size() * sizeof(MTLAxisAlignedBoundingBox) options:MTLResourceStorageModeShared];
+    id<MTLBuffer> diskBoundingBoxBuffer = sharedBufferOrPlaceholder(device, diskBoundsList);
 
     MTLAccelerationStructureBoundingBoxGeometryDescriptor* diskGeomDesc =
         [MTLAccelerationStructureBoundingBoxGeometryDescriptor descriptor];
@@ -424,7 +420,7 @@ bool MetalPocApp::buildGPUResources() {
     // the single non-instanced Suzanne used to sit at - an identity-
     // rotation instance is the direct continuation of every earlier
     // screenshot's own Suzanne placement.
-    addInstance(2, identityCol0, identityCol1, identityCol2, float3{-0.05f, -0.55f, -0.3f});
+    if (!skipDemoRoom) addInstance(2, identityCol0, identityCol1, identityCol2, float3{-0.05f, -0.55f, -0.3f});
 
     // Suzanne instance B: rotated 45 degrees about Y and scaled down
     // (uniform scale only - transformNormalByInstance()'s own
@@ -442,7 +438,7 @@ bool MetalPocApp::buildGPUResources() {
     // instance in this whole scene whose object-space normals
     // actually need transforming before shading - everywhere else,
     // an identity transform makes that transform a no-op.
-    {
+    if (!skipDemoRoom) {
         const float theta = 0.785398f; // 45 degrees, radians
         const float s = 0.55f;
         float3 rotCol0{s * cosf(theta), 0.0f, -s * sinf(theta)};
