@@ -178,7 +178,7 @@ struct SceneDescriptor {
 
     // The scene's per-shape homogeneous media with per-channel extinction, for camera::ray_color() to sample (pbrt_cpu_builder.h's
     // BuildResult::chromaticMedia). Empty for hand-built scenes and for every grey-medium scene. LAST, like the field above.
-    std::function<std::vector<std::shared_ptr<constant_medium>>()> build_shape_media;
+    std::function<std::vector<std::shared_ptr<event_medium>>()> build_shape_media;
 
     // A CURATED (not derived from the .pbrt file - see the comment below on
     // why not) flat multiplier auto-applied to the Render Options tab's
@@ -416,7 +416,7 @@ namespace pbrt_scene_registry {
             pbrt_cpu::BuildResult& b = ensure();
             return b.cameraMedium;
         };
-        s.build_shape_media = [ensure]() -> std::vector<std::shared_ptr<constant_medium>> {
+        s.build_shape_media = [ensure]() -> std::vector<std::shared_ptr<event_medium>> {
             pbrt_cpu::BuildResult& b = ensure();
             return b.chromaticMedia;
         };

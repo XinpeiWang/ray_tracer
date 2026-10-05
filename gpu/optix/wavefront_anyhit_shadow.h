@@ -238,27 +238,36 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 			float tt = segMin;
 			const int voxelCount = nx * ny * nz;
 			if (isRgb) {
-				const float* rData = wf_params.rgbGridData + dataOffset;
-				const float* gData = rData + voxelCount;
-				const float* bData = gData + voxelCount;
-				for (int iter = 0; iter < 128 && sp->transmittance > 0.0f; ++iter) {
+				// Per-wavelength ratio tracking into sp->tr (see __raygen__wf_shadow, which scales the item's Ld by it): sigma_a + sigma_s
+				// per hero wavelength via wf_rgb_wavelength_basis, pbrt's default sigma_a = 1 when the scene gave none. The scalar
+				// `transmittance` stays for the grey heterogeneous kinds.
+				const GpuRgbGridMedium& rg = wf_params.rgbGridMediums[idx];
+				const float* sRData = wf_params.rgbGridData + dataOffset;
+				const float* sGData = sRData + voxelCount;
+				const float* sBData = sGData + voxelCount;
+				const bool hasSa = rg.saDataOffset >= 0;
+				const float* aRData = hasSa ? wf_params.rgbGridData + rg.saDataOffset : nullptr;
+				const float* aGData = hasSa ? aRData + voxelCount : nullptr;
+				const float* aBData = hasSa ? aGData + voxelCount : nullptr;
+				sp->chromatic = 1;
+				for (int iter = 0; iter < 128; ++iter) {
+					bool alive = false;
+					for (int i = 0; i < kWFNWavelengths; ++i) if (sp->tr[i] > 0.0f) alive = true;
+					if (!alive) break;
 					float dt = -logf(fmaxf(1e-8f, 1.0f - wf_rand(sp->seed))) / sigma_maj;
 					tt += dt;
 					if (tt >= segMax) break;
 					float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
-					float dr = gpu_rgb_grid_trilinear(rData, nx, ny, nz, px, py, pz);
-					float dg = gpu_rgb_grid_trilinear(gData, nx, ny, nz, px, py, pz);
-					float db = gpu_rgb_grid_trilinear(bData, nx, ny, nz, px, py, pz);
-					float sr = dr * sigma_scale, sg = dg * sigma_scale, sb = db * sigma_scale;
-					// Achromatic max-channel simplification, matching the
-					// primary path's own accept/reject probability exactly
-					// (wavefront_kernels_materials.cu) - keeps transmittance a
-					// single scalar and shadow/primary-ray results consistent.
-					float sigma_t_local = fmaxf(sr, fmaxf(sg, sb));
-					// Clamped - see the CloudMedium branch's identical comment
-					// above for why (sigma_maj is a coarse global majorant, not
-					// a tight per-point bound).
-					sp->transmittance *= fmaxf(0.0f, 1.0f - sigma_t_local / sigma_maj);
+					const float ssRgb[3] = { gpu_rgb_grid_trilinear(sRData, nx, ny, nz, px, py, pz) * sigma_scale,
+					                         gpu_rgb_grid_trilinear(sGData, nx, ny, nz, px, py, pz) * sigma_scale,
+					                         gpu_rgb_grid_trilinear(sBData, nx, ny, nz, px, py, pz) * sigma_scale };
+					const float saRgb[3] = { (hasSa ? gpu_rgb_grid_trilinear(aRData, nx, ny, nz, px, py, pz) : 1.0f) * sigma_scale,
+					                         (hasSa ? gpu_rgb_grid_trilinear(aGData, nx, ny, nz, px, py, pz) : 1.0f) * sigma_scale,
+					                         (hasSa ? gpu_rgb_grid_trilinear(aBData, nx, ny, nz, px, py, pz) : 1.0f) * sigma_scale };
+					float ssN[kWFNWavelengths], saN[kWFNWavelengths];
+					wf_rgb_to_wavelengths(ssRgb, sp->lambda, ssN);
+					wf_rgb_to_wavelengths(saRgb, sp->lambda, saN);
+					heterogeneous_ratio_step<kWFNWavelengths, float>(saN, ssN, sigma_maj, sp->tr);
 				}
 			} else {
 				const float* data = wf_params.gridData + dataOffset;

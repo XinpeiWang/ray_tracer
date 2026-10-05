@@ -33,7 +33,7 @@
 #include "constant_medium.h"  // hg_phase_material
 #include "../shared/rgb_grid_medium.h"
 
-class rgb_grid_medium_hittable : public hittable {
+class rgb_grid_medium_hittable : public hittable, public event_medium {
   public:
     // medium: built with bounds = unit cube (see file comment). phase_g is
     // the HG asymmetry shared by every scatter event (a single scalar, same
@@ -48,9 +48,91 @@ class rgb_grid_medium_hittable : public hittable {
         : grid(medium), phase_g(phase_g), world_min(world_min), world_max(world_max) {
         for (int i = 0; i < 9; ++i) mat_[i] = world_to_medium_mat[i];
         for (int i = 0; i < 3; ++i) translate_[i] = world_to_medium_translate[i];
+        // One phase material for every event of camera::ray_color()'s own sampling (sample_event): the collision's weights ride in the
+        // hit_record (hit_record::has_medium_event), so nothing about this material depends on the point.
+        event_phase_ = std::make_shared<hg_phase_material>(
+            color(1, 1, 1), phase_g, [this](const ray& sr, double t_max) { return shadow_transmittance_impl(sr, t_max); }, color(0, 0, 0));
     }
 
+    // ---- per-channel spectral tracking, sampled by camera::ray_color() (see event_medium) -------------------------------------------
+    //
+    // hit() below is delta tracking with ONE extinction - the brightest channel of sigma_a + sigma_s at the point - and treats every real
+    // collision as a scatter whose albedo is sigma_s / max(sigma_s). That never absorbs: the collision probability counts sigma_a, the
+    // scattered path does not lose it (a grid with pbrt's default sigma_a = 1 and a small sigma_s scatters at nearly full strength where
+    // pbrt absorbs ~97% of the collisions), and a channel with a smaller sigma_t than the brightest is made to absorb instead of passing.
+    //
+    // sample_event() is spectral tracking against the same scalar majorant: at each tentative collision a real event happens with the
+    // probability mean_c(sigma_t_c) / majorant and a null event otherwise, and the weights keep each channel unbiased -
+    //   real: scatter weight sigma_s_c / mean(sigma_t), emission weight sigma_a_c / mean(sigma_t) (absorption ends the path, as it does
+    //         for the homogeneous media: only its emission survives),
+    //   null: the running weight takes (majorant - sigma_t_c) / (majorant - mean(sigma_t)), at most 3 for any channel.
+    // A grey grid reduces to ordinary delta tracking with albedo sigma_s / sigma_t.
+    bool chord(const ray& r, double& t0, double& t1) const override {
+        const double len = r.direction().length();
+        if (!(len > 0.0)) return false;
+        const ray ur(r.origin(), r.direction() / len, r.time());
+        double mox, moy, moz, mdx, mdy, mdz;
+        world_to_medium(ur, mox, moy, moz, mdx, mdy, mdz);
+        Ray3<double> mray(mox, moy, moz, mdx, mdy, mdz);
+        double tMin, tMax;
+        if (!grid.intersect_ray(mray, infinity, tMin, tMax)) return false;
+        if (tMin < 0) tMin = 0;
+        if (tMin >= tMax) return false;
+        t0 = tMin / len;
+        t1 = tMax / len;
+        return true;
+    }
+
+    // Returns false if the ray does not cross the medium before t_surface. Otherwise `collided` says whether a real collision happened
+    // (then rec is a medium-scatter hit at it, carrying that collision's path and emission weights) or not (then `weight` is the product
+    // of the null-collision weights, to multiply onto the path's beta). entry_t: where the ray enters the medium (ray-parameter units).
+    bool sample_event(const ray& r, double t_surface, double& entry_t, bool& collided, hit_record& rec, color& weight) const override {
+        const double len = r.direction().length();
+        if (!(len > 0.0)) return false;
+        const ray ur(r.origin(), r.direction() / len, r.time());
+        double mox, moy, moz, mdx, mdy, mdz;
+        world_to_medium(ur, mox, moy, moz, mdx, mdy, mdz);
+        Ray3<double> mray(mox, moy, moz, mdx, mdy, mdz);
+        const double t_hi = (t_surface >= infinity) ? infinity : t_surface * len;
+        double tMin, tMax;
+        if (!grid.intersect_ray(mray, t_hi, tMin, tMax)) return false;
+        if (tMin < 0) tMin = 0;
+        if (tMin >= tMax) return false;
+        entry_t = tMin / len;
+
+        double w[3] = { 1.0, 1.0, 1.0 };
+        bool real = false;
+        march_segments(mray, tMin, tMax, [&](double tt, double majorant) {
+            double sa[3], ss[3], le[3];
+            grid.sample_point(mox + tt*mdx, moy + tt*mdy, moz + tt*mdz, sa, ss, le);
+            double cw[3], ce[3];
+            if (heterogeneous_tracking_step<3, double>(sa, ss, majorant, random_double(), w, cw, ce)) {
+                rec.t = tt / len;
+                rec.p = ur.at(tt);
+                rec.normal = vec3(1, 0, 0);   // arbitrary (a volume has no surface normal)
+                rec.front_face = true;
+                rec.mat = event_phase_;
+                rec.u = 0.0;
+                rec.v = 0.0;
+                rec.has_medium_event = true;
+                rec.medium_weight = color(cw[0], cw[1], cw[2]);
+                // The grid's own (Lescale-multiplied) emission at this point, weighted by this event's absorption share.
+                rec.medium_emission = color(le[0] * ce[0], le[1] * ce[1], le[2] * ce[2]);
+                real = true;
+                return true;
+            }
+            return false;
+        });
+        collided = real;
+        if (!real) weight = color(w[0], w[1], w[2]);
+        return true;
+    }
+
+    color transmittance_along(const ray& r, double t_max) const override { return shadow_transmittance_impl(r, t_max); }
+
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        // The default path tracer samples this medium itself (sample_event() above); it must not also collide here.
+        if (g_chromatic_media_integrator_managed) return false;
         // Work in world distance: a camera ray's direction is not unit length (it is pixel_sample - origin),
         // and sigma is per world unit, so sampling along the raw parameter made the medium |d| times too thin for
         // primary rays. constant_medium converts by ray_length the same way. rec.t goes back to ray-parameter units.
@@ -229,6 +311,7 @@ class rgb_grid_medium_hittable : public hittable {
     }
 
     RGBGridMediumData<double> grid;
+    shared_ptr<hg_phase_material> event_phase_;
     double phase_g;
     double mat_[9], translate_[3];
     point3 world_min, world_max;

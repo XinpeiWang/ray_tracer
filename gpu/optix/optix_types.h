@@ -918,6 +918,12 @@ struct GpuRgbGridMedium {
 	// "rgb Le" array (matches CPU's Le_grids.has_value()==false) - device
 	// code must check this before reading rgbGridData at leDataOffset.
 	int   leDataOffset;
+	// Real per-voxel "rgb sigma_a" absorption (RGBGridMediumData::sigma_a_grids): a SEPARATE block in the same rgbGridData buffer (R at
+	// saDataOffset, G at +nx*ny*nz, B at +2*(nx*ny*nz)). -1 when the scene gave no "rgb sigma_a" - then, exactly as on the CPU and in
+	// pbrt, sigma_a is the constant sigma_scale * 1 in every channel (NOT zero: an RGB grid that only gives sigma_s is strongly absorbing).
+	// The grid used to be scattering-only on the GPU (absorption silently dropped); both backends now do per-channel spectral tracking with
+	// sigma_a and sigma_s (heterogeneous_tracking_step, src/shared/volume_scattering.h), with sigma_maj bounding max_c(sigma_a + sigma_s).
+	int   saDataOffset;
 	// Matches CPU's RGBGridMediumData::Le_scale / pbrt-v4 "Lescale" - applied
 	// at sample time, NOT baked into the stored grid values (mirrors
 	// dataOffset's own sigma_scale being a separate multiplier for the same

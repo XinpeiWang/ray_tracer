@@ -277,7 +277,7 @@ class camera {
     // samples these itself (constant_medium::sample_event()) against the nearest surface, because the single-extinction free-flight
     // that constant_medium::hit() does cannot represent a medium that is thicker in one channel than another. Empty (the default) for
     // every grey-medium scene, and ignored by ray_color_spectral() and the other integrators.
-    std::vector<shared_ptr<constant_medium>> shape_media;
+    std::vector<shared_ptr<event_medium>> shape_media;
 
     double vfov     = 90;              // Vertical view angle (field of view)
     point3 lookfrom = point3(0,0,0);   // Point camera is looking from
@@ -1685,10 +1685,10 @@ class camera {
             // Per-channel-extinction shape media: one free-flight event per medium over its chord up to the nearest surface, in
             // order of entry (a collision ends the walk and replaces rec; a pass multiplies beta by its importance weight).
             if (!shape_media.empty()) {
-                const constant_medium* order_buf[8];
+                const event_medium* order_buf[8];
                 std::size_t n = 0;
-                std::vector<const constant_medium*> order_heap;
-                const constant_medium** order = order_buf;
+                std::vector<const event_medium*> order_heap;
+                const event_medium** order = order_buf;
                 if (shape_media.size() > 8) {
                     order_heap.resize(shape_media.size());
                     order = order_heap.data();

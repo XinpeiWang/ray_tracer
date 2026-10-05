@@ -57,11 +57,13 @@ __device__ __forceinline__ void shadow_ratio_track_heterogeneous(
 	if (idx < 0 || (unsigned int)idx >= count) return;
 	const float* mat9; const float* translate3;
 	int nx, ny, nz, dataOffset; float sigma_maj, sigma_scale;
+	int saOffset = -1;
 	if (isRgb) {
 		const GpuRgbGridMedium& g = params.rgbGridMediums[idx];
 		mat9 = g.mat; translate3 = g.translate;
 		nx = g.nx; ny = g.ny; nz = g.nz; dataOffset = g.dataOffset;
 		sigma_maj = g.sigma_maj; sigma_scale = g.sigma_scale;
+		saOffset = g.saDataOffset;
 	} else {
 		const GpuGridMedium& g = params.gridMediums[idx];
 		mat9 = g.mat; translate3 = g.translate;
@@ -101,19 +103,30 @@ __device__ __forceinline__ void shadow_ratio_track_heterogeneous(
 	float tt = segMin;
 	const int voxelCount = nx * ny * nz;
 	if (isRgb) {
-		const float* rData = params.rgbGridData + dataOffset;
-		const float* gData = rData + voxelCount;
-		const float* bData = gData + voxelCount;
-		for (int iter = 0; iter < 128 && st->transmittance > 0.0f; ++iter) {
+		// Per-channel ratio tracking into the running RGB transmittance (st->rgb), with sigma_a + sigma_s per channel and pbrt's default
+		// sigma_a = 1 when the scene gave none - see heterogeneous_ratio_step (src/shared/volume_scattering.h). The scalar `transmittance`
+		// stays for the grey heterogeneous kinds.
+		const float* sRData = params.rgbGridData + dataOffset;
+		const float* sGData = sRData + voxelCount;
+		const float* sBData = sGData + voxelCount;
+		const bool hasSa = saOffset >= 0;
+		const float* aRData = hasSa ? params.rgbGridData + saOffset : nullptr;
+		const float* aGData = hasSa ? aRData + voxelCount : nullptr;
+		const float* aBData = hasSa ? aGData + voxelCount : nullptr;
+		for (int iter = 0; iter < 128 && (st->rgb.x > 0.0f || st->rgb.y > 0.0f || st->rgb.z > 0.0f); ++iter) {
 			float dt = -logf(fmaxf(1e-8f, 1.0f - random_float(st->seed))) / sigma_maj;
 			tt += dt;
 			if (tt >= segMax) break;
 			float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
-			float dr = gpu_rgb_grid_trilinear(rData, nx, ny, nz, px, py, pz);
-			float dg = gpu_rgb_grid_trilinear(gData, nx, ny, nz, px, py, pz);
-			float db = gpu_rgb_grid_trilinear(bData, nx, ny, nz, px, py, pz);
-			float sigma_t_local = fmaxf(dr * sigma_scale, fmaxf(dg * sigma_scale, db * sigma_scale));
-			st->transmittance *= fmaxf(0.0f, 1.0f - sigma_t_local / sigma_maj);
+			const float ss[3] = { gpu_rgb_grid_trilinear(sRData, nx, ny, nz, px, py, pz) * sigma_scale,
+			                      gpu_rgb_grid_trilinear(sGData, nx, ny, nz, px, py, pz) * sigma_scale,
+			                      gpu_rgb_grid_trilinear(sBData, nx, ny, nz, px, py, pz) * sigma_scale };
+			const float sa[3] = { (hasSa ? gpu_rgb_grid_trilinear(aRData, nx, ny, nz, px, py, pz) : 1.0f) * sigma_scale,
+			                      (hasSa ? gpu_rgb_grid_trilinear(aGData, nx, ny, nz, px, py, pz) : 1.0f) * sigma_scale,
+			                      (hasSa ? gpu_rgb_grid_trilinear(aBData, nx, ny, nz, px, py, pz) : 1.0f) * sigma_scale };
+			float tr3[3] = { st->rgb.x, st->rgb.y, st->rgb.z };
+			heterogeneous_ratio_step<3, float>(sa, ss, sigma_maj, tr3);
+			st->rgb = make_float3(tr3[0], tr3[1], tr3[2]);
 		}
 	} else {
 		const float* data = params.gridData + dataOffset;
@@ -254,7 +267,7 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 		mat.type == MaterialType::GridMedium) {
 		ShadowRayState* st = shadow_state_from_payload();
 		shadow_ratio_track_heterogeneous(mat, st);
-		if (st->transmittance <= 0.0f) {
+		if (st->transmittance <= 0.0f || (st->rgb.x <= 0.0f && st->rgb.y <= 0.0f && st->rgb.z <= 0.0f)) {
 			st->occluded = 1;  // fully attenuated - treat as occluded
 			optixTerminateRay();
 			return;

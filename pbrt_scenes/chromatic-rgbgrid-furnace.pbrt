@@ -1,0 +1,33 @@
+# chromatic-rgbgrid-furnace.pbrt -- a 2x2x2 RGB voxel grid that scatters without absorbing, different per colour, under a uniform sky.
+#
+# sigma_s = (0.2, 0.35, 0.5) in every voxel, sigma_a = 0, so albedo is 1 in every channel and the grid is invisible against the sky: every channel
+# must read 1.0. The earlier model - extinction of the brightest channel, albedo sigma_s / max(sigma_s) - made the lesser channels absorb the
+# difference: red read 0.60 and green 0.77 on the CPU and both GPU backends. Run per channel it also catches a colour cast.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 14 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+AttributeBegin
+  Translate -1 -1 -1
+  Scale 2 2 2
+  MakeNamedMedium "grid" "string type" [ "rgbgrid" ]
+    "integer nx" [ 2 ] "integer ny" [ 2 ] "integer nz" [ 2 ]
+    "float g" [ 0.3 ]
+    "rgb sigma_a" [ 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 0 ]
+    "rgb sigma_s" [ 0.2 0.35 0.5 0.2 0.35 0.5 0.2 0.35 0.5 0.2 0.35 0.5 0.2 0.35 0.5 0.2 0.35 0.5 0.2 0.35 0.5 0.2 0.35 0.5 ]
+AttributeEnd
+
+AttributeBegin
+  Material "interface"
+  MediumInterface "grid" ""
+  Shape "sphere" "float radius" [ 1.8 ]
+AttributeEnd

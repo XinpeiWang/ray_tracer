@@ -1089,47 +1089,46 @@ extern "C" __global__ void evaluate_materials(
 
 		bool did_scatter = false;
 		float medium_t = 0.0f;
+		// Running product of the null-collision weights: the path weight of a ray that gets through without a real collision.
+		SS grid_w(1.f);
 		if (has_seg && grid.sigma_maj > 0.0f) {
 			if (segMin < 0.0f) segMin = 0.0f;
 			float tt = segMin;
 			const int voxelCount = grid.nx * grid.ny * grid.nz;
-			const float* rData = rgbGridData + grid.dataOffset;
-			const float* gData = rData + voxelCount;
-			const float* bData = gData + voxelCount;
+			const float* sRData = rgbGridData + grid.dataOffset;
+			const float* sGData = sRData + voxelCount;
+			const float* sBData = sGData + voxelCount;
+			const bool hasSa = grid.saDataOffset >= 0;
+			const float* aRData = hasSa ? rgbGridData + grid.saDataOffset : nullptr;
+			const float* aGData = hasSa ? aRData + voxelCount : nullptr;
+			const float* aBData = hasSa ? aGData + voxelCount : nullptr;
 			for (int iter = 0; iter < 128 && !did_scatter; ++iter) {
 				float dt = -logf(fmaxf(1e-8f, 1.0f - wf_rand(seed))) / grid.sigma_maj;
 				tt += dt;
 				if (tt >= segMax) break;
 				float px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
-				float dr = gpu_rgb_grid_trilinear(rData, grid.nx, grid.ny, grid.nz, px, py, pz);
-				float dg = gpu_rgb_grid_trilinear(gData, grid.nx, grid.ny, grid.nz, px, py, pz);
-				float db = gpu_rgb_grid_trilinear(bData, grid.nx, grid.ny, grid.nz, px, py, pz);
-				float sr = dr * grid.sigma_scale, sg = dg * grid.sigma_scale, sb = db * grid.sigma_scale;
-				float sigma_t_local = fmaxf(sr, fmaxf(sg, sb));
-				if (wf_rand(seed) < sigma_t_local / grid.sigma_maj) {
+				// Per-voxel RGB sigma_s / sigma_a at the tentative point (an absent sigma_a grid is pbrt's default 1), spread over the hero
+				// wavelengths with wf_rgb_wavelength_basis, then one step of per-wavelength spectral tracking (heterogeneous_tracking_step).
+				const float ssRgb[3] = { gpu_rgb_grid_trilinear(sRData, grid.nx, grid.ny, grid.nz, px, py, pz) * grid.sigma_scale,
+				                         gpu_rgb_grid_trilinear(sGData, grid.nx, grid.ny, grid.nz, px, py, pz) * grid.sigma_scale,
+				                         gpu_rgb_grid_trilinear(sBData, grid.nx, grid.ny, grid.nz, px, py, pz) * grid.sigma_scale };
+				const float saRgb[3] = { (hasSa ? gpu_rgb_grid_trilinear(aRData, grid.nx, grid.ny, grid.nz, px, py, pz) : 1.0f) * grid.sigma_scale,
+				                         (hasSa ? gpu_rgb_grid_trilinear(aGData, grid.nx, grid.ny, grid.nz, px, py, pz) : 1.0f) * grid.sigma_scale,
+				                         (hasSa ? gpu_rgb_grid_trilinear(aBData, grid.nx, grid.ny, grid.nz, px, py, pz) : 1.0f) * grid.sigma_scale };
+				float ssN[kWFNWavelengths], saN[kWFNWavelengths], wN[kWFNWavelengths], cwN[kWFNWavelengths], ceN[kWFNWavelengths];
+				wf_rgb_to_wavelengths(ssRgb, swl.lambda, ssN);
+				wf_rgb_to_wavelengths(saRgb, swl.lambda, saN);
+				for (int i = 0; i < kWFNWavelengths; ++i) wN[i] = grid_w[i];
+				const float u_real = wf_rand(seed);
+				if (heterogeneous_tracking_step<kWFNWavelengths, float>(saN, ssN, grid.sigma_maj, u_real, wN, cwN, ceN)) {
 					did_scatter = true;
 					medium_t      = tt;
-					// Real NEE+MIS at the phase-function scatter event - see
-					// MaterialType::Medium's identical fix above.
+					// Real NEE+MIS at the phase-function scatter event - see MaterialType::Medium's identical fix above.
 					scattered_dir = wf_sample_phase_scatter(unit_dir, grid.phase_g, seed, phaseWo, phaseG, brdf_pdf_override);
-					float maxc = fmaxf(sr, fmaxf(sg, fmaxf(sb, 1e-6f)));
-					attenuation = albedoSpectrum(make_float3(sr/maxc, sg/maxc, sb/maxc));
-					// Real per-voxel "rgb Le" - emits the FULL Le on every
-					// accepted collision (weight 1), not the sigma_a/sigma_t-
-					// weighted fraction CPU's RGBGridMediumData::sample_point()
-					// uses, unlike MaterialType::Medium's own build-time-baked
-					// mat.medium_emission above (an exact weighted constant,
-					// since GPU has no sigma_a grid here to weight by at all -
-					// see GpuRgbGridMedium::leDataOffset's own comment,
-					// optix_types.h, for the full "why" and its brightness-
-					// vs-CPU consequence). Added directly to radiance here
-					// (this backend's own per-case convention, see
-					// MaterialType::Medium's identical `radiance = radiance +
-					// throughput * ...` above) rather than threaded through to
-					// a later NEE step, since wavefront's NEE/shadow-ray pass
-					// for this hit queue happens in a separate kernel
-					// (wf_finish_material_scatter) that has no per-voxel grid
-					// data to re-sample this point from.
+					for (int i = 0; i < kWFNWavelengths; ++i) attenuation[i] = cwN[i];
+					// Real per-voxel "rgb Le" at this collision, weighted by the event's absorption share as on the CPU
+					// (Le_c * w_c * sigma_a_c / mean(sigma_t)); added directly to radiance (this backend's per-case convention, see
+					// MaterialType::Medium above) since wavefront's NEE for this hit happens in a later kernel with no grid data.
 					if (grid.leDataOffset >= 0) {
 						const float* leRData = rgbGridData + grid.leDataOffset;
 						const float* leGData = leRData + voxelCount;
@@ -1138,9 +1137,14 @@ extern "C" __global__ void evaluate_materials(
 						float leg = gpu_rgb_grid_trilinear(leGData, grid.nx, grid.ny, grid.nz, px, py, pz);
 						float leb = gpu_rgb_grid_trilinear(leBData, grid.nx, grid.ny, grid.nz, px, py, pz);
 						float3 selfEmission = make_float3(ler, leg, leb) * grid.Le_scale;
-						if (selfEmission.x > 0.0f || selfEmission.y > 0.0f || selfEmission.z > 0.0f)
-							radiance = radiance + throughput * wf_lift_rgb_to_spectrum(selfEmission, swl, /*isIlluminant=*/true);
+						if (selfEmission.x > 0.0f || selfEmission.y > 0.0f || selfEmission.z > 0.0f) {
+							SS ceSpec(0.f);
+							for (int i = 0; i < kWFNWavelengths; ++i) ceSpec[i] = ceN[i];
+							radiance = radiance + throughput * (wf_lift_rgb_to_spectrum(selfEmission, swl, /*isIlluminant=*/true) * ceSpec);
+						}
 					}
+				} else {
+					for (int i = 0; i < kWFNWavelengths; ++i) grid_w[i] = wN[i];
 				}
 			}
 			if (!did_scatter) medium_t = segMax;
@@ -1152,7 +1156,7 @@ extern "C" __global__ void evaluate_materials(
 			is_specular = false;
 		} else {
 			scattered_dir = unit_dir;
-			attenuation   = SS(1.f);
+			attenuation   = grid_w;   // pass weight of the null collisions
 			is_specular   = true;  // no interaction - a free/non-scattering pass-through
 			// A free crossing, like MaterialType::Interface: flag it so the last real vertex's MIS state (prev BSDF pdf,
 			// specular flag) survives it instead of being reset as if a specular bounce had happened.
