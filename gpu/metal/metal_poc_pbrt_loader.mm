@@ -358,15 +358,13 @@ void MetalPocApp::loadPbrtScene() {
                 return mat;
             }
             case pbrt_flatten::MaterialKind::CoatedConductor: {
-                // Approx tier (docs/PBRT_SUPPORT.md's own note, matching
-                // both CPU's pbrt_cpu_builder.h and GPU-OptiX's own
-                // pbrt_gpu_builder_materials.h): materialType 4 (GGX
-                // conductor) - the "coat" itself (a separate rough
-                // dielectric layer over the metal base) isn't modelled at
-                // all, only the base conductor's own eta/k/roughness -
-                // the same simplification both other backends already
-                // accept for this kind, not a NEW approximation invented
-                // here. A named metal spectrum or explicit "eta"/"k" (m.
+                // materialType 20: pbrt-v4's real LayeredBxDF (coat dielectric over the
+                // conductor, random-walk Sample_f) via metal_poc_layered_bxdf.metal - verified
+                // against CPU on B5/B7. `ior` = the COAT's IOR, `roughness` = ONE alpha
+                // serving both interfaces (the host has a single alpha per material), so a
+                // scene giving the coat and the base DIFFERENT roughness (pbrt
+                // conductor.roughness != interface.roughness) is approximated by the coat's.
+                // A named metal spectrum or explicit "eta"/"k" (m.
                 // hasConductorPreset) is used directly, already resolved
                 // by pbrt_flatten.h identically to plain Conductor above;
                 // otherwise `color` (the scene's own "reflectance", a
@@ -376,9 +374,10 @@ void MetalPocApp::loadPbrtScene() {
                 // sqrt(max(1e-4, 1-r)), per channel) - not re-derived
                 // independently, matching a real precedent already
                 // established for exactly this "nothing given" case.
-                const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
-                TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
-                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
+                const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness_u) : m.roughness_u);
+                // pbrt-v4 LayeredBxDF coated conductor (materialType 20): `ior` = coat IOR, `roughness` = alpha.
+                TriangleMaterial mat{color, /*materialType=*/20u, /*ior=*/(float)m.ior,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/alpha};
                 setConductorOptics(mat, m);
                 return mat;
             }
@@ -412,15 +411,11 @@ void MetalPocApp::loadPbrtScene() {
                 return mat;
             }
             case pbrt_flatten::MaterialKind::CoatedDiffuse: {
-                // Approx tier (docs/PBRT_SUPPORT.md's own convention -
-                // CPU/OptiX render this Full, a real stochastic layered
-                // coat-over-Lambertian): materialType 8 (clearcoat) is
-                // this POC's own simplified SINGLE-bounce smooth-
-                // dielectric-coat-over-Lambertian, with a fixed
-                // kClearcoatEta=1.5 shader-side constant - the scene's
-                // own "ior"/"roughness" (a rough, scene-specified coat)
-                // are silently NOT read here, unlike materialType 8's
-                // hardcoded-room use, which never varies them either.
+                // materialType 19: pbrt-v4's real LayeredBxDF (coat dielectric over a
+                // Lambertian base, random-walk Sample_f) via metal_poc_layered_bxdf.metal -
+                // verified against CPU on B5. `ior` = the coat's IOR and `roughness` = its
+                // alpha, both read from the scene. (This used to be materialType 8, a
+                // single-bounce smooth clearcoat with a fixed IOR that ignored both.)
                 // Still a real, honest improvement over the gray-
                 // Lambertian default fallback below: the correct diffuse
                 // albedo and a generic coat sheen both survive, just not
@@ -460,8 +455,13 @@ void MetalPocApp::loadPbrtScene() {
                                                  PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.textureScale};
                     }
                 }
-                return TriangleMaterial{color, /*materialType=*/8u, /*ior=*/1.0f,
-                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                // pbrt-v4 LayeredBxDF coated diffuse (materialType 19): `ior` = coat IOR, `roughness` = alpha.
+                {
+                    const double coatRough = m.roughness_u;
+                    const float coatAlpha = (float)(m.remapRoughness ? std::sqrt(coatRough) : coatRough);
+                    return TriangleMaterial{color, /*materialType=*/19u, /*ior=*/(float)m.ior,
+                                             PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/coatAlpha};
+                }
             }
             case pbrt_flatten::MaterialKind::Mix: {
                 // Approx tier: CPU/OptiX both do a REAL per-shading-point

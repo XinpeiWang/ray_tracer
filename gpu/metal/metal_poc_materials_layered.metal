@@ -509,164 +509,39 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
     return true;
 }
 
-// CoatedDiffuseBxDF (pbrt-v4) - a rough dielectric coat (GGX, real IOR)
-// over a Lambertian base, the real physical model behind "lacquered
-// wood"/"coated plastic": light either specularly reflects straight off
-// the coat's own top surface, or transmits through, bounces around
-// (possibly many times) between the coat's underside and the diffuse
-// base below, and eventually re-exits through the top - pbrt-v4's own
-// LayeredBxDF, a genuine stochastic random walk with NO closed-form
-// BSDF value (unlike every earlier material in this file). This port
-// deliberately transliterates the ALREADY-SHIPPED, ALREADY-VERIFIED
-// OptiX GPU reference (gpu/optix/optix_device_helpers.h's own
-// MaterialType::CoatedDiffuse case) rather than re-deriving from CPU's
-// own src/shared/bxdfs_layered.h random walk from scratch - OptiX
-// already worked out every hard design question (bounce budget, which
-// Fresnel convention to use where, how to avoid the "one bounce then
-// give up" darkness bug) and left comments explaining each one; this
-// keeps that exact, tested shape rather than risking a fresh derivation.
+// CoatedDiffuseBxDF (pbrt-v4) - a dielectric coat (real IOR, GGX roughness, smooth by default) over a Lambertian base, the
+// physical model behind "lacquered wood"/"coated plastic": pbrt-v4's LayeredBxDF, a stochastic random walk with no closed-form
+// BSDF value. The walk itself (Sample_f, f(), PDF()) lives in metal_poc_layered_bxdf.metal, a port of src/shared/bxdfs_layered.h;
+// this file only builds the layers and wires the three pieces into shadeCoatedDiffuse() the way pbrt integrates them:
+//   - the continuation direction and its weight come from the walk's own sample (layeredSample), a smooth coat's mirror
+//     reflection being a specular sample (no MIS);
+//   - the MIS density of a non-specular sample, and of each light sample, is pbrt's PDF() (layeredPdf);
+//   - light samples use the stochastic f() (layeredF), at every vertex, whether or not the walk then succeeds.
 //
-// TWO DELIBERATELY DIFFERENT Fresnel conventions, matching OptiX's own
-// real (not internally unified) behavior exactly:
-//   - The CONTINUATION-ray sampler below (`shadeCoatedDiffuse`'s own
-//     diffuse-escape loop) uses `frDielectric(cosOut, 1.0/eta)` (coat-
-//     to-air, inverted) for its exit test - OptiX's own custom,
-//     simplified per-launch bounce loop (NOT calling CPU's own
-//     `layered_sample_local`), independently written and independently
-//     tuned until it stopped rendering too dark.
-//   - `layeredCoatedDiffuseF()` below (the stochastic NEE/MIS `f()`
-//     value, called for real light sampling) uses `frDielectric(cos,
-//     eta)` (uninverted) throughout, matching `src/shared/
-//     bxdfs_layered.h`'s own `layered_f()` byte-for-byte - the function
-//     OptiX's own shading code calls VERBATIM (it's `CPU_GPU`-tagged,
-//     compiled unchanged for CUDA), not reimplemented.
-// Unifying these into one "consistent" convention would be UNFAITHFUL
-// to what OptiX's own already-verified code actually runs - not a bug
-// to fix, two genuinely different code paths in the reference itself.
-//
-// No medium scattering (CoatedDiffuseBxDF never sets one - `medium_
-// albedo` is always 0 in both CPU's and OptiX's own construction), so
-// that whole branch of the shared CPU random walk is omitted here
-// entirely, matching OptiX's own identical omission (its own comment:
-// "medium scattering omitted - coateddiffuse never sets a scattering
-// medium").
-//
-// `mat.color` = Lambertian base albedo, `mat.ior` = coat's real
-// dielectric IOR, `mat.roughness` = PRECOMPUTED GGX alpha (host-side
-// `RoughnessToAlpha`, not squared in-shader - see
-// buildCornellCoatedDiffuse()'s own comment, metal_poc.mm).
+// `mat.color` = Lambertian base albedo, `mat.ior` = coat's real dielectric IOR, `mat.roughness` = PRECOMPUTED GGX alpha
+// (host-side `RoughnessToAlpha`, not squared in-shader - see buildCornellCoatedDiffuse()'s own comment, metal_poc.mm).
 
-// Stochastic BSDF value at an arbitrary queried direction (wiLocal
-// toward the light, woLocal toward the camera, both already in the
-// hit's own local shading frame, z-up) - a direct port of
-// `layered_detail::layered_f()` (src/shared/bxdfs_layered.h), medium-
-// free, `nSamples` folded to 1 (this scene's own default, matching
-// every call site in this codebase). Consumes `rngState` directly
-// (this file's own single-stream RNG convention) rather than a
-// separate PCG32 sub-stream the way the CPU/OptiX reference does -
-// Monte Carlo correctness only needs valid uniform draws, not a
-// bitwise-identical sequence to CPU's own.
 inline float3 layeredCoatedDiffuseF(float3 wiLocal, float3 woLocal, float eta, float alpha,
                                      float3 albedo, thread uint& rngState) {
-    if (wiLocal.z <= 0.0 || woLocal.z <= 0.0) return float3(0.0);
-    float3 result = float3(0.0);
-
-    // Zero-bounce term: direct GGX reflection off the coat's own top
-    // surface (no penetration at all) - matches the entrance-reflect
-    // branch of the walk below exactly (standard GGX reflection shape
-    // times FrDielectric at the wi/wo half-vector), deterministic, not
-    // part of the stochastic average.
-    {
-        float3 h = wiLocal + woLocal;
-        float hlen = length(h);
-        if (hlen > 1e-8) {
-            h /= hlen;
-            float D = ggxD(h, alpha, alpha);
-            float G = ggxG(woLocal, wiLocal, alpha, alpha);
-            float cosWiH = dot(wiLocal, h);
-            float F0 = frDielectric(cosWiH, eta);
-            float val = D * G * F0 / max(4.0 * wiLocal.z * woLocal.z, 1e-8);
-            result = float3(val);
-        }
-    }
-
-    const int kMaxDepth = 10;
-    const float kThickness = 0.01;
-
-    float3 wm = sampleGGXVNDF(wiLocal, alpha, alpha, rngState);
-    float cosI = dot(wiLocal, wm);
-    float Fin = frDielectric(cosI, eta);
-    float3 w = 2.0 * cosI * wm - wiLocal;
-    w.z = -abs(w.z);
-    if (w.z == 0.0) return result;
-
-    float3 beta = float3(1.0 - Fin);
-    float3 accum = float3(0.0);
-
-    for (int depth = 0; depth < kMaxDepth; ++depth) {
-        if (depth > 3) {
-            float rrBeta = max(beta.x, max(beta.y, beta.z));
-            if (rrBeta < 0.25) {
-                float q = max(0.0, 1.0 - rrBeta);
-                if (randFloat(rngState) < q) break;
-                beta /= max(1.0 - q, 1e-6);
-            }
-        }
-
-        // Beer-Lambert transmittance through the coat's own thickness
-        // (no medium scattering - see this function's own header
-        // comment) - advances to whichever interface `w` is heading
-        // toward.
-        beta *= exp(-kThickness / max(abs(w.z), 1e-6));
-        bool atBottom = (w.z < 0.0);
-
-        if (atBottom) {
-            // Bottom-interface Lambertian bounce - always leaves `w`
-            // pointing back upward (cosine-sampled about the local +z).
-            w = cosineSampleHemisphere(float3(0.0, 0.0, 1.0), rngState);
-            beta *= albedo;
-        } else {
-            // At the top interface from inside: connect toward wo using
-            // a plain GGX reflection half-vector between the walk's
-            // current direction and wo - the only exit point this
-            // reflective BSDF has.
-            float3 h2 = w + woLocal;
-            float hlen2 = length(h2);
-            if (hlen2 > 1e-8) {
-                h2 /= hlen2;
-                float D2 = ggxD(h2, alpha, alpha);
-                float G2 = ggxG(woLocal, w, alpha, alpha);
-                float cosWH = dot(w, h2);
-                float Fexit = frDielectric(cosWH, eta);
-                float shape = D2 * G2 / max(4.0 * w.z * woLocal.z, 1e-8);
-                accum += beta * (shape * (1.0 - Fexit)) * woLocal.z;
-            }
-
-            // Continue the walk: deterministic internal reflection,
-            // weighted by the actual reflectance (the transmission/exit
-            // possibility was already accounted for by the connection
-            // above).
-            float3 wm2 = sampleGGXVNDF(w, alpha, alpha, rngState);
-            float cos2 = dot(w, wm2);
-            float Fout = frDielectric(cos2, eta);
-            float3 r2 = 2.0 * cos2 * wm2 - w;
-            r2.z = -abs(r2.z);
-            w = r2;
-            beta *= Fout;
-        }
-    }
-
-    result += accum;
-    return result;
+    LayerTop top; LayerBottom bottom;
+    layeredCoatedDiffuseParts(eta, alpha, albedo, top, bottom);
+    return layeredF(top, bottom, kLayerThickness, woLocal, wiLocal, rngState);
 }
 
-// GGX VNDF reflection pdf (same `D*G1/(4*NdotO)` shape already used by
-// materialType 4/9's own NEE weight, section ~104) - reused here as the
-// cheap, shape-matched MIS proxy pdf for this material's own unbounded-
-// depth random walk, which has no real closed-form pdf at all. Any
-// valid pdf keeps MIS/NEE unbiased (only variance is affected) - the
-// same choice OptiX's own `ggx_vndf_reflection_pdf` already makes for
-// this exact material.
+inline float layeredCoatedDiffusePdf(float3 woLocal, float3 wiLocal, float eta, float alpha, float3 albedo) {
+    LayerTop top; LayerBottom bottom;
+    layeredCoatedDiffuseParts(eta, alpha, albedo, top, bottom);
+    return layeredPdf(top, bottom, woLocal, wiLocal);
+}
+
+inline LayerSample layeredCoatedDiffuseSample(float3 woLocal, float eta, float alpha, float3 albedo, thread uint& rngState) {
+    LayerTop top; LayerBottom bottom;
+    layeredCoatedDiffuseParts(eta, alpha, albedo, top, bottom);
+    return layeredSample(top, bottom, kLayerThickness, woLocal, rngState);
+}
+
+// GGX VNDF reflection pdf of the coat's own top surface - the MIS proxy the shaders used before the pbrt port. No longer used
+// by shadeCoatedDiffuse()/shadeCoatedConductor() (layeredPdf replaced it); kept because the shader tests call it.
 inline float coatedDiffuseProxyPdf(float3 woLocal, float3 wiLocal, float alpha) {
     float3 h = woLocal + wiLocal;
     float hlen = length(h);
@@ -703,8 +578,7 @@ inline bool shadeCoatedDiffuse(TriangleMaterial mat, float3 hitPoint, float3 fac
                             thread float3& rayDir, thread float3& rayOrigin,
                             thread float3& throughput, thread float3& radiance,
                             thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState) {
-    float alpha = max(mat.roughness, 0.0001);
-    bool effectivelySmooth = alpha < 0.001;  // TrowbridgeReitz::EffectivelySmooth() threshold
+    float alpha = max(mat.roughness, 0.0);
 
     float3 tangent, bitangent;
     buildAnisotropicOnb(facingNormal, tangent, bitangent);
@@ -712,7 +586,8 @@ inline bool shadeCoatedDiffuse(TriangleMaterial mat, float3 hitPoint, float3 fac
     float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
     woLocal.z = max(woLocal.z, 0.0001);
 
-    if (!effectivelySmooth && all(mat.emission == float3(0.0))) {
+    // A Lambertian base always scatters diffusely: never a delta BSDF, so light samples are always taken (pbrt Flags()).
+    if (all(mat.emission == float3(0.0))) {
         LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - hitPoint;
         float distSq = dot(toLight, toLight);
@@ -732,7 +607,7 @@ inline bool shadeCoatedDiffuse(TriangleMaterial mat, float3 hitPoint, float3 fac
                 float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
                 float3 f = layeredCoatedDiffuseF(wiLocal, woLocal, mat.ior, alpha, float3(mat.color), rngState);
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
-                float pdfBsdf = coatedDiffuseProxyPdf(woLocal, wiLocal, alpha);
+                float pdfBsdf = layeredCoatedDiffusePdf(woLocal, wiLocal, mat.ior, alpha, float3(mat.color));
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -851,90 +726,25 @@ inline bool shadeCoatedDiffuse(TriangleMaterial mat, float3 hitPoint, float3 fac
         }
     }
 
-    // Continuation ray: entrance test at the coat's own top surface,
-    // then either a specular GGX reflection (probability F_in) or a
-    // transmit-and-random-walk-through-the-base escape (probability
-    // 1-F_in) - transliterated directly from OptiX's own already-
-    // verified `MaterialType::CoatedDiffuse` bounce loop (see this
-    // function's own header comment on why NOT CPU's
-    // `layered_sample_local` instead).
-    float3 wm = sampleGGXVNDF(woLocal, alpha, alpha, rngState);
-    float cosI = dot(woLocal, wm);
-    float Fin = frDielectric(cosI, mat.ior);
-    float3 newDirLocal;
-    float3 beta;
-    if (randFloat(rngState) < Fin) {
-        float3 reflLocal = 2.0 * cosI * wm - woLocal;
-        if (reflLocal.z <= 0.0) return false;
-        float G1 = ggxG1(woLocal, alpha, alpha);
-        float G = ggxG(reflLocal, woLocal, alpha, alpha);
-        float w = (G1 > 1e-8) ? G / G1 : 0.0;
-        float fw = Fin * w;
-        beta = float3(fw, fw, fw);
-        newDirLocal = reflLocal;
-    } else {
-        constexpr int kMaxCoatBounces = 8;
-        float3 b = float3(1.0 - Fin);
-        float3 diffDirLocal = float3(0.0, 0.0, 1.0);
-        bool escaped = false;
-        for (int cb = 0; cb < kMaxCoatBounces; ++cb) {
-            diffDirLocal = cosineSampleHemisphere(float3(0.0, 0.0, 1.0), rngState);
-            b *= float3(mat.color);
-            float3 wm2 = sampleGGXVNDF(diffDirLocal, alpha, alpha, rngState);
-            float cosOut = dot(diffDirLocal, wm2);
-            // Coat-to-air exit test - inverted eta, matching OptiX's own
-            // sample loop exactly (see this function's own header
-            // comment on the two deliberately different conventions).
-            float Fout = frDielectric(cosOut, 1.0 / mat.ior);
-            if (randFloat(rngState) < Fout) continue;  // TIR: bounce again
-            b *= (1.0 - Fout);
-            escaped = true;
-            break;
-        }
-        if (!escaped) return false;
-        beta = b;
-        newDirLocal = diffDirLocal;
-    }
-
+    // Continuation ray: pbrt's LayeredBxDF::Sample_f random walk (see this file's header comment). A failed walk
+    // (Russian roulette, total internal reflection, ...) ends the path here - the light samples above were already taken.
+    LayerSample smp = layeredCoatedDiffuseSample(woLocal, mat.ior, alpha, float3(mat.color), rngState);
+    if (!smp.valid) return false;
+    float3 beta = smp.f * (abs(smp.wi.z) / smp.pdf);
+    float3 newDirLocal = smp.wi;
     float3 newDirWorld = normalize(newDirLocal.x * tangent + newDirLocal.y * bitangent + newDirLocal.z * facingNormal);
     rayDir = newDirWorld;
     rayOrigin = hitPoint + facingNormal * 0.001f;
     throughput *= beta;
-    if (!effectivelySmooth) {
-        bsdfPdf = coatedDiffuseProxyPdf(woLocal, newDirLocal, alpha);
-        specularBounce = false;
-    } else {
+    if (smp.specular) {
+        // A smooth coat's mirror reflection: nothing the light samples could have produced, so no MIS (pbrt specularBounce).
         specularBounce = true;
+    } else {
+        bsdfPdf = layeredCoatedDiffusePdf(woLocal, newDirLocal, mat.ior, alpha, float3(mat.color));
+        specularBounce = false;
     }
     return true;
 }
 
-// CoatedConductorBxDF (pbrt-v4) - the SAME rough-dielectric-coat random
-// walk `shadeCoatedDiffuse()` just above already implements (see that
-// function's own header comment for the full derivation/rationale -
-// same OptiX-reference-not-CPU-reference porting strategy, same "two
-// deliberately different Fresnel conventions" note), with the bottom
-// interface swapped from a Lambertian cosine bounce to a GGX-conductor
-// specular bounce (real per-channel complex Fresnel, `frComplexRGB()`).
-// Ported from `gpu/optix/optix_device_helpers.h`'s own
-// `MaterialType::CoatedConductor` case, which is genuinely SIMPLER than
-// CoatedDiffuse's own sample step for one real physical reason: a
-// conductor's bottom bounce is a single specular GGX reflection (one
-// direction in, one direction out), not a Lambertian bounce that can
-// need several retries before finding an exit angle that clears the
-// coat - so the continuation sampler below needs no retry loop at all,
-// unlike `shadeCoatedDiffuse()`'s own `kMaxCoatBounces` loop.
-//
-// `mat.conductorEta`/`mat.conductorK` = the metal base's own real
-// per-channel complex IOR (same fields materialType 4/9 already use);
-// `mat.color` is UNUSED (this material has no separate diffuse albedo
-// at all - the metal's own colour comes entirely from its complex
-// Fresnel). `mat.ior`/`mat.roughness` are the coat's own (real IOR,
-// precomputed GGX alpha), same convention as materialType 19.
-
-// Stochastic BSDF value (see `layeredCoatedDiffuseF()`'s own header
-// comment for the full derivation) with a GGX-conductor bottom bounce
-// in place of the Lambertian one - direct port of
-// `layered_detail::ConductorBottomBounce::bounce()` (src/shared/
-// bxdfs_layered.h) folded into the SAME shared random-walk shape
-// `layeredCoatedDiffuseF()` already implements.
+// CoatedConductorBxDF (pbrt-v4): the same layered walk with a GGX conductor as the base - its f()/pdf()/sample wrappers and
+// shadeCoatedConductor() are in metal_poc_materials_extra.metal.
