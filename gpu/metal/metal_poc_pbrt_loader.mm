@@ -537,6 +537,25 @@ void MetalPocApp::loadPbrtScene() {
                 setConductorOptics(mat, m);
                 return mat;
             }
+            case pbrt_flatten::MaterialKind::NormalizedFresnel: {
+                // materialType 18: `ior` = eta, `roughness` = the precomputed normalisation constant
+                // c = 1 - 2*FresnelMoment1(1/eta) (a fixed function of eta, so computed here once; the
+                // shader has no albedo tint - the BRDF is achromatic).
+                const float eta = (float)m.ior;
+                float nfC = 1.0f - 2.0f * fresnelMoment1(1.0f / eta);
+                if (nfC <= 0.0f) nfC = 1e-6f;
+                return TriangleMaterial{color, /*materialType=*/18u, /*ior=*/eta,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/nfC};
+            }
+            case pbrt_flatten::MaterialKind::Principled: {
+                // materialType 24 (this project's own non-pbrt "principled"): color = base colour,
+                // ior, roughness = perceptual roughness, conductorEta = (metallic, clearcoat,
+                // clearcoat roughness).
+                TriangleMaterial mat{color, /*materialType=*/24u, /*ior=*/(float)m.ior,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.roughness};
+                mat.conductorEta = PackedFloat3{(float)m.metallic, (float)m.clearcoat, (float)m.clearcoatRoughness};
+                return mat;
+            }
             case pbrt_flatten::MaterialKind::Hair: {
                 // pbrt-v4 HairMaterial -> materialType 31 (Metal's port of hair_material.h).
                 // Field reuse: color = sigma_a (already resolved from eumelanin/pheomelanin or
