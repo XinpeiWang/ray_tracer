@@ -176,6 +176,10 @@ struct SceneDescriptor {
     // them are pbrt-loaded camera-medium scenes.
     std::function<std::shared_ptr<ambient_medium>()> build_camera_medium;
 
+    // The scene's per-shape homogeneous media with per-channel extinction, for camera::ray_color() to sample (pbrt_cpu_builder.h's
+    // BuildResult::chromaticMedia). Empty for hand-built scenes and for every grey-medium scene. LAST, like the field above.
+    std::function<std::vector<std::shared_ptr<constant_medium>>()> build_shape_media;
+
     // A CURATED (not derived from the .pbrt file - see the comment below on
     // why not) flat multiplier auto-applied to the Render Options tab's
     // Exposure control when this scene is selected, the same way
@@ -394,6 +398,10 @@ namespace pbrt_scene_registry {
         s.build_camera_medium = [ensure]() -> std::shared_ptr<ambient_medium> {
             pbrt_cpu::BuildResult& b = ensure();
             return b.cameraMedium;
+        };
+        s.build_shape_media = [ensure]() -> std::vector<std::shared_ptr<constant_medium>> {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.chromaticMedia;
         };
 
         // CameraConfig cannot express an up vector, but pbrt's LookAt can,

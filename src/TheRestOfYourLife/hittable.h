@@ -37,6 +37,14 @@ class hit_record {
     // back to plain bilinear" case (see texture.h's value_diff()).
     double dudx = 0, dvdx = 0, dudy = 0, dvdy = 0;
 
+    // A free-flight event of a homogeneous medium with per-channel extinction (constant_medium.h, volume_scattering.h's
+    // sample_homogeneous_event): the path weight of this collision or pass-through, per channel, and the weight of the medium's own
+    // emission at a collision. has_medium_event is false for everything else (surfaces, grey media, grid media), whose
+    // materials keep their own fixed albedo/emission.
+    bool  has_medium_event = false;
+    color medium_weight;
+    color medium_emission;
+
     void set_face_normal(const ray& r, const vec3& outward_normal) {
         // Sets the hit record normal vector.
         // NOTE: the parameter `outward_normal` is assumed to have unit length.

@@ -106,8 +106,8 @@ class hg_phase_material : public material {
     // `lights`, so it can't be NEE-sampled), matching pbrt-v4's own
     // volumetric-emission treatment of never explicitly next-event-
     // estimating a medium's own Le.
-    color emitted(const ray&, const hit_record&, double, double, const point3&) const override {
-        return emission_;
+    color emitted(const ray&, const hit_record& rec, double, double, const point3&) const override {
+        return rec.has_medium_event ? rec.medium_emission : emission_;
     }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
@@ -132,7 +132,9 @@ class hg_phase_material : public material {
         // stayed heavily noisy even at 5x the recommended sample count
         // until this fix.
         vec3 wo = unit_vector(-r_in.direction());  // outgoing = toward camera
-        srec.attenuation = albedo;
+        // A per-channel-extinction medium (constant_medium's chromatic path) hands this collision's own path weight over in the
+        // hit_record; everything else keeps its fixed single-scattering albedo.
+        srec.attenuation = rec.has_medium_event ? rec.medium_weight : albedo;
         srec.pdf_ptr      = make_shared<hg_phase_pdf>(wo, phase);
         srec.skip_pdf     = false;
         return true;
@@ -190,6 +192,12 @@ inline void collapse_homogeneous_medium(const HomogeneousMediumData<double>& med
     ss_albedo = (sigma_t > 0) ? albedo * color(wr, wg, wb) : color(0, 0, 0);
     emission = (sigma_t > 0) ? Le * (med.sigma_ar / sigma_t) : color(0, 0, 0);
 }
+
+// Set (per thread) by the default path tracer, camera::ray_color(), for the duration of a render: it samples a homogeneous medium with
+// PER-CHANNEL extinction itself (constant_medium::sample_event(), against the nearest surface it has already found), so such a
+// medium must not also report collisions through hittable::hit(). Every other integrator (BDPT/MLT/SPPM) leaves it false and sees the
+// scalar-extinction model hit() has always implemented.
+inline thread_local bool g_chromatic_media_integrator_managed = false;
 
 // ---------------------------------------------------------------------------
 // constant_medium
@@ -251,7 +259,99 @@ class constant_medium : public hittable {
             emission);
     }
 
+    // Per-channel coefficients, as MakeNamedMedium gives them. Two models of the same medium are kept: the scalar one (one extinction,
+    // the luminance of sigma_t, with a per-channel albedo from sigma_s) that hit() has always used and every non-default integrator
+    // still does, and - when the extinction differs between channels - the real per-channel one, which camera::ray_color() samples
+    // through sample_event() below. A grey medium has one model, and it is exactly the old one.
+    constant_medium(shared_ptr<hittable> boundary, const color& sigma_a, const color& sigma_s,
+                    double g, const color& Le)
+        : boundary(boundary), Le_raw_(Le) {
+        const auto lum = [](const color& c) { return 0.2126 * c.x() + 0.7152 * c.y() + 0.0722 * c.z(); };
+        const double sig_a = lum(sigma_a), sig_s = lum(sigma_s);
+        const color albedo = (sig_s > 1e-9) ? color(sigma_s.x() / sig_s, sigma_s.y() / sig_s, sigma_s.z() / sig_s)
+                                            : color(1, 1, 1);
+        med = HomogeneousMediumData<double>(sig_a, sig_s, g);
+        color ss_albedo, emission;
+        collapse_homogeneous_medium(med, albedo, Le, ss_albedo, emission);
+        phase_mat = make_shared<hg_phase_material>(ss_albedo, g,
+            [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); },
+            emission);
+        med_rgb = HomogeneousMediumData<double>(sigma_a.x(), sigma_a.y(), sigma_a.z(),
+                                                sigma_s.x(), sigma_s.y(), sigma_s.z(), g);
+        chromatic_ = med_rgb.is_chromatic();
+    }
+
+    // ---- per-channel extinction, sampled by the integrator ----------------------------------------------------------------
+    bool chromatic() const { return chromatic_; }
+
+    // Entry/exit [t0, t1] of `r` through this medium in ray-parameter units, t0 clamped to the ray start; false if it never enters.
+    bool chord(const ray& r, double& t0, double& t1) const {
+        if (boundary->supports_volume_bounds()) {
+            if (!boundary->volume_bounds(r, t0, t1)) return false;
+        } else {
+            hit_record rec1, rec2;
+            if (!boundary->hit(r, interval::universe, rec1)) return false;
+            if (!boundary->hit(r, interval(rec1.t + 0.0001, infinity), rec2)) return false;
+            t0 = rec1.t;
+            t1 = rec2.t;
+        }
+        if (t0 < 0) t0 = 0;
+        return t1 > t0;
+    }
+
+    // One free-flight event over this medium's part of [0, t_surface] (t_surface: ray parameter of the nearest surface the caller has
+    // found, infinity if none). Returns false if the ray does not cross the medium within that range. Otherwise `collided` says
+    // whether a collision happened (then `rec` is a medium-scatter hit at its position, carrying the collision's path weight and
+    // emission weight - see hit_record::has_medium_event) or not (then `weight` is the pass-through weight to multiply onto beta).
+    // Media must be tested in order of entry; a collision ends the walk.
+    bool sample_event(const ray& r, double t_surface, double& entry_t, bool& collided, hit_record& rec, color& weight) const {
+        double t0, t1;
+        if (!chord(r, t0, t1)) return false;
+        if (t0 >= t_surface) return false;
+        if (t1 > t_surface) t1 = t_surface;
+        if (t0 >= t1) return false;
+        entry_t = t0;
+        const double ray_length = r.direction().length();
+        const double d = (t1 - t0) * ray_length;
+        const HomogeneousEvent<double> ev = sample_homogeneous_event<double>(med_rgb, d, random_double(), random_double());
+        collided = ev.collided;
+        if (ev.collided) {
+            rec.t = t0 + ev.t / ray_length;
+            rec.p = r.at(rec.t);
+            rec.normal = vec3(1, 0, 0);
+            rec.front_face = true;
+            rec.mat = phase_mat;
+            rec.u = 0.0;
+            rec.v = 0.0;
+            rec.has_medium_event = true;
+            rec.medium_weight = color(ev.w[0], ev.w[1], ev.w[2]);
+            rec.medium_emission = Le_raw_ * color(ev.e[0], ev.e[1], ev.e[2]);
+        } else {
+            weight = color(ev.w[0], ev.w[1], ev.w[2]);
+        }
+        return true;
+    }
+
+    // Deterministic per-channel transmittance of the part of `r` between its start and parameter t_max that lies inside this
+    // medium - what a light sample's shadow ray needs (it is a visibility estimate, not a path).
+    color transmittance_along(const ray& r, double t_max) const {
+        double t0, t1;
+        if (!chord(r, t0, t1)) return color(1, 1, 1);
+        if (t1 > t_max) t1 = t_max;
+        if (t0 >= t1) return color(1, 1, 1);
+        return transmittance_rgb((t1 - t0) * r.direction().length());
+    }
+
+    color transmittance_rgb(double distance) const {
+        double Tr_r, Tr_g, Tr_b;
+        med_rgb.transmittance(distance, Tr_r, Tr_g, Tr_b);
+        return color(Tr_r, Tr_g, Tr_b);
+    }
+
     bool hit(const ray& r, interval ray_t, hit_record& rec) const override {
+        // The default path tracer samples a per-channel-extinction medium itself (sample_event()); it must not also collide here.
+        if (chromatic_ && g_chromatic_media_integrator_managed) return false;
+
         double t0, t1;
 
         // A code-review pass found the generic "two sequential hit() calls"
@@ -366,7 +466,10 @@ class constant_medium : public hittable {
     }
 
     shared_ptr<hittable>         boundary;
-    HomogeneousMediumData<double> med;
+    HomogeneousMediumData<double> med;       // the scalar model hit() and the other integrators use
+    HomogeneousMediumData<double> med_rgb;   // the real per-channel model (only set by the RGB constructor)
+    bool                          chromatic_ = false;
+    color                         Le_raw_{0, 0, 0};   // MakeNamedMedium's raw Le, weighted per collision by sample_event()
     shared_ptr<hg_phase_material> phase_mat;
 };
 
@@ -414,6 +517,22 @@ class constant_medium : public hittable {
 // ---------------------------------------------------------------------------
 class ambient_medium {
   public:
+    // Per-channel coefficients (see constant_medium's RGB constructor for the two models this keeps).
+    ambient_medium(const color& sigma_a, const color& sigma_s, double g, const color& Le)
+        : Le_raw_(Le) {
+        const auto lum = [](const color& c) { return 0.2126 * c.x() + 0.7152 * c.y() + 0.0722 * c.z(); };
+        const double sig_a = lum(sigma_a), sig_s = lum(sigma_s);
+        const color albedo = (sig_s > 1e-9) ? color(sigma_s.x() / sig_s, sigma_s.y() / sig_s, sigma_s.z() / sig_s)
+                                            : color(1, 1, 1);
+        med = HomogeneousMediumData<double>(sig_a, sig_s, g);
+        color ss_albedo, emission;
+        collapse_homogeneous_medium(med, albedo, Le, ss_albedo, emission);
+        phase_mat = make_shared<hg_phase_material>(ss_albedo, g, /*transmittance_fn=*/nullptr, emission);
+        med_rgb = HomogeneousMediumData<double>(sigma_a.x(), sigma_a.y(), sigma_a.z(),
+                                                sigma_s.x(), sigma_s.y(), sigma_s.z(), g);
+        chromatic_ = med_rgb.is_chromatic();
+    }
+
     ambient_medium(double sigma_a, double sigma_s, const color& albedo, double g = 0.0,
                    const color& Le = color(0, 0, 0))
         : med(sigma_a, sigma_s, g) {
@@ -435,10 +554,34 @@ class ambient_medium {
     // returning (scatter or not) - the caller needs this same value to scale
     // transmittance_over() on the no-scatter path, and this way it's derived
     // once rather than a second sqrt at the call site.
-    bool sample_scatter(const ray& r, double t_max, hit_record& rec, double* out_ray_length = nullptr) const {
+    // `out_pass_weight` (optional): for a medium whose extinction differs per channel, the weight to multiply onto beta when the flight
+    // does NOT collide (see volume_scattering.h's sample_homogeneous_event); left untouched otherwise, so a caller that initialises it
+    // to (1,1,1) is correct for a grey medium too.
+    bool sample_scatter(const ray& r, double t_max, hit_record& rec, double* out_ray_length = nullptr,
+                        color* out_pass_weight = nullptr) const {
         const double ray_length = r.direction().length();
         if (out_ray_length) *out_ray_length = ray_length;
         if (t_max <= 0) return false;
+
+        if (chromatic_) {
+            const double d = (t_max >= infinity) ? 1e30 : t_max * ray_length;
+            const HomogeneousEvent<double> ev = sample_homogeneous_event<double>(med_rgb, d, random_double(), random_double());
+            if (!ev.collided) {
+                if (out_pass_weight) *out_pass_weight = color(ev.w[0], ev.w[1], ev.w[2]);
+                return false;
+            }
+            rec.t = ev.t / ray_length;
+            rec.p = r.at(rec.t);
+            rec.normal = vec3(1, 0, 0);
+            rec.front_face = true;
+            rec.mat = phase_mat;
+            rec.u = 0.0;
+            rec.v = 0.0;
+            rec.has_medium_event = true;
+            rec.medium_weight = color(ev.w[0], ev.w[1], ev.w[2]);
+            rec.medium_emission = Le_raw_ * color(ev.e[0], ev.e[1], ev.e[2]);
+            return true;
+        }
 
         // t_max==infinity propagates through IEEE754 arithmetic correctly
         // here (infinity * finite ray_length == infinity) - no special
@@ -461,6 +604,7 @@ class ambient_medium {
         // path) never touches indeterminate memory.
         rec.u = 0.0;
         rec.v = 0.0;
+        rec.has_medium_event = false;   // rec may hold a per-shape chromatic collision that this nearer one replaces
         return true;
     }
 
@@ -474,18 +618,24 @@ class ambient_medium {
     // an `sigma_t * infinity` product, which is NaN (0*inf) for exactly the
     // zero-extinction channels this case requires.
     color transmittance_over(double distance) const {
+        const HomogeneousMediumData<double>& m = chromatic_ ? med_rgb : med;
         if (!std::isinf(distance)) {
             double Tr_r, Tr_g, Tr_b;
-            med.transmittance(distance, Tr_r, Tr_g, Tr_b);
+            m.transmittance(distance, Tr_r, Tr_g, Tr_b);
             return color(Tr_r, Tr_g, Tr_b);
         }
-        return color(med.sigma_tr() > 0 ? 0.0 : 1.0,
-                     med.sigma_tg() > 0 ? 0.0 : 1.0,
-                     med.sigma_tb() > 0 ? 0.0 : 1.0);
+        return color(m.sigma_tr() > 0 ? 0.0 : 1.0,
+                     m.sigma_tg() > 0 ? 0.0 : 1.0,
+                     m.sigma_tb() > 0 ? 0.0 : 1.0);
     }
+
+    bool chromatic() const { return chromatic_; }
 
   private:
     HomogeneousMediumData<double> med;
+    HomogeneousMediumData<double> med_rgb;
+    bool                          chromatic_ = false;
+    color                         Le_raw_{0, 0, 0};
     shared_ptr<hg_phase_material> phase_mat;
 };
 

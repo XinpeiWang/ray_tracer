@@ -250,4 +250,93 @@ struct HomogeneousMediumData {
 	HenyeyGreensteinPhaseFunction<T> phase_function() const {
 		return HenyeyGreensteinPhaseFunction<T>(g);
 	}
+
+	// True when the three channels do not share one extinction. Only then does the per-channel sampling below differ from the
+	// scalar model (a single extinction plus a per-channel albedo), which every grey medium reduces to exactly.
+	CPU_GPU bool is_chromatic() const {
+		const T r = sigma_tr(), g_ = sigma_tg(), b = sigma_tb();
+		const T scale = (r > g_ ? (r > b ? r : b) : (g_ > b ? g_ : b));
+		const T tol = scale * T(1e-6);
+		return (r > g_ ? r - g_ : g_ - r) > tol || (r > b ? r - b : b - r) > tol;
+	}
 };
+
+// ---------------------------------------------------------------------------
+// One free-flight event in a homogeneous medium whose extinction differs per colour channel.
+//
+// A scalar free-flight sample (what the medium code used everywhere: one extinction, a per-channel albedo as the scattering
+// weight) cannot represent a dyed absorber or a tinted fog: through a sphere of sigma_a = (0.1, 0.4, 0.9) it renders every
+// channel with the luminance-weighted extinction, a grey where pbrt - which carries sigma_t per wavelength - renders
+// (0.82, 0.45, 0.17). This is pbrt's hero-wavelength sampling with the RGB channels as the "wavelengths": pick a channel
+// uniformly, sample the collision distance from that channel's own exponential, and weight every channel against the MIXTURE
+// density (single-sample MIS, balance heuristic):
+//     p_mix(t)   = 1/3 sum_k sigma_t,k exp(-sigma_t,k t)
+//     P_pass(d)  = 1/3 sum_k exp(-sigma_t,k d)
+//     collision at t < d : scatter weight  w_c = sigma_s,c exp(-sigma_t,c t) / p_mix(t)
+//                          emission weight e_c = sigma_a,c exp(-sigma_t,c t) / p_mix(t)   (times Le_c)
+//     no collision       : pass weight     w_c = exp(-sigma_t,c d) / P_pass(d)
+// Each estimates its channel's integral exactly in expectation, each weight is at most 3, and for a grey medium p_mix is the one
+// exponential, w_c is the albedo and the pass weight is 1 - the model it replaces. `d` is the distance available to the flight
+// (a segment through a bounded medium, or the distance to the nearest surface); a value >= 1e29 means unbounded.
+// ---------------------------------------------------------------------------
+template<typename T>
+struct HomogeneousEvent {
+	bool collided;
+	T t;      // collision distance (meaningful when collided)
+	T w[3];   // path weight per channel: the scatter weight when collided, the pass weight otherwise
+	T e[3];   // emission weight per channel (collided only)
+};
+
+template<typename T>
+CPU_GPU HomogeneousEvent<T> sample_homogeneous_event(const HomogeneousMediumData<T>& m, T d, T u_channel, T u_dist) {
+#if defined(__CUDACC__)
+#define VS_EXP(x) expf(x)
+#define VS_LOG(x) logf(x)
+#else
+#define VS_EXP(x) std::exp(x)
+#define VS_LOG(x) std::log(x)
+#endif
+	HomogeneousEvent<T> ev;
+	ev.collided = false; ev.t = T(0);
+	for (int c = 0; c < 3; ++c) { ev.w[c] = T(1); ev.e[c] = T(0); }
+	const T sig[3] = { m.sigma_tr(), m.sigma_tg(), m.sigma_tb() };
+	const T sa[3]  = { m.sigma_ar, m.sigma_ag, m.sigma_ab };
+	const T ss[3]  = { m.sigma_sr, m.sigma_sg, m.sigma_sb };
+	if (!(sig[0] > T(0)) && !(sig[1] > T(0)) && !(sig[2] > T(0))) return ev;   // vacuum: nothing to sample
+
+	int k = int(u_channel * T(3));
+	if (k > 2) k = 2;
+	const bool unbounded = d >= T(1e29);
+	T t = T(1e30);
+	if (sig[k] > T(0)) t = -VS_LOG(T(1) - u_dist) / sig[k];
+
+	if (t < d) {
+		T Tc[3];
+		T pdf = T(0);
+		for (int c = 0; c < 3; ++c) {
+			Tc[c] = (sig[c] > T(0)) ? VS_EXP(-sig[c] * t) : T(1);
+			pdf += sig[c] * Tc[c];
+		}
+		pdf /= T(3);
+		if (!(pdf > T(0))) return ev;
+		ev.collided = true;
+		ev.t = t;
+		for (int c = 0; c < 3; ++c) {
+			ev.w[c] = ss[c] * Tc[c] / pdf;
+			ev.e[c] = sa[c] * Tc[c] / pdf;
+		}
+		return ev;
+	}
+
+	T Tp[3];
+	T pass = T(0);
+	for (int c = 0; c < 3; ++c) {
+		Tp[c] = (sig[c] > T(0)) ? (unbounded ? T(0) : VS_EXP(-sig[c] * d)) : T(1);
+		pass += Tp[c];
+	}
+	pass /= T(3);
+	for (int c = 0; c < 3; ++c) ev.w[c] = (pass > T(0)) ? Tp[c] / pass : T(0);
+#undef VS_EXP
+#undef VS_LOG
+	return ev;
+}
