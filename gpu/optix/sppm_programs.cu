@@ -640,11 +640,10 @@ static __device__ __forceinline__ bool sppm_sample_delta_material(
 		float  cos_t    = fminf(dot(-unit_dir, n), 1.0f);
 		float  sin_t    = sqrtf(fmaxf(0.0f, 1.0f - cos_t * cos_t));
 		bool   cannot_refract = eta * sin_t > 1.0f;
-		float  r0 = (1.0f - mat.ior) / (1.0f + mat.ior);
-		r0 = r0 * r0;
-		float schlick = r0 + (1.0f - r0) * powf(1.0f - cos_t, 5.0f);
+		// exact Fresnel reflectance (pbrt's FrDielectric, eta_t/eta_i = 1/eta) - this used to be Schlick's approximation fed the incident cosine, which under-reflects for a ray leaving the glass (the inside-to-outside Fresnel rises much faster than the outside-in one) and so sent ~2x too much light through two refractions: a smooth glass sphere read 105% of a pbrt path-level reference on the wavefront backend, 100-101% on the CPU and recursive backends, which already used FrDielectric
+		float fresnel_R = FrDielectric(cos_t, 1.0f / eta);
 		bool is_transmission;
-		if (cannot_refract || schlick > sppm_rand(seed)) {
+		if (cannot_refract || fresnel_R > sppm_rand(seed)) {
 			out_dir = cpu_gpu_reflect(unit_dir, n);
 			is_transmission = false;
 		} else {
