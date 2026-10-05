@@ -304,7 +304,7 @@ static bool loadLinearChannelMeans(const std::string& path, double mean[3]) {
 // One bundled scene on all three backends, each channel's linear mean against a known answer (a closed form, or a furnace's 1.0):
 // the CPU and recursive backends sample in RGB and must be within `tol` of it, the spectral wavefront backend within `tolWavefront`
 // (its uplifted sigma(lambda) is not exactly the per-channel exp(-sigma t) - see pbrt_scenes/chromatic-absorber.pbrt).
-static void expectChannelMeans(const char* stem, int spp, int depth, const double expected[3], double tol, double tolWavefront) {
+static void expectChannelMeans(const char* stem, int spp, int depth, const double* expectedIn, double tol, double tolWavefront) {
 	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
 	const SceneDescriptor* s = find_example_scene(stem);
 	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
@@ -333,11 +333,14 @@ static void expectChannelMeans(const char* stem, int spp, int depth, const doubl
 	}
 	setWavefront("0");
 	ASSERT_TRUE(cpuOk && gpuOk[0] && gpuOk[1]) << stem << ": a render produced no readable EXR";
+	// No closed form: the CPU (RGB, per-channel) is the reference and only the GPU backends are judged against it.
+	double expectedFromCpu[3] = {cpu[0], cpu[1], cpu[2]};
+	const double* expected = expectedIn ? expectedIn : expectedFromCpu;
 	std::printf("[chroma] %s: expected %.4f %.4f %.4f | cpu %.4f %.4f %.4f | recursive %.4f %.4f %.4f | wavefront %.4f %.4f %.4f\n", stem,
 	            expected[0], expected[1], expected[2], cpu[0], cpu[1], cpu[2], rec[0], rec[1], rec[2], wf[0], wf[1], wf[2]);
 	static const char* const kChannel[3] = {"R", "G", "B"};
 	for (int c = 0; c < 3; ++c) {
-		EXPECT_NEAR(cpu[c], expected[c], tol * expected[c]) << stem << " CPU " << kChannel[c];
+		if (expectedIn) EXPECT_NEAR(cpu[c], expected[c], tol * expected[c]) << stem << " CPU " << kChannel[c];
 		EXPECT_NEAR(rec[c], expected[c], tol * expected[c]) << stem << " GPU-recursive " << kChannel[c];
 		EXPECT_NEAR(wf[c], expected[c], tolWavefront * expected[c]) << stem << " GPU-wavefront " << kChannel[c];
 	}
@@ -352,6 +355,20 @@ TEST(PbrtBackendAgreementTest, ChromaticAbsorberFollowsBeerLambertPerChannel) {
 	// Measured: CPU and recursive within 0.1% of the closed form; wavefront 0.780/0.446/0.153 (-4.8%, -0.9%, -7.8%) - spectral rendering
 	// of a strongly chromatic sigma, whose uplift is not the per-channel exp (the sRGB matrix has negative lobes), as in pbrt.
 	expectChannelMeans("chromatic-absorber", 128, 8, expected, 0.01, 0.09);
+}
+
+// The same absorber as the camera medium (pbrt's unbounded fog around the camera, MediumInterface before Camera): the pass-through weight
+// of the camera medium's free-flight sample. The GPU backends used to apply the luminance extinction to every channel here.
+TEST(PbrtBackendAgreementTest, ChromaticCameraMediumAbsorberFollowsBeerLambertPerChannel) {
+	const double expected[3] = {std::exp(-0.1 * 2.0), std::exp(-0.4 * 2.0), std::exp(-0.9 * 2.0)};
+	expectChannelMeans("chromatic-camera-medium-absorber", 128, 8, expected, 0.01, 0.09);
+}
+
+// A lit room under a camera medium with a different extinction per colour: collisions, pass-through, area and point light shadow rays
+// all carry per-channel weights. No closed form; the CPU is the reference, per channel. Measured: recursive +0.5/+1.2/+2.2% (R/G/B), wavefront
+// +1.5/+0.2/+0.8%.
+TEST(PbrtBackendAgreementTest, ChromaticCameraMediumRoomAgreesPerChannel) {
+	expectChannelMeans("chromatic-camera-medium", 256, 8, nullptr, 0.04, 0.04);
 }
 
 // A fog whose scattering differs by colour but absorbs nothing is invisible under a uniform sky in every channel. A collision weight

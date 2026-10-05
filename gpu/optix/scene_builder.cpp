@@ -884,6 +884,9 @@ static bool build_loaded_pbrt_scene(
 		out_camera_extra->cameraMediumAlbedo = cm.albedo;   // tint * sigma_s/sigma_t - see cameraMediumGpu()
 		out_camera_extra->cameraMediumG = cm.g;
 		out_camera_extra->cameraMediumEmission = cm.emission;
+		out_camera_extra->cameraMediumSigmaA = cm.sigmaA;
+		out_camera_extra->cameraMediumSigmaS = cm.sigmaS;
+		out_camera_extra->cameraMediumLeRaw = cm.le;
 		out_camera_extra->cameraMediumMaterialIdx = built->sceneData.cameraMediumMaterialIdx;
 	}
 

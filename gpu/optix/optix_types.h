@@ -1936,6 +1936,12 @@ struct GpuCameraParams {
 	// Wavefront only: index into LaunchParams::materials of the synthetic Medium material standing for the camera
 	// medium (SceneData::cameraMediumMaterialIdx); meaningful only while cameraMediumSigmaT > 0.
 	int    cameraMediumMaterialIdx;
+	// A camera medium whose extinction differs between colour channels (CameraMediumGpu::chromatic): the raw per-channel coefficients,
+	// sampled with sample_homogeneous_event like a per-shape chromatic medium (MaterialData::chromaSigmaA). All zero otherwise - the
+	// scalar fields above then apply unchanged. cameraMediumSigmaT stays set either way (it gates "there is a camera medium").
+	float3 cameraMediumSigmaA;
+	float3 cameraMediumSigmaS;
+	float3 cameraMediumLeRaw;
 };
 
 // Launch parameters (passed to all OptiX programs)

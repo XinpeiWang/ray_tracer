@@ -1024,11 +1024,26 @@ __device__ __forceinline__ bool trace_shadow_ray_stochastic(
 // expf(-sigma_t * 1e30f) do it implicitly (correct in IEEE754 for any real
 // sigma_t here, but explicit is clearer and matches CPU's own dedicated
 // infinity branch).
-__device__ __forceinline__ float camera_medium_shadow_trans(float max_distance) {
+// True for a camera medium whose extinction differs between colour channels (GpuCameraParams::cameraMediumSigmaA/S are filled only then).
+__device__ __forceinline__ bool camera_medium_is_chromatic() {
+	return (params.camera.cameraMediumSigmaA.x + params.camera.cameraMediumSigmaA.y + params.camera.cameraMediumSigmaA.z
+	      + params.camera.cameraMediumSigmaS.x + params.camera.cameraMediumSigmaS.y + params.camera.cameraMediumSigmaS.z) > 0.0f;
+}
+
+// RGB, so a chromatic camera medium attenuates each channel by its own exp(-sigma_t_c * d); a grey one returns the same value in all three.
+__device__ __forceinline__ float3 camera_medium_shadow_trans(float max_distance) {
 	const float sigma_t = params.camera.cameraMediumSigmaT;
-	if (sigma_t <= 0.0f) return 1.0f;
-	if (max_distance >= 1e29f) return 0.0f;
-	return expf(-sigma_t * max_distance);
+	if (sigma_t <= 0.0f) return make_float3(1.0f, 1.0f, 1.0f);
+	if (camera_medium_is_chromatic()) {
+		const float3 sa = params.camera.cameraMediumSigmaA, ss = params.camera.cameraMediumSigmaS;
+		const float st[3] = { sa.x + ss.x, sa.y + ss.y, sa.z + ss.z };
+		float t[3];
+		for (int c = 0; c < 3; ++c) t[c] = (max_distance >= 1e29f) ? (st[c] > 0.0f ? 0.0f : 1.0f) : expf(-st[c] * max_distance);
+		return make_float3(t[0], t[1], t[2]);
+	}
+	if (max_distance >= 1e29f) return make_float3(0.0f, 0.0f, 0.0f);
+	const float t = expf(-sigma_t * max_distance);
+	return make_float3(t, t, t);
 }
 
 // Defined further down, with the other punctual-light helpers; medium_phase_nee_mis() below needs it too.
@@ -1229,16 +1244,38 @@ __device__ __forceinline__ float3 medium_phase_nee_mis(
 __device__ __forceinline__ bool sample_camera_medium(
 	const float3& ray_orig, const float3& ray_dir, float surface_t, unsigned int& seed,
 	float3& out_scatter_point, float3& out_scatter_dir, float& out_brdf_pdf_override,
-	float3& out_emission, float& out_transmittance, float ray_time)
+	float3& out_emission, float3& out_transmittance, float3& out_albedo, float ray_time)
 {
+	out_transmittance = make_float3(1.0f, 1.0f, 1.0f);
+	out_albedo = params.camera.cameraMediumAlbedo;
 	const float sigma_t = params.camera.cameraMediumSigmaT;
-	if (sigma_t <= 0.0f || surface_t <= 0.0f) { out_transmittance = 1.0f; return false; }
+	if (sigma_t <= 0.0f || surface_t <= 0.0f) return false;
+
+	if (camera_medium_is_chromatic()) {
+		// Per-channel extinction: the same event sampler a chromatic per-shape medium uses (src/shared/volume_scattering.h). A pass
+		// carries its weight in out_transmittance; a collision carries its path weight in out_albedo and the emission weight below.
+		const HomogeneousMediumData<float> hm(
+			params.camera.cameraMediumSigmaA.x, params.camera.cameraMediumSigmaA.y, params.camera.cameraMediumSigmaA.z,
+			params.camera.cameraMediumSigmaS.x, params.camera.cameraMediumSigmaS.y, params.camera.cameraMediumSigmaS.z, 0.0f);
+		const float cu_channel = random_float(seed);
+		const float cu_dist = random_float(seed);
+		const HomogeneousEvent<float> ev = sample_homogeneous_event<float>(hm, surface_t, cu_channel, cu_dist);
+		if (!ev.collided) {
+			out_transmittance = make_float3(ev.w[0], ev.w[1], ev.w[2]);
+			return false;
+		}
+		out_albedo = make_float3(ev.w[0], ev.w[1], ev.w[2]);
+		out_scatter_point = ray_orig + ev.t * ray_dir;
+		const float3 wo_c = -ray_dir;
+		out_scatter_dir = sample_henyey_greenstein(wo_c, params.camera.cameraMediumG, seed);
+		out_emission = medium_phase_nee_mis(out_scatter_point, wo_c, params.camera.cameraMediumG,
+			out_albedo, out_scatter_dir, seed, out_brdf_pdf_override,
+			params.camera.cameraMediumLeRaw * make_float3(ev.e[0], ev.e[1], ev.e[2]), ray_time);
+		return true;
+	}
 
 	const float free_path = -logf(fmaxf(1e-8f, 1.0f - random_float(seed))) / sigma_t;
-	if (free_path >= surface_t) {
-		out_transmittance = expf(-sigma_t * surface_t);
-		return false;
-	}
+	if (free_path >= surface_t) return false;
 
 	out_scatter_point = ray_orig + free_path * ray_dir;
 	const float3 wo = -ray_dir;

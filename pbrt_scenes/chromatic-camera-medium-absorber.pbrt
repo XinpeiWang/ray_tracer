@@ -1,0 +1,24 @@
+# chromatic-camera-medium-absorber.pbrt -- the camera sits inside a pure absorber that is thicker in blue than in red.
+#
+# The pbrt-v4 "camera medium": a MediumInterface declared before the Camera directive fills all of space around the camera. A
+# 2 degree field of view looks straight at a large emitter (L = 1) 2 units away, so each pixel is exp(-sigma_a * 2) per channel:
+# sigma_a = (0.1, 0.4, 0.9) gives (0.819, 0.449, 0.165). With one extinction for all channels it read grey.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+MakeNamedMedium "dye" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0.1 0.4 0.9 ] "rgb sigma_s" [ 0 0 0 ]
+MediumInterface "" "dye"
+
+LookAt  0 0 0    0 0 -1    0 1 0
+Camera "perspective" "float fov" [ 2 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 1 1 1 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -20 -20 -2   20 -20 -2   20 20 -2   -20 20 -2 ]
+AttributeEnd

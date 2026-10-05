@@ -880,9 +880,20 @@ extern "C" __global__ void evaluate_materials(
 			mediumMeanFreePath = wf_restir_volume_mean_free_path(mat.ior);
 			hit_point     = h.hitPoint;
 			scattered_dir = wf_sample_phase_scatter(unit_dir, mat.fuzz, seed, phaseWo, phaseG, brdf_pdf_override);
-			attenuation   = unboundedSpectrum(mat.albedo);   // tint * sigma_s/sigma_t; the tint can exceed 1, so unbounded
+			// A camera medium with per-wavelength extinction: the collision weights are a function of the hit distance (h.t), drawn in __raygen__wf_trace.
+			const bool cmChroma = wf_medium_is_chromatic(mat);
+			SS cmW(1.f), cmE(0.f);
+			if (cmChroma) {
+				float cw[kWFNWavelengths], ce[kWFNWavelengths];
+				if (wf_chroma_collision_at(mat, swl.lambda, h.t, cw, ce))
+					for (int i = 0; i < kWFNWavelengths; ++i) { cmW[i] = cw[i]; cmE[i] = ce[i]; }
+			}
+			attenuation   = cmChroma ? cmW : unboundedSpectrum(mat.albedo);   // tint * sigma_s/sigma_t; the tint can exceed 1, so unbounded
 			is_specular   = false;
-			if (mat.medium_emission.x > 0.0f || mat.medium_emission.y > 0.0f || mat.medium_emission.z > 0.0f)
+			if (cmChroma) {
+				if (mat.chromaLe.x > 0.0f || mat.chromaLe.y > 0.0f || mat.chromaLe.z > 0.0f)
+					radiance = radiance + throughput * (wf_lift_rgb_to_spectrum(mat.chromaLe, swl, /*isIlluminant=*/true) * cmE);
+			} else if (mat.medium_emission.x > 0.0f || mat.medium_emission.y > 0.0f || mat.medium_emission.z > 0.0f)
 				radiance = radiance + throughput * wf_lift_rgb_to_spectrum(mat.medium_emission, swl, /*isIlluminant=*/true);
 			scattered = true;
 			break;
