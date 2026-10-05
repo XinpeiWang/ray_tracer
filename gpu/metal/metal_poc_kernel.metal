@@ -1190,7 +1190,7 @@ kernel void primaryRayKernel(
                     // instead, the correct per-point outward normal a
                     // curved surface needs for its own area-to-solid-angle
                     // Jacobian.
-                    float3 lightNormalAtHit = (light.kind > 0.5) ? normal : float3(light.normal);
+                    float3 lightNormalAtHit = (light.kind > 0.5 && light.kind < 1.5) || (light.kind > 2.5 && light.kind < 3.5) ? normal : float3(light.normal);
                     float cosLight = max(abs(dot(lightNormalAtHit, -rayDir)), 0.0001);
                     float pdfLight = (distSq / (light.area * cosLight)) * light.pmf;
                     float weight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfLight * pdfLight);
