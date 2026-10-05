@@ -90,8 +90,10 @@ void normalize3(double* v) {
 }
 
 // Returns how many triangles were added (0 when the scene has none of these shapes).
-size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene) {
+size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene,
+                                std::unordered_map<int, PackedFloat3>& fiberTangent) {
     std::vector<pbrt_flatten::Triangle> out;
+    std::vector<std::pair<size_t, PackedFloat3>> outTangents;   // (index into `out`, fibre direction)
     // A shape with `Material "interface"` only bounds a participating medium: skip it (transparent)
     // rather than turning it into an opaque gray mesh - same rule the sphere/disk/cylinder loaders use.
     auto isInterface = [&scene](int m) {
@@ -172,12 +174,20 @@ size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene) {
                         for (int a = 0; a < 3; ++a) tri.v[c * 3 + a] = c4[t[c]][a];
                     tri.material = cv.material;
                     tri.areaLight = cv.areaLight;
+                    // Fibre direction = along the tube (ring i -> ring i+1), for the hair shader.
+                    {
+                        float tx = q.p10[0] - q.p00[0], ty = q.p10[1] - q.p00[1], tz = q.p10[2] - q.p00[2];
+                        const float tl = std::sqrt(tx * tx + ty * ty + tz * tz);
+                        if (tl > 1e-20f) outTangents.push_back({out.size(), PackedFloat3{tx / tl, ty / tl, tz / tl}});
+                    }
                     out.push_back(tri);
                 }
             }
         }
     }
 
+    const size_t baseIndex = scene.triangles.size();
+    for (const auto& tp : outTangents) fiberTangent[(int)(baseIndex + tp.first)] = tp.second;
     scene.triangles.insert(scene.triangles.end(), out.begin(), out.end());
     scene.bilinearPatches.clear();
     scene.cones.clear();
@@ -194,7 +204,8 @@ void MetalPocApp::loadPbrtScene() {
         fprintf(stderr, "loadPbrtScene: %s\n", result.error.c_str());
         return;
     }
-    if (const size_t added = tessellateUnsupportedShapes(result.scene))
+    pbrtTriangleFiberTangent.clear();
+    if (const size_t added = tessellateUnsupportedShapes(result.scene, pbrtTriangleFiberTangent))
         fprintf(stderr, "loadPbrtScene: tessellated bilinear patch/cone/paraboloid/curve shapes into %zu triangle(s)\n", added);
     const pbrt_flatten::FlatScene& scene = result.scene;
     for (const pbrt_scene::Warning& w : scene.warnings) {
@@ -524,6 +535,19 @@ void MetalPocApp::loadPbrtScene() {
                 TriangleMaterial mat{color, /*materialType=*/20u, /*ior=*/(float)m.ior,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/alpha};
                 setConductorOptics(mat, m);
+                return mat;
+            }
+            case pbrt_flatten::MaterialKind::Hair: {
+                // pbrt-v4 HairMaterial -> materialType 31 (Metal's port of hair_material.h).
+                // Field reuse: color = sigma_a (already resolved from eumelanin/pheomelanin or
+                // a literal sigma_a by flatten), ior = eta, roughness = beta_m,
+                // conductorEta = (beta_n, alpha_deg, 0). conductorK is the per-triangle fibre
+                // tangent for tessellated curves (set in loadPbrtRemainingTriangles); zero means
+                // "use the shading normal as the tangent", CPU's default for non-curve shapes.
+                TriangleMaterial mat{PackedFloat3{(float)m.sigma_a[0], (float)m.sigma_a[1], (float)m.sigma_a[2]},
+                                     /*materialType=*/31u, /*ior=*/(float)m.ior,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.betaM};
+                mat.conductorEta = PackedFloat3{(float)m.betaN, (float)m.alphaDeg, 0.0f};
                 return mat;
             }
             case pbrt_flatten::MaterialKind::Dielectric:
@@ -936,6 +960,10 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
         }
         TriangleMaterial mat = materialFor(t.material);
+        if (mat.materialType == 31u) {
+            auto tanIt = pbrtTriangleFiberTangent.find(i);
+            if (tanIt != pbrtTriangleFiberTangent.end()) mat.conductorK = tanIt->second;   // real fibre tangent (curves)
+        }
         auto unhandledIt = unhandledLightEmission.find(i);
         if (unhandledIt != unhandledLightEmission.end()) {
             const float3& unhandledEmission = unhandledIt->second.first;
