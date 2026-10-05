@@ -189,6 +189,32 @@ namespace detail {
 // include it from outside this namespace).
 #include "pbrt_gpu_builder_materials.h"
 
+// Fills the per-channel fields of a Medium/DielectricMedium (MaterialData::chroma*) when sigma_t differs between the colour channels, and
+// returns whether it did; a grey medium is left untouched and keeps the scalar model. The recursive backend reads the RGB coefficients;
+// the wavefront backend samples sigma(lambda) of their unbounded RGB->spectrum uplift (the same rgb / (2 max) -> sigmoid -> rescale as its
+// albedo uplift), so the sigmoid polynomial is baked here for the shadow any-hit program, which has no uplift tables.
+inline bool bakeChromaticMedium(const double sigma_a[3], const double sigma_s[3], const double Le[3], MaterialData &d) {
+	const HomogeneousMediumData<float> perChannel(
+		static_cast<float>(sigma_a[0]), static_cast<float>(sigma_a[1]), static_cast<float>(sigma_a[2]),
+		static_cast<float>(sigma_s[0]), static_cast<float>(sigma_s[1]), static_cast<float>(sigma_s[2]), 0.0f);
+	if (!perChannel.is_chromatic()) return false;
+	d.chromaSigmaA = detail::f3(sigma_a);
+	d.chromaSigmaS = detail::f3(sigma_s);
+	d.chromaLe     = detail::f3(Le);
+	const auto bake = [](const double rgb[3], float3 &coef, float &scale) {
+		const double m = std::fmax(rgb[0], std::fmax(rgb[1], rgb[2]));
+		scale = static_cast<float>(2.0 * m);
+		coef = make_float3(0.0f, 0.0f, 0.0f);
+		if (!(m > 0.0)) { scale = 0.0f; return; }
+		const RGBSigmoidPolynomial p = RGBToSpectrumTable::sRGB()(
+			static_cast<float>(rgb[0] / (2.0 * m)), static_cast<float>(rgb[1] / (2.0 * m)), static_cast<float>(rgb[2] / (2.0 * m)));
+		coef = make_float3(p.C0(), p.C1(), p.C2());
+	};
+	bake(sigma_a, d.chromaCoefA, d.chromaScaleA);
+	bake(sigma_s, d.chromaCoefS, d.chromaScaleS);
+	return true;
+}
+
 // The camera medium's GPU parameters: the homogeneous-medium collapse every other medium here uses (luminance
 // sigma_a/sigma_s, the chromatic tint sigma_s/luminance(sigma_s), and - not just the tint - the single-scatter
 // albedo sigma_s/sigma_t, exactly CPU's collapse_homogeneous_medium()). Shared by the per-launch GpuCameraParams
@@ -198,6 +224,12 @@ struct CameraMediumGpu {
 	float3 albedo = {0.0f, 0.0f, 0.0f};   // tint * sigma_s/sigma_t
 	float  g = 0.0f;
 	float3 emission = {0.0f, 0.0f, 0.0f}; // "rgb Le" already weighted by sigma_a/sigma_t
+	// A camera medium whose extinction differs between colour channels also carries its raw per-channel coefficients (all zero for a
+	// grey one, which keeps the scalar fields above): GpuCameraParams::cameraMediumSigmaARgb and friends.
+	bool   chromatic = false;
+	float3 sigmaA = {0.0f, 0.0f, 0.0f};
+	float3 sigmaS = {0.0f, 0.0f, 0.0f};
+	float3 le     = {0.0f, 0.0f, 0.0f};      // raw "rgb Le", weighted per collision by the event sampler
 };
 inline CameraMediumGpu cameraMediumGpu(const pbrt_flatten::Medium &m) {
 	const auto luminance = [](const double c[3]) { return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2]; };
@@ -216,6 +248,13 @@ inline CameraMediumGpu cameraMediumGpu(const pbrt_flatten::Medium &m) {
 	const float leWeight = (sig_t > 1e-9) ? static_cast<float>(sig_a / sig_t) : 0.0f;
 	c.emission = make_float3(static_cast<float>(m.Le[0]) * leWeight, static_cast<float>(m.Le[1]) * leWeight,
 							 static_cast<float>(m.Le[2]) * leWeight);
+	MaterialData chroma = {};
+	if (bakeChromaticMedium(m.sigma_a, m.sigma_s, m.Le, chroma)) {
+		c.chromatic = true;
+		c.sigmaA = chroma.chromaSigmaA;
+		c.sigmaS = chroma.chromaSigmaS;
+		c.le     = chroma.chromaLe;
+	}
 	return c;
 }
 
@@ -669,31 +708,9 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			d.sigma_t = sigmaTVal;
 		}
 		d.medium_emission = mediumEmission;
-		// A medium thicker in one colour channel than another: hand the device the real per-channel coefficients so it samples the
-		// free flight the way CPU's sample_homogeneous_event does (the scalar sigma_t/tint above stay as the grey-medium model).
-		{
-			const HomogeneousMediumData<float> perChannel(
-				static_cast<float>(md.sigma_a[0]), static_cast<float>(md.sigma_a[1]), static_cast<float>(md.sigma_a[2]),
-				static_cast<float>(md.sigma_s[0]), static_cast<float>(md.sigma_s[1]), static_cast<float>(md.sigma_s[2]), 0.0f);
-			if (md.type == "homogeneous" && perChannel.is_chromatic()) {
-				d.chromaSigmaA = f3(md.sigma_a);
-				d.chromaSigmaS = f3(md.sigma_s);
-				d.chromaLe     = f3(md.Le);
-				// The wavefront backend samples sigma(lambda) of the uplifted spectrum (same unbounded uplift as its albedo lift:
-				// rgb / (2 max) through the sigmoid table, rescaled by 2 max), so the polynomial is baked here.
-				const auto bake = [](const double rgb[3], float3& coef, float& scale) {
-					const double m = std::fmax(rgb[0], std::fmax(rgb[1], rgb[2]));
-					scale = static_cast<float>(2.0 * m);
-					coef = make_float3(0.0f, 0.0f, 0.0f);
-					if (!(m > 0.0)) { scale = 0.0f; return; }
-					const RGBSigmoidPolynomial p = RGBToSpectrumTable::sRGB()(
-						static_cast<float>(rgb[0] / (2.0 * m)), static_cast<float>(rgb[1] / (2.0 * m)), static_cast<float>(rgb[2] / (2.0 * m)));
-					coef = make_float3(p.C0(), p.C1(), p.C2());
-				};
-				bake(md.sigma_a, d.chromaCoefA, d.chromaScaleA);
-				bake(md.sigma_s, d.chromaCoefS, d.chromaScaleS);
-			}
-		}
+		// A medium thicker in one colour channel than another: hand the device the real per-channel coefficients (see
+		// bakeChromaticMedium); the scalar sigma_t/tint above stay as the grey-medium model.
+		if (md.type == "homogeneous") bakeChromaticMedium(md.sigma_a, md.sigma_s, md.Le, d);
 		const int idx = static_cast<int>(out.materials.size());
 		out.materials.push_back(d);
 		mediumCache.emplace(cacheKey, idx);
@@ -1626,6 +1643,9 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			d.fuzz = cm.g;
 			d.ior = cm.sigmaT;
 			d.medium_emission = cm.emission;
+			if (cm.chromatic) bakeChromaticMedium(scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)].sigma_a,
+			                                      scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)].sigma_s,
+			                                      scene.media[static_cast<std::size_t>(scene.cameraMediumIndex)].Le, d);
 			out.cameraMediumMaterialIdx = static_cast<int>(out.materials.size());
 			out.materials.push_back(d);
 		}

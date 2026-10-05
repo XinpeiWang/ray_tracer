@@ -661,6 +661,27 @@ struct WfChromaEvent {
 	float e[kWFNWavelengths];   // emission weight sigma_a T / pdf (collision only)
 };
 
+// The collision weights of an event that happened at distance t (w = sigma_s T / pdf, e = sigma_a T / pdf), a deterministic function of t:
+// the camera-medium collision is drawn in __raygen__wf_trace and shaded later, where this recomputes the same weights from the hit distance.
+CPU_GPU inline bool wf_chroma_collision_at(const MaterialData& m, const float* lambda, float t, float* w, float* e) {
+	float sa[kWFNWavelengths], ss[kWFNWavelengths], Tc[kWFNWavelengths];
+	float pdf = 0.0f;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		sa[i] = wf_chroma_sigma_a(m, lambda[i]);
+		ss[i] = wf_chroma_sigma_s(m, lambda[i]);
+		const float sig = sa[i] + ss[i];
+		Tc[i] = (sig > 0.0f) ? expf(-sig * t) : 1.0f;
+		pdf += sig * Tc[i];
+	}
+	pdf /= static_cast<float>(kWFNWavelengths);
+	if (!(pdf > 0.0f)) return false;
+	for (int i = 0; i < kWFNWavelengths; ++i) {
+		w[i] = ss[i] * Tc[i] / pdf;
+		e[i] = sa[i] * Tc[i] / pdf;
+	}
+	return true;
+}
+
 CPU_GPU inline WfChromaEvent wf_chroma_event(const MaterialData& m, const float* lambda, float d, float u_channel, float u_dist) {
 	WfChromaEvent ev;
 	ev.collided = false;
@@ -684,20 +705,9 @@ CPU_GPU inline WfChromaEvent wf_chroma_event(const MaterialData& m, const float*
 	if (sig[k] > 0.0f) t = -logf(fmaxf(1e-8f, 1.0f - u_dist)) / sig[k];
 
 	if (t < d) {
-		float Tc[kWFNWavelengths];
-		float pdf = 0.0f;
-		for (int i = 0; i < kWFNWavelengths; ++i) {
-			Tc[i] = (sig[i] > 0.0f) ? expf(-sig[i] * t) : 1.0f;
-			pdf += sig[i] * Tc[i];
-		}
-		pdf /= static_cast<float>(kWFNWavelengths);
-		if (!(pdf > 0.0f)) return ev;
+		if (!wf_chroma_collision_at(m, lambda, t, ev.w, ev.e)) return ev;
 		ev.collided = true;
 		ev.t = t;
-		for (int i = 0; i < kWFNWavelengths; ++i) {
-			ev.w[i] = ss[i] * Tc[i] / pdf;
-			ev.e[i] = sa[i] * Tc[i] / pdf;
-		}
 		return ev;
 	}
 

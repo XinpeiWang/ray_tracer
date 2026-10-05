@@ -401,10 +401,11 @@ extern "C" __global__ void __raygen__rg() {
 			if (params.camera.cameraMediumSigmaT > 0.0f) {
 				unsigned int medium_seed = payload.seed;
 				float3 medium_point, medium_dir, medium_emission;
-				float medium_brdf_pdf = 0.0f, medium_transmittance = 1.0f;
+				float medium_brdf_pdf = 0.0f;
+				float3 medium_transmittance = make_float3(1.0f, 1.0f, 1.0f), medium_albedo = make_float3(1.0f, 1.0f, 1.0f);
 				const bool medium_scattered = sample_camera_medium(
 					ray_origin, ray_direction, t_hit, medium_seed,
-					medium_point, medium_dir, medium_brdf_pdf, medium_emission, medium_transmittance, ray_time);
+					medium_point, medium_dir, medium_brdf_pdf, medium_emission, medium_transmittance, medium_albedo, ray_time);
 				payload.seed = medium_seed;
 				if (medium_scattered) {
 					radiance = radiance + throughput * medium_emission;
@@ -413,7 +414,7 @@ extern "C" __global__ void __raygen__rg() {
 					// phase material does with srec.attenuation: the NEE term above already carries it, but the
 					// continuing path used to keep its full throughput, so every further scatter was lossless and an
 					// absorbing camera medium ended up 2x too bright by the eighth bounce.
-					throughput = throughput * params.camera.cameraMediumAlbedo;
+					throughput = throughput * medium_albedo;
 
 					// Same Russian Roulette as the normal scattered-bounce
 					// branch below (depth>1 gate, power-heuristic-compatible
@@ -444,7 +445,8 @@ extern "C" __global__ void __raygen__rg() {
 				// pass with probabilities 1 - T and T, so also multiplying by T (as this line used to) attenuated a
 				// ray that got through a second time - a surface behind a pure absorber of optical depth 1 rendered
 				// at exp(-2) instead of exp(-1).
-				(void)medium_transmittance;
+				// (A camera medium whose extinction differs between channels hands back its pass-through weight here; grey: (1,1,1).)
+				throughput = throughput * medium_transmittance;
 			}
 
 			// Decode flag: 0=absorbed, 1=scattered, 2=hit_light, 3=scattered

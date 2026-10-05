@@ -1,0 +1,31 @@
+# chromatic-camera-medium.pbrt -- a lit room seen from inside a camera medium whose extinction differs by colour.
+#
+# sigma_a = (0.02, 0.06, 0.15), sigma_s = (0.05, 0.12, 0.30) around the camera, a diffuse floor and back wall, an area lamp and a
+# point lamp, so the scatter, pass-through, area/punctual shadow-ray and sky-free NEE paths of the camera medium all run with
+# per-channel extinction. The three backends must agree channel by channel (blue is attenuated and scattered ~3x as much as red).
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+MakeNamedMedium "haze" "string type" [ "homogeneous" ]
+  "rgb sigma_a" [ 0.02 0.06 0.15 ] "rgb sigma_s" [ 0.05 0.12 0.30 ] "float g" [ 0.2 ]
+MediumInterface "" "haze"
+
+LookAt  0 1 4    0 0.5 -2    0 1 0
+Camera "perspective" "float fov" [ 50 ]
+
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "point" "rgb I" [ 12 12 12 ] "point3 from" [ -1.5 3 -1 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 6 6 6 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -1 3.5 -3   1 3.5 -3   1 3.5 -1   -1 3.5 -1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.6 0.6 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -6 0 -8   6 0 -8   6 0 4   -6 0 4 ]
+Material "diffuse" "rgb reflectance" [ 0.7 0.5 0.4 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -6 0 -8   6 0 -8   6 6 -8   -6 6 -8 ]
