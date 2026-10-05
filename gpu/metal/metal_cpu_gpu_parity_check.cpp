@@ -97,16 +97,17 @@
 // approximation of it - a real gap, but not a NEW one this sweep
 // introduces evidence for, and not something to "fix" here.
 //
-// One of the remaining 35 is NOT a new finding either: E1 (Homogeneous
-// Medium) gapped 67.9% (cpu=0.2787, metal=0.0894) on this sweep's first
-// run - corroborating, via an entirely independent detection method, the
-// SAME bug this session already found and PARKED while investigating the
-// 3 Metal-vs-OptiX gaps (see [[Metal POC status]]'s own detailed writeup):
-// sphereIntersectionFunction() unconditionally rejects materialType 28/29/
-// 30 spheres for shadow rays with zero attenuation, so a wax/jade/fog
-// sphere casts no shadow at all - Metal renders E1 BRIGHTER than CPU for
-// exactly that reason. Do not re-investigate E1 as a "new" finding from
-// this sweep; it's the same one, with a second, independent confirmation.
+// E1 (Homogeneous Medium) gapped 67.9% (cpu=0.2787, metal=0.0894) on this
+// sweep's first run and is now FIXED (it, and A8, pass). The earlier theory
+// that Metal rendered E1 brighter because medium spheres cast no shadow was
+// backwards for E1: its "interface" fog sphere had no case in the pbrt
+// loader at all, so it became an OPAQUE gray sphere that blocked the light
+// (near-black render). Fixing that exposed three more bugs in the
+// materialType-28 path: a ray that scatters INSIDE the sphere was stepped
+// backwards (shader assumed it always starts outside), the MIS weight at a
+// light hit measured distance from the sphere exit instead of the previous
+// bounce, and shadow rays crossing the fog were not attenuated (now blocked
+// stochastically with probability 1 - exp(-sigma_t * chord)).
 //
 // The other ~34 are genuinely new, un-triaged findings from this sweep's
 // first run - real signal, not yet individually investigated. Follow-up
@@ -168,6 +169,15 @@ MPImage mp_load_exr(const char* path) {
 	free(rgba);
 	img.valid = true;
 	return img;
+}
+
+// Number of NaN/Inf samples. A single one makes every mean NaN, and every
+// `rel > tol` comparison below is then false - i.e. a render full of NaNs
+// would be reported as a PASS - so this is checked explicitly, first.
+size_t mp_count_nonfinite(const MPImage& img) {
+	size_t n = 0;
+	for (float v : img.pixels) if (!std::isfinite(v)) ++n;
+	return n;
 }
 
 float mp_avg_brightness(const MPImage& img) {
@@ -408,9 +418,17 @@ int main() {
 		bool sceneFailed = false;
 		char why[512] = {};
 
+		const size_t cpuBad = mp_count_nonfinite(cpuImg);
+		const size_t metalBad = mp_count_nonfinite(metalImg);
+		if (cpuBad > 0 || metalBad > 0) {
+			sceneFailed = true;
+			snprintf(why, sizeof(why), "non-finite pixels (NaN/Inf): cpu=%zu metal=%zu of %zu samples",
+			         cpuBad, metalBad, cpuImg.pixels.size());
+		}
+
 		const float cpuB = mp_avg_brightness(cpuImg);
 		const float metalB = mp_avg_brightness(metalImg);
-		if (std::max(cpuB, metalB) >= kMinComparableValue) {
+		if (!sceneFailed && std::max(cpuB, metalB) >= kMinComparableValue) {
 			const float relDiff = std::abs(cpuB - metalB) / std::max(cpuB, metalB);
 			if (relDiff > wholeTol) {
 				sceneFailed = true;

@@ -154,6 +154,25 @@ void MetalPocApp::loadPbrtScene() {
     std::function<TriangleMaterial(const pbrt_flatten::Material&, int)> mapMaterial =
         [this, &warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
+        // Complex IOR for a GGX conductor (materialType 4). A named metal spectrum or
+        // explicit eta/k (m.hasConductorPreset) is used directly. Otherwise the scene gave
+        // only a "reflectance" (`color`, a normal-incidence value), and m.conductorEta/K
+        // are left at their {0,0,0} defaults - copying those verbatim makes the shader's
+        // complex Fresnel divide by |eta+ik|^4 = 0 and produce NaN. Use the same
+        // eta=1 / k=2*sqrt(r)/sqrt(1-r) conversion CPU's reflectanceToConductorK() does.
+        auto setConductorOptics = [&color](TriangleMaterial& mat, const pbrt_flatten::Material& cm) {
+            if (cm.hasConductorPreset) {
+                mat.conductorEta = PackedFloat3{(float)cm.conductorEta[0], (float)cm.conductorEta[1], (float)cm.conductorEta[2]};
+                mat.conductorK = PackedFloat3{(float)cm.conductorK[0], (float)cm.conductorK[1], (float)cm.conductorK[2]};
+            } else {
+                auto reflectanceToK = [](float r) {
+                    r = r < 0.0f ? 0.0f : (r > 0.9999f ? 0.9999f : r);
+                    return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
+                };
+                mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
+                mat.conductorK = PackedFloat3{reflectanceToK(color.x), reflectanceToK(color.y), reflectanceToK(color.z)};
+            }
+        };
         switch (m.kind) {
             case pbrt_flatten::MaterialKind::Diffuse: {
                 // A "reflectance" bound to a "checkerboard" Texture (B22,
@@ -258,8 +277,7 @@ void MetalPocApp::loadPbrtScene() {
                 const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
                 TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
-                mat.conductorEta = PackedFloat3{(float)m.conductorEta[0], (float)m.conductorEta[1], (float)m.conductorEta[2]};
-                mat.conductorK = PackedFloat3{(float)m.conductorK[0], (float)m.conductorK[1], (float)m.conductorK[2]};
+                setConductorOptics(mat, m);
                 return mat;
             }
             case pbrt_flatten::MaterialKind::CoatedConductor: {
@@ -284,17 +302,7 @@ void MetalPocApp::loadPbrtScene() {
                 const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
                 TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
-                if (m.hasConductorPreset) {
-                    mat.conductorEta = PackedFloat3{(float)m.conductorEta[0], (float)m.conductorEta[1], (float)m.conductorEta[2]};
-                    mat.conductorK = PackedFloat3{(float)m.conductorK[0], (float)m.conductorK[1], (float)m.conductorK[2]};
-                } else {
-                    auto reflectanceToK = [](float r) {
-                        r = r < 0.0f ? 0.0f : (r > 0.9999f ? 0.9999f : r);
-                        return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
-                    };
-                    mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
-                    mat.conductorK = PackedFloat3{reflectanceToK(color.x), reflectanceToK(color.y), reflectanceToK(color.z)};
-                }
+                setConductorOptics(mat, m);
                 return mat;
             }
             case pbrt_flatten::MaterialKind::Dielectric:
@@ -679,6 +687,35 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
         }
         spheres.push_back(sd);
         TriangleMaterial mat = materialFor(s.material);
+        // A `Material "interface"` sphere bounding a homogeneous medium
+        // (MediumInterface "fog" "") has no BSDF of its own: it is only the
+        // boundary of a participating volume. materialFor() has no case for
+        // MaterialKind::Interface, so it would fall back to an OPAQUE gray
+        // Lambertian sphere - which, for a fog sphere filling a Cornell box
+        // (E1), blocks every light path and renders the whole scene nearly
+        // black. Map it to the bounded-medium sphere (materialType 28,
+        // shadeHomogeneousMediumSphere) instead: `color` = per-channel
+        // single-scattering albedo, `ior` = sigma_t, `roughness` = HG g
+        // (that shader's own TriangleMaterial slot reuse). sigma_t is mean
+        // over RGB (the shader takes one scalar) and divided by sceneScale
+        // for the same reason loadPbrtMedium() does it for the camera fog:
+        // optical depth = sigma_t * distance must survive the rescale.
+        // Other medium types (cloud/rgbgrid/...) and a real surface material
+        // on a medium-bounded sphere are not covered here.
+        if (s.medium >= 0 && s.medium < (int)scene.media.size() && s.areaLight < 0 &&
+            s.material >= 0 && s.material < (int)scene.materials.size() &&
+            scene.materials[s.material].kind == pbrt_flatten::MaterialKind::Interface &&
+            scene.media[s.medium].type == "homogeneous") {
+            const pbrt_flatten::Medium& m = scene.media[s.medium];
+            double sigmaT[3], meanSigmaT = 0.0;
+            for (int c = 0; c < 3; ++c) { sigmaT[c] = m.sigma_a[c] + m.sigma_s[c]; meanSigmaT += sigmaT[c]; }
+            meanSigmaT /= 3.0;
+            PackedFloat3 albedo{0, 0, 0};
+            float* a = &albedo.x;
+            for (int c = 0; c < 3; ++c) a[c] = sigmaT[c] > 1e-9 ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
+            mat = TriangleMaterial{albedo, /*materialType=*/28u, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
+                                   PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/(float)m.g};
+        }
         if (s.areaLight >= 0 && s.areaLight < (int)scene.areaLights.size()) {
             // Same "emissive, but not NEE-registered" tier loadPbrtDisks()
             // just above already established for a disk-shaped
