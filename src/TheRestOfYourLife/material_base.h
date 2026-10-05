@@ -68,6 +68,20 @@ class scatter_record {
     // already use, now finally reachable from real Material-based geometry
     // via material::is_medium_boundary() below.
     bool is_medium_boundary = false;
+
+    // pbrt-v4's BSDFSample::pdfIsProportional, for the layered (coated) BxDFs whose Sample_f is a random walk: the
+    // sampled direction comes with an unbiased path weight f*cos/pdf (walk_weight) but no usable density, so MIS
+    // weighs it with BSDF::PDF() instead - mis_pdf_ptr here. When has_walk is set, camera.h continues the path
+    // along walk_ray with walk_weight (instead of generate()/value() on pdf_ptr) and uses mis_pdf() as the BSDF
+    // density in every MIS weight; pdf_ptr stays a self-consistent proxy for the integrators (BDPT/MLT/SPPM
+    // bridges) that pair its generate() and value() directly.
+    shared_ptr<pdf> mis_pdf_ptr;
+    bool has_walk = false;       // scatter() performed the walk below (a failed one has walk_valid = false)
+    bool walk_valid = false;
+    bool walk_specular = false;  // pbrt BSDFSample::IsSpecular(): MIS-free, like a skip_pdf bounce
+    ray  walk_ray;
+    color walk_weight;
+    const pdf& mis_pdf() const { return mis_pdf_ptr ? *mis_pdf_ptr : *pdf_ptr; }
 };
 
 

@@ -996,6 +996,9 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		// identical-shape override above for the full rationale.
 		d.roughness  = static_cast<float>(m.roughness_u);
 		d.roughnessV = static_cast<float>(m.roughness_v);
+		d.condRoughness  = static_cast<float>(m.conductorRoughness_u);
+		d.condRoughnessV = static_cast<float>(m.conductorRoughness_v);
+		d.layerThickness = static_cast<float>(m.coatThickness);
 		break;
 	case pbrt_flatten::MaterialKind::Subsurface:
 		// Real tabulated BSSRDF, on BOTH GPU backends (see optix_types.h's

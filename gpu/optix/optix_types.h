@@ -1408,6 +1408,15 @@ struct MaterialData {
 	// material kinds - so it still uses BuildArbitraryTangentFrame() and
 	// will still show CPU-orientation-mismatched anisotropic highlights.
 	float roughnessV = -1.0f;
+
+	// CoatedConductor only. `roughness`/`roughnessV` above are the COAT's; the base conductor has its own GGX
+	// roughness (pbrt: conductor.uroughness/vroughness - same authored-vs-alpha convention, remapRoughness applies
+	// to it too). Negative (the default) means none was given and the coat's roughness applies to both interfaces,
+	// the older single-roughness spelling - NOT a smooth conductor, which would be an authored 0.
+	float condRoughness  = -1.0f;
+	float condRoughnessV = -1.0f;
+	// CoatedConductor only: pbrt's layer "thickness" (Beer-Lambert attenuation through the coat, unit extinction).
+	float layerThickness = 0.01f;
 };
 
 // Punctual (delta) light kinds - point/spot/distant. These are evaluated

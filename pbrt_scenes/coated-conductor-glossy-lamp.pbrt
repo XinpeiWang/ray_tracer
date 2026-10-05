@@ -1,0 +1,31 @@
+# coated-conductor-glossy-lamp.pbrt -- a smooth coat over a ROUGH copper base (conductor.roughness 0.3) under the same small
+# lamp as coated-conductor-lamp.pbrt. The coat's mirror reflection of the lamp is a specular sample while everything that went
+# through the coat is glossy, so this is the layered BSDF's mixed case: pbrt takes the light samples with f() (which has no
+# delta part), continues along the random walk's own sample, and weighs an emitter hit with PDF() - a specular first-bounce
+# sample gets no MIS. The coat and the conductor have separate roughness here (interface.roughness / conductor.roughness).
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 2 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 200 ] "integer yresolution" [ 150 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+# A dim uniform sky as well, so the picture is not mostly black and the coated sphere also reflects (and, for the
+# glossy one, samples) an environment.
+LightSource "infinite" "rgb L" [ 0.4 0.4 0.4 ]
+
+AttributeBegin
+  Translate 0 5 -2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 0 1.5 0
+  Material "coatedconductor" "float interface.roughness" [ 0.0 ] "float conductor.roughness" [ 0.3 ]
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd

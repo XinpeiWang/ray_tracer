@@ -1129,6 +1129,100 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 	return true;
 }
 
+// Scatter + next-event estimation for a layered (coated) BSDF, shared by MaterialType::CoatedDiffuse and
+// CoatedConductor - pbrt-v4's LayeredBxDF, ported in src/shared/bxdfs_layered.h. pbrt integrates it with three
+// separate pieces, and so does this:
+//   - Sample_f (a random walk): the continuation direction and an unbiased weight f*cos/pdf (attenuation) -
+//     BSDFSample::pdfIsProportional, the walk has no usable density of its own;
+//   - PDF(): an approximate density used only for MIS weights (brdf_pdf_override, and the pdf paired with each
+//     light sample below);
+//   - f(): a stochastic BSDF value for the light samples.
+// pbrt decides NEE from the BSDF's flags, not from the sample: a smooth coat over a rough base still gets NEE
+// (f() has no delta part), while the coat's mirror reflection, if that is the sample drawn, is a specular bounce
+// (is_specular, no MIS). Only a smooth coat over a smooth conductor - a delta lobe overall - skips NEE.
+// A failed walk (Russian roulette, a refraction lost to total internal reflection, ...) still takes the light
+// samples, then ends the path with zero weight: pbrt samples direct light at every vertex whether or not the
+// BSDF sample that follows succeeds. Returns false only when there is nothing to do at all (a delta lobe whose
+// sample failed, or a ray below the horizon).
+template<typename Bx>
+__device__ __forceinline__ bool layered_scatter_and_nee(
+	const Bx& bx, const float3& normal, const float3& ray_dir, const float3& hit_point, const float3& dpdu,
+	unsigned int& seed, float3& attenuation, float3& scattered_dir, bool& is_specular,
+	float& brdf_pdf_override, float3& emission)
+{
+	float3 n = normal;
+	float3 tan, bit;
+	BuildDpduTangentFrame(n.x, n.y, n.z, dpdu.x, dpdu.y, dpdu.z, tan.x, tan.y, tan.z, bit.x, bit.y, bit.z);
+	const float3 wi_w = normalize(-ray_dir);
+	const float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bit), wi_z = dot(wi_w, n);
+	if (wi_z <= 0.0f) return false;
+
+	uint64_t ws0, ws1; random_seed64_pair(seed, ws0, ws1);
+	const BxDFSampleResult<float> smp = bx.sample_local(wi_x, wi_y, wi_z, ws0, ws1);
+	const bool nee_enabled = !bx.is_delta();
+	if (!smp.valid) {
+		if (!nee_enabled) return false;
+		attenuation       = make_float3(0.0f, 0.0f, 0.0f);   // the path ends after this vertex's NEE below
+		scattered_dir     = n;
+		is_specular       = false;
+		brdf_pdf_override = -1.0f;
+	} else {
+		attenuation   = make_float3(smp.r, smp.g, smp.b);
+		scattered_dir = normalize(smp.wo_x*tan + smp.wo_y*bit + smp.wo_z*n);
+		is_specular   = smp.is_specular || !nee_enabled;
+		brdf_pdf_override = is_specular ? -1.0f : bx.pdf(wi_x, wi_y, wi_z, smp.wo_x, smp.wo_y, smp.wo_z);
+	}
+	if (!nee_enabled) return true;
+
+	{
+		float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+		if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
+			const float llx = dot(to_light, tan), lly = dot(to_light, bit), llz = dot(to_light, n);
+			if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
+				uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+				float fr, fg, fb;
+				bx.f(wi_x, wi_y, wi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
+				const float brdf_pdf = bx.pdf(wi_x, wi_y, wi_z, llx, lly, llz);
+				const float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+				emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
+					* camera_medium_shadow_trans(max_dist);
+			}
+		}
+	}
+
+	for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+		float3 wi_p, Li_p; float t_max_p;
+		if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+		const float plx = dot(wi_p, tan), ply = dot(wi_p, bit), plz = dot(wi_p, n);
+		if (plz <= 0.0f) continue;
+		if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
+			uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+			float fr, fg, fb;
+			bx.f(wi_x, wi_y, wi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
+			emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
+		}
+	}
+
+	{
+		const float3& skyColor = params.camera.backgroundColor;
+		if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+			float3 sky_dir, sky_Le_val; float pdf_sky;
+			sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
+			const float skx = dot(sky_dir, tan), sky_y = dot(sky_dir, bit), skz = dot(sky_dir, n);
+			if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
+				uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
+				float fr, fg, fb;
+				bx.f(wi_x, wi_y, wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
+				const float brdf_pdf_sky = bx.pdf(wi_x, wi_y, wi_z, skx, sky_y, skz);
+				const float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+				emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
+					* camera_medium_shadow_trans(1e30f);
+			}
+		}
+	}
+	return true;
+}
+
 // Evaluates material scattering for every MaterialType except Medium and
 // Hair, which are sphere-only and stay in optix_intersection_sphere.h's own
 // closest-hit program (they need shape-specific re-intersection/geometry
@@ -1561,165 +1655,33 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::CoatedConductor: {
-			// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF) -- sphere version
-			// coat: ior=mat.ior, roughness=mat.fuzz; conductor: eta_c, k_c per RGB
-			// mat.roughnessV<0 means "isotropic" - see MaterialData::
-			// roughnessV's own comment (optix_types.h).
+			// Dielectric coat over a GGX conductor (pbrt-v4 CoatedConductorBxDF) - see layered_scatter_and_nee().
+			// mat.fuzz/mat.roughnessV are the COAT's roughness (mat.roughnessV<0 means isotropic - see
+			// MaterialData::roughnessV); the conductor has its own (mat.condRoughness/condRoughnessV, negative =
+			// the coat's). As in pbrt's CoatedConductorMaterial::GetBxDF the conductor's complex IOR is relative to
+			// the coat: eta and k are both divided by the coat's IOR.
 			float cc_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
 			float cc_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			float cc_cond_x, cc_cond_y;
+			ResolveCoatedConductorBaseAlpha(mat.condRoughness, mat.condRoughnessV, mat.remapRoughness,
+			                                cc_alpha_x, cc_alpha_y, cc_cond_x, cc_cond_y);
 			if (do_regularize) {
 				cc_alpha_x = RegularizeAlpha(cc_alpha_x);
 				cc_alpha_y = RegularizeAlpha(cc_alpha_y);
+				cc_cond_x  = RegularizeAlpha(cc_cond_x);
+				cc_cond_y  = RegularizeAlpha(cc_cond_y);
 			}
-			float3 cc_n   = normal;
-			float3 cc_tan, cc_bit;
-			BuildDpduTangentFrame(cc_n.x, cc_n.y, cc_n.z, dpdu.x, dpdu.y, dpdu.z,
-			                       cc_tan.x, cc_tan.y, cc_tan.z,
-			                       cc_bit.x, cc_bit.y, cc_bit.z);
-
-			float3 cc_wi_w = normalize(-ray_dir);
-			float cc_wi_x = dot(cc_wi_w, cc_tan);
-			float cc_wi_y = dot(cc_wi_w, cc_bit);
-			float cc_wi_z = dot(cc_wi_w, cc_n);
-			if (cc_wi_z <= 0.0f) { scattered = false; break; }
-
-			TrowbridgeReitz<float> cc_dist(cc_alpha_x, cc_alpha_y);
-
-			// Coat top interface: GGX VNDF + FrDielectric
-			float cwm_x, cwm_y, cwm_z;
-			cc_dist.Sample_wm(cc_wi_x, cc_wi_y, cc_wi_z,
-							  random_float(seed), random_float(seed),
-							  cwm_x, cwm_y, cwm_z);
-			float cc_cos_i = cc_wi_x*cwm_x + cc_wi_y*cwm_y + cc_wi_z*cwm_z;
-			float F_in     = FrDielectric(cc_cos_i, mat.ior);
-
-			float3 cc_wo;
-			if (random_float(seed) < F_in) {
-				// Path A: coat specular reflection
-				float wo_x = 2.0f*cc_cos_i*cwm_x - cc_wi_x;
-				float wo_y = 2.0f*cc_cos_i*cwm_y - cc_wi_y;
-				float wo_z = 2.0f*cc_cos_i*cwm_z - cc_wi_z;
-				if (wo_z <= 0.0f) { scattered = false; break; }
-				float G1 = cc_dist.G1(cc_wi_x, cc_wi_y, cc_wi_z);
-				float G  = cc_dist.G(wo_x, wo_y, wo_z, cc_wi_x, cc_wi_y, cc_wi_z);
-				float w  = (G1 > 1e-8f) ? G / G1 : 0.0f;
-				float fv = F_in * w;
-				attenuation = make_float3(fv, fv, fv);
-				cc_wo = make_float3(wo_x, wo_y, wo_z);
-			} else {
-					// Path B: transmit into layer -> conductor bounce -> exit coat
-					// Step 1: transmitted direction inside layer.
-					// The coat microfacet cwm was already sampled above; the reflected direction
-					// off cwm is (2*cc_cos_i*cwm - cc_wi). Inside the slab the ray goes downward,
-					// so we flip the z component.  (Matches CPU CoatedConductorBxDF step 1.)
-					float w_x = 2.0f*cc_cos_i*cwm_x - cc_wi_x;
-					float w_y = 2.0f*cc_cos_i*cwm_y - cc_wi_y;
-					float w_z = 2.0f*cc_cos_i*cwm_z - cc_wi_z;
-					if (w_z > 0.0f) w_z = -w_z;   // ensure pointing downward into layer
-					if (w_z == 0.0f) { scattered = false; break; }
-
-					// Step 2: flip to conductor frame -- "incoming from above" (fw_z > 0)
-					float fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;
-
-					// Sample conductor microfacet from the correct transmitted direction
-					float bwm_x, bwm_y, bwm_z;
-					cc_dist.Sample_wm(fw_x, fw_y, fw_z,
-									  random_float(seed), random_float(seed),
-									  bwm_x, bwm_y, bwm_z);
-					float cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
-					if (cos_c <= 0.0f) { scattered = false; break; }
-
-					// Conductor reflection direction (upward, rwo_z > 0 = exits toward coat top)
-					float rwo_x = 2.0f*cos_c*bwm_x - fw_x;
-					float rwo_y = 2.0f*cos_c*bwm_y - fw_y;
-					float rwo_z = 2.0f*cos_c*bwm_z - fw_z;
-					if (rwo_z <= 0.0f) { scattered = false; break; }
-
-					float G1_c = cc_dist.G1(fw_x, fw_y, fw_z);
-					float G_c  = cc_dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
-					float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
-
-					float F_r = FrComplex(cos_c, mat.eta_c.x, mat.k_c.x) * wt_c;
-					float F_g = FrComplex(cos_c, mat.eta_c.y, mat.k_c.y) * wt_c;
-					float F_b = FrComplex(cos_c, mat.eta_c.z, mat.k_c.z) * wt_c;
-
-					// Step 3: exit through coat top � Fresnel at exit angle (rwo_z = cos of exit)
-					float F_out = FrDielectric(rwo_z, 1.0f / mat.ior);  // inside->outside
-					float T_out = 1.0f - F_out;
-					float T_in  = 1.0f - F_in;
-
-					attenuation = make_float3(F_r * T_in * T_out,
-											 F_g * T_in * T_out,
-											 F_b * T_in * T_out);
-					cc_wo = make_float3(rwo_x, rwo_y, rwo_z);
-				}
-			scattered_dir = normalize(cc_wo.x*cc_tan + cc_wo.y*cc_bit + cc_wo.z*cc_n);
-			scattered   = true;
-
-			// Real NEE/MIS for glossy (non-EffectivelySmooth) coats - see
-			// MaterialType::CoatedDiffuse's identical-shape block above for
-			// the full rationale (shared CoatedConductorBxDF<float>::f()
-			// stochastic estimator from src/shared/bxdfs_layered.h, GGX
-			// top-surface VNDF pdf used as the MIS proxy for both the
-			// sampled continuation and each NEE light sample).
-			if (!cc_dist.EffectivelySmooth()) {
-				is_specular = false;
-				CoatedConductorBxDF<float> cc_bxdf{ mat.eta_c.x, mat.eta_c.y, mat.eta_c.z,
-													 mat.k_c.x, mat.k_c.y, mat.k_c.z,
-													 mat.ior, cc_alpha_x, cc_alpha_y };
-
-				float swo_x = dot(scattered_dir, cc_tan), swo_y = dot(scattered_dir, cc_bit), swo_z = dot(scattered_dir, cc_n);
-				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, swo_x, swo_y, swo_z, cc_alpha_x, cc_alpha_y) : 0.0f;
-
-				{
-					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
-						float llx = dot(to_light, cc_tan), lly = dot(to_light, cc_bit), llz = dot(to_light, cc_n);
-						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
-							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
-							float fr, fg, fb;
-							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, llx, lly, llz, cc_alpha_x, cc_alpha_y);
-							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
-								* camera_medium_shadow_trans(max_dist);
-						}
-					}
-				}
-
-				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
-					float3 wi_p, Li_p; float t_max_p;
-					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
-					float plx = dot(wi_p, cc_tan), ply = dot(wi_p, cc_bit), plz = dot(wi_p, cc_n);
-					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
-						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
-						float fr, fg, fb;
-						cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
-					}
-				}
-
-				{
-					const float3& skyColor = params.camera.backgroundColor;
-					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
-						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
-						float skx = dot(sky_dir, cc_tan), sky_y = dot(sky_dir, cc_bit), skz = dot(sky_dir, cc_n);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
-							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
-							float fr, fg, fb;
-							cc_bxdf.f(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cc_wi_x, cc_wi_y, cc_wi_z, skx, sky_y, skz, cc_alpha_x, cc_alpha_y);
-							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
-								* camera_medium_shadow_trans(1e30f);
-						}
-					}
-				}
-			} else {
-				is_specular = true;
+			const float cc_inv_ior = 1.0f / mat.ior;
+			CoatedConductorBxDF<float> cc_bxdf{ mat.eta_c.x * cc_inv_ior, mat.eta_c.y * cc_inv_ior, mat.eta_c.z * cc_inv_ior,
+			                                    mat.k_c.x * cc_inv_ior, mat.k_c.y * cc_inv_ior, mat.k_c.z * cc_inv_ior,
+			                                    mat.ior, cc_alpha_x, cc_alpha_y, mat.layerThickness, 0.0f, 0.0f, 10, 1,
+			                                    cc_cond_x, cc_cond_y };
+			if (!layered_scatter_and_nee(cc_bxdf, normal, ray_dir, hit_point, dpdu, seed,
+			                             attenuation, scattered_dir, is_specular, brdf_pdf_override, emission)) {
+				scattered = false;
+				break;
 			}
+			scattered = true;
 			break;
 		}
 
@@ -1944,176 +1906,28 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::CoatedDiffuse: {
-			// Rough dielectric coat over Lambertian base (pbrt-v4 CoatedDiffuseBxDF) -- sphere version
-			// "reflectance" bound to a real Texture (pbrt's own ganesha/
-			// barcelona-pavilion "texture reflectance" - see
-			// pbrt_flatten::Material::textureFilename's own comment)
-			// instead of mat.albedo's flat colour when textureIdx>=0 -
-			// scaled by mat.emissionScale, reused here for CoatedDiffuse's
-			// own "scale"-wrapped-imagemap case (see that field's own
-			// comment in optix_types.h).
+			// Dielectric coat over a Lambertian base (pbrt-v4 CoatedDiffuseBxDF) - see layered_scatter_and_nee().
+			// "reflectance" bound to a real Texture (pbrt's own ganesha/barcelona-pavilion "texture reflectance" -
+			// see pbrt_flatten::Material::textureFilename's own comment) instead of mat.albedo's flat colour when
+			// textureIdx>=0 - scaled by mat.emissionScale, reused here for CoatedDiffuse's own "scale"-wrapped-
+			// imagemap case (see that field's own comment in optix_types.h). mat.roughnessV<0 means "isotropic" -
+			// see MaterialData::roughnessV's own comment (optix_types.h).
 			const float3 cd_albedo = (mat.textureIdx >= 0)
 				? sample_texture(mat.textureIdx, uv_u, uv_v, hit_point) * mat.emissionScale
 				: mat.albedo;
-			// mat.roughnessV<0 means "isotropic" - see MaterialData::
-			// roughnessV's own comment (optix_types.h).
 			float cd_alpha_x = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
 			float cd_alpha_y = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
 			if (do_regularize) {
 				cd_alpha_x = RegularizeAlpha(cd_alpha_x);
 				cd_alpha_y = RegularizeAlpha(cd_alpha_y);
 			}
-			float3 cdn  = normal;
-			float3 cdtan, cdbit;
-			BuildDpduTangentFrame(cdn.x, cdn.y, cdn.z, dpdu.x, dpdu.y, dpdu.z, cdtan.x, cdtan.y, cdtan.z, cdbit.x, cdbit.y, cdbit.z);
-			float3 cdwi  = normalize(-ray_dir);
-			float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbit), cdwi_z = dot(cdwi, cdn);
-			if (cdwi_z <= 0.0f) { scattered = false; break; }
-			TrowbridgeReitz<float> cd_dist(cd_alpha_x, cd_alpha_y);
-			float cdwm_x, cdwm_y, cdwm_z;
-			cd_dist.Sample_wm(cdwi_x, cdwi_y, cdwi_z, random_float(seed), random_float(seed), cdwm_x, cdwm_y, cdwm_z);
-			float cd_cosi = cdwi_x*cdwm_x + cdwi_y*cdwm_y + cdwi_z*cdwm_z;
-			float F_in = FrDielectric(cd_cosi, mat.ior);
-			if (random_float(seed) < F_in) {
-				float cwo_x2 = 2.0f*cd_cosi*cdwm_x - cdwi_x;
-				float cwo_y2 = 2.0f*cd_cosi*cdwm_y - cdwi_y;
-				float cwo_z2 = 2.0f*cd_cosi*cdwm_z - cdwi_z;
-				if (cwo_z2 <= 0.0f) { scattered = false; break; }
-				float G1 = cd_dist.G1(cdwi_x, cdwi_y, cdwi_z);
-				float G  = cd_dist.G(cwo_x2, cwo_y2, cwo_z2, cdwi_x, cdwi_y, cdwi_z);
-				float wt = (G1 > 1e-8f) ? G / G1 : 0.0f;
-				float fw = F_in * wt;
-				attenuation   = make_float3(fw, fw, fw);
-				scattered_dir = normalize(cwo_x2*cdtan + cwo_y2*cdbit + cwo_z2*cdn);
-				scattered     = true;
-			} else {
-				// Multi-bounce escape through the coat, mirroring the actual
-				// random walk in src/shared/bxdfs_layered.h's
-				// CoatedDiffuseBxDF::sample_local (medium scattering omitted
-				// - coateddiffuse never sets a scattering medium). A single
-				// Lambertian bounce followed by one exit attempt is what the
-				// earlier version of this branch did (with or without the
-				// cd_c normalization above) and it stayed far too dark: most
-				// individual cosine-sampled directions fail their exit test,
-				// and giving up immediately on failure discards that
-				// sample's energy entirely rather than retrying, which is
-				// what the real layered material does - a failed exit
-				// attempt scatters back into the diffuse base for another
-				// Lambertian bounce and another try, compounding by albedo
-				// each time, until one succeeds or the bounce budget runs
-				// out. No explicit light sampling here, matching how CPU's
-				// coated_diffuse material treats this whole material as
-				// skip_pdf (material_pbrt.h): pbrt-v4's LayeredBxDF only
-				// supports sampling a direction, never evaluating f(wo,wi)
-				// at an arbitrary chosen one, so there is no light-sampling
-				// direction to aim a shadow ray at - illumination comes
-				// purely from where the bounces the walk below happens to
-				// land, same as CPU.
-				// Each exit attempt below re-samples a GGX microfacet normal
-				// relative to the CURRENT internal direction (cd_dist.Sample_wm
-				// again, exactly like the entry test above) rather than testing
-				// Fresnel at the macro normal directly - matching
-				// bxdfs_layered.h's own exit test. For a rough coat the two
-				// disagree noticeably: the macro-normal angle can be steep even
-				// when the GGX distribution still offers plenty of near-normal
-				// microfacets to escape through, so testing only the macro
-				// angle over-rejects and compounds too many extra albedo
-				// multiplies from the retries that didn't need to happen.
-				constexpr int kMaxCoatBounces = 8;
-				float3 beta = make_float3(1.0f - F_in, 1.0f - F_in, 1.0f - F_in);
-				float3 diff_dir = cdn;
-				bool escaped = false;
-				for (int cb = 0; cb < kMaxCoatBounces; ++cb) {
-					diff_dir = cdn + random_unit_vector(seed);
-					if (near_zero(diff_dir)) diff_dir = cdn;
-					diff_dir = normalize(diff_dir);
-					beta.x *= cd_albedo.x; beta.y *= cd_albedo.y; beta.z *= cd_albedo.z;
-
-					float dw_x = dot(diff_dir, cdtan), dw_y = dot(diff_dir, cdbit), dw_z = dot(diff_dir, cdn);
-					float dwm_x, dwm_y, dwm_z;
-					cd_dist.Sample_wm(dw_x, dw_y, dw_z, random_float(seed), random_float(seed), dwm_x, dwm_y, dwm_z);
-					float cos_out = dw_x*dwm_x + dw_y*dwm_y + dw_z*dwm_z;
-					float F_out   = FrDielectric(cos_out, 1.0f / mat.ior);
-					if (random_float(seed) < F_out) continue;  // TIR: bounce again
-					beta.x *= (1.0f - F_out); beta.y *= (1.0f - F_out); beta.z *= (1.0f - F_out);
-					escaped = true;
-					break;
-				}
-				if (!escaped) { scattered = false; break; }
-				attenuation   = beta;
-				scattered_dir = diff_dir;
-				scattered     = true;
+			CoatedDiffuseBxDF<float> cd_bxdf{ cd_albedo.x, cd_albedo.y, cd_albedo.z, mat.ior, cd_alpha_x, cd_alpha_y };
+			if (!layered_scatter_and_nee(cd_bxdf, normal, ray_dir, hit_point, dpdu, seed,
+			                             attenuation, scattered_dir, is_specular, brdf_pdf_override, emission)) {
+				scattered = false;
+				break;
 			}
-
-			// Real NEE/MIS for glossy (non-EffectivelySmooth) coats, using
-			// the shared CoatedDiffuseBxDF<float>'s stochastic f()
-			// (src/shared/bxdfs_layered.h) - the same simplified top-exit-
-			// only random-walk estimator already verified on CPU for #228.
-			// No closed-form pdf exists for an unbounded-depth random walk,
-			// so (matching CPU's coated_diffuse::scatter() in
-			// material_pbrt.h, which uses ggx_reflection_pdf as a proxy
-			// srec.pdf_ptr) both the MIS pdf for the sampled continuation
-			// and the MIS pdf for each NEE light sample use the coat's own
-			// top-surface GGX-reflection VNDF pdf (ggx_vndf_reflection_pdf,
-			// src/shared/bxdfs_conductor.h) as a cheap shape-matched proxy,
-			// not the walk's true (unknown) density - any valid pdf keeps
-			// MIS/NEE unbiased, this only affects variance.
-			if (!cd_dist.EffectivelySmooth()) {
-				is_specular = false;
-				CoatedDiffuseBxDF<float> cd_bxdf{ cd_albedo.x, cd_albedo.y, cd_albedo.z, mat.ior, cd_alpha_x, cd_alpha_y };
-
-				float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbit), swo_z = dot(scattered_dir, cdn);
-				brdf_pdf_override = (swo_z > 0.0f) ? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha_x, cd_alpha_y) : 0.0f;
-
-				{
-					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
-					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
-						float llx = dot(to_light, cdtan), lly = dot(to_light, cdbit), llz = dot(to_light, cdn);
-						if (llz > 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed)) {
-							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
-							float fr, fg, fb;
-							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, llx, lly, llz, cd_alpha_x, cd_alpha_y);
-							float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
-								* camera_medium_shadow_trans(max_dist);
-						}
-					}
-				}
-
-				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
-					float3 wi_p, Li_p; float t_max_p;
-					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
-					float plx = dot(wi_p, cdtan), ply = dot(wi_p, cdbit), plz = dot(wi_p, cdn);
-					if (plz <= 0.0f) continue;
-					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed)) {
-						uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
-						float fr, fg, fb;
-						cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, plx, ply, plz, ns0, ns1, fr, fg, fb);
-						emission = emission + make_float3(fr, fg, fb) * Li_p * plz * camera_medium_shadow_trans(t_max_p);
-					}
-				}
-
-				{
-					const float3& skyColor = params.camera.backgroundColor;
-					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
-						float3 sky_dir, sky_Le_val; float pdf_sky;
-						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
-						float skx = dot(sky_dir, cdtan), sky_y = dot(sky_dir, cdbit), skz = dot(sky_dir, cdn);
-						if (skz > 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed)) {
-							uint64_t ns0, ns1; random_seed64_pair(seed, ns0, ns1);
-							float fr, fg, fb;
-							cd_bxdf.f(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, ns0, ns1, fr, fg, fb);
-							float brdf_pdf_sky = ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, skx, sky_y, skz, cd_alpha_x, cd_alpha_y);
-							float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
-							emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
-								* camera_medium_shadow_trans(1e30f);
-						}
-					}
-				}
-			} else {
-				is_specular = true;
-			}
+			scattered = true;
 			break;
 		}
 

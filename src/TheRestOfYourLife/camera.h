@@ -1897,7 +1897,7 @@ class camera {
                     ray    shadow_ray(rec.p, light_dir, current_ray.time());
                     double f_pdf = rec.mat->scattering_pdf(current_ray, rec, shadow_ray);
                     if (f_pdf > 0.0) {
-                        double pdf_b_at_l = srec.pdf_ptr->value(light_dir);
+                        double pdf_b_at_l = srec.mis_pdf().value(light_dir);
                         double w_l        = mis_power_heuristic(pdf_l, pdf_b_at_l);
                         hit_record light_rec;
                         color trans;
@@ -1934,7 +1934,7 @@ class camera {
                     ray  portal_shadow(rec.p, portal_dir, current_ray.time());
                     double f_pdf = rec.mat->scattering_pdf(current_ray, rec, portal_shadow);
                     if (f_pdf > 0.0) {
-                        double pdf_b_at_portal = srec.pdf_ptr->value(portal_dir);
+                        double pdf_b_at_portal = srec.mis_pdf().value(portal_dir);
                         double w_portal         = mis_power_heuristic(pdf_portal, pdf_b_at_portal);
                         hit_record portal_rec;
                         color trans;
@@ -1958,7 +1958,7 @@ class camera {
                     ray    sky_shadow(rec.p, sky_dir, current_ray.time());
                     double f_pdf = rec.mat->scattering_pdf(current_ray, rec, sky_shadow);
                     if (f_pdf > 0.0) {
-                        double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
+                        double pdf_b_at_sky = srec.mis_pdf().value(sky_dir);
                         double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
                         hit_record sky_rec;
                         color trans;
@@ -1998,7 +1998,30 @@ class camera {
             }
 
             // Strategy B: BSDF sample becomes next path ray
-            {
+            if (srec.has_walk) {
+                // A layered (coated) BSDF: pbrt continues along the random walk's own sample with its weight
+                // f*cos/pdf, and weighs the emitter hit it may find with BSDF::PDF() (mis_pdf), not the walk's
+                // density (BSDFSample::pdfIsProportional). The NEE strategies above already ran for this vertex.
+                if (!srec.walk_valid) break;
+                const ray bsdf_ray = srec.walk_ray;
+                color new_beta = clamp_throughput(beta * srec.walk_weight);
+                if (bounces_left < depth) {
+                    color rr_beta = new_beta * eta_scale;
+                    double rr_max = std::max(rr_beta.x(), std::max(rr_beta.y(), rr_beta.z()));
+                    if (rr_max < 1.0) {
+                        double q = std::max(0.0, 1.0 - rr_max);
+                        if (sampler.get() < q) break;
+                        new_beta = new_beta / (1.0 - q);
+                    }
+                }
+                beta            = new_beta;
+                current_ray     = bsdf_ray;
+                prev_bsdf_pdf   = srec.walk_specular ? 0.0 : srec.mis_pdf().value(bsdf_ray.direction());
+                prev_surface_p  = rec.p;
+                specular_bounce = srec.walk_specular;
+                if (!srec.walk_specular) any_nonspecular = true;
+                --bounces_left;
+            } else {
                 vec3   bsdf_dir = srec.pdf_ptr->generate();
                 double pdf_b    = srec.pdf_ptr->value(bsdf_dir);
                 if (pdf_b <= 0.0) break;
@@ -2358,7 +2381,7 @@ class camera {
                     ray    shadow_ray(rec.p, light_dir, current_ray.time());
                     double f_pdf = scattering_pdf_at(shadow_ray);
                     if (f_pdf > 0.0) {
-                        double pdf_b_at_l = srec.pdf_ptr->value(light_dir);
+                        double pdf_b_at_l = srec.mis_pdf().value(light_dir);
                         double w_l        = mis_power_heuristic(pdf_l, pdf_b_at_l);
                         hit_record light_rec;
                         color trans;
@@ -2389,7 +2412,7 @@ class camera {
                     ray  portal_shadow(rec.p, portal_dir, current_ray.time());
                     double f_pdf = scattering_pdf_at(portal_shadow);
                     if (f_pdf > 0.0) {
-                        double pdf_b_at_portal = srec.pdf_ptr->value(portal_dir);
+                        double pdf_b_at_portal = srec.mis_pdf().value(portal_dir);
                         double w_portal         = mis_power_heuristic(pdf_portal, pdf_b_at_portal);
                         hit_record portal_rec;
                         color trans;
@@ -2413,7 +2436,7 @@ class camera {
                     ray    sky_shadow(rec.p, sky_dir, current_ray.time());
                     double f_pdf = scattering_pdf_at(sky_shadow);
                     if (f_pdf > 0.0) {
-                        double pdf_b_at_sky = srec.pdf_ptr->value(sky_dir);
+                        double pdf_b_at_sky = srec.mis_pdf().value(sky_dir);
                         double w_sky        = mis_power_heuristic(pdf_sky, pdf_b_at_sky);
                         hit_record sky_rec;
                         color trans;
@@ -2449,7 +2472,28 @@ class camera {
             }
 
             // Strategy B: BSDF sample becomes next path ray
-            {
+            if (srec.has_walk) {
+                // Layered (coated) BSDF - see ray_color()'s identical branch.
+                if (!srec.walk_valid) break;
+                const ray bsdf_ray = srec.walk_ray;
+                SS new_beta = clamp_throughput(beta * albedo(srec.walk_weight));
+                if (bounces_left < depth) {
+                    SS rr_beta = new_beta * static_cast<float>(eta_scale);
+                    float rr_max = rr_beta.MaxComponentValue();
+                    if (rr_max < 1.0f) {
+                        double q = std::max(0.0, 1.0 - static_cast<double>(rr_max));
+                        if (sampler.get() < q) break;
+                        new_beta = new_beta / static_cast<float>(1.0 - q);
+                    }
+                }
+                beta            = new_beta;
+                current_ray     = bsdf_ray;
+                prev_bsdf_pdf   = srec.walk_specular ? 0.0 : srec.mis_pdf().value(bsdf_ray.direction());
+                prev_surface_p  = rec.p;
+                specular_bounce = srec.walk_specular;
+                if (!srec.walk_specular) any_nonspecular = true;
+                --bounces_left;
+            } else {
                 vec3   bsdf_dir = srec.pdf_ptr->generate();
                 double pdf_b    = srec.pdf_ptr->value(bsdf_dir);
                 if (pdf_b <= 0.0) break;

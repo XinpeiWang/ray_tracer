@@ -1,0 +1,35 @@
+# coated-conductor-lamp.pbrt -- pbrt's default coatedconductor (a smooth coat over smooth copper) under a small lamp: a
+# mirror, so the picture is the lamp's reflection in a sphere and nothing hides an error in the coated BSDF's value.
+#
+# What this guards: the coated materials used to be a simplified layered model that never refracted at the coat (it mirrored
+# about the half-vector and flipped z), shared ONE roughness between the coat and the conductor, and divided neither eta nor k
+# by the coat's IOR. Against the closed form for this case (R + (1-R)^2 Tr^2 F / (1 - R Tr^2 F), R the coat's Fresnel at the
+# surface angle, F copper's at the refracted angle, eta and k relative to the coat) the CPU read about a third of it and the
+# GPU about a quarter of the CPU. They are now pbrt's LayeredBxDF (src/shared/bxdfs_layered.h) and agree with the closed form
+# to ~1% on every backend.
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 2 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 200 ] "integer yresolution" [ 150 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+# A dim uniform sky as well, so the picture is not mostly black and the coated sphere also reflects (and, for the
+# glossy one, samples) an environment.
+LightSource "infinite" "rgb L" [ 0.4 0.4 0.4 ]
+
+AttributeBegin
+  Translate 0 5 -2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 15 15 15 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 0 1.5 0
+  Material "coatedconductor"
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd
