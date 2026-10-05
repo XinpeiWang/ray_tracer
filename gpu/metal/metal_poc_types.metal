@@ -400,6 +400,12 @@ struct AreaLight {
     // branch's own per-hit normal (metal_poc_kernel.metal - a sphere's
     // normal varies per-point, unlike a quad's fixed one) need to branch
     // on this at all.
+    // kind values: 0 quad, 1 sphere (above), 2 disk (center, edgeU.x = radius, normal, area = pi r^2),
+    // 3 cylinder lateral surface (center = base, edgeU = unit axis, edgeV = (radius, height),
+    // area = 2 pi r h; sampled normal is outward-radial), 4 triangle (center = vertex 0,
+    // edgeU/edgeV = edges from it, normal = winding normal, area = half the parallelogram).
+    // All sampled uniformly by area, so every NEE call site's area-to-solid-angle Jacobian is
+    // unchanged. See sampleAreaLight().
     float kind;
     // A sphere light's own index into `spheres[]`/`sphereMaterials[]` (-1
     // for a quad light, which isn't in that array at all) - lets a shadow

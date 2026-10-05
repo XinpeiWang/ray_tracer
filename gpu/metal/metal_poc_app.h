@@ -211,6 +211,9 @@ struct MetalPocApp {
     // pbrt_flatten.h's own resolution pass - see that field's own
     // comment) - read instead of the hardcoded fog defaults in
     // compileShaderAndDispatch()'s own havePbrtCamera override block.
+    // triangle index (FlatScene::triangles) -> NEE light index, for the triangles of a
+    // non-quad emissive mesh registered as per-triangle lights (AreaLightData kind 4).
+    std::unordered_map<int, int32_t> pbrtEmissiveTriangleLightId;
     bool havePbrtMedium = false;
     float pbrtFogSigmaT = 0.0f;
     float3 pbrtFogAlbedo{1, 1, 1};

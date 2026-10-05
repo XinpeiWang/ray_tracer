@@ -676,9 +676,34 @@ void MetalPocApp::loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const
             // tier this loader's own constant/image-based infinite light
             // miss-path-only cases already use (sections 89/90).
             for (int idx : idxs) unhandledLightEmission[idx] = {emission, em.twoSided};
+            // UPDATE: each triangle is now ALSO registered as its own NEE light (AreaLightData
+            // kind 4 - one triangle, uniform-area sampled), so a fan/mesh light is sampled
+            // explicitly. The light-picking pmf is power-proportional (luminance*area) via the
+            // alias table, so large triangles get more samples. pbrtEmissiveTriangleLightId
+            // hands each triangle its light index so the emissive-hit MIS weight pairs with NEE
+            // instead of double counting. Image-textured lights keep the old unsampled tier.
+            if (em.filename.empty()) {
+                for (int idx : idxs) {
+                    const pbrt_flatten::Triangle& tl = scene.triangles[idx];
+                    const float3 a = vertexAt(tl.v, 0), b = vertexAt(tl.v, 1), c = vertexAt(tl.v, 2);
+                    const float3 e1 = b - a, e2 = c - a;
+                    const float3 cr = simd::cross(e1, e2);
+                    const float len = simd::length(cr);
+                    if (len < 1e-12f) continue;
+                    const float3 nrm = cr / len;
+                    pbrtEmissiveTriangleLightId[idx] = (int32_t)lights.size();
+                    lights.push_back(AreaLightData{
+                        PackedFloat3{a.x, a.y, a.z}, PackedFloat3{e1.x, e1.y, e1.z}, PackedFloat3{e2.x, e2.y, e2.z},
+                        PackedFloat3{nrm.x, nrm.y, nrm.z}, 0.5f * len,
+                        PackedFloat3{emission.x, emission.y, emission.z},
+                        /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                        /*twoSided=*/em.twoSided ? 1.0f : 0.0f, /*useTexture=*/0.0f,
+                        /*pmf=*/0.0f, /*aliasProb=*/1.0f, /*aliasIndex=*/0u,
+                        /*kind=*/4.0f, /*spherePrimId=*/-1});
+                }
+            }
             fprintf(stderr, "loadPbrtScene: area light with %zu triangle(s) is not a simple quad - "
-                            "rendering it emissive but without an explicit NEE strategy (higher variance, "
-                            "not invisible)\n", idxs.size());
+                            "registered per triangle for NEE (one light entry each)\n", idxs.size());
         }
     }
 }
@@ -740,6 +765,8 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             mat.emission = PackedFloat3{unhandledEmission.x, unhandledEmission.y, unhandledEmission.z};
             mat.lightId = -1;
             mat.twoSided = unhandledIt->second.second ? 1u : 0u;
+            auto triLightIt = pbrtEmissiveTriangleLightId.find(i);
+            if (triLightIt != pbrtEmissiveTriangleLightId.end()) mat.lightId = triLightIt->second;
         }
         materials.push_back(mat);
     }
@@ -951,6 +978,24 @@ void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const Pbrt
             mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
+            // Register as a real disk light (AreaLightData kind 2, uniform-area sampling),
+            // with lightId set so the emissive-hit MIS weight pairs with NEE. Image-textured
+            // lights keep the old "emissive but unsampled" tier.
+            if (em.filename.empty()) {
+                const float diskRadius = sceneScale * scaleX * (float)d.radius;
+                const int32_t lightId = (int32_t)lights.size();
+                lights.push_back(AreaLightData{
+                    PackedFloat3{center.x, center.y, center.z},
+                    PackedFloat3{diskRadius, 0.0f, 0.0f}, PackedFloat3{0.0f, 0.0f, 0.0f},
+                    PackedFloat3{normal.x, normal.y, normal.z},
+                    (float)M_PI * diskRadius * diskRadius,
+                    mat.emission,
+                    /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f, /*useTexture=*/0.0f,
+                    /*pmf=*/0.0f, /*aliasProb=*/1.0f, /*aliasIndex=*/0u,
+                    /*kind=*/2.0f, /*spherePrimId=*/-1});
+                mat.lightId = lightId;
+            }
         }
         disks.push_back(DiskData{PackedFloat3{center.x, center.y, center.z},
                                   PackedFloat3{normal.x, normal.y, normal.z},
@@ -1019,6 +1064,24 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
             mat.emission = PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
+            // Register as a real cylinder light (AreaLightData kind 3, lateral surface only,
+            // uniform-area sampling); lightId set so emissive-hit MIS pairs with NEE.
+            if (em.filename.empty()) {
+                const float cylRadius = sceneScale * scaleX * (float)cy.radius;
+                const int32_t lightId = (int32_t)lights.size();
+                lights.push_back(AreaLightData{
+                    PackedFloat3{base.x, base.y, base.z},
+                    PackedFloat3{axis.x, axis.y, axis.z},          // edgeU = unit axis
+                    PackedFloat3{cylRadius, height, 0.0f},         // edgeV = (radius, height)
+                    PackedFloat3{axis.x, axis.y, axis.z},
+                    2.0f * (float)M_PI * cylRadius * height,
+                    mat.emission,
+                    /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
+                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f, /*useTexture=*/0.0f,
+                    /*pmf=*/0.0f, /*aliasProb=*/1.0f, /*aliasIndex=*/0u,
+                    /*kind=*/3.0f, /*spherePrimId=*/-1});
+                mat.lightId = lightId;
+            }
         }
         // `height` above comes from base/top AFTER toWorld() (which
         // already applies sceneScale itself) - only `radius`, a bare
