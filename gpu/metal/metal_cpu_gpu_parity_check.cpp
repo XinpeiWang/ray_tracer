@@ -311,10 +311,6 @@ const char* const kKnownGapScenes[] = {
 	// F2 (Triangle Mesh): same cause as C2 - its icosahedron is a reflectance-only conductor. Verified:
 	// with that mesh swapped to diffuse, CPU and Metal agree to ~1.0-1.2x everywhere.
 	"F2",
-	// J3, J5, J6: nested/procedural reflectance textures (checkerboard-in-checkerboard, fbm/windy/wrinkled
-	// gallery). The loader maps only the simple cases and averages a nested one to a flat colour (see
-	// nestedProceduralAverageColor use in metal_poc_pbrt_loader.mm); CPU renders the real texture.
-	"J3", "J5", "J6",
 	// E6 (Cylinder Medium), E7 (RGB Grid Medium): the medium itself is not representable on Metal (homogeneous
 	// medium on a cylinder; heterogeneous rgbgrid on a sphere). The interface boundary is now transparent
 	// instead of an opaque gray shape, but the volume scattering is missing.
