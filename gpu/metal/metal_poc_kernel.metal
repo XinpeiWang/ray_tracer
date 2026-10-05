@@ -1015,11 +1015,19 @@ kernel void primaryRayKernel(
                 // otherwise) - this is the first OTHER material type to
                 // need UV on a sphere at all, reusing that exact
                 // mechanism rather than re-deriving it.
+                if (mat.conductorK.y > 0.5) {
+                    // 3D checkerboard (see the loader's own comment): texture-space point
+                    // t = k*p + off, parity of floor(tx)+floor(ty)+floor(tz); even -> tex1.
+                    float3 tp = mat.conductorK.x * hitPoint + float3(mat.conductorEta);
+                    int cellSum = int(floor(tp.x)) + int(floor(tp.y)) + int(floor(tp.z));
+                    albedo = ((cellSum & 1) == 0) ? float3(mat.color) : float3(mat.transmitColor);
+                } else {
                 float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
                                       : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 float2 tile = floor(uv * float2(mat.conductorEta.x, mat.conductorEta.y));
                 float parity = fmod(tile.x + tile.y, 2.0);
                 albedo = (abs(parity) < 0.5) ? float3(mat.color) : float3(mat.transmitColor);
+                }
             } else if (mat.materialType == 26u || mat.materialType == 27u) {
                 // A pbrt-v4 Diffuse (26) or CoatedDiffuse (27, J1,
                 // section 172) material's own "texture reflectance"

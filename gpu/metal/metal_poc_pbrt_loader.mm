@@ -102,6 +102,41 @@ void MetalPocApp::loadPbrtScene() {
         growBounds(c - float3{r, r, r});
         growBounds(c + float3{r, r, r});
     }
+    // A huge ground-plane-as-a-sphere (the common `Translate 0 -1000 0` + radius-1000
+    // idiom, e.g. A2/A3/A5/A7/F2) would make the extent ~2000 and the rescale ~0.001,
+    // shrinking every real object to ~0.001 units - the SAME size as the shaders'
+    // fixed 0.001 ray offsets - so reflection/refraction rays off a radius-1 sphere
+    // were displaced by a full radius (mirror sphere's lower half rendered black).
+    // So: if excluding spheres whose diameter is >= 60% of the full extent shrinks the
+    // extent by more than 4x, size the scene from that "content" box instead. The
+    // huge sphere is still loaded, just no longer allowed to set the scale.
+    {
+        const float3 fullExtent = bboxMax - bboxMin;
+        const float fullMax = fmaxf(fullExtent.x, fmaxf(fullExtent.y, fullExtent.z));
+        float3 coreMin{FLT_MAX, FLT_MAX, FLT_MAX}, coreMax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
+        bool anyCore = false, droppedGiant = false;
+        for (const pbrt_flatten::Triangle& t : scene.triangles) {
+            for (int c = 0; c < 3; ++c) {
+                const float3 p{(float)t.v[c * 3 + 0], (float)t.v[c * 3 + 1], (float)t.v[c * 3 + 2]};
+                coreMin = simd::min(coreMin, p); coreMax = simd::max(coreMax, p); anyCore = true;
+            }
+        }
+        for (const pbrt_flatten::Sphere& s : scene.spheres) {
+            const float r = (float)s.radius;
+            if (2.0f * r >= 0.6f * fullMax) { droppedGiant = true; continue; }
+            const float3 c{(float)s.center[0], (float)s.center[1], (float)s.center[2]};
+            coreMin = simd::min(coreMin, c - float3{r, r, r}); coreMax = simd::max(coreMax, c + float3{r, r, r}); anyCore = true;
+        }
+        if (droppedGiant && anyCore) {
+            const float3 coreExtent = coreMax - coreMin;
+            const float coreMaxExtent = fmaxf(coreExtent.x, fmaxf(coreExtent.y, coreExtent.z));
+            if (coreMaxExtent > 1e-6f && coreMaxExtent < 0.25f * fullMax) {
+                fprintf(stderr, "loadPbrtScene: ignoring a huge ground-like sphere when sizing the scene "
+                                "(extent %.1f -> %.1f)\n", fullMax, coreMaxExtent);
+                bboxMin = coreMin; bboxMax = coreMax;
+            }
+        }
+    }
     const float3 bboxExtent = bboxMax - bboxMin;
     const float maxExtent = fmaxf(bboxExtent.x, fmaxf(bboxExtent.y, bboxExtent.z));
     // Target: the loaded scene's own largest dimension maps to 2.0 units -
@@ -152,7 +187,7 @@ void MetalPocApp::loadPbrtScene() {
     // named sub-materials - an ordinary auto lambda can't reference its
     // own name inside its own body (not yet in scope at that point).
     std::function<TriangleMaterial(const pbrt_flatten::Material&, int)> mapMaterial =
-        [this, &warnedUnsupportedMaterialKinds, &scene, &mapMaterial](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
+        [this, &warnedUnsupportedMaterialKinds, &scene, &mapMaterial, sceneScale, bboxCenter, sceneOffset](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
         // Complex IOR for a GGX conductor (materialType 4). A named metal spectrum or
         // explicit eta/k (m.hasConductorPreset) is used directly. Otherwise the scene gave
@@ -192,15 +227,39 @@ void MetalPocApp::loadPbrtScene() {
                 // own identical "bare imagemap only" scope-narrowing,
                 // pbrt_flatten.h) - falls through to the flat-colour
                 // default below instead of misrendering it. Also excludes
-                // m.checkerIs3D ("integer dimension" [3], pbrt_flatten.h's
-                // own Material::checkerIs3D comment) - materialType 25's own
-                // shader reads m.checkerUScale/checkerVScale as UV tile
-                // frequencies, which would misinterpret a 3D checker's world-
-                // space transform as a UV one; this Metal POC backend has no
-                // 3D-checker representation at all (unlike CPU/OptiX - see
-                // texture.h's checker_texture and pbrt_gpu_builder_materials.h's
-                // TextureKind::Checker), so it falls through to the same
-                // flat-colour default instead of rendering the wrong pattern.
+                // m.checkerIs3D: a 3D checker is handled by its own case just above
+                // (it needs a texture-space point, not UV tile frequencies).
+                // 3D checkerboard ("integer dimension" [3]): pbrt-v4 keys the pattern on a
+                // TEXTURE-SPACE point, floor(x)+floor(y)+floor(z) parity, exactly like CPU's
+                // checker_texture. Supported for the only shape the bundled scenes author - a
+                // pure uniform scale (checkerWorldToTexture diagonal s, no rotation/translation),
+                // same restriction OptiX's builder applies. materialType 25 with
+                // conductorK.y = 1 selects this mode: Metal world space is rescaled/recentred, so
+                // fold that into the transform once here: t = k*p_metal + off with k = s/sceneScale
+                // and off = s*(bboxCenter - sceneOffset/sceneScale) (conductorK.x = k,
+                // conductorEta = off). Works on triangles and spheres alike (A2's ground is a sphere).
+                if (m.hasCheckerReflectance && m.checkerIs3D &&
+                    m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
+                    const double* w2t = m.checkerWorldToTexture;
+                    const bool uniformScale =
+                        fabs(w2t[1]) < 1e-9 && fabs(w2t[2]) < 1e-9 && fabs(w2t[3]) < 1e-9 &&
+                        fabs(w2t[4]) < 1e-9 && fabs(w2t[6]) < 1e-9 && fabs(w2t[7]) < 1e-9 &&
+                        fabs(w2t[8]) < 1e-9 && fabs(w2t[9]) < 1e-9 && fabs(w2t[11]) < 1e-9 &&
+                        fabs(w2t[0] - w2t[5]) < 1e-6 && fabs(w2t[0] - w2t[10]) < 1e-6;
+                    if (uniformScale) {
+                        const float s = (float)w2t[0];
+                        TriangleMaterial mat{
+                            PackedFloat3{(float)m.checkerColor1[0], (float)m.checkerColor1[1], (float)m.checkerColor1[2]},
+                            /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                        mat.transmitColor = PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]};
+                        const float k = s / sceneScale;
+                        mat.conductorK = PackedFloat3{k, 1.0f, 0.0f};
+                        mat.conductorEta = PackedFloat3{s * (bboxCenter.x - sceneOffset.x / sceneScale),
+                                                         s * (bboxCenter.y - sceneOffset.y / sceneScale),
+                                                         s * (bboxCenter.z - sceneOffset.z / sceneScale)};
+                        return mat;
+                    }
+                }
                 if (m.hasCheckerReflectance && !m.checkerIs3D &&
                     m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
                     TriangleMaterial mat{

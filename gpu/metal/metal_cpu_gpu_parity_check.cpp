@@ -300,7 +300,7 @@ float regional_tolerance_for(float wholeImageTolerance) {
 // either way (METAL_PARITY_STRICT doesn't distinguish the two - both
 // count as "not a clean pass" if that's ever enabled).
 const char* const kKnownGapScenes[] = {
-	"B9", "B10", "B11", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
+	"B9", "B11", "B16", "B20",  // unsupported material kind -> gray Lambertian fallback
 	"F1", "F4", "F7", "F8", "F14",            // unsupported shape (cone/paraboloid/bilinear patch/curve) -> silently dropped
 	// C17 (Portal Light): portal-light.pbrt reads sssdragon/textures/small_rural_road_equiarea.exr,
 	// which is not tracked in this repo (only the sssdragon benchmark checkout has it). Both
