@@ -531,6 +531,39 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 	m.roughness_u = md.params.getFloat("uroughness", md.params.getFloat("roughness", 0.0));
 	m.roughness_v = md.params.getFloat("vroughness", md.params.getFloat("roughness", 0.0));
 	m.remapRoughness = md.params.getBool("remaproughness", true);
+	// CoatedConductor has two interfaces and pbrt names each one's roughness separately (materials.cpp,
+	// CoatedConductorMaterial::Create): interface.uroughness/vroughness/roughness for the coat and
+	// conductor.uroughness/vroughness/roughness for the base, both defaulting to 0 (a mirror under glass).
+	// roughness_u/roughness_v here become the COAT's; the base's go in conductorRoughness_u/v. A scene that gives
+	// neither spelling and just a bare "roughness" (this loader's older, non-pbrt convention - pbrt itself rejects it
+	// as an unused parameter) keeps meaning "this roughness on both interfaces", signalled by conductorRoughness < 0.
+	if (m.kind == MaterialKind::CoatedConductor) {
+		const char *const pbrtRoughNames[] = {"interface.uroughness", "interface.vroughness", "interface.roughness",
+		                                      "conductor.uroughness", "conductor.vroughness", "conductor.roughness"};
+		bool anyPbrtRoughness = false;
+		for (const char *n : pbrtRoughNames) anyPbrtRoughness = anyPbrtRoughness || md.params.find(n) != nullptr;
+		if (anyPbrtRoughness) {
+			m.roughness_u = md.params.getFloat("interface.uroughness", md.params.getFloat("interface.roughness", 0.0));
+			m.roughness_v = md.params.getFloat("interface.vroughness", md.params.getFloat("interface.roughness", 0.0));
+			m.roughness   = 0.5 * (m.roughness_u + m.roughness_v);
+			m.conductorRoughness_u = md.params.getFloat("conductor.uroughness", md.params.getFloat("conductor.roughness", 0.0));
+			m.conductorRoughness_v = md.params.getFloat("conductor.vroughness", md.params.getFloat("conductor.roughness", 0.0));
+		}
+		m.coatThickness = md.params.getFloat("thickness", 0.01);
+	}
+	// The layered materials' medium (albedo, g) and walk controls (maxdepth, nsamples) are not wired through to the
+	// renderers - the defaults (a clear layer, 10 interactions, 1 sample) are what every bundled scene uses.
+	if (m.kind == MaterialKind::CoatedConductor || m.kind == MaterialKind::CoatedDiffuse) {
+		const pbrt_scene::Param *albedoP = md.params.find("albedo");
+		const bool hasMediumAlbedo = albedoP && albedoP->type != "texture" &&
+			(albedoP->numbers.size() < 3 || albedoP->numbers[0] != 0.0 || albedoP->numbers[1] != 0.0 || albedoP->numbers[2] != 0.0);
+		if (hasMediumAlbedo || md.params.getFloat("g", 0.0) != 0.0 ||
+			md.params.getInt("maxdepth", 10) != 10 || md.params.getInt("nsamples", 1) != 1)
+			warn("material '" + md.type + "' sets \"albedo\"/\"g\"/\"maxdepth\"/\"nsamples\", which are not supported; "
+				 "a clear layer, 10 interactions and 1 sample are used");
+		if (m.kind == MaterialKind::CoatedDiffuse && md.params.getFloat("thickness", 0.01) != 0.01)
+			warn("material 'coateddiffuse' sets \"thickness\", which is not supported; 0.01 is used");
+	}
 	// "eta" is pbrt's name for index of refraction on dielectrics.
 	//
 	// CoatedConductor is a real exception to this: it ALSO conventionally
@@ -564,6 +597,18 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 			if (iorFloatP && iorFloatP->type == "float") etaFloatP = iorFloatP;
 		}
 		m.ior = (etaFloatP && !etaFloatP->numbers.empty()) ? etaFloatP->numbers[0] : 1.5;
+		// pbrt's own name for the coat's IOR - a float, or a named glass spectrum.
+		if (const pbrt_scene::Param *ie = md.params.find("interface.eta")) {
+			if (ie->type == "float" && !ie->numbers.empty()) {
+				m.ior = ie->numbers[0];
+			} else if (ie->type == "spectrum" && !ie->strings.empty()) {
+				const std::string glass = glassElementFromSpectrumName(ie->strings[0]);
+				const GlassPreset *preset = glass.empty() ? nullptr : FindGlassPreset(glass.c_str());
+				if (preset) m.ior = preset->nd;
+				else warn("material 'coatedconductor' binds \"interface.eta\" to \"" + ie->strings[0] +
+				          "\", which is not a recognized glass preset; eta=" + std::to_string(m.ior) + " is used instead");
+			}
+		}
 	} else {
 		m.ior = md.params.getFloat("eta", md.params.getFloat("ior", 1.5));
 	}
@@ -673,14 +718,18 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 	// back to reflectanceToConductorK()'s approximation regardless of
 	// what the scene actually asked for.
 	if (m.kind == MaterialKind::Conductor || m.kind == MaterialKind::CoatedConductor) {
-		std::string elem = conductorElementFromSpectrumName(md.params.getString("eta", ""));
-		if (elem.empty()) elem = conductorElementFromSpectrumName(md.params.getString("k", ""));
+		// pbrt's coated conductor calls its base's IOR "conductor.eta"/"conductor.k" ("eta" is the coat's there);
+		// the older bare spelling is still read for scenes written against this loader's convention.
+		const char *etaKey = (m.kind == MaterialKind::CoatedConductor && md.params.find("conductor.eta")) ? "conductor.eta" : "eta";
+		const char *kKey   = (m.kind == MaterialKind::CoatedConductor && md.params.find("conductor.k"))   ? "conductor.k"   : "k";
+		std::string elem = conductorElementFromSpectrumName(md.params.getString(etaKey, ""));
+		if (elem.empty()) elem = conductorElementFromSpectrumName(md.params.getString(kKey, ""));
 		if (const ConductorPreset* preset = elem.empty() ? nullptr : FindConductorPreset(elem.c_str())) {
 			m.hasConductorPreset = true;
 			m.conductorEta[0] = preset->eta_r; m.conductorEta[1] = preset->eta_g; m.conductorEta[2] = preset->eta_b;
 			m.conductorK[0]   = preset->k_r;   m.conductorK[1]   = preset->k_g;   m.conductorK[2]   = preset->k_b;
-		} else if (const pbrt_scene::Param* etaP = md.params.find("eta"); etaP && etaP->numbers.size() >= 3 &&
-				   md.params.find("k") && md.params.find("k")->numbers.size() >= 3) {
+		} else if (const pbrt_scene::Param* etaP = md.params.find(etaKey); etaP && etaP->numbers.size() >= 3 &&
+				   md.params.find(kKey) && md.params.find(kKey)->numbers.size() >= 3) {
 			// An explicit "rgb eta"/"rgb k" (not a named spectrum, or
 			// pbrt_flatten.h wouldn't have reached here) - this
 			// codebase's own real GGX conductor BxDF (bxdfs_conductor.h,
@@ -694,13 +743,12 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 			// scene giving only one has no pbrt-v4-documented default
 			// for CoatedConductor to fall back to the way plain
 			// Conductor's own Cu-default branch below does.
-			const pbrt_scene::Vec3 eta = md.params.getVec3("eta", {0.0, 0.0, 0.0});
-			const pbrt_scene::Vec3 k   = md.params.getVec3("k",   {0.0, 0.0, 0.0});
+			const pbrt_scene::Vec3 eta = md.params.getVec3(etaKey, {0.0, 0.0, 0.0});
+			const pbrt_scene::Vec3 k   = md.params.getVec3(kKey,   {0.0, 0.0, 0.0});
 			m.hasConductorPreset = true;
 			m.conductorEta[0] = eta.x; m.conductorEta[1] = eta.y; m.conductorEta[2] = eta.z;
 			m.conductorK[0]   = k.x;   m.conductorK[1]   = k.y;   m.conductorK[2]   = k.z;
-		} else if (m.kind == MaterialKind::Conductor &&
-				   !md.params.find("eta") && !md.params.find("k") && !md.params.find("reflectance")) {
+		} else if (!md.params.find(etaKey) && !md.params.find(kKey) && !md.params.find("reflectance")) {
 			// pbrt-v4's real default (materials.cpp's ConductorMaterial::
 			// Create: "if (!reflectance) { if (!eta) eta = Cu-eta; if
 			// (!k) k = Cu-k; }") when a scene gives NONE of eta/k/
@@ -715,11 +763,8 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 			// unrecognized-as-a-named-spectrum) eta/k/reflectance still
 			// falls through to that fuzz-mirror approximation below,
 			// unchanged - this only replaces the "gave nothing at all"
-			// case. Conductor ONLY: pbrt-v4 documents no equivalent
-			// "nothing given" default for CoatedConductorMaterial, so
-			// this doesn't extend to it - CoatedConductor's own
-			// reflectanceToConductorK() approximation stays the
-			// fallback for that kind's "nothing given" case, unchanged.
+			// case. CoatedConductorMaterial::Create has the same default
+			// (Cu eta/k unless a reflectance is given), so this covers it too.
 			if (const ConductorPreset* cu = FindConductorPreset("Cu")) {
 				m.hasConductorPreset = true;
 				m.conductorEta[0] = cu->eta_r; m.conductorEta[1] = cu->eta_g; m.conductorEta[2] = cu->eta_b;

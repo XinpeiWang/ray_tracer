@@ -105,7 +105,9 @@ TEST(CoatedDiffuseBxDF, ThroughputInRange) {
 
 // Test: specular-branch output is achromatic (r == g == b for coat reflection)
 TEST(CoatedDiffuseBxDF, SpecularBranchIsAchromatic) {
+	// The mirror reflection of the coat is only a specular sample when the coat is smooth (pbrt: IsSpecular()).
 	auto b = make_coated_diffuse();
+	b.alpha_x = b.alpha_y = 0.0;
 	// Force normal incidence -> maximum F_in, higher chance of specular
 	const double wi_z = 0.9999, wi_x = std::sqrt(1.0 - wi_z*wi_z), wi_y = 0.0;
 	uint64_t st = 777;
@@ -182,7 +184,8 @@ TEST(CoatedDiffuseBxDF, DiffuseBranchIsColored) {
 		double u1 = randu(st);
 		auto res = b.sample_local(wi_x, wi_y, wi_z,
 								  (uint64_t)(u1 * 1e14 + i), (uint64_t)(i * 999999ULL));
-		if (!res.valid || res.is_specular) continue;
+		// A rough coat's own (glossy) reflection is achromatic too; only a path that reached the base is tinted.
+		if (!res.valid || res.is_specular || res.r == res.b) continue;
 		++colored_found;
 		// r and b should differ since albedo_r != albedo_b
 		EXPECT_GT(std::fabs(res.r - res.b), 0.0)
@@ -215,6 +218,8 @@ TEST(CoatedConductorBxDF, SampledDirectionAboveSurface) {
 // Test: coat-specular branch is achromatic
 TEST(CoatedConductorBxDF, SpecularBranchIsAchromatic) {
 	auto b = make_coated_conductor();
+	b.alpha_x = b.alpha_y = 0.0;      // smooth coat; the conductor underneath stays rough
+	b.cond_alpha_x = b.cond_alpha_y = 0.3;
 	const double wi_z = 0.9999, wi_x = std::sqrt(1.0 - wi_z*wi_z), wi_y = 0.0;
 	uint64_t st = 4242;
 	int found = 0;
@@ -312,4 +317,162 @@ TEST(CoatedConductorBxDF, RoughnessAffectsOutput) {
 		EXPECT_NE(avg_rough, avg_smooth)
 			<< "Rough and smooth coatings should produce different avg throughput";
 	}
+}
+
+// ---------------------------------------------------------------------------
+// pbrt-v4 LayeredBxDF port (src/shared/bxdfs_layered.h): the coat refracts, the two interfaces have their own
+// roughness, and Sample_f / f() / PDF() are pbrt's. These check the port against independent references rather
+// than against itself: a closed form for the all-smooth case, and the sampler against the f() integral elsewhere.
+// ---------------------------------------------------------------------------
+
+namespace {
+
+constexpr double kLayeredPi = 3.14159265358979323846;
+
+const double kCuEta[3] = {0.246, 1.072, 1.155};
+const double kCuK[3]   = {3.378, 2.591, 2.469};
+
+// Smooth dielectric coat over a smooth conductor, summed over the infinite inter-reflection series: the top
+// reflection plus the light that enters (1-R), crosses the layer (Beer-Lambert, unit extinction), reflects off the
+// conductor, crosses back, leaves (1-R') and keeps looping with R' at the coat's underside.
+double analytic_smooth_coat_over_conductor(double cos_i, double ior, double eta, double k, double thickness) {
+	const double R = FrDielectric(cos_i, ior);
+	const double sin2_t = (1.0 - cos_i * cos_i) / (ior * ior);
+	const double cos_t = std::sqrt(1.0 - sin2_t);
+	const double tr = std::exp(-thickness / cos_t);
+	const double Fc = FrComplex(cos_t, eta, k);
+	const double Rint = FrDielectric(-cos_t, ior);
+	const double up = (1.0 - R) * tr * Fc * tr * (1.0 - Rint);
+	const double loop = Rint * tr * Fc * tr;
+	return R + up / (1.0 - loop);
+}
+
+CoatedConductorBxDF<double> cu_under_coat(double coat_alpha, double base_alpha) {
+	CoatedConductorBxDF<double> b{};
+	b.eta_r = kCuEta[0]; b.eta_g = kCuEta[1]; b.eta_b = kCuEta[2];
+	b.k_r = kCuK[0];     b.k_g = kCuK[1];     b.k_b = kCuK[2];
+	b.coat_ior = 1.5;
+	b.alpha_x = b.alpha_y = coat_alpha;
+	b.cond_alpha_x = b.cond_alpha_y = base_alpha;
+	b.thickness = 0.01; b.maxDepth = 10; b.nSamples = 1;
+	return b;
+}
+
+// Albedo from the two estimators for the same BSDF at normal-ish incidence `theta`: the mean of the walk's sample
+// weights split into the coat's mirror lobe (is_specular) and the rest, and the integral of f()*cos over the
+// hemisphere (cosine-weighted). f() has no delta part, so the rest must equal the f() integral.
+template<typename Bx>
+void albedo_from_sampler_and_f(const Bx& b, double theta_deg, int n, double& specular, double& glossy, double& f_integral) {
+	const double th = theta_deg * kLayeredPi / 180.0;
+	const double wx = std::sin(th), wz = std::cos(th);
+	uint64_t st = 24680 + (uint64_t)theta_deg;
+	specular = glossy = 0.0;
+	for (int i = 0; i < n; ++i) {
+		const uint64_t s0 = (uint64_t)(randu(st) * 1e15), s1 = (uint64_t)(randu(st) * 1e15);
+		auto r = b.sample_local(wx, 0.0, wz, s0, s1);
+		if (!r.valid) continue;
+		(r.is_specular ? specular : glossy) += r.r;
+	}
+	specular /= n; glossy /= n;
+	f_integral = 0.0;
+	for (int i = 0; i < n; ++i) {
+		double x, y, z, pdf;
+		SampleCosineHemisphere(randu(st), randu(st), x, y, z, pdf);
+		double fr, fg, fb;
+		b.f(wx, 0.0, wz, x, y, z, (uint64_t)(randu(st) * 1e15), (uint64_t)(randu(st) * 1e15), fr, fg, fb);
+		f_integral += fr * z / pdf;
+	}
+	f_integral /= n;
+}
+
+} // namespace
+
+// A smooth coat over a smooth conductor is a delta lobe: every sample is specular, and the mean weight is the
+// closed-form series above. (The old model never refracted and read a third of this at normal incidence.)
+TEST(LayeredBxDF, SmoothCoatOverSmoothConductorMatchesTheClosedForm) {
+	auto b = cu_under_coat(0.0, 0.0);
+	EXPECT_TRUE(b.is_delta());
+	uint64_t st = 777;
+	for (double theta : {0.0, 40.0, 70.0}) {
+		const double th = theta * kLayeredPi / 180.0;
+		const int n = 60000;
+		double sum[3] = {0, 0, 0};
+		for (int i = 0; i < n; ++i) {
+			const uint64_t s0 = (uint64_t)(randu(st) * 1e15), s1 = (uint64_t)(randu(st) * 1e15);
+			auto r = b.sample_local(std::sin(th), 0.0, std::cos(th), s0, s1);
+			if (!r.valid) continue;
+			EXPECT_TRUE(r.is_specular);
+			sum[0] += r.r; sum[1] += r.g; sum[2] += r.b;
+		}
+		for (int c = 0; c < 3; ++c) {
+			const double expected = analytic_smooth_coat_over_conductor(std::cos(th), 1.5, kCuEta[c], kCuK[c], 0.01);
+			EXPECT_NEAR(sum[c] / n, expected, 0.02 * expected + 0.003) << "channel " << c << " at " << theta << " degrees";
+		}
+	}
+}
+
+// Smooth coat over a rough conductor, and rough coat over a smooth conductor: the random walk and the stochastic f()
+// are two estimators of one BSDF, so the sampler's non-specular weight must equal the f() integral.
+TEST(LayeredBxDF, SamplerAgreesWithTheFIntegralWhenOneInterfaceIsSmooth) {
+	const struct { double coat, base; } cases[] = {{0.0, 0.3}, {0.3, 0.0}};
+	for (const auto& c : cases) {
+		auto b = cu_under_coat(c.coat, c.base);
+		EXPECT_FALSE(b.is_delta());
+		for (double theta : {0.0, 60.0}) {
+			double spec, gloss, fint;
+			albedo_from_sampler_and_f(b, theta, 60000, spec, gloss, fint);
+			EXPECT_NEAR(gloss, fint, 0.05 * fint + 0.01)
+				<< "coat alpha " << c.coat << ", base alpha " << c.base << ", " << theta << " degrees";
+			if (c.coat == 0.0) EXPECT_GT(spec, 0.02) << "a smooth coat's mirror reflection is a specular sample";
+			else               EXPECT_EQ(spec, 0.0) << "a rough coat has no specular samples";
+		}
+	}
+}
+
+TEST(LayeredBxDF, CoatedDiffuseSamplerAgreesWithTheFIntegral) {
+	CoatedDiffuseBxDF<double> b{};
+	b.albedo_r = b.albedo_g = b.albedo_b = 0.5;
+	b.coat_ior = 1.5;
+	b.alpha_x = b.alpha_y = 0.0;
+	for (double theta : {0.0, 60.0}) {
+		double spec, gloss, fint;
+		albedo_from_sampler_and_f(b, theta, 60000, spec, gloss, fint);
+		EXPECT_NEAR(gloss, fint, 0.05 * fint + 0.01) << theta << " degrees";
+		EXPECT_GT(spec, 0.02);
+	}
+}
+
+// pdf() is only an MIS density, but it must be a finite, non-negative function of the direction pair and the same
+// value every time for the same pair (pbrt seeds it from the directions) - NEE and the BSDF sample weigh an
+// emitter hit with it, and the two weights only sum to one if both see the same number.
+TEST(LayeredBxDF, PdfIsDeterministicFiniteAndNonNegative) {
+	for (double coat : {0.0, 0.3}) {
+		auto b = cu_under_coat(coat, 0.3);
+		uint64_t st = 99;
+		for (int i = 0; i < 200; ++i) {
+			double x, y, z, p;
+			SampleCosineHemisphere(randu(st), randu(st), x, y, z, p);
+			const double p1 = b.pdf(0.3, 0.1, 0.9486832981, x, y, z);
+			const double p2 = b.pdf(0.3, 0.1, 0.9486832981, x, y, z);
+			EXPECT_EQ(p1, p2);
+			EXPECT_TRUE(std::isfinite(p1));
+			EXPECT_GE(p1, 0.0);
+		}
+	}
+}
+
+// Conductor eta/k go into the BxDF as given: the divide-by-the-coat's-IOR that pbrt's CoatedConductorMaterial
+// applies lives in the materials, so the same eta/k can be fed to the closed form.
+TEST(LayeredBxDF, ConductorEtaAndKAreUsedAsGiven) {
+	auto b = cu_under_coat(0.0, 0.0);
+	b.eta_r = b.eta_g = b.eta_b = 1.0;
+	b.k_r = b.k_g = b.k_b = 0.0;   // a "conductor" that is vacuum-like: nothing comes back from the base
+	uint64_t st = 5;
+	double sum = 0; const int n = 20000;
+	for (int i = 0; i < n; ++i) {
+		auto r = b.sample_local(0.0, 0.0, 1.0, (uint64_t)(randu(st) * 1e15), (uint64_t)(randu(st) * 1e15));
+		if (r.valid) sum += r.r;
+	}
+	// Only the coat's own reflection (4% at normal incidence for IOR 1.5) plus whatever FrComplex(eta=1,k=0) returns (0).
+	EXPECT_NEAR(sum / n, FrDielectric(1.0, 1.5), 0.005);
 }

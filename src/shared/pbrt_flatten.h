@@ -1303,6 +1303,14 @@ struct Material {
 	bool hasConductorPreset = false;
 	double conductorEta[3] = {0.0, 0.0, 0.0};
 	double conductorK[3] = {0.0, 0.0, 0.0};
+
+	// CoatedConductor only. roughness_u/roughness_v/ior above are the COAT's (pbrt: interface.uroughness/
+	// vroughness/roughness and interface.eta). The base conductor has its own roughness (pbrt:
+	// conductor.uroughness/vroughness/roughness, default 0): -1 means none was given and the coat's applies to
+	// both interfaces (the legacy single "roughness" spelling). coatThickness is pbrt's "thickness".
+	double conductorRoughness_u = -1.0;
+	double conductorRoughness_v = -1.0;
+	double coatThickness = 0.01;
 };
 
 // Extracts "Ag" from pbrt-v4's "metal-Ag-eta"/"metal-Ag-k" named-spectrum

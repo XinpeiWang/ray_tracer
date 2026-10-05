@@ -297,6 +297,59 @@ __device__ __forceinline__ float wf_glossy_alpha_v(const MaterialData& mat, bool
 	return do_regularize ? RegularizeAlpha(a) : a;
 }
 
+// A layered (coated) BSDF's scatter step, shared by MaterialType::CoatedDiffuse and CoatedConductor - pbrt-v4's
+// LayeredBxDF (src/shared/bxdfs_layered.h). Same split as the recursive backend's layered_scatter_and_nee()
+// (optix_device_helpers.h): Sample_f's random walk gives the continuation direction and an unbiased weight
+// f*cos/pdf, PDF() the MIS density (returned as misPdf, which the caller stores as brdf_pdf_override), and f()
+// is evaluated later, per light sample, by wf_finish_material_scatter()'s evalGlossyF.
+//   nee      - pbrt's flags test: false only for a smooth coat over a smooth conductor (a delta lobe overall);
+//   rejected - the walk failed. pbrt still takes the light samples at this vertex, then ends the path, so the caller
+//              keeps scattered true with a zero weight;
+//   specular - the sample was the coat's mirror reflection (BSDFSample::IsSpecular). With nee on, wf_finish_material_scatter's
+//              `if (!is_specular)` gate would also drop the light samples, so the caller reports such a sample as
+//              non-specular with kWfSpecularLobePdf as its MIS pdf: the emitter it may find then gets a MIS weight of 1,
+//              exactly what a specular bounce gets.
+// `scattered` false means nothing to do at all (ray below the horizon, or a delta lobe whose walk failed).
+constexpr float kWfSpecularLobePdf = 1.0e15f;
+
+struct WfLayeredScatter {
+	bool scattered = false;
+	bool rejected = false;
+	bool nee = false;
+	bool specular = false;
+	float3 dir = {0.0f, 0.0f, 1.0f};
+	float3 weight = {0.0f, 0.0f, 0.0f};
+	float misPdf = -1.0f;
+};
+
+template<typename Bx>
+__device__ __forceinline__ WfLayeredScatter wf_layered_scatter(
+	const Bx& bx, const float3& normal, const float3& rayDir, const float3& dpdu, unsigned int& seed)
+{
+	WfLayeredScatter r;
+	float3 tan, bit;
+	BuildDpduTangentFrame(normal.x, normal.y, normal.z, dpdu.x, dpdu.y, dpdu.z, tan.x, tan.y, tan.z, bit.x, bit.y, bit.z);
+	const float3 wi_w = -normalize(rayDir);
+	const float wi_x = dot(wi_w, tan), wi_y = dot(wi_w, bit), wi_z = dot(wi_w, normal);
+	if (wi_z <= 0.0f) return r;
+	uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
+	const BxDFSampleResult<float> smp = bx.sample_local(wi_x, wi_y, wi_z, s0, s1);
+	r.nee = !bx.is_delta();
+	if (!smp.valid) {
+		if (!r.nee) return r;
+		r.scattered = true;
+		r.rejected = true;
+		r.dir = normal;
+		return r;
+	}
+	r.scattered = true;
+	r.dir = normalize(smp.wo_x*tan + smp.wo_y*bit + smp.wo_z*normal);
+	r.weight = make_float3(smp.r, smp.g, smp.b);
+	r.specular = smp.is_specular;
+	if (r.nee) r.misPdf = smp.is_specular ? kWfSpecularLobePdf : bx.pdf(wi_x, wi_y, wi_z, smp.wo_x, smp.wo_y, smp.wo_z);
+	return r;
+}
+
 // Result of wf_sample_guided_glossy() below - everything MaterialType::
 // Conductor/RoughMetal need from their shared scatter-direction sampling.
 // `scattered=false` means a degenerate direction was hit (wo below the
@@ -2551,7 +2604,12 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// design and why staying self-consistent across all sticky fields is
 	// what actually fixes that. nullptr is a complete no-op, same shape as
 	// volumeMatIdxOut/volumePhaseWoGOut above.
-	float4* volumeEntryPointOut = nullptr)
+	float4* volumeEntryPointOut = nullptr,
+	// MaterialType::CoatedConductor only: the BASE conductor's (already regularized) GGX alphas - glossyAlpha/
+	// glossyAlphaV above are the coat's. Negative (the default, every other call site) means "derive them from
+	// materials[matIdx]", unregularized.
+	float glossyCondAlpha = -1.0f,
+	float glossyCondAlphaV = -1.0f)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -2757,12 +2815,22 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			CoatedDiffuseBxDF<float> bx{ coatedAlbedo.x, coatedAlbedo.y, coatedAlbedo.z, fm.ior, glossy_alpha, glossy_alpha_v };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
-			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha_v);
+			// pbrt's LayeredBxDF::PDF(): the same density the scatter step reports for the sampled continuation
+			// (brdf_pdf_override), here at the queried light direction - MIS weighs both with it.
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
 		} else {
-			CoatedConductorBxDF<float> bx{ fm.eta_c.x, fm.eta_c.y, fm.eta_c.z, fm.k_c.x, fm.k_c.y, fm.k_c.z, fm.ior, glossy_alpha, glossy_alpha_v };
+			float cond_ax = glossyCondAlpha, cond_ay = glossyCondAlphaV;
+			if (cond_ax < 0.0f)
+				ResolveCoatedConductorBaseAlpha(fm.condRoughness, fm.condRoughnessV, fm.remapRoughness,
+				                                glossy_alpha, glossy_alpha_v, cond_ax, cond_ay);
+			const float inv_ior = 1.0f / fm.ior;
+			CoatedConductorBxDF<float> bx{ fm.eta_c.x * inv_ior, fm.eta_c.y * inv_ior, fm.eta_c.z * inv_ior,
+			                               fm.k_c.x * inv_ior, fm.k_c.y * inv_ior, fm.k_c.z * inv_ior,
+			                               fm.ior, glossy_alpha, glossy_alpha_v, fm.layerThickness, 0.0f, 0.0f, 10, 1,
+			                               cond_ax, cond_ay };
 			uint64_t s0, s1; wf_random_seed64_pair(seed, s0, s1);
 			bx.f(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, s0, s1, fr, fg, fb);
-			outPdf = ggx_vndf_reflection_pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z, glossy_alpha, glossy_alpha_v);
+			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
 		}
 		outF = make_float3(fr, fg, fb);
 		return true;

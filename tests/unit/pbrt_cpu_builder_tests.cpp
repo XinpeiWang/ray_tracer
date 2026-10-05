@@ -2020,6 +2020,56 @@ TEST(PbrtCpuBuildTest, CoatedConductorNamedSpectrumBuildsTheRealConductorFresnel
 		   "F0), not the pre-existing grey/achromatic approximation";
 }
 
+// pbrt's own coatedconductor parameter names, and its defaults (CoatedConductorMaterial::Create): conductor.eta/conductor.k for
+// the base, interface.roughness/conductor.roughness separately (both 0), and copper when nothing is given. The base's eta and k
+// are divided by the coat's IOR, so F0 at normal incidence is the conductor's Fresnel against the coat, not against vacuum.
+static coated_conductor* buildCoatedConductor(const std::string& params, pbrt_cpu::BuildResult& keepAlive, hit_record& rec) {
+	keepAlive = buildFrom("Material "coatedconductor" " + params + "
+" + std::string(kQuad));
+	if (!keepAlive.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)), interval(0.001, infinity), rec)) return nullptr;
+	return dynamic_cast<coated_conductor *>(rec.mat.get());
+}
+
+TEST(PbrtCpuBuildTest, CoatedConductorWithNothingGivenIsSmoothCopperUnderGlass) {
+	pbrt_cpu::BuildResult b; hit_record rec;
+	auto *cc = buildCoatedConductor("", b, rec);
+	ASSERT_NE(cc, nullptr);
+	EXPECT_TRUE(cc->is_delta_bsdf()) << "interface.roughness and conductor.roughness both default to 0: a mirror under glass";
+	EXPECT_NEAR(cc->get_coat_ior(), 1.5, 1e-12);
+	const color f0 = cc->get_conductor_f0();
+	EXPECT_GT(f0.x(), f0.z()) << "pbrt's default conductor is copper: red F0 above blue";
+	EXPECT_GT(f0.x(), 0.7);
+}
+
+TEST(PbrtCpuBuildTest, CoatedConductorReadsPbrtParameterNames) {
+	pbrt_cpu::BuildResult b; hit_record rec;
+	auto *cc = buildCoatedConductor(
+		""rgb conductor.eta" [ 0.143 0.375 1.442 ] "rgb conductor.k" [ 3.983 2.386 1.603 ] "
+		""float interface.eta" [ 1.33 ] "float interface.roughness" [ 0.2 ] "float conductor.roughness" [ 0.0 ]", b, rec);
+	ASSERT_NE(cc, nullptr);
+	EXPECT_NEAR(cc->get_coat_ior(), 1.33, 1e-12) << "interface.eta is the coat's IOR, not the conductor's";
+	EXPECT_NEAR(cc->get_coat_roughness(), 0.2, 1e-9);
+	EXPECT_FALSE(cc->is_delta_bsdf()) << "a rough coat is glossy even over a smooth conductor";
+	// eta and k are relative to the coat: gold's blue channel F0 against vacuum is 0.32, against a 1.33 coat it is lower.
+	const color f0 = cc->get_conductor_f0();
+	EXPECT_GT(f0.x(), 0.9);
+	EXPECT_LT(f0.z(), 0.32);
+}
+
+TEST(PbrtCpuBuildTest, CoatedConductorBareRoughnessStillMeansBothInterfaces) {
+	// The older spelling (one "roughness"): pbrt would reject it as an unused parameter, this loader keeps it as the roughness of
+	// both interfaces. A smooth coat with only conductor.roughness is glossy too.
+	pbrt_cpu::BuildResult b1, b2; hit_record r1, r2;
+	auto *legacy = buildCoatedConductor(""float roughness" [ 0.3 ]", b1, r1);
+	auto *baseOnly = buildCoatedConductor(""float conductor.roughness" [ 0.3 ]", b2, r2);
+	ASSERT_NE(legacy, nullptr);
+	ASSERT_NE(baseOnly, nullptr);
+	EXPECT_FALSE(legacy->is_delta_bsdf());
+	EXPECT_NEAR(legacy->get_coat_roughness(), 0.3, 1e-9);
+	EXPECT_FALSE(baseOnly->is_delta_bsdf());
+	EXPECT_NEAR(baseOnly->get_coat_roughness(), 0.0, 1e-12) << "interface.roughness defaults to 0 once the pbrt names are used";
+}
+
 TEST(PbrtCpuBuildTest, UnrecognizedConductorSpectrumFallsBackToMetal) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Material \"conductor\" \"rgb reflectance\" [ .8 .8 .8 ] "

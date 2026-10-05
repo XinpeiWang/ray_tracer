@@ -388,14 +388,18 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 		// CoatedConductor branch) gets the real complex-IOR model, same as
 		// the Conductor case above; "nothing given"/an unrecognized case
 		// keeps the pre-existing reflectanceToConductorK() approximation.
+		// m.conductorRoughness_u/v < 0: no conductor roughness was given, the coat's applies to both.
+		const double cru = m.conductorRoughness_u >= 0.0 ? m.conductorRoughness_u : m.roughness_u;
+		const double crv = m.conductorRoughness_v >= 0.0 ? m.conductorRoughness_v : m.roughness_v;
 		if (m.hasConductorPreset)
 			return std::make_shared<coated_conductor>(
 				m.conductorEta[0], m.conductorEta[1], m.conductorEta[2],
 				m.conductorK[0], m.conductorK[1], m.conductorK[2],
-				m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+				m.ior, m.roughness_u, m.roughness_v, cru, crv, m.remapRoughness, m.coatThickness);
 		const color k = reflectanceToConductorK(albedo);
 		return std::make_shared<coated_conductor>(
-			1.0, 1.0, 1.0, k.x(), k.y(), k.z(), m.ior, m.roughness_u, m.roughness_v, m.remapRoughness);
+			1.0, 1.0, 1.0, k.x(), k.y(), k.z(),
+			m.ior, m.roughness_u, m.roughness_v, cru, crv, m.remapRoughness, m.coatThickness);
 	}
 	case pbrt_flatten::MaterialKind::DiffuseTransmission: {
 		// m.textureFilename/m.transmittanceTextureFilename (own comments in

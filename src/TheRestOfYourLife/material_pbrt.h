@@ -668,22 +668,138 @@ class rough_dielectric : public material, public dispersive_material {
 
 
 // ---------------------------------------------------------------------------
+// Layered (coated) BSDF plumbing shared by coated_diffuse and coated_conductor.
+//
+// Both are pbrt-v4's LayeredBxDF (src/shared/bxdfs_layered.h): a dielectric coat over an opaque base, evaluated
+// by a stochastic random walk. pbrt integrates it with three separate pieces, and so does this:
+//   - Sample_f (a walk): an unbiased path weight f*cos/pdf and a direction, but no usable density
+//     -> scatter_record::walk_* (camera.h continues the path along it);
+//   - PDF(): an approximate density used only for MIS weights -> scatter_record::mis_pdf_ptr;
+//   - f(): a stochastic BSDF value for next-event estimation -> scattering_pdf()/scattering_attenuation().
+// A BSDF whose coat and base are both smooth is a delta lobe and takes the plain skip_pdf path instead.
+// ---------------------------------------------------------------------------
+// Roughness -> GGX alpha for the layered materials. Unlike roughness_or_alpha() this does not floor the roughness at
+// 1e-4 (alpha 0.01): pbrt's default coat and conductor roughness is 0, which is an exactly smooth interface, and
+// the flooring made it a glossy one that no longer reads as a delta lobe.
+inline double layered_alpha(double roughness, bool remap_roughness) {
+    const double r = std::fmax(roughness, 0.0);
+    return remap_roughness ? TrowbridgeReitz<double>::RoughnessToAlpha(r) : r;
+}
+
+inline uint64_t layered_random_seed() {
+    return (static_cast<uint64_t>(random_double() * 4294967296.0) << 32) |
+            static_cast<uint64_t>(random_double() * 4294967296.0);
+}
+
+// pdf over world directions wrapping the layered BxDF's PDF() - used for MIS only (see above).
+template<typename Bx>
+class layered_mis_pdf : public pdf {
+  public:
+    layered_mis_pdf(const Bx& bx_, const ShadingFrame<double>& frame_, double wx, double wy, double wz)
+        : bx(bx_), frame(frame_), wi_x(wx), wi_y(wy), wi_z(wz) {}
+
+    double value(const vec3& direction) const override {
+        const vec3 d = unit_vector(direction);
+        double lx, ly, lz;
+        frame.to_local(d.x(), d.y(), d.z(), lx, ly, lz);
+        if (lz <= 0.0) return 0.0;
+        return bx.pdf(wi_x, wi_y, wi_z, lx, ly, lz);
+    }
+
+    // The camera never samples through this object (it follows scatter_record::walk_*); a cosine lobe keeps it
+    // a well-formed pdf for any caller that does.
+    vec3 generate() const override {
+        double x, y, z, p;
+        SampleCosineHemisphere(random_double(), random_double(), x, y, z, p);
+        double wx, wy, wz;
+        frame.to_world(x, y, z, wx, wy, wz);
+        return unit_vector(vec3(wx, wy, wz));
+    }
+
+  private:
+    Bx bx;
+    ShadingFrame<double> frame;
+    double wi_x, wi_y, wi_z;
+};
+
+// scatter() for a layered BSDF. rep_color is the colour srec.attenuation reports for the bridges that pair it with
+// scattering_pdf(); (proxy_ax, proxy_ay) shape the GGX proxy density those same bridges draw from.
+template<typename Bx>
+inline bool layered_scatter(const Bx& bx, const MaterialContext<double>& ctx, const hit_record& rec,
+                            const ray& r_in, scatter_record& srec, const color& rep_color,
+                            double proxy_ax, double proxy_ay) {
+    auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
+    double wi_x, wi_y, wi_z;
+    frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+    if (wi_z <= 0.0) return false;
+
+    const auto res = bx.sample_local(wi_x, wi_y, wi_z, layered_random_seed(), layered_random_seed());
+    vec3 wd(0, 0, 1);
+    if (res.valid) {
+        double dx, dy, dz;
+        frame.to_world(res.wo_x, res.wo_y, res.wo_z, dx, dy, dz);
+        wd = unit_vector(vec3(dx, dy, dz));
+    }
+
+    if (bx.is_delta()) {
+        if (!res.valid) return false;
+        srec.attenuation  = color(res.r, res.g, res.b);
+        srec.pdf_ptr      = nullptr;
+        srec.skip_pdf     = true;
+        srec.skip_pdf_ray = ray(rec.p, wd, r_in.time());
+        return true;
+    }
+
+    srec.attenuation = rep_color;
+    srec.pdf_ptr     = make_shared<ggx_reflection_pdf>(rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), proxy_ax, proxy_ay);
+    srec.mis_pdf_ptr = make_shared<layered_mis_pdf<Bx>>(bx, frame, wi_x, wi_y, wi_z);
+    srec.skip_pdf    = false;
+    srec.has_walk    = true;
+    srec.walk_valid  = res.valid;
+    if (res.valid) {
+        srec.walk_specular = res.is_specular;
+        srec.walk_ray      = ray(rec.p, wd, r_in.time());
+        srec.walk_weight   = color(res.r, res.g, res.b);
+    }
+    return true;
+}
+
+// f(wi, scattered)*cos for NEE. The seed comes from the queried direction alone, so scattering_pdf() and
+// scattering_attenuation() - two separate calls for the same query - see the same stochastic estimate.
+template<typename Bx>
+inline bool layered_eval_f_cos(const Bx& bx, const MaterialContext<double>& ctx, const ray& scattered,
+                               color& f_cos) {
+    auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
+    double wi_x, wi_y, wi_z;
+    frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
+    if (wi_z <= 0.0) return false;
+
+    const vec3 dir = unit_vector(scattered.direction());
+    double wo_x, wo_y, wo_z;
+    frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
+    if (wo_z <= 0.0) return false;
+
+    const uint64_t seed0 = coated_seed_from_dir(dir);
+    double fr, fg, fb;
+    bx.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, seed0, seed0 ^ 0xABCDEF1234567890ull, fr, fg, fb);
+    f_cos = color(fr * wo_z, fg * wo_z, fb * wo_z);
+    return true;
+}
+
+// Splits f*cos into a scalar (scattering_pdf()) and a colour (scattering_attenuation()) whose product is f*cos.
+inline double layered_f_cos_scalar(const color& f_cos) { return (f_cos.x() + f_cos.y() + f_cos.z()) / 3.0; }
+inline color layered_f_cos_tint(const color& f_cos, const color& fallback) {
+    const double s = layered_f_cos_scalar(f_cos);
+    return s > 0.0 ? f_cos / s : fallback;
+}
+
+
+// ---------------------------------------------------------------------------
 // coated_diffuse
-// Mirrors pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF>
-//
-// Physical model (single-bounce, no medium scattering):
-//   1. Ray hits coat (top interface, GGX + FrDielectric):
-//      a. Reflects with probability F_in  -> attenuation = F_in, specular bounce
-//      b. Transmits into layer (1-F_in)
-//   2. Lambertian bounce at diffuse base -> cosine-weighted direction
-//   3. Attempts to exit through coat again:
-//      - Transmits with weight (1-F_out) -> attenuation = albedo * (1-F_in) * (1-F_out)
-//      - Otherwise absorbed (energy lost inside layer)
-//
-// Parameters:
-//   albedo     -- diffuse base colour
-//   ior        -- coat index of refraction (1.5 = glass-like plastic)
-//   roughness  -- GGX roughness of the coat surface [0,1]
+// pbrt-v4 CoatedDiffuseBxDF = LayeredBxDF<DielectricBxDF, DiffuseBxDF, true>: a dielectric coat (IOR `ior`, GGX
+// roughness `roughness`, smooth by default) over a Lambertian base (`albedo`). The coat refracts, so light
+// reaching the base is bent toward the normal and a diffuse bounce has to escape the coat again - total internal
+// reflection sends part of it back down for another bounce.
 // ---------------------------------------------------------------------------
 class coated_diffuse : public material {
   public:
@@ -691,15 +807,15 @@ class coated_diffuse : public material {
 
     coated_diffuse(const color& albedo, double ior, double roughness)
         : tex(make_shared<solid_color>(albedo)), ior(ior) {
-        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(roughness, 1e-4));
+        double a = layered_alpha(roughness, true);
         alpha_x = alpha_y = a;
     }
 
     coated_diffuse(const color& albedo, double ior, double u_roughness, double v_roughness,
                    bool remap_roughness = true)
         : tex(make_shared<solid_color>(albedo)), ior(ior),
-          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
-          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
+          alpha_x(layered_alpha(u_roughness, remap_roughness)),
+          alpha_y(layered_alpha(v_roughness, remap_roughness)) {}
 
     // "reflectance" bound to a real Texture (pbrt's own ganesha/barcelona-
     // pavilion "texture reflectance" - see pbrt_flatten::Material::
@@ -708,126 +824,61 @@ class coated_diffuse : public material {
     coated_diffuse(shared_ptr<texture> tex, double ior, double u_roughness, double v_roughness,
                    bool remap_roughness = true)
         : tex(tex), ior(ior),
-          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
-          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
+          alpha_x(layered_alpha(u_roughness, remap_roughness)),
+          alpha_y(layered_alpha(v_roughness, remap_roughness)) {}
 
     BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        // No pixel-footprint differentials available from MaterialContext
-        // alone (unlike scatter()/scattering_pdf() below, which read them
-        // from the full hit_record) - same "no CPU-only tex pointer here"
-        // limitation lambertian's own get_bxdf() already documents; nothing
-        // in this codebase actually calls coated_diffuse::get_bxdf() today
-        // (grepped - only referenced in that comment), so this is a best-
-        // effort mirror of scatter()'s real per-point lookup, not a load-
-        // bearing path.
         color albedo = tex->value(ctx.u, ctx.v, point3(ctx.px, ctx.py, ctx.pz));
         return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, alpha_x, alpha_y };
     }
 
-    // Real NEE/MIS below the roughness threshold (see rough_metal's own
-    // comment). CoatedDiffuseBxDF::f() is a genuinely stochastic,
-    // random-walk BSDF value (see that method's own header comment in
-    // bxdfs_layered.h) with real per-channel color (from the Lambertian
-    // base's albedo) -- unlike RoughDielectricBxDF, it isn't colorless, so
-    // scattering_pdf()'s scalar return can't carry the full RGB alone.
-    // material::scattering_attenuation()'s signature has no incoming
-    // direction to work with (unlike scattering_pdf(), which gets r_in),
-    // so unlike diffuse_transmission's exact per-direction R/T split, this
-    // uses the material's own base albedo as a fixed representative color
-    // (srec.attenuation), with scattering_pdf() below returning
-    // luminance(f)*cos / luminance(albedo) so that attenuation*
-    // scattering_pdf() reproduces f()'s overall magnitude correctly, tinted
-    // by albedo's own hue -- an approximation (the true per-direction
-    // Fresnel-driven color shift is averaged away), but a large improvement
-    // over the flat-white/no-color alternative, following the same
-    // documented-approximation precedent as conductor's fixed-view-angle
-    // Fresnel above.
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
-        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        color albedo = tex->value_diff(rec.u, rec.v, rec.p,
-                                        rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
-        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
-        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
-        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, ex, ey };
-        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
-
-        double wi_x, wi_y, wi_z;
-        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
-        if (wi_z <= 0.0) return false;
-
-        if (effectively_smooth()) {
-            auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
-                                         random_double(), random_double(),
-                                         random_double(),
-                                         random_double(), random_double());
-            if (!res.valid) return false;
-
-            double wd_x, wd_y, wd_z;
-            frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-            srec.attenuation  = color(res.r, res.g, res.b);
-            srec.pdf_ptr      = nullptr;
-            srec.skip_pdf     = true;
-            srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
-            return true;
-        }
-
-        srec.attenuation = albedo;
-        srec.pdf_ptr      = make_shared<ggx_reflection_pdf>(
-            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), alpha_x, alpha_y);
-        srec.skip_pdf     = false;
-        return true;
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        const color albedo = base_albedo(rec);
+        return layered_scatter(make_bxdf(albedo, do_regularize), ctx, rec, r_in, srec, albedo, alpha_x, alpha_y);
     }
 
-    // luminance(f)*cos at an arbitrary queried direction, normalized by the
-    // fixed attenuation's own luminance -- see scatter()'s own comment.
-    double scattering_pdf(const ray& r_in, const hit_record& rec,
-                          const ray& scattered) const override {
-        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        color albedo = tex->value_diff(rec.u, rec.v, rec.p,
-                                        rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
-        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
-        double wi_x, wi_y, wi_z;
-        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
-        if (wi_z <= 0.0) return 0.0;
+    // f(wi, scattered)*cos split into a scalar here and a colour in scattering_attenuation() below - see
+    // layered_f_cos_scalar().
+    double scattering_pdf(const ray& r_in, const hit_record& rec, const ray& scattered) const override {
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        color f_cos;
+        if (!layered_eval_f_cos(make_bxdf(base_albedo(rec), false), ctx, scattered, f_cos)) return 0.0;
+        return layered_f_cos_scalar(f_cos);
+    }
 
-        vec3 dir = unit_vector(scattered.direction());
-        double wo_x, wo_y, wo_z;
-        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
-        if (wo_z <= 0.0) return 0.0;
-
-        BxDF bxdf{ albedo.x(), albedo.y(), albedo.z(), ior, alpha_x, alpha_y };
-        uint64_t seed0 = coated_seed_from_dir(dir);
-        double fr, fg, fb;
-        bxdf.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, seed0, seed0 ^ 0xABCDEF1234567890ull, fr, fg, fb);
-        double f_lum = (fr + fg + fb) / 3.0;
-        double albedo_lum = std::max(1e-6, (albedo.x() + albedo.y() + albedo.z()) / 3.0);
-        return f_lum * wo_z / albedo_lum;
+    color scattering_attenuation(const ray& r_in, const hit_record& rec, const ray& scattered,
+                                 const color& srec_attenuation) const override {
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        color f_cos;
+        if (!layered_eval_f_cos(make_bxdf(base_albedo(rec), false), ctx, scattered, f_cos)) return srec_attenuation;
+        return layered_f_cos_tint(f_cos, srec_attenuation);
     }
 
     double get_ior()       const { return ior; }
     double get_roughness() const { return alpha_x * alpha_x; }
     // A representative colour, not the real per-point value - callers
     // wanting the latter should evaluate `tex` themselves at a real (u,v,p).
-    // No caller currently exists for this accessor at all (grepped); kept
-    // by-value (matching material_simple.h's own get_albedo() convention)
-    // since a texture-backed material has no single color to return by
-    // reference the way a flat one did.
     color get_albedo() const { return tex->value(0.5, 0.5, point3(0, 0, 0)); }
 
     // Accessor for testing/serialization - mirrors lambertian's own
     // get_texture() (material_simple.h) exactly.
     shared_ptr<texture> get_texture() const { return tex; }
 
-    // Delegates to the single effectively_smooth() helper below, the same
-    // one scatter()'s own branch consults - see material::is_delta_bsdf()'s
-    // own comment on why these two must never be allowed to drift apart.
-    bool is_delta_bsdf() const override { return effectively_smooth(); }
+    // A Lambertian base always scatters diffusely, so this is never a delta BSDF (a smooth coat's mirror
+    // reflection is one lobe of it, reported per sample through scatter_record::walk_specular).
+    bool is_delta_bsdf() const override { return false; }
 
   private:
-    // The ONE place this class decides smooth-vs-glossy - see
-    // rough_metal::effectively_smooth()'s own comment.
-    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    color base_albedo(const hit_record& rec) const {
+        return tex->value_diff(rec.u, rec.v, rec.p, rec.dudx, rec.dvdx, rec.dudy, rec.dvdy);
+    }
+    BxDF make_bxdf(const color& albedo, bool do_regularize) const {
+        const double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
+        const double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        return BxDF{ albedo.x(), albedo.y(), albedo.z(), ior, ex, ey };
+    }
 
     shared_ptr<texture> tex;
     double ior;
@@ -887,25 +938,21 @@ class thin_dielectric : public material {
 
 
 // ---------------------------------------------------------------------------
-// coated_conductor -- rough dielectric coat over a GGX conductor base
-// Mirrors pbrt-v4 CoatedConductorBxDF = LayeredBxDF<DielectricBxDF, ConductorBxDF>
-//
-// Physical model (single-bounce, no medium scattering):
-//   1. Ray hits coat (top interface, GGX + FrDielectric):
-//      a. Reflects with probability F_in  -> attenuation = F_in (achromatic coat)
-//      b. Transmits into layer (1-F_in) -- reaches conductor
-//   2. Conductor micro-facet bounce (GGX VNDF + complex Fresnel FrComplex per RGB):
-//      weight_c = FrComplex * G(wo,wi) / G1(wi)
-//   3. Attempts to exit through coat again:
-//      - Fresnel at exit angle: F_out (FrDielectric)
-//      - Transmits with weight (1-F_out)
-//      - Total attenuation = weight_c * (1-F_in) * (1-F_out)
+// coated_conductor -- dielectric coat over a GGX conductor base
+// pbrt-v4 CoatedConductorBxDF = LayeredBxDF<DielectricBxDF, ConductorBxDF, true>, built the way pbrt's
+// CoatedConductorMaterial::GetBxDF builds it:
+//   - the conductor sits INSIDE the coat, so its complex IOR is relative to the coat: eta/k are both divided by
+//     the coat's IOR before use (a copper base under a 1.5 coat is eta 0.16, k 2.25, not eta 0.246, k 3.378);
+//   - the coat and the conductor each have their own roughness (pbrt: interface.roughness, conductor.roughness,
+//     both 0 by default - a mirror under a glass sheet);
+//   - thickness (default 0.01) only attenuates the layer's transmittance (Beer-Lambert, unit extinction).
 //
 // Parameters:
-//   eta_r/g/b  -- real part of conductor IOR per RGB channel
-//   k_r/g/b    -- extinction coefficient per RGB channel
-//   coat_ior   -- coat index of refraction (1.5 = glass-like lacquer)
-//   coat_roughness -- GGX roughness of coat AND conductor surfaces [0,1]
+//   eta_r/g/b, k_r/g/b -- the conductor's complex IOR (relative to vacuum; divided by coat_ior internally)
+//   coat_ior           -- the coat's index of refraction (pbrt: interface.eta, default 1.5)
+//   coat roughness     -- GGX roughness of the coat (pbrt: interface.roughness)
+//   conductor roughness-- GGX roughness of the conductor (pbrt: conductor.roughness); the older constructors
+//                         without it use the coat's value for both interfaces
 // ---------------------------------------------------------------------------
 class coated_conductor : public material {
   public:
@@ -917,7 +964,7 @@ class coated_conductor : public material {
         : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
           k_r(k_r),     k_g(k_g),     k_b(k_b),
           coat_ior(coat_ior) {
-        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(coat_roughness, 1e-4));
+        double a = layered_alpha(coat_roughness, true);
         alpha_x = alpha_y = a;
     }
 
@@ -928,14 +975,29 @@ class coated_conductor : public material {
         : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
           k_r(k_r),     k_g(k_g),     k_b(k_b),
           coat_ior(coat_ior),
-          alpha_x(roughness_or_alpha(u_roughness, remap_roughness)),
-          alpha_y(roughness_or_alpha(v_roughness, remap_roughness)) {}
+          alpha_x(layered_alpha(u_roughness, remap_roughness)),
+          alpha_y(layered_alpha(v_roughness, remap_roughness)) {}
+
+    // Independent conductor roughness (pbrt's conductor.uroughness/vroughness), and the layer thickness.
+    coated_conductor(double eta_r, double eta_g, double eta_b,
+                     double k_r,   double k_g,   double k_b,
+                     double coat_ior, double coat_u_roughness, double coat_v_roughness,
+                     double cond_u_roughness, double cond_v_roughness,
+                     bool remap_roughness = true, double thickness = 0.01)
+        : eta_r(eta_r), eta_g(eta_g), eta_b(eta_b),
+          k_r(k_r),     k_g(k_g),     k_b(k_b),
+          coat_ior(coat_ior),
+          alpha_x(layered_alpha(coat_u_roughness, remap_roughness)),
+          alpha_y(layered_alpha(coat_v_roughness, remap_roughness)),
+          cond_alpha_x(layered_alpha(cond_u_roughness, remap_roughness)),
+          cond_alpha_y(layered_alpha(cond_v_roughness, remap_roughness)),
+          thickness(thickness) {}
 
     coated_conductor(const ConductorPreset& preset, double coat_ior, double coat_roughness)
         : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
           k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b),
           coat_ior(coat_ior) {
-        double a = TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(coat_roughness, 1e-4));
+        double a = layered_alpha(coat_roughness, true);
         alpha_x = alpha_y = a;
     }
 
@@ -944,100 +1006,71 @@ class coated_conductor : public material {
         : eta_r(preset.eta_r), eta_g(preset.eta_g), eta_b(preset.eta_b),
           k_r(preset.k_r),     k_g(preset.k_g),     k_b(preset.k_b),
           coat_ior(coat_ior),
-          alpha_x(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(u_roughness, 1e-4))),
-          alpha_y(TrowbridgeReitz<double>::RoughnessToAlpha(std::fmax(v_roughness, 1e-4))) {}
+          alpha_x(layered_alpha(u_roughness, true)),
+          alpha_y(layered_alpha(v_roughness, true)) {}
 
-    BxDF get_bxdf(const MaterialContext<double>& ctx) const {
-        return BxDF{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, alpha_x, alpha_y };
-    }
+    BxDF get_bxdf(const MaterialContext<double>& /*ctx*/) const { return make_bxdf(false); }
 
     bool scatter(const ray& r_in, const hit_record& rec, scatter_record& srec,
                  bool do_regularize = false) const override {
-        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
-        double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
-        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, ex, ey };
-        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
-
-        double wi_x, wi_y, wi_z;
-        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
-        if (wi_z <= 0.0) return false;
-
-        // See coated_diffuse::scatter()'s own comment for the roughness
-        // gate + fixed-representative-color rationale; here the
-        // representative color is the conductor's own normal-incidence
-        // Fresnel (get_conductor_f0()), the natural analog of albedo.
-        if (effectively_smooth()) {
-            auto res = bxdf.sample_local(wi_x, wi_y, wi_z,
-                                         random_double(), random_double(),
-                                         random_double(),
-                                         random_double(), random_double());
-            if (!res.valid) return false;
-
-            double wd_x, wd_y, wd_z;
-            frame.to_world(res.wo_x, res.wo_y, res.wo_z, wd_x, wd_y, wd_z);
-            srec.attenuation  = color(res.r, res.g, res.b);
-            srec.pdf_ptr      = nullptr;
-            srec.skip_pdf     = true;
-            srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
-            return true;
-        }
-
-        srec.attenuation = get_conductor_f0();
-        srec.pdf_ptr      = make_shared<ggx_reflection_pdf>(
-            rec.normal, vec3(ctx.wo_x, ctx.wo_y, ctx.wo_z), alpha_x, alpha_y);
-        srec.skip_pdf     = false;
-        return true;
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        const BxDF bx = make_bxdf(do_regularize);
+        // The proxy lobe the bridges (BDPT/MLT/SPPM) sample: GGX at the rougher of the two interfaces.
+        const double cax = bx.cond_alpha_x < 0.0 ? bx.alpha_x : bx.cond_alpha_x;
+        const double cay = bx.cond_alpha_y < 0.0 ? bx.alpha_y : bx.cond_alpha_y;
+        return layered_scatter(bx, ctx, rec, r_in, srec, get_conductor_f0(),
+                               std::max(bx.alpha_x, cax), std::max(bx.alpha_y, cay));
     }
 
-    // luminance(f)*cos at an arbitrary queried direction, normalized by the
-    // fixed attenuation's own luminance -- see coated_diffuse::
-    // scattering_pdf()'s identical pattern.
-    double scattering_pdf(const ray& r_in, const hit_record& rec,
-                          const ray& scattered) const override {
-        auto ctx   = MaterialContext<double>::from_hit(rec, r_in);
-        auto frame = ShadingFrame<double>::from_dpdu(ctx.dpdu_x, ctx.dpdu_y, ctx.dpdu_z, ctx.nx, ctx.ny, ctx.nz);
-        double wi_x, wi_y, wi_z;
-        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wi_x, wi_y, wi_z);
-        if (wi_z <= 0.0) return 0.0;
+    // f(wi, scattered)*cos split into a scalar here and a colour in scattering_attenuation() below - see
+    // layered_f_cos_scalar().
+    double scattering_pdf(const ray& r_in, const hit_record& rec, const ray& scattered) const override {
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        color f_cos;
+        if (!layered_eval_f_cos(make_bxdf(false), ctx, scattered, f_cos)) return 0.0;
+        return layered_f_cos_scalar(f_cos);
+    }
 
-        vec3 dir = unit_vector(scattered.direction());
-        double wo_x, wo_y, wo_z;
-        frame.to_local(dir.x(), dir.y(), dir.z(), wo_x, wo_y, wo_z);
-        if (wo_z <= 0.0) return 0.0;
-
-        BxDF bxdf{ eta_r, eta_g, eta_b, k_r, k_g, k_b, coat_ior, alpha_x, alpha_y };
-        uint64_t seed0 = coated_seed_from_dir(dir);
-        double fr, fg, fb;
-        bxdf.f(wi_x, wi_y, wi_z, wo_x, wo_y, wo_z, seed0, seed0 ^ 0xABCDEF1234567890ull, fr, fg, fb);
-        double f_lum = (fr + fg + fb) / 3.0;
-        color f0 = get_conductor_f0();
-        double f0_lum = std::max(1e-6, (f0.x() + f0.y() + f0.z()) / 3.0);
-        return f_lum * wo_z / f0_lum;
+    color scattering_attenuation(const ray& r_in, const hit_record& rec, const ray& scattered,
+                                 const color& srec_attenuation) const override {
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        color f_cos;
+        if (!layered_eval_f_cos(make_bxdf(false), ctx, scattered, f_cos)) return srec_attenuation;
+        return layered_f_cos_tint(f_cos, srec_attenuation);
     }
 
     double get_coat_ior()       const { return coat_ior; }
     double get_coat_roughness() const { return alpha_x * alpha_x; }
+    // Normal-incidence reflectance of the conductor as the coated BSDF sees it (eta/k relative to the coat).
     color  get_conductor_f0()   const {
-        return color(FrComplex(1.0, eta_r, k_r),
-                     FrComplex(1.0, eta_g, k_g),
-                     FrComplex(1.0, eta_b, k_b));
+        return color(FrComplex(1.0, eta_r / coat_ior, k_r / coat_ior),
+                     FrComplex(1.0, eta_g / coat_ior, k_g / coat_ior),
+                     FrComplex(1.0, eta_b / coat_ior, k_b / coat_ior));
     }
 
-    // Delegates to the single effectively_smooth() helper below, the same
-    // one scatter()'s own branch consults - see material::is_delta_bsdf()'s
-    // own comment on why these two must never be allowed to drift apart.
-    bool is_delta_bsdf() const override { return effectively_smooth(); }
+    // pbrt's Flags(): a smooth coat over a smooth conductor is a delta lobe, anything rougher is not.
+    bool is_delta_bsdf() const override { return make_bxdf(false).is_delta(); }
 
   private:
-    // The ONE place this class decides smooth-vs-glossy - see
-    // rough_metal::effectively_smooth()'s own comment.
-    bool effectively_smooth() const { return TrowbridgeReitz<double>(alpha_x, alpha_y).EffectivelySmooth(); }
+    BxDF make_bxdf(bool do_regularize) const {
+        const double ex = do_regularize ? regularize_alpha(alpha_x) : alpha_x;
+        const double ey = do_regularize ? regularize_alpha(alpha_y) : alpha_y;
+        BxDF bx{ eta_r / coat_ior, eta_g / coat_ior, eta_b / coat_ior,
+                 k_r / coat_ior,   k_g / coat_ior,   k_b / coat_ior,
+                 coat_ior, ex, ey, thickness };
+        if (cond_alpha_x >= 0.0) {
+            bx.cond_alpha_x = do_regularize ? regularize_alpha(cond_alpha_x) : cond_alpha_x;
+            bx.cond_alpha_y = do_regularize ? regularize_alpha(cond_alpha_y) : cond_alpha_y;
+        }
+        return bx;
+    }
 
     double eta_r, eta_g, eta_b;
     double k_r,   k_g,   k_b;
     double coat_ior;
     double alpha_x, alpha_y;
+    double cond_alpha_x = -1.0, cond_alpha_y = -1.0;   // negative: use the coat's
+    double thickness = 0.01;
 };
 
 // ---------------------------------------------------------------------------

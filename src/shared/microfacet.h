@@ -120,6 +120,17 @@ CPU_GPU T ResolveAnisotropicAlphaV(T roughnessV, T isotropicRoughness, bool rema
 #endif
 }
 
+// GGX alphas of a coated conductor's BASE interface. condRoughness<0 means no separate conductor roughness was
+// authored (the older single-roughness spelling), so the coat's already-resolved alphas apply to both interfaces;
+// otherwise condRoughness/condRoughnessV (v falling back to u) are authored roughness, remapped like the coat's.
+template<typename T>
+CPU_GPU void ResolveCoatedConductorBaseAlpha(T condRoughness, T condRoughnessV, bool remapRoughness,
+                                             T coatAlphaX, T coatAlphaY, T& alphaX, T& alphaY) {
+  if (condRoughness < T(0)) { alphaX = coatAlphaX; alphaY = coatAlphaY; return; }
+  alphaX = remapRoughness ? ResolveAnisotropicAlphaV(condRoughness, condRoughness, true) : condRoughness;
+  alphaY = ResolveAnisotropicAlphaV(condRoughnessV, condRoughness, remapRoughness);
+}
+
 // TrowbridgeReitz NDF
 // pbrt-v4 path-regularization clamp (Clamp(2*alpha, 0.1, 0.3)) - widens a
 // near-specular GGX alpha once a path has taken a prior non-specular bounce,

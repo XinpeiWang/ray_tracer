@@ -373,6 +373,9 @@ extern "C" __global__ void evaluate_materials(
 	// non-glossy case.
 	float glossyAlphaForNEE = 0.0f;
 	float glossyAlphaVForNEE = 0.0f;
+	// CoatedConductor's base-conductor alphas (the two above are the coat's); -1 = not a coated conductor.
+	float glossyCondAlphaForNEE = -1.0f;
+	float glossyCondAlphaVForNEE = -1.0f;
 	// wf_finish_material_scatter's own matType argument - mat.type by
 	// default (every case's real material type, unchanged). MaterialType::
 	// DielectricMedium's own fused ROUGH entry/exit sub-case (see that case
@@ -718,17 +721,13 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::CoatedDiffuse: {
-		// "reflectance" bound to a real Texture (pbrt's own ganesha/
-		// barcelona-pavilion "texture reflectance" - see
-		// pbrt_flatten::Material::textureFilename's own comment) instead of
-		// mat.albedo's flat colour when textureIdx>=0 - same pattern the
-		// Lambertian case above already uses, scaled by mat.emissionScale
-		// (reused here for CoatedDiffuse's own "scale"-wrapped-imagemap
-		// case - see that field's own comment in optix_types.h).
-		// wf_finish_material_scatter's own evalGlossyF (its CoatedDiffuse
-		// branch) does the identical lookup for its NEE/MIS f() evaluation
-		// too, via the uv_u/uv_v this function now threads through to it -
-		// see that function's own uv_u/uv_v parameter comment.
+		// Dielectric coat over a Lambertian base (pbrt-v4 CoatedDiffuseBxDF) - see wf_layered_scatter().
+		// "reflectance" bound to a real Texture (pbrt's own ganesha/barcelona-pavilion "texture reflectance" - see
+		// pbrt_flatten::Material::textureFilename's own comment) instead of mat.albedo's flat colour when
+		// textureIdx>=0 - same pattern the Lambertian case above already uses, scaled by mat.emissionScale
+		// (reused here for CoatedDiffuse's own "scale"-wrapped-imagemap case - see that field's own comment in
+		// optix_types.h). wf_finish_material_scatter's own evalGlossyF (its CoatedDiffuse branch) does the identical
+		// lookup for its NEE f() evaluation too, via the uv_u/uv_v this function threads through to it.
 		const float3 cd_albedo = (mat.textureIdx >= 0)
 			? wf_sample_texture(textures, texturePixels, mat.textureIdx, h.uv_u, h.uv_v, hit_point) * mat.emissionScale
 			: mat.albedo;
@@ -736,86 +735,17 @@ extern "C" __global__ void evaluate_materials(
 		float cd_alpha_y = wf_glossy_alpha_v(mat, do_regularize);
 		glossyAlphaForNEE = cd_alpha_x;
 		glossyAlphaVForNEE = cd_alpha_y;
-		float3 cdn = normal;
-		float3 cdtan, cdbitan;
-		BuildDpduTangentFrame(cdn.x, cdn.y, cdn.z, h.objDpdu.x, h.objDpdu.y, h.objDpdu.z,
-		                       cdtan.x, cdtan.y, cdtan.z, cdbitan.x, cdbitan.y, cdbitan.z);
-		float3 cdwi = -normalize(h.rayDir);
-		float cdwi_x = dot(cdwi, cdtan), cdwi_y = dot(cdwi, cdbitan), cdwi_z = dot(cdwi, cdn);
-		// Grazing/back-facing incoming ray: no valid local frame to sample
-		// against - matches optix_device_helpers.h's shade_material()
-		// CoatedDiffuse case (`if (cdwi_z <= 0.0f) { scattered = false; }`),
-		// missing here let a grazing-angle ray fall through to Sample_wm()
-		// with a degenerate/negative-z local direction instead of
-		// terminating the path like the recursive backend does.
-		if (cdwi_z <= 0.0f) { scattered = false; break; }
-		TrowbridgeReitz<float> cd_dist(cd_alpha_x, cd_alpha_y);
-		float cdwm_x, cdwm_y, cdwm_z;
-		cd_dist.Sample_wm(cdwi_x, cdwi_y, cdwi_z, wf_rand(seed), wf_rand(seed), cdwm_x, cdwm_y, cdwm_z);
-		float cd_dot = cdwi_x*cdwm_x + cdwi_y*cdwm_y + cdwi_z*cdwm_z;
-		float Fr = FrDielectric(fmaxf(cd_dot, 0.0f), mat.ior);
-		if (wf_rand(seed) < Fr) {
-			float cdwo_x = 2.0f*cd_dot*cdwm_x - cdwi_x;
-			float cdwo_y = 2.0f*cd_dot*cdwm_y - cdwi_y;
-			float cdwo_z = 2.0f*cd_dot*cdwm_z - cdwi_z;
-			scattered_dir = normalize(cdwo_x*cdtan + cdwo_y*cdbitan + cdwo_z*cdn);
-			attenuation   = SS(1.f);
-		} else {
-			// Multi-bounce escape through the coat, matching
-			// optix_device_helpers.h's shade_material() CoatedDiffuse case
-			// (see its own comment for why this replaced a single Lambertian
-			// bounce + one exit attempt: giving up immediately on a failed
-			// exit test discards that sample's energy entirely, rendering
-			// far too dark, rather than retrying like the real layered
-			// material's random walk does). is_specular is decided once,
-			// uniformly, after this if/else (see below) rather than per-
-			// branch now that glossy coats get real NEE via CoatedDiffuseBxDF
-			// ::f() - pbrt-v4's LayeredBxDF has no closed-form f(wo,wi)
-			// either, but the shared BxDF template's own stochastic estimator
-			// (src/shared/bxdfs_layered.h, already verified on CPU for #228
-			// and the recursive backend for #229) gives us one anyway.
-			constexpr int kMaxCoatBounces = 8;
-			float3 beta = make_float3(1.0f - Fr, 1.0f - Fr, 1.0f - Fr);
-			float3 diff_dir = cdn;
-			bool escaped = false;
-			for (int cb = 0; cb < kMaxCoatBounces; ++cb) {
-				diff_dir = cdn + wf_rand_unit(seed);
-				if (wf_near_zero(diff_dir)) diff_dir = cdn;
-				diff_dir = normalize(diff_dir);
-				beta.x *= cd_albedo.x; beta.y *= cd_albedo.y; beta.z *= cd_albedo.z;
-
-				float dw_x = dot(diff_dir, cdtan), dw_y = dot(diff_dir, cdbitan), dw_z = dot(diff_dir, cdn);
-				float dwm_x, dwm_y, dwm_z;
-				cd_dist.Sample_wm(dw_x, dw_y, dw_z, wf_rand(seed), wf_rand(seed), dwm_x, dwm_y, dwm_z);
-				float cos_out = dw_x*dwm_x + dw_y*dwm_y + dw_z*dwm_z;
-				float F_out = FrDielectric(cos_out, 1.0f / mat.ior);
-				if (wf_rand(seed) < F_out) continue;  // TIR: bounce again
-				beta.x *= (1.0f - F_out); beta.y *= (1.0f - F_out); beta.z *= (1.0f - F_out);
-				escaped = true;
-				break;
-			}
-			if (!escaped) { scattered = false; break; }
-			attenuation   = albedoSpectrum(beta);
-			scattered_dir = diff_dir;
-		}
-		scattered = (dot(scattered_dir, normal) > 0.0f);
-
-		// Real NEE/MIS for glossy (non-EffectivelySmooth) coats, via
-		// wf_finish_material_scatter's shared evalGlossyF (see its own
-		// comment and MaterialType::Conductor's identical-shape block
-		// above). brdf_pdf_override uses the coat's own top-surface GGX-
-		// reflection VNDF pdf as a proxy for the walk's true (unknown, no
-		// closed form) density - matches CPU's coated_diffuse::scatter()
-		// (material_pbrt.h), which uses the same ggx_reflection_pdf proxy
-		// for its own srec.pdf_ptr. phaseWo carries cdwi (already
-		// `-ray_dir`, matching evalGlossyF's `wi_world` convention).
-		if (scattered && !cd_dist.EffectivelySmooth()) {
-			is_specular = false;
-			float swo_x = dot(scattered_dir, cdtan), swo_y = dot(scattered_dir, cdbitan), swo_z = dot(scattered_dir, cdn);
-			brdf_pdf_override = (swo_z > 0.0f)
-				? ggx_vndf_reflection_pdf(cdwi_x, cdwi_y, cdwi_z, swo_x, swo_y, swo_z, cd_alpha_x, cd_alpha_y)
-				: 0.0f;
-			phaseWo = cdwi;
+		CoatedDiffuseBxDF<float> cd_bxdf{ cd_albedo.x, cd_albedo.y, cd_albedo.z, mat.ior, cd_alpha_x, cd_alpha_y };
+		const WfLayeredScatter cd_ls = wf_layered_scatter(cd_bxdf, normal, h.rayDir, h.objDpdu, seed);
+		if (!cd_ls.scattered) { scattered = false; break; }
+		scattered_dir = cd_ls.dir;
+		attenuation   = cd_ls.rejected ? SS(0.f)
+		              : (fmaxf(cd_ls.weight.x, fmaxf(cd_ls.weight.y, cd_ls.weight.z)) > 1.0f ? unboundedSpectrum(cd_ls.weight) : albedoSpectrum(cd_ls.weight));
+		scattered     = true;
+		if (cd_ls.nee) {
+			is_specular       = false;
+			brdf_pdf_override = cd_ls.rejected ? -1.0f : cd_ls.misPdf;
+			phaseWo           = -normalize(h.rayDir);
 		} else {
 			is_specular = true;
 		}
@@ -842,95 +772,39 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::CoatedConductor: {
-		// Rough dielectric coat over GGX conductor (pbrt-v4 CoatedConductorBxDF).
-		// Matches optix_intersection_sphere.h's recursive-path handling: path B
-		// (transmit into the coat, bounce off the conductor, exit back through
-		// the coat) must weight the conductor's Fresnel by T_in*T_out (how
-		// much light actually gets through the dielectric coat both ways) -
-		// the previous version here resampled a microfacet from the ORIGINAL
-		// viewing direction and skipped both the refraction-into-the-coat
-		// step and the T_in/T_out weighting entirely, making the conductor
-		// visible at full strength as if the coat weren't there.
+		// Dielectric coat over a GGX conductor (pbrt-v4 CoatedConductorBxDF) - see wf_layered_scatter(). mat.fuzz/
+		// mat.roughnessV are the COAT's roughness; the conductor has its own (mat.condRoughness/condRoughnessV, negative
+		// = the coat's). As in pbrt's CoatedConductorMaterial::GetBxDF the conductor's complex IOR is relative to the
+		// coat: eta and k are both divided by the coat's IOR.
 		float cc_alpha_x = wf_glossy_alpha(mat, do_regularize);
 		float cc_alpha_y = wf_glossy_alpha_v(mat, do_regularize);
+		float cc_cond_x, cc_cond_y;
+		{
+			float coat_ax_raw = mat.remapRoughness ? sqrtf(mat.fuzz) : mat.fuzz;
+			float coat_ay_raw = ResolveAnisotropicAlphaV(mat.roughnessV, mat.fuzz, mat.remapRoughness);
+			ResolveCoatedConductorBaseAlpha(mat.condRoughness, mat.condRoughnessV, mat.remapRoughness,
+			                                coat_ax_raw, coat_ay_raw, cc_cond_x, cc_cond_y);
+			if (do_regularize) { cc_cond_x = RegularizeAlpha(cc_cond_x); cc_cond_y = RegularizeAlpha(cc_cond_y); }
+		}
 		glossyAlphaForNEE = cc_alpha_x;
 		glossyAlphaVForNEE = cc_alpha_y;
-		float3 ccn = normal;
-		float3 cctan, ccbitan;
-		BuildDpduTangentFrame(ccn.x, ccn.y, ccn.z, h.objDpdu.x, h.objDpdu.y, h.objDpdu.z,
-		                       cctan.x, cctan.y, cctan.z, ccbitan.x, ccbitan.y, ccbitan.z);
-		float3 ccwi = -normalize(h.rayDir);
-		float ccwi_x = dot(ccwi, cctan), ccwi_y = dot(ccwi, ccbitan), ccwi_z = dot(ccwi, ccn);
-		if (ccwi_z <= 0.0f) { scattered = false; break; }
-		TrowbridgeReitz<float> cc_dist(cc_alpha_x, cc_alpha_y);
-		float ccwm_x, ccwm_y, ccwm_z;
-		cc_dist.Sample_wm(ccwi_x, ccwi_y, ccwi_z, wf_rand(seed), wf_rand(seed), ccwm_x, ccwm_y, ccwm_z);
-		float cc_dot = ccwi_x*ccwm_x + ccwi_y*ccwm_y + ccwi_z*ccwm_z;
-		float F_in = FrDielectric(fmaxf(cc_dot, 0.0f), mat.ior);
-		float3 ccwo;
-		if (wf_rand(seed) < F_in) {
-			// Path A: coat specular reflection
-			float wo_x = 2.0f*cc_dot*ccwm_x - ccwi_x;
-			float wo_y = 2.0f*cc_dot*ccwm_y - ccwi_y;
-			float wo_z = 2.0f*cc_dot*ccwm_z - ccwi_z;
-			if (wo_z <= 0.0f) { scattered = false; break; }
-			float G1 = cc_dist.G1(ccwi_x, ccwi_y, ccwi_z);
-			float G  = cc_dist.G(wo_x, wo_y, wo_z, ccwi_x, ccwi_y, ccwi_z);
-			float w  = (G1 > 1e-8f) ? G / G1 : 0.0f;
-			float fv = F_in * w;
-			attenuation = SS(fv);
-			ccwo = make_float3(wo_x, wo_y, wo_z);
-		} else {
-			// Path B: transmit into layer -> conductor bounce -> exit coat
-			float w_x = 2.0f*cc_dot*ccwm_x - ccwi_x;
-			float w_y = 2.0f*cc_dot*ccwm_y - ccwi_y;
-			float w_z = 2.0f*cc_dot*ccwm_z - ccwi_z;
-			if (w_z > 0.0f) w_z = -w_z;   // ensure pointing downward into layer
-			if (w_z == 0.0f) { scattered = false; break; }
-
-			// Flip to conductor frame: "incoming from above" (fw_z > 0)
-			float fw_x = -w_x, fw_y = -w_y, fw_z = -w_z;
-
-			float bwm_x, bwm_y, bwm_z;
-			cc_dist.Sample_wm(fw_x, fw_y, fw_z, wf_rand(seed), wf_rand(seed), bwm_x, bwm_y, bwm_z);
-			float cos_c = fw_x*bwm_x + fw_y*bwm_y + fw_z*bwm_z;
-			if (cos_c <= 0.0f) { scattered = false; break; }
-
-			float rwo_x = 2.0f*cos_c*bwm_x - fw_x;
-			float rwo_y = 2.0f*cos_c*bwm_y - fw_y;
-			float rwo_z = 2.0f*cos_c*bwm_z - fw_z;
-			if (rwo_z <= 0.0f) { scattered = false; break; }
-
-			float G1_c = cc_dist.G1(fw_x, fw_y, fw_z);
-			float G_c  = cc_dist.G(rwo_x, rwo_y, rwo_z, fw_x, fw_y, fw_z);
-			float wt_c = (G1_c > 1e-8f) ? G_c / G1_c : 0.0f;
-
-			float3 c_F  = FrConductorRGB(cos_c, mat.eta_c.x, mat.eta_c.y, mat.eta_c.z, mat.k_c.x, mat.k_c.y, mat.k_c.z);
-
-			float F_out = FrDielectric(rwo_z, 1.0f / mat.ior);  // inside -> outside
-			float T_out = 1.0f - F_out;
-			float T_in  = 1.0f - F_in;
-
-			attenuation = albedoSpectrum(make_float3(
-				c_F.x * wt_c * T_in * T_out,
-				c_F.y * wt_c * T_in * T_out,
-				c_F.z * wt_c * T_in * T_out));
-			ccwo = make_float3(rwo_x, rwo_y, rwo_z);
-		}
-		scattered_dir = normalize(ccwo.x*cctan + ccwo.y*ccbitan + ccwo.z*ccn);
-		scattered   = (dot(scattered_dir, normal) > 0.0f);
-
-		// Real NEE/MIS for glossy (non-EffectivelySmooth) coats - see
-		// MaterialType::CoatedDiffuse's identical-shape block above for the
-		// full rationale (shared CoatedConductorBxDF<float>::f() stochastic
-		// estimator, GGX top-surface VNDF pdf as the MIS proxy).
-		if (scattered && !cc_dist.EffectivelySmooth()) {
-			is_specular = false;
-			float swo_x = dot(scattered_dir, cctan), swo_y = dot(scattered_dir, ccbitan), swo_z = dot(scattered_dir, ccn);
-			brdf_pdf_override = (swo_z > 0.0f)
-				? ggx_vndf_reflection_pdf(ccwi_x, ccwi_y, ccwi_z, swo_x, swo_y, swo_z, cc_alpha_x, cc_alpha_y)
-				: 0.0f;
-			phaseWo = ccwi;
+		glossyCondAlphaForNEE = cc_cond_x;
+		glossyCondAlphaVForNEE = cc_cond_y;
+		const float cc_inv_ior = 1.0f / mat.ior;
+		CoatedConductorBxDF<float> cc_bxdf{ mat.eta_c.x * cc_inv_ior, mat.eta_c.y * cc_inv_ior, mat.eta_c.z * cc_inv_ior,
+		                                    mat.k_c.x * cc_inv_ior, mat.k_c.y * cc_inv_ior, mat.k_c.z * cc_inv_ior,
+		                                    mat.ior, cc_alpha_x, cc_alpha_y, mat.layerThickness, 0.0f, 0.0f, 10, 1,
+		                                    cc_cond_x, cc_cond_y };
+		const WfLayeredScatter cc_ls = wf_layered_scatter(cc_bxdf, normal, h.rayDir, h.objDpdu, seed);
+		if (!cc_ls.scattered) { scattered = false; break; }
+		scattered_dir = cc_ls.dir;
+		attenuation   = cc_ls.rejected ? SS(0.f)
+		              : (fmaxf(cc_ls.weight.x, fmaxf(cc_ls.weight.y, cc_ls.weight.z)) > 1.0f ? unboundedSpectrum(cc_ls.weight) : albedoSpectrum(cc_ls.weight));
+		scattered     = true;
+		if (cc_ls.nee) {
+			is_specular       = false;
+			brdf_pdf_override = cc_ls.rejected ? -1.0f : cc_ls.misPdf;
+			phaseWo           = -normalize(h.rayDir);
 		} else {
 			is_specular = true;
 		}
@@ -1706,6 +1580,7 @@ extern "C" __global__ void evaluate_materials(
 		// helpers.h) for why only the entry point is stable enough to
 		// reproject frame-to-frame.
 		h.hitPoint, restirVolumeReservoirs, restirVolumeCtx, volumeMatIdxOut,
-		mediumMeanFreePath, volumePhaseWoGOut, volumeEntryPointOut);
+		mediumMeanFreePath, volumePhaseWoGOut, volumeEntryPointOut,
+		glossyCondAlphaForNEE, glossyCondAlphaVForNEE);
 }
 

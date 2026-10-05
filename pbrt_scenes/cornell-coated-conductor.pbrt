@@ -10,12 +10,12 @@
 #
 # Gold/copper eta/k transcribed exactly from src/shared/conductor_data.h's
 # kConductorAu/kConductorCu, same reasoning as cornell-conductor.pbrt's own
-# header comment (explicit "rgb eta"/"rgb k" rather than a named spectrum,
-# to guarantee the exact same numbers both backends already use natively).
-# Coat "float eta" [1.5] is the dielectric lacquer coat's own IOR (parsed
-# generically for coateddiffuse/coatedconductor - confirmed against
-# pbrt_flatten.h's own `m.ior = params.getFloat("eta", params.getFloat("ior",
-# 1.5))` - not the conductor base's eta, which is "rgb eta" instead).
+# header comment (explicit "rgb conductor.eta"/"rgb conductor.k" rather than a
+# named spectrum, to guarantee the exact same numbers both backends already use
+# natively). These are pbrt-v4's own coatedconductor parameter names: the base
+# conductor's complex IOR is conductor.eta/conductor.k, the dielectric lacquer
+# coat's IOR is interface.eta (1.5), and each interface has its own roughness
+# (interface.roughness, conductor.roughness).
 #
 # Original, not derived from any distributed scene, so it carries no licence
 # constraints.
@@ -56,7 +56,7 @@ Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
 
 # ---------------------------------------------------------------- contents
 # Lacquered-copper box (kConductorCu, coat ior 1.5, coat roughness 0.2)
-Material "coatedconductor" "rgb eta" [ 0.246 1.072 1.155 ] "rgb k" [ 3.378 2.591 2.469 ] "float eta" [ 1.5 ] "float roughness" [ 0.2 ]
+Material "coatedconductor" "rgb conductor.eta" [ 0.246 1.072 1.155 ] "rgb conductor.k" [ 3.378 2.591 2.469 ] "float interface.eta" [ 1.5 ] "float interface.roughness" [ 0.2 ] "float conductor.roughness" [ 0.2 ]
 AttributeBegin
   Translate 265 0 295
   Rotate 15 0 1 0
@@ -75,7 +75,7 @@ AttributeBegin
 AttributeEnd
 
 # Lacquered-gold sphere (kConductorAu, coat ior 1.5, coat roughness 0.1)
-Material "coatedconductor" "rgb eta" [ 0.184 0.457 1.354 ] "rgb k" [ 3.070 2.408 1.818 ] "float eta" [ 1.5 ] "float roughness" [ 0.1 ]
+Material "coatedconductor" "rgb conductor.eta" [ 0.184 0.457 1.354 ] "rgb conductor.k" [ 3.070 2.408 1.818 ] "float interface.eta" [ 1.5 ] "float interface.roughness" [ 0.1 ] "float conductor.roughness" [ 0.1 ]
 AttributeBegin
   Translate 190 90 190
   Shape "sphere" "float radius" [ 90 ]

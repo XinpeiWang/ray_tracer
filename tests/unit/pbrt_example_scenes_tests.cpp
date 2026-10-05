@@ -372,3 +372,15 @@ TEST(PbrtBackendAgreementTest, RoughGlassFromInsideAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, RoughMetalLampAgreesAcrossBackends) {
 	expectBackendsAgree("rough-metal-lamp", 512, 0.96, 1.04);
 }
+
+// A smooth coat over smooth copper (pbrt's coatedconductor default) is a mirror whose reflectance has a closed form, and a smooth
+// coat over a rough conductor is the layered BSDF's mixed case. The coated materials were a simplified model that never refracted
+// at the coat: CPU 33% of the closed form and the GPU 24% of the CPU for the first, 72-84% of the CPU for rough ones. See
+// pbrt_scenes/coated-conductor-lamp.pbrt and coated-conductor-glossy-lamp.pbrt.
+TEST(PbrtBackendAgreementTest, CoatedConductorLampAgreesAcrossBackends) {
+	expectBackendsAgree("coated-conductor-lamp", 256, 0.96, 1.04);
+}
+
+TEST(PbrtBackendAgreementTest, CoatedConductorGlossyLampAgreesAcrossBackends) {
+	expectBackendsAgree("coated-conductor-glossy-lamp", 512, 0.95, 1.05);
+}
