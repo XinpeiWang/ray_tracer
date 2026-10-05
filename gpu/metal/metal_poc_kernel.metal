@@ -1015,7 +1015,12 @@ kernel void primaryRayKernel(
                 // otherwise) - this is the first OTHER material type to
                 // need UV on a sphere at all, reusing that exact
                 // mechanism rather than re-deriving it.
-                if (mat.conductorK.y > 0.5) {
+                if (mat.conductorK.y > 1.5) {
+                    // pbrt "marble" reflectance texture (loader comment): evaluated at
+                    // t = k*p + off; transmitColor = (octaves, omega, variation).
+                    float3 mp = mat.conductorK.x * hitPoint + float3(mat.conductorEta);
+                    albedo = pbrtMarbleColor(mp, mat.transmitColor.y, int(mat.transmitColor.x + 0.5), mat.transmitColor.z);
+                } else if (mat.conductorK.y > 0.5) {
                     // 3D checkerboard (see the loader's own comment): texture-space point
                     // t = k*p + off, parity of floor(tx)+floor(ty)+floor(tz); even -> tex1.
                     float3 tp = mat.conductorK.x * hitPoint + float3(mat.conductorEta);

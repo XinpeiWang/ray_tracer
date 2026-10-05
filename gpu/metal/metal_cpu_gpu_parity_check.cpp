@@ -317,10 +317,6 @@ const char* const kKnownGapScenes[] = {
 	// F2 (Triangle Mesh): same cause as C2 - its icosahedron is a reflectance-only conductor. Verified:
 	// with that mesh swapped to diffuse, CPU and Metal agree to ~1.0-1.2x everywhere.
 	"F2",
-	// A5 (Perlin Spheres), A7 (Simple Light): "marble" procedural reflectance texture. The Metal pbrt loader
-	// has no mapping for MaterialKind::Diffuse + hasMarbleReflectance (CPU/OptiX use pbrt-v4 MarbleTexture),
-	// so Metal renders those surfaces with a flat colour.
-	"A5", "A7",
 	// J3, J5, J6: nested/procedural reflectance textures (checkerboard-in-checkerboard, fbm/windy/wrinkled
 	// gallery). The loader maps only the simple cases and averages a nested one to a flat colour (see
 	// nestedProceduralAverageColor use in metal_poc_pbrt_loader.mm); CPU renders the real texture.

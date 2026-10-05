@@ -699,6 +699,39 @@ inline float perlinNoise3D(float3 p) {
 // `omega`x the previous amplitude. Used by materialType 17's own marble
 // pattern, matching CPU's `noise_texture`/`perlin::turb()` exactly
 // (depth 7, omega 0.5 - see that class's own comment).
+// pbrt-v4 FBm without the per-pixel anti-aliasing octave cut: a port of
+// src/shared/noise.h's fbm_simple() (plain sum of signed Perlin octaves).
+inline float fbmSimple(float3 p, float omega, int maxOctaves) {
+    float sum = 0.0, lambda = 1.0, o = 1.0;
+    for (int i = 0; i < maxOctaves; ++i) {
+        sum += o * perlinNoise3D(p * lambda);
+        lambda *= 1.99;
+        o *= omega;
+    }
+    return sum;
+}
+
+// pbrt-v4 MarbleTexture, ported from CPU's marble_texture::value() (texture.h): `p` is the
+// already-scaled point. Cubic-Bezier segment of a fixed 9-knot marble spline, x1.5 and
+// clamped to 1.
+constant float3 kMarbleKnots[9] = {
+    float3(.58, .58, .60), float3(.58, .58, .60), float3(.58, .58, .60),
+    float3(.50, .50, .50), float3(.60, .59, .58), float3(.58, .58, .60),
+    float3(.58, .58, .60), float3(.20, .20, .33), float3(.58, .58, .60)
+};
+inline float3 pbrtMarbleColor(float3 p, float omega, int octaves, float variation) {
+    float fbmVal = fbmSimple(p, omega, octaves);
+    float marble = p.y + variation * fbmVal;
+    float t = 0.5 + 0.5 * sin(marble);
+    const int nSeg = 6;
+    int first = min(int(t * float(nSeg)), nSeg - 1);
+    float lt = t * float(nSeg) - float(first);
+    float s = 1.0 - lt;
+    float3 rgb = s*s*s * kMarbleKnots[first] + 3.0*s*s*lt * kMarbleKnots[first+1]
+               + 3.0*s*lt*lt * kMarbleKnots[first+2] + lt*lt*lt * kMarbleKnots[first+3];
+    return min(rgb * 1.5, float3(1.0));
+}
+
 inline float turbulenceSimple(float3 p, float omega, int maxOctaves) {
     float sum = 0.0, lambda = 1.0, o = 1.0;
     for (int i = 0; i < maxOctaves; ++i) {
