@@ -509,9 +509,14 @@ kernel void primaryRayKernel(
             // environment-map feature - that render came back an
             // unexplained near-black speckled mess, and tracing why
             // surfaced this.
-            if (!scatteredInMedium && !passedThroughMediumSphere &&
-                uniforms.fogSigmaT > 0.0 && result.type != intersection_type::none) {
-                float surfaceDist = result.distance;
+            // UPDATE: the fog is now only ever enabled by a pbrt scene's camera medium
+            // (the hand-authored room is gone), and a pbrt camera medium extends to
+            // infinity: a ray that escapes the scene still scatters with probability 1
+            // (CPU does the same). So a miss ray gets an unbounded free-flight limit
+            // instead of being skipped - without this the sky region of a foggy scene
+            // (E10) rendered black instead of haze-lit.
+            if (!scatteredInMedium && !passedThroughMediumSphere && uniforms.fogSigmaT > 0.0) {
+                float surfaceDist = (result.type == intersection_type::none) ? INFINITY : result.distance;
                 float u = randFloat(rngState);
                 float t = sampleFreePathDistance(u, uniforms.fogSigmaT);
                 if (t < surfaceDist) {
