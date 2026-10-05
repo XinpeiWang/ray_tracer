@@ -1,5 +1,13 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
+  <!-- Imported AFTER each project's own ItemDefinitionGroup, so this wins over the MultiProcessorCompilation=true they set: /MP is replaced
+       by per-file cl tasks (UseMultiToolTask, Directory.Build.props), which MSBuild's change tracking handles correctly. -->
+  <ItemDefinitionGroup>
+    <ClCompile>
+      <MultiProcessorCompilation>false</MultiProcessorCompilation>
+    </ClCompile>
+  </ItemDefinitionGroup>
+
   <!-- Automatically import custom CUDA build targets for projects in this repository -->
   <Import Project="$(MSBuildThisFileDirectory)build_cuda.targets" Condition="Exists('$(MSBuildThisFileDirectory)build_cuda.targets')" />
 

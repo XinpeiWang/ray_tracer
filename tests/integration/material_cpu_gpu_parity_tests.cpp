@@ -445,6 +445,7 @@
 #include <numeric>
 #include <algorithm>
 #include <unordered_map>
+#include <set>
 
 #include "scene_registry.h"
 
@@ -984,6 +985,26 @@ static void spp_for(const SceneDescriptor& s, int& cpuSpp, int& gpuSpp) {
 // by the TEST_P suite below (mirrors its own gpu_compatible/requires_files
 // skips) - computed once so the three render passes and the TEST_P bodies
 // agree on exactly which scenes are in play.
+// The scene ids of the MaterialCpuGpuParityTest instances gtest is actually going to run (--gtest_filter respected). The sweep below used to
+// render EVERY testable scene on all three backends (~140 s) the first time any one parity test ran, so `--gtest_filter=*Scene21_*` took as long
+// as the whole suite; it now renders just the selected ones (seconds for one scene), and the same set for a full run. Empty when nothing can be
+// determined (then every scene is rendered, as before).
+static std::set<std::string> selected_parity_scene_ids() {
+	std::set<std::string> ids;
+	const ::testing::UnitTest* unit = ::testing::UnitTest::GetInstance();
+	for (int i = 0; i < unit->total_test_suite_count(); ++i) {
+		const ::testing::TestSuite* suite = unit->GetTestSuite(i);
+		if (std::string(suite->name()).find("MaterialCpuGpuParityTest") == std::string::npos) continue;
+		for (int j = 0; j < suite->total_test_count(); ++j) {
+			const ::testing::TestInfo* info = suite->GetTestInfo(j);
+			if (!info->should_run() || !info->value_param()) continue;   // value_param() is the printed int: the registry position
+			const int idx = std::atoi(info->value_param());
+			if (idx >= 0 && idx < static_cast<int>(get_scene_registry().size())) ids.insert(get_scene_registry()[idx].id);
+		}
+	}
+	return ids;
+}
+
 static std::vector<const SceneDescriptor*> testable_scenes() {
 	std::vector<const SceneDescriptor*> out;
 	for (int idx : materials_volumes_and_textures_indices()) {
@@ -991,6 +1012,14 @@ static std::vector<const SceneDescriptor*> testable_scenes() {
 		const SceneDescriptor* s = find_scene(regDesc.id);
 		if (!s || !s->gpu_compatible || s->requires_files) continue;
 		out.push_back(s);
+	}
+	{
+		const std::set<std::string> selected = selected_parity_scene_ids();
+		if (!selected.empty()) {
+			std::vector<const SceneDescriptor*> filtered;
+			for (const SceneDescriptor* s : out) if (selected.count(s->id)) filtered.push_back(s);
+			out = std::move(filtered);
+		}
 	}
 	// Single-scene isolation for calibration/debugging - see this file's
 	// header comment ("Single-scene isolation for calibration/debugging")

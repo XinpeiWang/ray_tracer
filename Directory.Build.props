@@ -1,5 +1,16 @@
 <?xml version="1.0" encoding="utf-8"?>
 <Project>
+  <!--
+    One cl.exe per source file, started by MSBuild (UseMultiToolTask), instead of one cl.exe /MP per project. With /MP the tracking logs
+    MSBuild uses to decide what is out of date lose the first source's command-line entry (every project here: tests 214 of 215, optix 9 of
+    10, cpu_renderer 4 of 5), so that source always looked "changed" and the whole project recompiled on EVERY build - ~95 s for a build with
+    no changes. EnforceProcessCountAcrossBuilds keeps the total number of cl.exe processes at the /m:N the build was asked for.
+  -->
+  <PropertyGroup>
+    <UseMultiToolTask>true</UseMultiToolTask>
+    <EnforceProcessCountAcrossBuilds>true</EnforceProcessCountAcrossBuilds>
+  </PropertyGroup>
+
   <PropertyGroup>
 	<!-- Hint that launcher is the main executable -->
 	<IsStartupProject Condition="'$(MSBuildProjectName)' == 'launcher'">true</IsStartupProject>
