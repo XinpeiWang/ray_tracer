@@ -354,6 +354,13 @@ kernel void primaryRayKernel(
         // needs the true distance from the previous bounce (that is what the NEE
         // strategy it is weighed against measured), not from the exit point.
         float mediumSkippedDist = 0.0;
+        // Set when this path bounced off a hair (materialType 31) surface. Metal's hair BSDF is float32,
+        // where the near-cancelling logI0 terms occasionally produce absurd weights (single samples of
+        // ~1e4 where CPU's double-precision hair peaks near 4); those compound across bounces. The scene-
+        // driven Film maxcomponentvalue below is unbounded by default, so hair paths get the old fixed
+        // per-sample clamp (40) - it is applied only to paths that touched hair, so every other material
+        // stays unclamped.
+        bool pathTouchedHair = false;
         // Recursive-backend dispersion state (materialType 22, B23/B24) -
         // kRgbChannelUnset means "no dispersive hit yet, this sample
         // stays full RGB". See shadeDispersiveDielectric()'s own
@@ -1015,12 +1022,66 @@ kernel void primaryRayKernel(
                 // otherwise) - this is the first OTHER material type to
                 // need UV on a sphere at all, reusing that exact
                 // mechanism rather than re-deriving it.
-                if (mat.conductorK.y > 1.5) {
+                const int texMode = int(mat.conductorK.y + 0.5);
+                if (texMode == 8) {
+                    // Checkerboard of an imagemap, optionally nested one level (J3/J6; loader comment):
+                    // the same uv drives every level, each checker with its own scale.
+                    float2 uv8 = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
+                                          : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                    float2 outerTile = floor(uv8 * float2(mat.conductorEta.x, mat.conductorEta.y));
+                    if ((int(outerTile.x) + int(outerTile.y)) & 1) {
+                        albedo = float3(mat.color);                      // outer tex2
+                    } else {
+                        bool imageHere = true;
+                        float3 inner = float3(mat.transmitColor);          // nested tex2
+                        if (mat.conductorEta.z > 0.5) {
+                            float2 innerTile = floor(uv8 * float2(mat.conductorK.x, mat.conductorK.z));
+                            imageHere = ((int(innerTile.x) + int(innerTile.y)) & 1) == 0;
+                        }
+                        albedo = imageHere ? pbrtDiffuseTexture.sample(textureSampler, float2(uv8.x, 1.0 - uv8.y)).rgb : inner;
+                    }
+                } else if (texMode == 3 || texMode == 4 || texMode == 5) {
+                    // fbm (3) / windy (4) / wrinkled (5), ports of CPU's fbm_texture / windy_texture / wrinkled_texture: keyed on the
+                    // pbrt-world point t = k*p + off, no scale.
+                    float3 wp = mat.conductorK.x * hitPoint + float3(mat.conductorEta);
+                    float tv;
+                    if (texMode == 3) {
+                        tv = 0.5 + 0.5 * fbmSimple(wp, mat.transmitColor.y, int(mat.transmitColor.x + 0.5));
+                    } else if (texMode == 4) {
+                        float windStrength = fbmSimple(0.1 * wp, 0.5, 3);
+                        float waveHeight = fbmSimple(wp, 0.5, 6);
+                        tv = 0.5 + 0.5 * (abs(windStrength) * waveHeight);
+                    } else {
+                        tv = turbulenceSimple(wp, mat.transmitColor.y, int(mat.transmitColor.x + 0.5));
+                    }
+                    albedo = float3(clamp(tv, 0.0, 1.0));
+                } else if (texMode == 6 || texMode == 7) {
+                    float2 uvp = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
+                                          : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                    if (texMode == 7) {
+                        // bilerp: v00 = color, v01 = transmitColor, v10 = conductorEta, v11 = (K.x, roughness, K.z)
+                        float3 v11 = float3(mat.conductorK.x, mat.roughness, mat.conductorK.z);
+                        albedo = (1.0 - uvp.x) * (1.0 - uvp.y) * float3(mat.color) + uvp.x * (1.0 - uvp.y) * float3(mat.conductorEta)
+                               + (1.0 - uvp.x) * uvp.y * float3(mat.transmitColor) + uvp.x * uvp.y * v11;
+                    } else {
+                        // dots: port of dots_texture::is_inside_dot (cell-jittered discs from Perlin noise)
+                        float sCell = floor(uvp.x + 0.5), tCell = floor(uvp.y + 0.5);
+                        bool inside = false;
+                        if (perlinNoise3D(float3(sCell + 0.5, tCell + 0.5, 0.5)) > 0.0) {
+                            const float radius = 0.35, maxShift = 0.5 - radius;
+                            float sC = sCell + maxShift * perlinNoise3D(float3(sCell + 1.5, tCell + 2.8, 0.5));
+                            float tC = tCell + maxShift * perlinNoise3D(float3(sCell + 4.5, tCell + 9.8, 0.5));
+                            float ds = uvp.x - sC, dt = uvp.y - tC;
+                            inside = (ds * ds + dt * dt) < radius * radius;
+                        }
+                        albedo = inside ? float3(mat.color) : float3(mat.transmitColor);
+                    }
+                } else if (texMode == 2) {
                     // pbrt "marble" reflectance texture (loader comment): evaluated at
                     // t = k*p + off; transmitColor = (octaves, omega, variation).
                     float3 mp = mat.conductorK.x * hitPoint + float3(mat.conductorEta);
                     albedo = pbrtMarbleColor(mp, mat.transmitColor.y, int(mat.transmitColor.x + 0.5), mat.transmitColor.z);
-                } else if (mat.conductorK.y > 0.5) {
+                } else if (texMode == 1) {
                     // 3D checkerboard (see the loader's own comment): texture-space point
                     // t = k*p + off, parity of floor(tx)+floor(ty)+floor(tz); even -> tex1.
                     float3 tp = mat.conductorK.x * hitPoint + float3(mat.conductorEta);
@@ -1267,6 +1328,7 @@ kernel void primaryRayKernel(
                 if (!shadePrincipled(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
             } else if (mat.materialType == 31u) {
+                pathTouchedHair = true;
                 if (!shadeHair(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
             } else if (mat.materialType == 18u) {
@@ -1352,6 +1414,7 @@ kernel void primaryRayKernel(
         // legitimately exceed it (the ceiling right above a point light reads
         // 100-260), which made Metal render such scenes ~35% too dark.
         float fireflyLimit = uniforms.fireflyClamp > 0.0 ? uniforms.fireflyClamp : INFINITY;
+        if (pathTouchedHair) fireflyLimit = min(fireflyLimit, 40.0f);
         float sampleMax = max(radiance.x, max(radiance.y, radiance.z));
         if (sampleMax > fireflyLimit) {
             radiance *= fireflyLimit / sampleMax;

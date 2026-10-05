@@ -90,8 +90,10 @@ void normalize3(double* v) {
 }
 
 // Returns how many triangles were added (0 when the scene has none of these shapes).
-size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene) {
+size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene,
+                                std::unordered_map<int, PackedFloat3>& fiberTangent) {
     std::vector<pbrt_flatten::Triangle> out;
+    std::vector<std::pair<size_t, PackedFloat3>> outTangents;   // (index into `out`, fibre direction)
     // A shape with `Material "interface"` only bounds a participating medium: skip it (transparent)
     // rather than turning it into an opaque gray mesh - same rule the sphere/disk/cylinder loaders use.
     auto isInterface = [&scene](int m) {
@@ -172,12 +174,20 @@ size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene) {
                         for (int a = 0; a < 3; ++a) tri.v[c * 3 + a] = c4[t[c]][a];
                     tri.material = cv.material;
                     tri.areaLight = cv.areaLight;
+                    // Fibre direction = along the tube (ring i -> ring i+1), for the hair shader.
+                    {
+                        float tx = q.p10[0] - q.p00[0], ty = q.p10[1] - q.p00[1], tz = q.p10[2] - q.p00[2];
+                        const float tl = std::sqrt(tx * tx + ty * ty + tz * tz);
+                        if (tl > 1e-20f) outTangents.push_back({out.size(), PackedFloat3{tx / tl, ty / tl, tz / tl}});
+                    }
                     out.push_back(tri);
                 }
             }
         }
     }
 
+    const size_t baseIndex = scene.triangles.size();
+    for (const auto& tp : outTangents) fiberTangent[(int)(baseIndex + tp.first)] = tp.second;
     scene.triangles.insert(scene.triangles.end(), out.begin(), out.end());
     scene.bilinearPatches.clear();
     scene.cones.clear();
@@ -194,7 +204,8 @@ void MetalPocApp::loadPbrtScene() {
         fprintf(stderr, "loadPbrtScene: %s\n", result.error.c_str());
         return;
     }
-    if (const size_t added = tessellateUnsupportedShapes(result.scene))
+    pbrtTriangleFiberTangent.clear();
+    if (const size_t added = tessellateUnsupportedShapes(result.scene, pbrtTriangleFiberTangent))
         fprintf(stderr, "loadPbrtScene: tessellated bilinear patch/cone/paraboloid/curve shapes into %zu triangle(s)\n", added);
     const pbrt_flatten::FlatScene& scene = result.scene;
     for (const pbrt_scene::Warning& w : scene.warnings) {
@@ -374,6 +385,43 @@ void MetalPocApp::loadPbrtScene() {
                 // default below instead of misrendering it. Also excludes
                 // m.checkerIs3D: a 3D checker is handled by its own case just above
                 // (it needs a texture-space point, not UV tile frequencies).
+                // pbrt-v4 procedural reflectance textures, each a mode of materialType 25 (conductorK.y):
+                //   3 fbm, 4 windy, 5 wrinkled (both keyed on the pbrt-world hit point with NO scale, like CPU),
+                //   6 dots (uv), 7 bilerp (uv). The world-point ones fold the scene rescale/recentre into
+                //   t = k*p_metal + off exactly as marble does (k = 1/sceneScale,
+                //   off = bboxCenter - sceneOffset/sceneScale; conductorK.x = k, conductorEta = off).
+                //   wrinkled: transmitColor = (octaves, omega, 0). dots: color = inside, transmitColor =
+                //   outside (flat colours only). bilerp: color = v00, transmitColor = v01, conductorEta = v10,
+                //   v11 = (conductorK.x, roughness, conductorK.z).
+                if (m.hasWindyReflectance || m.hasWrinkledReflectance || m.hasFbmReflectance) {
+                    TriangleMaterial mat{PackedFloat3{0.5f, 0.5f, 0.5f}, /*materialType=*/25u, /*ior=*/1.0f,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    mat.conductorK = PackedFloat3{1.0f / sceneScale, m.hasFbmReflectance ? 3.0f : (m.hasWindyReflectance ? 4.0f : 5.0f), 0.0f};
+                    mat.conductorEta = PackedFloat3{bboxCenter.x - sceneOffset.x / sceneScale,
+                                                     bboxCenter.y - sceneOffset.y / sceneScale,
+                                                     bboxCenter.z - sceneOffset.z / sceneScale};
+                    if (m.hasWrinkledReflectance)
+                        mat.transmitColor = PackedFloat3{(float)m.wrinkledOctaves, (float)m.wrinkledRoughness, 0.0f};
+                    if (m.hasFbmReflectance)   // fbm (mode 3): transmitColor = (octaves, omega, 0), scale 1 like CPU
+                        mat.transmitColor = PackedFloat3{(float)m.fbmOctaves, (float)m.fbmRoughness, 0.0f};
+                    return mat;
+                }
+                if (m.hasDotsReflectance && m.dotsInsideTexFilename.empty() && m.dotsOutsideTexFilename.empty()) {
+                    TriangleMaterial mat{PackedFloat3{(float)m.dotsInsideColor[0], (float)m.dotsInsideColor[1], (float)m.dotsInsideColor[2]},
+                                         /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    mat.transmitColor = PackedFloat3{(float)m.dotsOutsideColor[0], (float)m.dotsOutsideColor[1], (float)m.dotsOutsideColor[2]};
+                    mat.conductorK = PackedFloat3{0.0f, 6.0f, 0.0f};
+                    return mat;
+                }
+                if (m.hasBilerpReflectance) {
+                    TriangleMaterial mat{PackedFloat3{(float)m.bilerpV00[0], (float)m.bilerpV00[1], (float)m.bilerpV00[2]},
+                                         /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1,
+                                         /*roughness=*/(float)m.bilerpV11[1]};
+                    mat.transmitColor = PackedFloat3{(float)m.bilerpV01[0], (float)m.bilerpV01[1], (float)m.bilerpV01[2]};
+                    mat.conductorEta = PackedFloat3{(float)m.bilerpV10[0], (float)m.bilerpV10[1], (float)m.bilerpV10[2]};
+                    mat.conductorK = PackedFloat3{(float)m.bilerpV11[0], 7.0f, (float)m.bilerpV11[2]};
+                    return mat;
+                }
                 // pbrt-v4 "marble" reflectance texture (A5/A7): FBm-perturbed sine through a colour
                 // spline, ported from CPU's marble_texture. Like CPU it is keyed on the (pbrt-world)
                 // hit point times `marbleScale`, so the same fold as the 3D checker applies: the
@@ -401,6 +449,48 @@ void MetalPocApp::loadPbrtScene() {
                 // fold that into the transform once here: t = k*p_metal + off with k = s/sceneScale
                 // and off = s*(bboxCenter - sceneOffset/sceneScale) (conductorK.x = k,
                 // conductorEta = off). Works on triangles and spheres alike (A2's ground is a sphere).
+                // 2D checkerboard whose tex1 is a bare imagemap (J3), or a NESTED checkerboard whose own tex1
+                // is one (J6, two levels): pbrt evaluates nested textures with the same (u,v), each checker
+                // with its own uscale/vscale. materialType 25 mode 8 (conductorK.y = 8), using the single
+                // diffuse-image slot (the first image filename wins, as for materialType 26):
+                //   color = outer tex2, transmitColor = nested tex2, conductorEta = (outer uscale, vscale,
+                //   nested?1:0), conductorK = (nested uscale, 8, nested vscale).
+                if (m.hasCheckerReflectance && !m.checkerIs3D && m.checkerTex2Filename.empty()) {
+                    std::string imgFile;
+                    bool nestedLevel = false;
+                    double nU = 1.0, nV = 1.0;
+                    double nTex2[3] = {0, 0, 0};
+                    const pbrt_flatten::NestedProceduralTexture& nt = m.checkerTex1Nested;
+                    if (!m.checkerTex1Filename.empty()) {
+                        imgFile = m.checkerTex1Filename;
+                    } else if (nt.kind == "checkerboard" && !nt.tex1Filename.empty() && nt.tex2Filename.empty()) {
+                        imgFile = nt.tex1Filename; nestedLevel = true; nU = nt.uscale; nV = nt.vscale;
+                        for (int c = 0; c < 3; ++c) nTex2[c] = nt.color2[c];
+                    }
+                    if (!imgFile.empty() && (!havePbrtDiffuseImage || imgFile == pbrtDiffuseImageFilename)) {
+                        if (!havePbrtDiffuseImage) {
+                            std::string bytes;
+                            if (pbrt_load::loadFileNear(pbrtScenePath, imgFile, bytes) &&
+                                pbrt_load::detail::decodeInfiniteLightImage(imgFile, bytes,
+                                    pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                                havePbrtDiffuseImage = true;
+                                pbrtDiffuseImageFilename = imgFile;
+                            } else {
+                                fprintf(stderr, "loadPbrtScene: checkerboard's image texture '%s' could not be "
+                                                "read/decoded; falling back to its flat colour\n", imgFile.c_str());
+                            }
+                        }
+                        if (havePbrtDiffuseImage) {
+                            TriangleMaterial mat{
+                                PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]},
+                                /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                            mat.transmitColor = PackedFloat3{(float)nTex2[0], (float)nTex2[1], (float)nTex2[2]};
+                            mat.conductorEta = PackedFloat3{(float)m.checkerUScale, (float)m.checkerVScale, nestedLevel ? 1.0f : 0.0f};
+                            mat.conductorK = PackedFloat3{(float)nU, 8.0f, (float)nV};
+                            return mat;
+                        }
+                    }
+                }
                 if (m.hasCheckerReflectance && m.checkerIs3D &&
                     m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
                     const double* w2t = m.checkerWorldToTexture;
@@ -524,6 +614,38 @@ void MetalPocApp::loadPbrtScene() {
                 TriangleMaterial mat{color, /*materialType=*/20u, /*ior=*/(float)m.ior,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/alpha};
                 setConductorOptics(mat, m);
+                return mat;
+            }
+            case pbrt_flatten::MaterialKind::NormalizedFresnel: {
+                // materialType 18: `ior` = eta, `roughness` = the precomputed normalisation constant
+                // c = 1 - 2*FresnelMoment1(1/eta) (a fixed function of eta, so computed here once; the
+                // shader has no albedo tint - the BRDF is achromatic).
+                const float eta = (float)m.ior;
+                float nfC = 1.0f - 2.0f * fresnelMoment1(1.0f / eta);
+                if (nfC <= 0.0f) nfC = 1e-6f;
+                return TriangleMaterial{color, /*materialType=*/18u, /*ior=*/eta,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/nfC};
+            }
+            case pbrt_flatten::MaterialKind::Principled: {
+                // materialType 24 (this project's own non-pbrt "principled"): color = base colour,
+                // ior, roughness = perceptual roughness, conductorEta = (metallic, clearcoat,
+                // clearcoat roughness).
+                TriangleMaterial mat{color, /*materialType=*/24u, /*ior=*/(float)m.ior,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.roughness};
+                mat.conductorEta = PackedFloat3{(float)m.metallic, (float)m.clearcoat, (float)m.clearcoatRoughness};
+                return mat;
+            }
+            case pbrt_flatten::MaterialKind::Hair: {
+                // pbrt-v4 HairMaterial -> materialType 31 (Metal's port of hair_material.h).
+                // Field reuse: color = sigma_a (already resolved from eumelanin/pheomelanin or
+                // a literal sigma_a by flatten), ior = eta, roughness = beta_m,
+                // conductorEta = (beta_n, alpha_deg, 0). conductorK is the per-triangle fibre
+                // tangent for tessellated curves (set in loadPbrtRemainingTriangles); zero means
+                // "use the shading normal as the tangent", CPU's default for non-curve shapes.
+                TriangleMaterial mat{PackedFloat3{(float)m.sigma_a[0], (float)m.sigma_a[1], (float)m.sigma_a[2]},
+                                     /*materialType=*/31u, /*ior=*/(float)m.ior,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.betaM};
+                mat.conductorEta = PackedFloat3{(float)m.betaN, (float)m.alphaDeg, 0.0f};
                 return mat;
             }
             case pbrt_flatten::MaterialKind::Dielectric:
@@ -936,6 +1058,10 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
         }
         TriangleMaterial mat = materialFor(t.material);
+        if (mat.materialType == 31u) {
+            auto tanIt = pbrtTriangleFiberTangent.find(i);
+            if (tanIt != pbrtTriangleFiberTangent.end()) mat.conductorK = tanIt->second;   // real fibre tangent (curves)
+        }
         auto unhandledIt = unhandledLightEmission.find(i);
         if (unhandledIt != unhandledLightEmission.end()) {
             const float3& unhandledEmission = unhandledIt->second.first;

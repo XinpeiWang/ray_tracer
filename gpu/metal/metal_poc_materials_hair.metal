@@ -514,7 +514,15 @@ inline bool shadeHair(TriangleMaterial mat, float3 hitPoint, float3 facingNormal
     float u3 = randFloat(rngState);
     float u4 = randFloat(rngState);
 
-    BxDFSampleResultGPU res = hairSample(hp, facingNormal.x, facingNormal.y, facingNormal.z,
+    // Fibre tangent: the real one when the loader supplied it (tessellated curves carry it in
+    // conductorK), else CPU's default proxy - the shading normal.
+    float3 fiberT = facingNormal;
+    {
+        float3 ck = float3(mat.conductorK);
+        float cl = length(ck);
+        if (cl > 0.5) fiberT = ck / cl;
+    }
+    BxDFSampleResultGPU res = hairSample(hp, fiberT.x, fiberT.y, fiberT.z,
                                           rayDir.x, rayDir.y, rayDir.z,
                                           u1, u2, u3, u4);
     if (!res.valid) return false;
