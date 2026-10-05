@@ -400,6 +400,13 @@ TEST(PbrtBackendAgreementTest, RoughMetalLampAgreesAcrossBackends) {
 	expectBackendsAgree("rough-metal-lamp", 512, 0.985, 1.015);
 }
 
+// An emissive SPHERE that is not the light being sampled has to block shadow rays like any other surface. Both GPU backends'
+// sphere shadow any-hit programs ignored every emissive sphere, so a glowing ball under a lamp cast no shadow: 116.9% of the CPU.
+// See pbrt_scenes/emissive-sphere-occluder.pbrt.
+TEST(PbrtBackendAgreementTest, EmissiveSphereOccluderAgreesAcrossBackends) {
+	expectBackendsAgree("emissive-sphere-occluder", 128, 0.985, 1.015);
+}
+
 // Smooth glass on the wavefront backend chose reflect-vs-refract with Schlick's approximation fed the incident cosine, which
 // under-reflects for a ray leaving the glass: the light through two refractions was ~2.2x too bright and the glass read 105.3% of
 // a pbrt path-level reference (CPU and recursive, which use the exact Fresnel, 100.4% / 100.9%). See pbrt_scenes/glass-sphere-lamp.pbrt.

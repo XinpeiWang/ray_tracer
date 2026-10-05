@@ -60,12 +60,11 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseLight) {
-		// Emitter: not an occluder, but must not end traversal as "visible" either
-		// (any-hit order is unspecified - see D4 note above __anyhit__shadow_sphere).
-		optixIgnoreIntersection();
-		return;
-	}
+	// An emissive sphere is an occluder like every other pbrt-v4 surface: the shadow ray a light sample fires stops
+	// just short of its target (NEE call sites subtract 0.002) and sphere lights are cone-sampled, so the target is
+	// on the sphere's near side and the ray never reaches it - a hit here is a DIFFERENT emitter, or the light's own
+	// far side, in the way. It used to be ignored, so an emissive sphere hanging in front of a lamp cast no shadow
+	// (a dim emissive ball under a quad lamp over a floor: 117% of the CPU on both GPU backends).
 	if (mat.type == MaterialType::DiffuseTransmission ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
