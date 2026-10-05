@@ -71,47 +71,30 @@
 // OptiX suite, deliberately renamed (not reused) so the two are never
 // confused for each other when both are set in the same shell.
 //
-// CURRENT STATUS - informational, not yet a hard ctest gate. This sweep's
-// own first full run (95 scenes, the complete 7-category/Metal-supported
-// set) found 44 scenes outside tolerance - exactly the volume of findings
-// material_cpu_gpu_parity_tests.cpp's own header comment describes from
-// ITS first runs too (that suite's calibration - B1/B13's real bugs, B14/
-// B11's firefly-variance exceptions, E6/J2's real fixes, C17/C18/C19/F13's
-// now-removed filter-reach-bug exceptions - took multiple sessions of
-// actual investigation, not a single pass). Treating 44 un-investigated
-// findings as "the tolerance must be wrong, widen it" or "fail CI" would
-// be equally dishonest - neither is true yet. So: this sweep ALWAYS exits
-// 0 by default (never fails ctest), and prints a full per-scene report to
-// stderr instead - exactly the "ship the tool, not a rubber-stamped green
-// checkmark" distinction. Set METAL_PARITY_STRICT=1 to make it exit
-// non-zero on any un-excepted failure once/if this is promoted to a real
-// gate after enough of the 44 are individually triaged.
+// CURRENT STATUS - informational, not yet a hard ctest gate. The first full run
+// of this sweep (95 scenes, the complete 7-category/Metal-supported set) found 44
+// scenes outside tolerance. Since then every one has been investigated; the
+// sweep now reads ~71-72 pass / 23 known gaps, with no scene left un-triaged: the
+// 0-1 "failures" on a given run are scenes sitting right at the 50% regional
+// tolerance that flip pass<->fail on sampling noise (C13, C3, B5, B14, B16, E5). What the investigations found:
 //
-// Of the 44, 9 are ALREADY self-evidently explained by this sweep's own
-// first run - the pbrt loader's own stderr warns, for the exact scene,
-// that it fell back to a flat gray Lambertian (a material kind Metal's
-// loader doesn't implement: normalizedfresnel/principled/hair/measured/
-// subsurface) or silently dropped unsupported shapes (cone/paraboloid/
-// bilinear patch/curve) - see kKnownGapScenes below. CPU renders the REAL
-// material/geometry; Metal renders a documented, pre-existing
-// approximation of it - a real gap, but not a NEW one this sweep
-// introduces evidence for, and not something to "fix" here.
+//  - Real Metal bugs, fixed: NaN pixels from a reflectance-only conductor (and the
+//    NaN check this file now does itself), an uninitialised sphere-shadow payload,
+//    the hard-coded per-sample firefly clamp, bounded-medium spheres (loader mapping,
+//    rays starting inside, MIS distance, shadow attenuation), infinite camera fog,
+//    projection-light scale/orientation/filtering, sphere/disk/cylinder/triangle
+//    area lights not being NEE-sampled, a huge ground sphere shrinking the scene to
+//    ~0.001 units (ray epsilons), 3D checkerboard and marble textures, glass absorbing
+//    0.5/unit by default.
+//  - Genuine, documented gaps (kKnownGapScenes below, each with its cause): features
+//    Metal does not implement, and places where the CPU deliberately differs from
+//    pbrt-v4 (reflectance-only conductor, glass shadow rays).
 //
-// E1 (Homogeneous Medium) gapped 67.9% (cpu=0.2787, metal=0.0894) on this
-// sweep's first run and is now FIXED (it, and A8, pass). The earlier theory
-// that Metal rendered E1 brighter because medium spheres cast no shadow was
-// backwards for E1: its "interface" fog sphere had no case in the pbrt
-// loader at all, so it became an OPAQUE gray sphere that blocked the light
-// (near-black render). Fixing that exposed three more bugs in the
-// materialType-28 path: a ray that scatters INSIDE the sphere was stepped
-// backwards (shader assumed it always starts outside), the MIS weight at a
-// light hit measured distance from the sphere exit instead of the previous
-// bounce, and shadow rays crossing the fog were not attenuated (now blocked
-// stochastically with probability 1 - exp(-sigma_t * chord)).
-//
-// The other ~34 are genuinely new, un-triaged findings from this sweep's
-// first run - real signal, not yet individually investigated. Follow-up
-// work, not a blocker for landing the tool itself.
+// This sweep ALWAYS exits 0 by default (never fails ctest) and prints a full
+// per-scene report to stderr. Set METAL_PARITY_STRICT=1 to make it exit non-zero
+// on any un-excepted failure once/if it is promoted to a real gate - given the
+// noise-edge scenes above, that would first need the regional check made more
+// robust (more samples / a statistical test) so it stops flipping.
 
 #include <cstdio>
 #include <cstdlib>
@@ -342,6 +325,12 @@ const char* const kKnownGapScenes[] = {
 	// J2 (DiffuseTransmission Texture): reflectance AND transmittance are bound to two different image textures;
 	// Metal has a single diffuse-image slot, so it renders flat colours.
 	"B7", "J2",
+	// B24 (Frosted Prism Dispersion): CPU's shadow rays deliberately walk STRAIGHT THROUGH glass (shadow_ray.h:
+	// is_shadow_transmissive, no refraction), so the delta distant light reaches the diffuse catcher screen
+	// behind the rough glass prism. Metal blocks shadow rays at glass - what pbrt-v4 itself does - so that
+	// screen region renders black. (abbenumber is not the cause: CPU's default RGB path treats dispersive
+	// glass as plain glass.) Matching CPU would need material-aware shadow tracing at ~70 call sites.
+	"B24",
 };
 
 bool is_known_gap_scene(const std::string& id) {
