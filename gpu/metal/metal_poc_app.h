@@ -100,6 +100,10 @@ struct MetalPocApp {
     // carry it" shape as exposureValue above. False (default) is a no-op,
     // unaffected for every scene/caller that never touches this field.
     bool isolatePbrtLighting = false;
+    // Drop the hardcoded demo room (walls, Spot, both Suzanne instances, demo spheres/disk) from the scene before
+    // the pbrt scene is added, so the acceleration structure holds ONLY the pbrt geometry. Set by metal_render_main().
+    // False (default) keeps the demo room for the standalone metal_poc CLI.
+    bool skipDemoRoom = false;
     // Starting value of the per-pixel RNG stream (Uniforms::frameSeed, folded
     // into every pixel's initial rngState in primaryRayKernel). 1u is the value
     // this backend has always hardcoded, so a render that never asks for a

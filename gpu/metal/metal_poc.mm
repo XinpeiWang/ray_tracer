@@ -422,6 +422,11 @@ void MetalPocApp::buildScene() {
     // instead, and every light this function adds silently became
     // unreachable by NEE (see buildPowerLightSampler()'s own call site
     // history for the full story).
+    if (skipDemoRoom) {
+        // Room walls, Spot, and both Suzanne instances: gone before the pbrt triangles are appended.
+        verts.clear(); normals.clear(); uvs.clear(); materials.clear();
+        suzanneVerts.clear(); suzanneNormals.clear(); suzanneUVs.clear(); suzanneMaterials.clear();
+    }
     if (!pbrtScenePath.empty()) loadPbrtScene();
     // Same ADDITIVE reasoning as loadPbrtScene() just above (its own
     // comment) - mutually exclusive with it in practice (metal_render_main()
@@ -493,6 +498,7 @@ void MetalPocApp::buildScene() {
     // (every hand-picked index/comment below, e.g. "gold sphere's own
     // z"/spheres[1], is unaffected) while anything loadPbrtScene() added
     // earlier lands after them, not lost.
+    const size_t pbrtSpheresBefore = spheres.size();
     spheres.insert(spheres.begin(), {
         SphereData{PackedFloat3{0.35f, -0.65f, 0.15f}, 0.35f},
         SphereData{PackedFloat3{-0.55f, -0.65f, 0.45f}, 0.35f},
@@ -590,6 +596,12 @@ void MetalPocApp::buildScene() {
         // originally designed to model.
         TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.15f}, /*materialType=*/14, /*ior(sigma)=*/0.3f, PackedFloat3{0, 0, 0}},
     });
+    if (skipDemoRoom) {
+        // Demo entries sit at the front (see the insert-at-front comments above); drop them so the pbrt
+        // scene alone is in the acceleration structure and its sphere primitive ids are the loader's own.
+        spheres.erase(spheres.begin(), spheres.begin() + (spheres.size() - pbrtSpheresBefore));
+        sphereMaterials.erase(sphereMaterials.begin(), sphereMaterials.begin() + (sphereMaterials.size() - pbrtSpheresBefore));
+    }
 
     // A wall-mounted mirror disk (materialType 1) - a second, distinct
     // custom-primitive SHAPE, not just another sphere. Every custom
@@ -608,12 +620,18 @@ void MetalPocApp::buildScene() {
     // insert-at-front comment documents, so this is fixed proactively
     // rather than left as a trap for whenever a future increment adds
     // pbrt disk support.
+    const size_t pbrtDisksBefore = disks.size();
     disks.insert(disks.begin(), {
         DiskData{PackedFloat3{0.97f, 0.3f, -0.3f}, PackedFloat3{-1.0f, 0.0f, 0.0f}, 0.22f},
     });
     diskMaterials.insert(diskMaterials.begin(), {
         TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/1, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
     });
+    if (skipDemoRoom) {
+        // The demo entries sit at the front; erase exactly what was just inserted.
+        disks.erase(disks.begin(), disks.begin() + (disks.size() - pbrtDisksBefore));
+        diskMaterials.erase(diskMaterials.begin(), diskMaterials.begin() + (diskMaterials.size() - pbrtDisksBefore));
+    }
 
     // A true delta point light - genuinely different from every
     // AreaLight above (zero area, hard-edged shadows, no NEE/MIS
@@ -992,6 +1010,7 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // this path and no longer read; the standalone metal_poc CLI (the
         // demo room itself, no pbrt scene) still keeps its room lights.
         app.isolatePbrtLighting = true;
+        app.skipDemoRoom = true;  // the demo room only slows traversal; a pbrt scene is rendered on its own
         // --seed: options.seed < 0 means "not requested" (leave the default
         // stream). Otherwise offset by 2 so seed 0 maps to 2, never to the
         // default stream's own 1u - every explicit
