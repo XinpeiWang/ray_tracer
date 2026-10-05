@@ -934,8 +934,16 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         [enc useResource:suzanneAS usage:MTLResourceUsageRead];
 
         MTLSize gridSize = MTLSizeMake(width, thisBandHeight, 1);
-        NSUInteger w = pipeline.threadExecutionWidth;
-        NSUInteger h = pipeline.maxTotalThreadsPerThreadgroup / w;
+        // Threadgroup shape: ONE SIMD group per threadgroup, as a square-ish tile (8 x execWidth/8 = 8x4 on Apple
+        // GPUs), instead of the pipeline's maximum (32x12 = 384 threads). Measured on an M2: every SIMD-sized shape
+        // (8x4, 4x4, 16x2, 32x1, ...) is equally fast and 10-22% faster than 32x12 (A1 3.9s -> 3.5s, G1 2.7s ->
+        // 2.1s), because big threadgroups tie a whole 384-thread group to its slowest path. The image is
+        // unchanged (per-pixel RNG streams). METAL_TG_W/METAL_TG_H override it for tuning.
+        NSUInteger w = 8;
+        NSUInteger h = std::max<NSUInteger>(1, pipeline.threadExecutionWidth / w);
+        if (const char* tgw = getenv("METAL_TG_W")) w = (NSUInteger)atoi(tgw);
+        if (const char* tgh = getenv("METAL_TG_H")) h = (NSUInteger)atoi(tgh);
+        if (getenv("METAL_TG_PRINT")) fprintf(stderr, "[perf] execWidth=%lu maxThreads=%lu staticTG=%lu -> tg %lux%lu\n", (unsigned long)pipeline.threadExecutionWidth, (unsigned long)pipeline.maxTotalThreadsPerThreadgroup, (unsigned long)pipeline.staticThreadgroupMemoryLength, (unsigned long)w, (unsigned long)h);
         MTLSize threadgroupSize = MTLSizeMake(w, h, 1);
         [enc dispatchThreads:gridSize threadsPerThreadgroup:threadgroupSize];
         [enc endEncoding];
