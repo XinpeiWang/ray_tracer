@@ -1590,6 +1590,81 @@ TEST_F(CpuBuilderTempTree, DisplacementWithARealGrayscaleBumpMapWrapsInBumpMapMa
 		   "wrap the base material in bump_map_material";
 }
 
+// A 1x1 24bpp BMP of one colour (r, g, b), written as the file stores it (BGR order).
+static std::string solidBmp1x1Rgb(unsigned char r, unsigned char g, unsigned char b) {
+	std::string bytes;
+	const auto u16 = [&](unsigned short v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+	};
+	const auto u32 = [&](unsigned int v) {
+		bytes.push_back(static_cast<char>(v & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 8) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 16) & 0xFF));
+		bytes.push_back(static_cast<char>((v >> 24) & 0xFF));
+	};
+	bytes.push_back('B'); bytes.push_back('M');
+	u32(14 + 40 + 4);
+	u32(0);
+	u32(14 + 40);
+	u32(40);
+	u32(1);
+	u32(1);
+	u16(1);
+	u16(24);
+	u32(0);
+	u32(4);
+	u32(0); u32(0);
+	u32(0); u32(0);
+	bytes.push_back(static_cast<char>(b));
+	bytes.push_back(static_cast<char>(g));
+	bytes.push_back(static_cast<char>(r));
+	bytes.push_back('\0');
+	return bytes;
+}
+
+// A height map is a float imagemap: pbrt decodes an 8-bit image as sRGB and interpolates the decoded FLOATS. The CPU used to store the
+// decoded value requantized to a byte, which crushes the darks (every byte value up to ~12 decodes below 1/255 and rounded to 0 or 1/255),
+// so the finite-difference slope of a smooth dark ramp came out as stairs - bump-mapped-plane read 1-5% off the GPU, which decodes per texel.
+TEST_F(CpuBuilderTempTree, BumpMapKeepsTheSrgbDecodedHeightAsAFloat) {
+	write("scene.pbrt",
+		  "Texture \"bmap\" \"float\" \"imagemap\" \"string filename\" [ \"dark.bmp\" ]\n"
+		  "Material \"diffuse\" \"rgb reflectance\" [ .5 .5 .5 ] \"texture displacement\" [ \"bmap\" ]\n"
+		  + std::string(kQuad));
+	write("dark.bmp", solidBmp1x1Rgb(10, 10, 10));
+	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(loaded.ok) << loaded.error;
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(loaded.scene);
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)), interval(0.001, infinity), rec));
+	auto *bump = dynamic_cast<bump_map_material *>(rec.mat.get());
+	ASSERT_NE(bump, nullptr);
+	const double expected = 10.0 / 255.0 / 12.92;   // sRGB decode of a dark byte (the linear toe: c / 12.92)
+	EXPECT_NEAR(bump->get_bump_tex()->value(0.5, 0.5, point3(0, 0, 0)).x(), expected, 2e-5)
+		<< "the decoded height (0.003) must not be requantized to a byte (which would read 0 or 0.0039)";
+}
+
+// pbrt reads a tangent-space normal map LINEAR (scene.cpp: Image::Read(filename, ..., ColorEncoding::Linear)). Both backends used to sRGB-decode
+// it like any other 8-bit image, which tilts every texel: a flat (128,128,255) map read as (0.22,0.22,1) -> a normal 49 degrees off the surface's.
+TEST_F(CpuBuilderTempTree, NormalMapIsReadLinearNotSrgbDecoded) {
+	write("scene.pbrt",
+		  "Texture \"nmap\" \"float\" \"imagemap\" \"string filename\" [ \"flat.bmp\" ]\n"
+		  "Material \"diffuse\" \"rgb reflectance\" [ .5 .5 .5 ] \"texture displacement\" [ \"nmap\" ]\n"
+		  + std::string(kQuad));
+	write("flat.bmp", solidBmp1x1Rgb(128, 128, 255));
+	const pbrt_load::LoadResult loaded = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(loaded.ok) << loaded.error;
+	const pbrt_cpu::BuildResult b = pbrt_cpu::build(loaded.scene);
+	hit_record rec;
+	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)), interval(0.001, infinity), rec));
+	auto *nm = dynamic_cast<normal_map_material *>(rec.mat.get());
+	ASSERT_NE(nm, nullptr) << "an RGB displacement image is a normal map";
+	const color c = nm->get_normal_tex()->value(0.5, 0.5, point3(0, 0, 0));
+	EXPECT_NEAR(c.x(), 128.0 / 255.0, 1e-4);
+	EXPECT_NEAR(c.y(), 128.0 / 255.0, 1e-4);
+	EXPECT_NEAR(c.z(), 1.0, 1e-4);
+}
+
 TEST(PbrtCpuBuildTest, DiffuseTransmissionBuildsTheRealMaterialNotLambertian) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Material \"diffusetransmission\"\n" + std::string(kQuad));

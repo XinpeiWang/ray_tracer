@@ -1186,8 +1186,14 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 		if (dispTexIdx >= 0) {
 			if (!isPbrtTextureGrayscale(out, dispTexIdx)) {
 				if (d.type == MaterialType::Lambertian && d.textureIdx < 0) {
-					d.type = MaterialType::NormalMappedLambertian;
-					d.textureIdx = dispTexIdx;
+					// A tangent-space normal map is read LINEAR (pbrt scene.cpp: Image::Read(..., ColorEncoding::Linear)); the
+					// default build above keeps the file's sRGB bytes, which the lookup would decode and tilt every texel.
+					const int linearIdx = getOrBuildPbrtImageTexture(m.displacementTextureFilename, out, imageTextureCache,
+																	 1.0f, GpuWrapMode::Repeat);
+					if (linearIdx >= 0) {
+						d.type = MaterialType::NormalMappedLambertian;
+						d.textureIdx = linearIdx;
+					}
 				}
 			} else {
 				// A grayscale height image is a scalar bump map: the triangle closest-hit programs perturb
