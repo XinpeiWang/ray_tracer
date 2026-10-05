@@ -1,0 +1,33 @@
+# rough-glass-lamp.pbrt -- a rough glass sphere seen against a small sphere lamp, nothing else in the scene.
+#
+# The lamp is reached mostly by light-sampling (NEE) at the vertices where a ray leaves the glass, which is exactly where
+# the shared RoughDielectricBxDF used to be wrong: its transmission f() was pbrt's radiance-mode BTDF, which this
+# renderer's path throughput does not carry the matching factors for, so NEE at every exit vertex was counted eta^2 =
+# 2.25 times too strongly, and its pdf() was eta^2 times the density the sampler really draws from, so MIS weighed against
+# the wrong magnitude. Against an independent pbrt-v4 path-level reference (scripts/pbrt_rough_glass_reference.py) the CPU
+# and both GPU backends read 17-24% bright at roughness 0.6 (2-3% under a uniform sky); the GPU samplers also accepted a
+# refracted sample that landed on the same side as the ray, which pbrt rejects (+7% leaving glass at 75 degrees).
+# Now all three agree with the reference to ~1%. (The lamp is 4x the L=15 the reference script uses so the test's
+# mean-brightness floor is met; the image is linear in L, so the comparison scales exactly.)
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 2 8    0 1 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 400 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 5 -2
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 60 60 60 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 0 1.5 0
+  Material "dielectric" "float eta" [ 1.5 ] "float roughness" [ 0.5 ]
+  Shape "sphere" "float radius" [ 1.5 ]
+AttributeEnd

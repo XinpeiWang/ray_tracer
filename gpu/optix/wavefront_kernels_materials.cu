@@ -1448,6 +1448,9 @@ extern "C" __global__ void evaluate_materials(
 				const float eta_ratio = rd_front_face ? (1.0f / mat.ior) : mat.ior;
 				float3 refracted = wf_refract(normalize(h.rayDir), wm_world, eta_ratio);
 				wo_x = dot(refracted, tan_v); wo_y = dot(refracted, bitan); wo_z = dot(refracted, n);
+				// pbrt-v4 rejects a refracted sample that ends up on the same side as wo (DielectricBxDF::Sample_f: SameHemisphere(wo, wi)), which a strongly tilted
+				// microfacet produces at grazing incidence. Keeping it added ~7% to the albedo leaving glass at 75 degrees.
+				if (wo_z >= 0.0f) return false;
 				scattered_dir = refracted;
 				eventEta = eta_ratio;
 			}

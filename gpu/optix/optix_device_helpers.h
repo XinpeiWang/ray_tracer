@@ -1021,6 +1021,9 @@ __device__ __forceinline__ bool rough_dielectric_scatter_and_nee(
 			float wo_x = rd_ri*(-wi_x) + (rd_ri*cos_i - cos_t)*wm_x;
 			float wo_y = rd_ri*(-wi_y) + (rd_ri*cos_i - cos_t)*wm_y;
 			float wo_z = -(rd_ri*wi_z  - (rd_ri*cos_i - cos_t)*wm_z);
+			// pbrt-v4 rejects a refracted sample that ends up on the same side as wo (DielectricBxDF::Sample_f: SameHemisphere(wo, wi)), which a strongly tilted
+			// microfacet produces at grazing incidence. Keeping it added ~7% to the albedo leaving glass at 75 degrees.
+			if (wo_z >= 0.0f) return false;
 			wo_local = make_float3(wo_x, wo_y, wo_z);
 			// pbrt-v4 etaScale - a genuine transmission (not the TIR
 			// fallback-to-reflect branch above), eta = rd_ri exactly

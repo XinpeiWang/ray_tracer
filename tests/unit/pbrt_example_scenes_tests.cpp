@@ -343,3 +343,14 @@ TEST(PbrtBackendAgreementTest, GlassFogFurnaceAgreesAcrossBackends) {
 TEST(PbrtBackendAgreementTest, NormalMappedCornellAgreesAcrossBackends) {
 	expectBackendsAgree("normal-mapped-cornell", 128, 0.98, 1.02);
 }
+
+// Rough glass under a small lamp, where NEE at the vertices that leave the glass carries the image. The shared
+// RoughDielectricBxDF's transmission f() and pdf() both carried an extra eta^2 (2.25 for glass), so NEE there was counted
+// 2.25x too strongly and MIS weighed against the wrong magnitude (CPU +20% against a pbrt-v4 path-level reference,
+// GPU +15%); its GPU samplers also kept refracted samples that land on the wrong side of the surface, which pbrt
+// rejects. See pbrt_scenes/rough-glass-lamp.pbrt and scripts/pbrt_rough_glass_reference.py.
+TEST(PbrtBackendAgreementTest, RoughGlassUnderALampAgreesAcrossBackends) {
+	// The harness compares tonemapped means of a scene whose lamp clips, so it is coarser than the linear ratios in the docs
+	// (GPU ~99% of CPU linearly, 96% here); the broken behaviour read ~90% or less.
+	expectBackendsAgree("rough-glass-lamp", 128, 0.95, 1.05);
+}
