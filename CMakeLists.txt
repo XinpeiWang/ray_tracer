@@ -489,6 +489,13 @@ if(RT_BUILD_METAL)
     add_executable(metal_realtime_dylib_check gpu/metal/metal_realtime_dylib_check.cpp)
     add_dependencies(metal_realtime_dylib_check realtime_renderer)
     add_test(NAME metal_realtime_dylib COMMAND metal_realtime_dylib_check $<TARGET_FILE:realtime_renderer>)
+    # Same check from a directory that has NO pbrt_scenes (a Finder-launched GUI runs from "/"): the library must find the scene
+    # files next to the executable / library instead. Only for in-tree build directories, where those files are one level up.
+    if(CMAKE_BINARY_DIR MATCHES "^${CMAKE_SOURCE_DIR}/")
+        add_test(NAME metal_realtime_dylib_other_cwd COMMAND metal_realtime_dylib_check $<TARGET_FILE:realtime_renderer>)
+        set_tests_properties(metal_realtime_dylib_other_cwd PROPERTIES WORKING_DIRECTORY "/"
+            PASS_REGULAR_EXPRESSION "REALTIME_DYLIB_OK|SKIP: no usable Metal device")
+    endif()
     set_tests_properties(metal_realtime_dylib PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "REALTIME_DYLIB_OK|SKIP: no usable Metal device")
