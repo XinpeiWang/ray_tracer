@@ -1523,6 +1523,12 @@ kernel void primaryRayKernel(
                 }
             } // !scatteredInMedium && !passedThroughMediumSphere
 
+            // Path-throughput ceiling: the CPU caps each channel of a path's throughput at 50 after every bounce (camera.h's
+            // kMaxPathThroughput, also in OptiX) - the safety net for a BSDF whose per-bounce weight compounds. HairBxDF's sample
+            // weight averages ~4 and a closed hair sphere gives several hair bounces in a row, so without the cap Metal rendered
+            // the hair-sphere-dim-sky scene (K84) about 2x brighter than the CPU. Russian roulette only acts below 1.
+            throughput = min(throughput, float3(50.0));
+
             // Russian roulette after a few bounces, same "let cheap paths
             // terminate early, keep expensive ones unbiased" shape as
             // this project's CPU integrator - throughput's max channel is
