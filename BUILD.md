@@ -116,6 +116,7 @@ Things that make this work, and what to keep in mind:
 .\bin\Release\ray_tracer_tests.exe --gtest_filter="*BrightnessAndChannelsConsistentAcrossBackends/Scene21_*"
 ```
 
+- **Running the whole suite.** `scripts\run_tests_parallel.ps1` splits it by what the tests touch. `-Tier Fast` (about 80 s, 3930 tests) runs everything that does not use the GPU in 16 shards, the loop to use while editing. `-Tier Split` runs Fast and then Slow (the 507 GPU tests, one process) for the whole suite in about 245 s, against about 370 s for one `ray_tracer_tests.exe` process. Slow is deliberately not sharded: separate processes time-slice the GPU, and 2-4 shards measured slower (193-198 s) than one (170 s). Nearly all of Slow is the material parity sweep, where the wavefront backend takes about 125 s because a 60x60 frame is thousands of tiny, synchronised launches; only a change inside that renderer would shrink it. The runner counts failing tests itself (`--gtest_brief` hides gtest's own failure summary) and removes its scratch directory when everything passes.
 - **If a build ever recompiles everything with no changes**, diagnose it instead of living with it: `msbuild ray_tracer.sln ... /v:diag` and search the log for `command line has changed` / `No output for` - those say which project's tracking is inconsistent. Also check for stale `cl.exe`/`Tracker.exe` processes left by a killed build (`Get-Process cl, Tracker`).
 
 ## Project Structure

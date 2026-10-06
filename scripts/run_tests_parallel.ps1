@@ -82,6 +82,10 @@
 	    reintroduces the exact oversubscription/contention -Tier Fast
 	    exists to avoid.
 	  - All: no tier filter (original behavior).
+	  - Split: the whole suite as Fast then Slow, one after the other (~250 s here against ~370 s for All, which runs everything in one
+	    process): Fast spreads over every core, Slow keeps the GPU tests alone. Exits non-zero if either part fails. -Filter is not
+	    supported (see Slow).
+	    Measured: sharding Slow over 2-4 processes is NOT faster (170 s with 1, 193-198 s with 2-4) - separate processes time-slice the GPU.
 	NAMING-CONVENTION CAVEAT: the GPU exclusion pattern relies on GPU
 	tests naming themselves with Gpu/GPU/gpu somewhere in the suite OR
 	test name (confirmed to work even for suites that mix CPU and GPU
@@ -113,7 +117,7 @@ param(
 
 	[string]$Filter = "",
 
-	[ValidateSet("All", "Fast", "Slow")]
+	[ValidateSet("All", "Fast", "Slow", "Split")]
 	[string]$Tier = "All",
 
 	# Generous default (the full serial suite alone takes ~215s) - exists so
@@ -123,6 +127,20 @@ param(
 )
 
 $ErrorActionPreference = "Stop"
+
+if ($Tier -eq "Split") {
+	if ($Filter) { Write-Host "[FAIL] -Filter cannot be combined with -Tier Split." -ForegroundColor Red; exit 1 }
+	& $PSCommandPath -Configuration $Configuration -Shards $Shards -Tier Fast -TimeoutSeconds $TimeoutSeconds
+	$fastExit = $LASTEXITCODE
+	& $PSCommandPath -Configuration $Configuration -Tier Slow -TimeoutSeconds $TimeoutSeconds
+	$slowExit = $LASTEXITCODE
+	if ($fastExit -ne 0 -or $slowExit -ne 0) {
+		Write-Host "[FAIL] Split: Fast exit $fastExit, Slow exit $slowExit" -ForegroundColor Red
+		exit 1
+	}
+	Write-Host "Split: Fast and Slow both passed." -ForegroundColor Green
+	exit 0
+}
 
 # See -Tier's own parameter comment above for the full rationale and the
 # naming-convention caveat. Verified suite-by-suite (not assumed) that
@@ -223,7 +241,9 @@ if ($Filter) { Write-Host "Filter: $Filter" -ForegroundColor Cyan }
 # shard_N.log paths and race on them - precisely the cross-process
 # collision this script's own per-shard isolation exists to prevent, just
 # one level up (between invocations instead of between shards).
-$logDir = Join-Path $env:TEMP "ray_tracer_test_shards_$PID"
+# A timestamp as well: two runs from the SAME PowerShell session share a $PID, and the second then found the first run's junctions still in place
+# ("Directory cwd_0\.claude cannot be removed because it is not empty").
+$logDir = Join-Path $env:TEMP "ray_tracer_test_shards_${PID}_$(Get-Date -Format 'yyyyMMdd_HHmmss')"
 New-Item -ItemType Directory -Force -Path $logDir | Out-Null
 
 # Computed once and reused for every shard below (was re-enumerated inside
@@ -350,6 +370,15 @@ if ($failedShards.Count -gt 0) {
 	Write-Host "Full logs kept in: $logDir"
 	exit 1
 }
+
+# Every passing run used to leave its scratch directory (logs and junctions) in %TEMP% for good. Junctions are deleted one by one first: a
+# recursive Remove-Item on a junction can reach into the directory it points at.
+foreach ($shardCwd in (Get-ChildItem -Path $logDir -Directory -Filter "cwd_*")) {
+	foreach ($child in (Get-ChildItem -Path $shardCwd.FullName -Force)) {
+		if ($child.Attributes -band [IO.FileAttributes]::ReparsePoint) { [System.IO.Directory]::Delete($child.FullName) }
+	}
+}
+Remove-Item -Path $logDir -Recurse -Force -ErrorAction SilentlyContinue
 
 Write-Host "All shards passed." -ForegroundColor Green
 exit 0
