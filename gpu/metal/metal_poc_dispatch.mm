@@ -231,6 +231,12 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     censusDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
     censusDesc.storageMode = MTLStorageModeShared;
     id<MTLTexture> censusTexture = [device newTextureWithDescriptor:censusDesc];
+    // Live Preview: where each pixel's primary ray first hit (xyz, w = 1) or missed (all zero); a 1x1 dummy otherwise.
+    MTLTextureDescriptor* worldPosDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
+        width:(liveSession ? width : 1) height:(liveSession ? height : 1) mipmapped:NO];
+    worldPosDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+    worldPosDesc.storageMode = MTLStorageModeShared;
+    id<MTLTexture> worldPosTexture = [device newTextureWithDescriptor:worldPosDesc];
 
     // --- Earth texture (the back wall's materialType=3 source) -----
     // stb_image decodes straight to interleaved 8-bit RGBA regardless
@@ -635,6 +641,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uniforms.ggxEnergyMuRes = (uint32_t)ggxEnergyTable.muRes;
     uniforms.fireflyClamp = pbrtMaxComponentValue;
     uniforms.debugCensus = censusOn ? 1u : 0u;
+    uniforms.liveWorldPos = liveSession ? 1u : 0u;
     // Path regeneration pays off on simple scenes (Cornell-style: -9..-23%) but costs 2-15% on mesh-heavy ones, where lanes
     // at different bounce depths trace incoherent rays through a big BVH (measured over ~40 scenes: break-even near 1-2k
     // triangles). The picture is identical either way.
@@ -923,6 +930,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         [enc setTexture:pbrtDiffuseTexture atIndex:7];
         [enc setTexture:pbrtTransmitTexture atIndex:8];
         [enc setTexture:censusTexture atIndex:9];
+        [enc setTexture:worldPosTexture atIndex:10];
         [enc setAccelerationStructure:instAS atBufferIndex:0];
         [enc setBuffer:uniformBuffer offset:0 atIndex:1];
         [enc setBuffer:materialBuffer offset:0 atIndex:2];
@@ -1058,6 +1066,10 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     pixels.resize(width * height * 4);
     MTLRegion region = MTLRegionMake2D(0, 0, width, height);
     [outTexture getBytes:pixels.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
+    if (liveSession) {
+        liveWorldPos.resize((size_t)width * height * 4);
+        [worldPosTexture getBytes:liveWorldPos.data() bytesPerRow:width * 4 * sizeof(float) fromRegion:region mipmapLevel:0];
+    }
     // Crop window: only the dispatched rectangle was ever written; the rest of
     // outTexture's contents are undefined (Metal does not guarantee a fresh
     // texture is zeroed), so make "outside the window is black" - the same

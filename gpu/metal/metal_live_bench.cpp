@@ -34,7 +34,7 @@ int main(int argc, char** argv) {
         const double ang = a0 + 0.35 * std::sin(f * 0.08);   // sway +-20 degrees around the starting view
         const auto t0 = std::chrono::steady_clock::now();
         const bool ok = metal_live_render_frame(scene.c_str(), w, h, spp, 6, ax + radius * std::cos(ang), fy, az + radius * std::sin(ang),
-                                                true, ax, ay, az, 50.0f, (unsigned)f, rgb.data(), nullptr, nullptr);
+                                                true, ax, ay, az, 50.0f, (unsigned)f, rgb.data(), nullptr, nullptr, -1.0, -1.0);
         const double t = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - t0).count();
         if (!ok) { fprintf(stderr, "frame %d failed: %s\n", f, metal_live_last_error()); return 1; }
         ms.push_back(t);

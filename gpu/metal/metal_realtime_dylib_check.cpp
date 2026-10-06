@@ -9,6 +9,8 @@
 #include <cstring>
 #include <vector>
 
+#include "../../qt_gui/camera_math.h"   // header-only: the GUI's own projectToScreen(), used by its temporal reprojection
+
 // Must stay identical to qt_gui/realtime_preview_session.cpp's RenderFrameFn.
 typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
                                bool, double, double, double, bool, double, float*, float*, float*, bool,
@@ -34,10 +36,10 @@ int main(int argc, char** argv) {
 
 	const int w = 96, h = 96;
 	std::vector<float> a((size_t)w * h * 3), b(a.size()), c(a.size()), worldPos((size_t)w * h * 4, -1.0f), basis(12, -1.0f);
-	auto frame = [&](std::vector<float>& out, double camX, bool lookat) {
+	auto frame = [&](std::vector<float>& out, double camX, bool lookat, double aperture = -1.0, double focus = -1.0) {
 		return render("A1", w, h, /*spp*/16, /*depth*/5, camX, 278.0, -800.0, lookat, 278.0, 278.0, 278.0,
 		              false, 0.0, worldPos.data(), basis.data(), out.data(), false, true, 50.0f, nullptr, true, false, false,
-		              false, 2, 0u, false, false, nullptr, -1.0, -1.0, false, nullptr);
+		              false, 2, 0u, false, false, nullptr, aperture, focus, false, nullptr);
 	};
 	if (!frame(a, 278.0, true)) {
 		const char* e = lastError();
@@ -53,8 +55,36 @@ int main(int argc, char** argv) {
 	if (!(noise > 1e-4)) { fprintf(stderr, "FAIL: two frames with the same camera are identical - the seed is not changing\n"); return 1; }
 	if (!(moved > noise * 1.5)) { fprintf(stderr, "FAIL: moving the camera did not change the picture\n"); return 1; }
 	for (float v : a) if (!std::isfinite(v) || v < 0) { fprintf(stderr, "FAIL: non-finite or negative radiance\n"); return 1; }
-	// reprojection buffers are zero-filled ("no data") rather than left uninitialised
-	for (float v : basis) if (v != 0.0f) { fprintf(stderr, "FAIL: camera basis not zero-filled\n"); return 1; }
+	// Reprojection data (of the last, moved-camera frame): every pixel that hit something must project, through the returned camera
+	// basis, back onto that pixel - the exact relation the GUI's reprojection relies on to reuse an old accumulation.
+	{
+		camera_math::CameraBasis cb{{basis[0], basis[1], basis[2]}, {basis[3], basis[4], basis[5]},
+		                            {basis[6], basis[7], basis[8]}, {basis[9], basis[10], basis[11]}};
+		int hits = 0; double errSum = 0, errMax = 0;
+		for (int y = 0; y < h; ++y)
+			for (int x = 0; x < w; ++x) {
+				const float* p = &worldPos[((size_t)y * w + x) * 4];
+				if (p[3] == 0.0f) continue;
+				const camera_math::ScreenProjection sp = camera_math::projectToScreen({p[0], p[1], p[2]}, cb);
+				if (!sp.inFront) { fprintf(stderr, "FAIL: a hit point projects behind the camera (pixel %d,%d)\n", x, y); return 1; }
+				const double ex = sp.s * w - (x + 0.5), ey = (1.0 - sp.t) * h - (y + 0.5);   // pixels - exact: the position is the pixel centre's, not a jittered sample's
+				const double e = std::sqrt(ex * ex + ey * ey);
+				errSum += e; errMax = std::max(errMax, e); ++hits;
+			}
+		printf("world positions: %d of %d pixels hit, mean reprojection error %.4f px, max %.4f px\n", hits, w * h, hits ? errSum / hits : 0.0, errMax);
+		if (hits < w * h / 2) { fprintf(stderr, "FAIL: too few pixels have a world position\n"); return 1; }
+		if (!(errMax < 0.05)) { fprintf(stderr, "FAIL: world positions do not project onto their pixels\n"); return 1; }
+	}
+	// Depth of field: a wide aperture focused far from the scene must blur it (a different picture than the pinhole one).
+	{
+		std::vector<float> pin((size_t)w * h * 3), blur(pin.size()), blur2(pin.size());
+		if (!frame(pin, 278.0, true) || !frame(blur, 278.0, true, 60.0, 400.0) || !frame(blur2, 278.0, true, 60.0, 400.0)) {
+			fprintf(stderr, "FAIL: depth-of-field frame: %s\n", lastError()); return 1;
+		}
+		const double dofChange = meanAbsDiff(pin, blur), baseline = meanAbsDiff(blur, blur2);
+		printf("depth of field: change %.4f vs noise %.4f\n", dofChange, baseline);
+		if (!(dofChange > baseline * 1.3)) { fprintf(stderr, "FAIL: an aperture override did not change the picture\n"); return 1; }
+	}
 	printf("REALTIME_DYLIB_OK\n");
 	dlclose(lib);
 	return 0;

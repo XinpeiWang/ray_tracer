@@ -327,6 +327,8 @@ struct Uniforms {
     // flight and shadow-ray attenuation. 0: grey medium, the scalar fogSigmaT is used.
     uint fogChromatic;
     packed_float3 fogSigmaT3;
+    // 1 during a Live Preview session: the kernel records each pixel's first hit position in worldPosTexture.
+    uint liveWorldPos;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/

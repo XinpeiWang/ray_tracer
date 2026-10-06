@@ -93,6 +93,9 @@ kernel void primaryRayKernel(
     device const GpuRgbGridMedium* rgbGridMediums [[buffer(29)]],
     device const float* rgbGridData [[buffer(30)]],
     texture2d<uint, access::write> censusTexture [[texture(9)]],
+    // Live Preview: the first surface point (or a miss: all zero) each pixel sees, in this scene's internal units - the host turns
+    // it back into the GUI's units and hands it to the temporal reprojection. A 1x1 dummy when uniforms.liveWorldPos == 0.
+    texture2d<float, access::write> worldPosTexture [[texture(10)]],
     uint2 tidInBand [[thread_position_in_grid]])
 {
     // Row-band dispatch (see Uniforms::rowOffset's own comment) - this
@@ -191,6 +194,28 @@ kernel void primaryRayKernel(
     uint rgbChannel = kRgbChannelUnset;
     uint cen0 = 0u, cen1 = 0u, cenN = 0u;
     bool cenRec = false;
+    // Live Preview: where the ray through this pixel's CENTRE first hits (or that it misses), for the GUI's temporal reprojection. The
+    // pixel centre, not the jittered sample the path tracer traces: reprojection compares this position with one projected from a
+    // later camera, and on an oblique surface a one-pixel jitter is tens of scene units - far above its match tolerance. One extra
+    // primary ray per pixel per frame; pinhole camera only (any other camera leaves "no data").
+    if (uniforms.liveWorldPos != 0u) {
+        float4 wp = float4(0.0);
+        if (uniforms.cameraOrthographic == 0u && uniforms.cameraSpherical == 0u && uniforms.cameraRealistic == 0u && uniforms.hasCameraOrbitBlur == 0u) {
+            float2 c = (float2(tid) + 0.5) / float2(uniforms.width, uniforms.height) * 2.0 - 1.0;
+            c.y = -c.y;
+            c.x *= uniforms.aspect;
+            c *= uniforms.tanHalfFov;
+            ray cr;
+            cr.origin = float3(uniforms.cameraPos);
+            cr.direction = normalize(float3(uniforms.cameraForward) + c.x * float3(uniforms.cameraRight) + c.y * float3(uniforms.cameraUp));
+            cr.min_distance = 0.001f;
+            cr.max_distance = 1e6f;
+            SpherePayload centrePayload{0.0, false};
+            intersection_result<instancing, triangle_data> cres = isect.intersect(cr, accelStructure, functionTable, centrePayload);
+            if (cres.type != intersection_type::none) wp = float4(cr.origin + cr.direction * cres.distance, 1.0);
+        }
+        worldPosTexture.write(wp, tid);
+    }
     while (true) {
         // Lockstep mode only needs to know whether any lane of the group is still mid-path (a SIMD vote over the lanes
         // that are still in this loop - every lane reaches this line together).

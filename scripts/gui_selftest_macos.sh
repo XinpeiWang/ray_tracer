@@ -10,7 +10,8 @@
 #   defaults: RayTracer_Package/RayTracerGUI.app  and  a fresh temp directory (printed at the end)
 #
 # It runs with a throwaway HOME so the app never reads or writes ~/Pictures (macOS asks permission for that, and an
-# unanswered prompt blocks startup invisibly), and with Qt's `offscreen` platform plugin taken from the Qt install next to
+# unanswered prompt blocks startup invisibly; CFFIXED_USER_HOME makes QSettings/CFPreferences use it too, so the test never touches the
+# real app preferences), and with Qt's `offscreen` platform plugin taken from the Qt install next to
 # `qmake` (macdeployqt only bundles `cocoa`). Run it under `arch -x86_64` if the app is x86_64 and this shell is arm64.
 set -uo pipefail
 
@@ -36,7 +37,7 @@ run_mode() {   # mode, wait-seconds
 	rm -f "$prefix.txt" "$prefix.stdout"
 	# cwd "/" on purpose: that is where a Finder/Dock launch starts (Live Preview runs inside this process, so it must find its
 	# scene files without help from the working directory - the bug a launch from inside the bundle used to hide).
-	( cd / && HOME="$FAKE_HOME" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORM_PLUGIN_PATH="$PLUGINS" \
+	( cd / && HOME="$FAKE_HOME" CFFIXED_USER_HOME="$FAKE_HOME" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORM_PLUGIN_PATH="$PLUGINS" \
 	    RT_GUI_SELFTEST="$mode" RT_GUI_SELFTEST_OUT="$prefix" "${ARCH_PREFIX[@]}" "$EXE" > "$prefix.stdout" 2>&1 ) &
 	local pid=$! waited=0
 	while kill -0 "$pid" 2>/dev/null && (( waited < wait_s )); do sleep 1; waited=$((waited + 1)); done
@@ -52,5 +53,7 @@ grep -q 'Live Preview (interactive)" enabled=1' "$OUT/ui.txt" 2>/dev/null || { e
 run_mode livepreview 60 || status=1
 grep -E "frames=|picture change|RESULT" "$OUT/livepreview.txt" 2>/dev/null | sed 's/^/  /'
 rm -rf "$FAKE_HOME"
+defaults delete com.raytracer.RayTracerGUI-selftest >/dev/null 2>&1 || true   # the app's self-test settings domain (separate from the real one)
+rm -f "$HOME/Library/Preferences/com.raytracer.RayTracerGUI-selftest.plist"
 echo "logs and screenshots: $OUT"
 exit $status
