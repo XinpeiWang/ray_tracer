@@ -1376,7 +1376,9 @@ kernel void primaryRayKernel(
                 const bool roughMediumExit = isSphere && inGlass && mat.conductorK.y > 0.5 && !specularBounce;
                 const float roughPdfBefore = bsdfPdf;
                 if (!shadeRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
-                                           rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
+                                           uniforms, lights, pbrtAreaLightTexture, textureSampler,
+                                           isect, accelStructure, functionTable,
+                                           rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
                 if (roughMediumExit && dot(rayDir, normal) > 0.0) {
                     specularBounce = false;
                     bsdfPdf = roughPdfBefore;
