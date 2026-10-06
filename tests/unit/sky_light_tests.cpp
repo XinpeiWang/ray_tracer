@@ -158,6 +158,36 @@ TEST(SkyLightTest, PdfLiPeaksAtTheBrightPixelsOwnDirection) {
 	EXPECT_GT(pdf_hot, pdf_opposite * 100.0);
 }
 
+
+// Le() must read the same image row the sampling table puts at that direction: row 0 is theta = 0 (+y). It used to go through
+// hdr_image_texture::value(), whose v-flip made +y read the BOTTOM row - an image sky came out upside down relative to sample_Le()/
+// pdf_Li() (the light was sampled from one half of the sky and looked up in the other) and relative to pbrt.
+TEST(SkyLightTest, LeReadsTheSameRowThePdfTableUses) {
+	const int W = 16, H = 16;
+	const int hot_row = 4, hot_col = 12;
+	std::vector<float> pixels(static_cast<size_t>(W) * H * 3, 0.01f);
+	size_t hot = (static_cast<size_t>(hot_row) * W + hot_col) * 3;
+	pixels[hot] = pixels[hot + 1] = pixels[hot + 2] = 50.0f;
+	sky_light sky(W, H, pixels.data());
+
+	double u_c = (hot_col + 0.5) / W;
+	double v_c = (hot_row + 0.5) / H;
+	double phi = u_c * 2.0 * pi;
+	double theta = v_c * pi;
+	double sin_t = std::sin(theta), cos_t = std::cos(theta);
+	vec3 dir_hot = unit_vector(vec3(sin_t * std::cos(phi), cos_t, -sin_t * std::sin(phi)));
+
+	EXPECT_NEAR(sky.Le(dir_hot).x(), 50.0, 1e-3);
+	// The vertically mirrored direction (same azimuth, opposite pole side) must see the dim baseline, not the hot pixel.
+	vec3 dir_mirror = unit_vector(vec3(sin_t * std::cos(phi), -cos_t, -sin_t * std::sin(phi)));
+	EXPECT_NEAR(sky.Le(dir_mirror).x(), 0.01, 1e-3);
+	// And straight up reads row 0, straight down the last row.
+	std::vector<float> ramp(static_cast<size_t>(W) * H * 3, 0.0f);
+	for (int u = 0; u < W; ++u) { ramp[(0 * W + u) * 3] = 7.0f; ramp[((H - 1) * W + u) * 3] = 3.0f; }
+	sky_light ramp_sky(W, H, ramp.data());
+	EXPECT_NEAR(ramp_sky.Le(vec3(0, 1, 0)).x(), 7.0, 1e-3);
+	EXPECT_NEAR(ramp_sky.Le(vec3(0, -1, 0)).x(), 3.0, 1e-3);
+}
 // -----------------------------------------------------------------------
 // MIS weight property: w_sky + w_bsdf <= 1  (power heuristic, beta=2)
 // -----------------------------------------------------------------------

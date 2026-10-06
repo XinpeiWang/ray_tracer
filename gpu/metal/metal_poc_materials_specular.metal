@@ -691,7 +691,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 intersection_result<instancing, triangle_data> envShadowResult =
                     traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
                 if (envShadowResult.type == intersection_type::none) {
-                    float2 envUV = equirectangularUV(envWi);
+                    float2 envUV = envMapUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
                     float envPdfBsdf = ggxConductorPdf(envDh, ggxG1(woLocal, alphaX, alphaY), envNdotO);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
@@ -730,7 +730,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                     traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
-                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
                     float pbrtEnvPdfBsdf = ggxConductorPdf(pbrtEnvDh, ggxG1(woLocal, alphaX, alphaY), pbrtEnvNdotO);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
@@ -989,7 +989,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     intersection_result<instancing, triangle_data> envShadowResult =
                         traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
                     if (envShadowResult.type == intersection_type::none) {
-                        float2 envUV = equirectangularUV(envWi);
+                        float2 envUV = envMapUV(envWi);
                         float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
                         float envPdfBsdf = envCosSurface / M_PI_F;
                         float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
@@ -1019,7 +1019,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                         traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                     if (pbrtEnvShadowResult.type == intersection_type::none) {
-                        float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                        float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
                         float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
                         float pbrtEnvPdfBsdf = pbrtEnvCosSurface / M_PI_F;
                         float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)

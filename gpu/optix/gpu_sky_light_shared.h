@@ -144,21 +144,18 @@ __device__ __forceinline__ float3 gpu_sky_uv_to_dir(float u, float v, float& sin
 // ---------------------------------------------------------------------------
 // sky_Le() -- per-direction radiance lookup. Mirrors sky_light::Le(), which
 // samples env_tex (hdr_image_texture::value()) at dir_to_uv(dir): that
-// function flips v (v_image = 1-v, image origin top-left) and nearest-
-// samples, clamped [0,size) - both replicated exactly here, including the
-// v-flip, which is NOT the same convention the distribution's own row index
-// uses (see PiecewiseConstant2D's own construction in pbrt_gpu_builder.h,
-// which indexes image row v directly, unflipped) - a real but harmless CPU
-// quirk (affects sampling efficiency, not correctness - see this codebase's
-// own notes) that must be mirrored bit-for-bit for GPU/CPU visual parity,
-// not "fixed" here.
+// function nearest-samples, clamped [0,size), reading image row v directly -
+// the same convention the distribution's own row index uses (see
+// PiecewiseConstant2D's construction in pbrt_gpu_builder.h): row 0 is theta = 0
+// (+y). (sky_light::Le() used to read row 1-v, upside down against its own
+// importance-sampling table; it was fixed together with this function.)
 // ---------------------------------------------------------------------------
 __device__ __forceinline__ float3 gpu_sky_Le(const GpuSkyDistribution& d, const float3& dir) {
 	float u, v;
 	gpu_sky_dir_to_uv(dir, u, v);
 	u = fminf(1.0f, fmaxf(0.0f, u));
 	v = fminf(1.0f, fmaxf(0.0f, v));
-	const float v_img = 1.0f - v; // mirrors hdr_image_texture::value()'s v-flip
+	const float v_img = v; // row 0 at +y, like the sampling table and sky_light::Le()
 
 	int i = (int)(u * (float)d.width);
 	int j = (int)(v_img * (float)d.height);

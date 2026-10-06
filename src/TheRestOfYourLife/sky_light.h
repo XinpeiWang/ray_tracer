@@ -92,7 +92,11 @@ class sky_light {
     // Radiance arriving from world direction dir (unit vector expected).
     color Le(const vec3& dir) const {
         auto [u, v] = dir_to_uv(dir);
-        return scale * env_tex->value(u, v, point3(0,0,0));
+        // hdr_image_texture::value() flips v (image origin top-left: v = 0 reads the BOTTOM row), but this file's convention - and the
+        // importance-sampling table's - puts row 0 at theta = 0 (+y). Pre-flip so the texture's own flip lands on row v: Le() used to read
+        // the image upside down relative to sample_Le()/pdf_Li(), i.e. light was sampled from the wrong half of the sky (and an image sky
+        // showed vertically mirrored against pbrt and the Metal backend).
+        return scale * env_tex->value(u, 1.0 - v, point3(0,0,0));
     }
     // Sample direction + solid-angle PDF. Uses importance sampling for HDR,
     // uniform sphere fallback otherwise. Mirrors pbrt-v4 ImageInfiniteLight::SampleLi.
