@@ -458,6 +458,7 @@ struct TriangleMaterial {
     int32_t bumpWidth = 0;
     int32_t bumpHeight = 0;
     float bumpScale = 0.0f;
+    int32_t bumpIsNormalMap = 0;   // 1: the image at bumpOffset is an RGB tangent-space normal map (3 floats per texel, linear), not a height map
 };
 
 // Mirrors metal_poc_types.metal's GpuCloudMedium byte-for-byte (E2,

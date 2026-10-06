@@ -530,6 +530,44 @@ inline float3 imageBumpNormal(device const float* data, int offset, int w, int h
     return dot(nn, n) < 0.0 ? -nn : nn;
 }
 
+// Image normal map ("texture displacement" with an RGB image) - port of the CPU's normal_map_material / pbrt-v4's NormalMap(): the texel (bilinear,
+// Repeat, read linear; 3 interleaved floats per texel, row 0 at the top, same addressing as the height map above) decodes to a tangent-space
+// normal 2*rgb - 1, which is rotated into the shading frame built from the (normalized) dpdu and the facing normal.
+inline float3 bumpRgbAt(device const float* data, int offset, int w, int h, int x, int y) {
+    x = ((x % w) + w) % w;
+    y = ((y % h) + h) % h;
+    const int i = offset + (y * w + x) * 3;
+    return float3(data[i], data[i + 1], data[i + 2]);
+}
+
+inline float3 imageNormalMapNormal(device const float* data, int offset, int w, int h, float u, float v, float3 n, float3 dpdu) {
+    const float uw = clamp(u, -1024.0, 1024.0);
+    const float vw = clamp(1.0 - v, -1024.0, 1024.0);
+    const float x = uw * float(w) - 0.5;
+    const float y = vw * float(h) - 0.5;
+    const int x0 = int(floor(x)), y0 = int(floor(y));
+    const float fx = x - float(x0), fy = y - float(y0);
+    const float3 rgb = (1.0 - fy) * ((1.0 - fx) * bumpRgbAt(data, offset, w, h, x0, y0) + fx * bumpRgbAt(data, offset, w, h, x0 + 1, y0))
+                     +        fy  * ((1.0 - fx) * bumpRgbAt(data, offset, w, h, x0, y0 + 1) + fx * bumpRgbAt(data, offset, w, h, x0 + 1, y0 + 1));
+    float3 ns = 2.0 * rgb - 1.0;
+    const float len = length(ns);
+    ns = len > 1e-8 ? ns / len : float3(0.0, 0.0, 1.0);
+    float3 t = dpdu;
+    const float tl = length(t);
+    t = tl > 1e-8 ? t / tl : float3(1.0, 0.0, 0.0);
+    float3 g = t - dot(t, n) * n;   // Gram-Schmidt: the tangent perpendicular to the normal
+    const float gl = length(g);
+    if (!(gl > 1e-8)) return n;
+    g /= gl;
+    float3 b = cross(n, g);
+    b /= max(length(b), 1e-8);
+    float3 out = ns.x * g + ns.y * b + ns.z * n;
+    const float ol = length(out);
+    if (!(ol > 1e-8)) return n;
+    out /= ol;
+    return dot(out, n) < 0.0 ? -out : out;
+}
+
 // Procedural "egg carton" bump map - an analytic height field h(u,v)
 // instead of a sampled normal-map texture (no new image asset needed for
 // this POC to demonstrate genuine tangent-space shading-normal

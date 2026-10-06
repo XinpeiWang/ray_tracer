@@ -954,6 +954,7 @@ struct TriangleMaterial {
     int bumpWidth;
     int bumpHeight;
     float bumpScale;
+    int bumpIsNormalMap;   // 1: RGB tangent-space normal map (3 floats per texel), 0: height map (1 float per texel)
 };
 
 // E2/section 178: a real heterogeneous, procedural Perlin-FBm-density
