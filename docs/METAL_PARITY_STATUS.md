@@ -132,7 +132,8 @@ OptiX; the grid also reads zero beyond its outermost voxel centres, and no longe
 |---|---|---|---|
 | K49 (= E6) | cylinder-medium | regional | known gap (cylinder medium) |
 | K132 | portal-light | CPU black | not a Metal bug: `sssdragon/textures/small_rural_road_equiarea.exr` is not in the checkout, so the CPU falls back to a black constant light |
-| K155, K158, K87 | textured-twosided-lights, triangle-mesh-scene, infinite-light-image | one channel / one block / tiny absolute | not diagnosed |
+| K155 | textured-twosided-lights | R channel -33% | a real Metal gap: next-event estimation to a TEXTURED disk or cylinder light uses the flat emission value (only quad lights sample the texture), and direct hits on those shapes read no texture coordinate; needs the disk/cylinder object-space frame passed from the loader to map uv as pbrt does (phi/phiMax, radial or height) |
+| K87 | infinite-light-image | G channel, blue | not a Metal bug: the CPU sky light is inconsistent with itself for an image that is not vertically symmetric - `sky_light::Le()` reads the image through `hdr_image_texture::value()`, which flips v (so +y reads the BOTTOM rows), while its importance-sampling table (`sample_Le`, `pdf_Li`) puts row 0 at +y. Metal reads +y at the top rows throughout, as pbrt does; matching the CPU here would mean replicating that mismatch. Worth fixing on the CPU side |
 
 Live Preview (macOS) was also run over all 312 Metal-compatible scenes (`RT_GUI_SELFTEST=livepreview_sweep`, launched from "/"):
 283 start with a well-lit picture; 9 (H13-H21) need external scene assets that are not bundled; the rest are dark by design (a sphere on
