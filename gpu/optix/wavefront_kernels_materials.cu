@@ -1569,7 +1569,7 @@ extern "C" __global__ void evaluate_materials(
 		// boundary branch exactly. No separate crossing-count safety cap is
 		// needed here (unlike those two, which loop internally per-ray):
 		// the outer host-side bounce loop (wavefront_path_tracer.cpp) is
-		// already a fixed `for (depth = 0; depth < max_depth; ++depth)`
+		// already a fixed `for (depth = 0; depth < max_depth + 1 + kMaxMediumBoundaryCrossings; ++depth)`
 		// iteration count, independent of any individual ray's own depth
 		// field, so a degenerate scene can't hang this backend either way.
 		RayWorkItem next;

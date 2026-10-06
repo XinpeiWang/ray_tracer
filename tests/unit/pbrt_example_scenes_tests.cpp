@@ -417,6 +417,15 @@ TEST(PbrtBackendAgreementTest, ChromaticRgbGridAbsorberFollowsBeerLambertPerChan
 	expectChannelMeans("chromatic-rgbgrid-absorber", 128, 8, expected, 0.03, 0.07);
 }
 
+// A diffuse sphere (rho 0.5) under a uniform white sky radiates exactly 0.5 everywhere, at every maximum depth from 1 up: one bounce, then the sky.
+// The path tracers used to stop at the last scattering vertex without tracing its continuation ray, so a depth-limited render carried only the MIS
+// share light sampling got there and never the BSDF-sampled share (0.09 at depth 1; a Cornell box 1% / 3% / 10% dark at depth 8 / 4 / 2). pbrt-v4
+// adds the emission or sky the last continuation ray sees before it tests the depth. Depth 1 is the strictest case. See path-depth-furnace.pbrt.
+TEST(PbrtBackendAgreementTest, DiffuseSphereUnderSkyIsExactAtDepthOneOnEveryBackend) {
+	const double expected[3] = {0.5, 0.5, 0.5};
+	expectChannelMeans("path-depth-furnace", 256, 1, expected, 0.01, 0.03);
+}
+
 // A grid that scatters without absorbing, differently per colour, is invisible under a uniform sky in every channel. The earlier model
 // (extinction of the brightest channel, albedo sigma_s / max) made the lesser channels absorb: red 0.60, green 0.77 on every backend.
 TEST(PbrtBackendAgreementTest, ChromaticRgbGridFurnaceStaysInvisibleInEveryChannel) {

@@ -1,0 +1,23 @@
+# path-depth-furnace.pbrt -- a diffuse sphere under a uniform white sky: every pixel is exactly its one-bounce radiance, rho * L = 0.5.
+#
+# A convex sphere under a uniform sky has no interreflection, so its radiance is 0.5 at every point and at every maximum depth from 1 up. A path
+# tracer that stops at the last scattering vertex without tracing the continuation ray carries only the MIS share that light sampling got at
+# that vertex (the BSDF-sampled share, which would reach the sky, is never added): it read 0.09 at depth 1 instead of 0.5 and was 1% / 3% / 10%
+# dark at depths 8 / 4 / 2 on a Cornell box. pbrt-v4's PathIntegrator adds the emission (or the sky) the last continuation ray sees before it tests
+# the depth, so depth 1 is already exact. BDPT's depth = s + t - 2 convention matched pbrt all along, which is how the two disagreed at equal depth.
+#
+# Run it with max depth 1 (the strictest case) on every backend; the tests do.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 14 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+# Radius 3 so the whole frame sees the sphere (fov 14 at distance 6) and no pixel reads the bare sky.
+Shape "sphere" "float radius" [ 3 ]

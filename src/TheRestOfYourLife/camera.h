@@ -1671,7 +1671,13 @@ class camera {
         // that supports this uses, mirroring shadow_ray.h's own
         // kMaxTransmissiveSkips bound for the identical reason.
 
-        while (bounces_left > 0) {
+        // `depth` vertices scatter (light sampling and a continuation ray), and the iteration after the last of them, with bounces_left == 0,
+        // only adds what that final continuation ray sees - the MIS-weighted emission of a light it hits, or of the sky/background it escapes
+        // to - before stopping, exactly as pbrt-v4's PathIntegrator does (it adds Le, then tests `depth++ >= maxDepth`, then samples lights).
+        // Without that iteration, the light sampling at the last vertex was weighted by its MIS share while the BSDF-sampled share it was
+        // weighted against was never traced: a diffuse sphere under a uniform sky read 0.09 at depth 1 where one bounce is exactly 0.5,
+        // and every depth-limited render came out darker than pbrt's (1% at depth 8, 3% at depth 4, 10% at depth 2 on a Cornell box).
+        while (bounces_left >= 0) {
             // One iteration = one traced ray (the primary ray on the first
             // pass, a bounce continuation after) - see render_stats.h's own
             // comment for why this is gated behind enabled() rather than an
@@ -1850,6 +1856,10 @@ class camera {
                     L += beta * w_b * Le;
                 }
             }
+
+            // The final, emission-only iteration (see the loop's own comment): the emission above is all this vertex contributes; no light
+            // sampling, no scattering.
+            if (bounces_left == 0) break;
 
             // No scatter (pure emitter / absorber).
             // do_regularize = regularize && any_nonspecular so rough materials widen
@@ -2272,7 +2282,8 @@ class camera {
         };
         // See ray_color()'s own kMaxMediumBoundaryCrossings comment.
 
-        while (bounces_left > 0) {
+        // One extra, emission-only iteration at bounces_left == 0 - see ray_color()'s own comment on this loop.
+        while (bounces_left >= 0) {
             if (render_stats::enabled())
                 render_stats::bounce_rays().fetch_add(1, std::memory_order_relaxed);
 
@@ -2340,6 +2351,10 @@ class camera {
                     L += beta * static_cast<float>(w_b) * Le;
                 }
             }
+
+            // The final, emission-only iteration (see the loop's own comment): the emission above is all this vertex contributes; no light
+            // sampling, no scattering.
+            if (bounces_left == 0) break;
 
             // Dispersive material (any kind - smooth dielectric, rough
             // dielectric, or any future one): dispatch to

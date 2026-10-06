@@ -205,7 +205,12 @@ extern "C" __global__ void __raygen__rg() {
 		// from the vertex the light was actually sampled against - CPU's prev_surface_p, wavefront's scatterOrigin.
 		float3 mis_origin = ray_origin;
 
-		for (unsigned int depth = 0; depth < params.maxDepth; ++depth) {
+		// maxDepth scattering vertices, then one more iteration (depth == maxDepth) that only collects what the last continuation ray sees: the
+		// MIS-weighted emission of a light it hits or of the sky it escapes to. That is pbrt-v4's PathIntegrator order (add Le, then test
+		// `depth++ >= maxDepth`, then sample lights); without this iteration the last vertex's light sampling carried only its MIS share while the
+		// BSDF-sampled share it was weighted against was never traced, and every depth-limited render came out darker than pbrt's.
+		for (unsigned int depth = 0; depth <= params.maxDepth; ++depth) {
+			const bool final_trace = depth == params.maxDepth;
 			// --stats: one traced ray per iteration (primary on depth==0, a
 			// bounce continuation after) - see optix_types.h's
 			// LaunchParams::statsBounceRays own comment. Null unless --stats
@@ -408,6 +413,7 @@ extern "C" __global__ void __raygen__rg() {
 					medium_point, medium_dir, medium_brdf_pdf, medium_emission, medium_transmittance, medium_albedo, ray_time);
 				payload.seed = medium_seed;
 				if (medium_scattered) {
+					if (final_trace) break;  // a scatter here would need light sampling and a continuation - neither is allowed past maxDepth
 					radiance = radiance + throughput * medium_emission;
 
 					// The scattering albedo (tint * sigma_s/sigma_t) weights the path that continues, as the CPU's
@@ -508,6 +514,10 @@ extern "C" __global__ void __raygen__rg() {
 				// family's own re-intersection override - see optix_types.h's
 				// RAY_TYPE_PROBE comment for why this needed new payload
 				// registers rather than reusing that mechanism).
+
+				// The final, emission-only trace: this vertex's light sampling and scatter are not part of the path (the hit program
+				// ran them anyway - see the loop's own comment - and their result is dropped here).
+				if (final_trace) break;
 
 				// Add NEE direct-light emission from this surface hit (already MIS-weighted inside hit program)
 				radiance = radiance + throughput * payload.emission;
