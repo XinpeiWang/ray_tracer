@@ -771,13 +771,16 @@ class BDPTSceneAdapter {
 			// emitter's declared normal. Two-sided lights need no such gate.
 			if (!emitter_dl_[idx]->is_two_sided() && dot(wi, as.n) >= 0.0) return false;
 
-			// light->pdf_value() already performs the area->solid-angle
-			// Jacobian conversion for THIS one shape (quad.h/sphere.h's own
-			// pdf_value() implementations) -- multiplying by the (unified)
-			// light-selection PMF gives the full combined solid-angle
-			// density, reusing tested code instead of re-deriving the
-			// area/solid-angle conversion here.
-			double pdf_solid_angle = light->pdf_value(P, wi) * pmf;
+			// The solid-angle density of THIS sample: the point was drawn uniformly over the shape's area (sample_area(), density
+			// as.pdf_pos), so converting that density to solid angle at P is pdf_pos * dist^2 / |cos| - times the light-selection PMF.
+			// This used to call light->pdf_value(P, wi), which is the density of the shape's own direction sampling: identical for a quad,
+			// but a sphere's is the visible-cone density, not that of a point drawn over its whole surface. A sphere light then divided its
+			// samples by the wrong density (and half of them landed on the far side and were dropped) - NEE read 0.45x of the true value and
+			// BDPT/MLT came out at half the path tracer's brightness on every sphere-lit scene. The MIS weights already use the area density
+			// (PDFLightOrigin), so this is also the density they assume.
+			const double cos_light = std::abs(dot(wi, as.n));
+			if (cos_light <= 0.0) return false;
+			double pdf_solid_angle = as.pdf_pos * dist * dist / cos_light * pmf;
 			if (pdf_solid_angle <= 0.0) return false;
 
 			color Le = emitter_dl_[idx]->get_texture()->value(as.u, as.v, as.p);
@@ -1049,7 +1052,11 @@ class BDPTSceneAdapter {
 		if (k < nEmitters_) {
 			pdfPos = emitter_pdf_pos_[k];
 			double cosTheta = n ? (w[0]*n[0] + w[1]*n[1] + w[2]*n[2]) : 1.0;
-			pdfDir = (cosTheta > 0.0) ? cosTheta / pi : 0.0;
+			// A two-sided emitter emits from either face with probability 1/2 each (SampleLightLe()'s side_pdf), so its density in a
+			// direction is |cos| / (2 pi) on both sides; the one-sided formula returned 0 behind the stored normal and twice the density in
+			// front, so the light-subpath and camera-subpath ends of the MIS sum disagreed about every two-sided light.
+			if (emitter_dl_[k]->is_two_sided()) pdfDir = std::abs(cosTheta) / (2.0 * pi);
+			else pdfDir = (cosTheta > 0.0) ? cosTheta / pi : 0.0;
 			return;
 		}
 		if (k < spotBase_) {                    // point
@@ -1238,7 +1245,13 @@ class BDPTSceneAdapter {
 		if (j < 0) j = 0;
 		if (j >= cam_.image_height) j = cam_.image_height - 1;
 
-		ray r = cam_.get_ray(i, j, 0, 0, vec3(0.0, 0.0, 0.0));
+		// The position inside the pixel (px, py are jittered by the caller) becomes the sub-pixel offset get_ray() takes, in [-0.5, 0.5):
+		// every sample used to go through the same point of its pixel (the integer truncation above dropped the fraction), so a BDPT/MLT image
+		// had no edge antialiasing - a light patch or a silhouette came out as hard binary pixels, and the pixels' mean energy depended on
+		// where the edge happened to fall relative to the pixel centres.
+		const double fx = std::min(std::max(px * cam_.image_width  - i, 0.0), 1.0);
+		const double fy = std::min(std::max(py * cam_.image_height - j, 0.0), 1.0);
+		ray r = cam_.get_ray(i, j, 0, 0, vec3(fx - 0.5, fy - 0.5, 0.0));
 		cam_p[0] = r.origin().x(); cam_p[1] = r.origin().y(); cam_p[2] = r.origin().z();
 		vec3 d = unit_vector(r.direction());
 		ray_d[0] = d.x(); ray_d[1] = d.y(); ray_d[2] = d.z();

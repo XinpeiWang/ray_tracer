@@ -526,6 +526,60 @@ TEST(PbrtBackendAgreementTest, BdptDistantLightAgreesWithPathTracer) {
 	EXPECT_LT(bdptMean, 1.02 * pathMean) << "BDPT too bright vs the path tracer on a distant light";
 }
 
+// BDPT against the path tracer on one scene at one depth: both are unbiased estimators of the same image, so the means agree to the noise (~0.2% here).
+static void expectBdptAgreesWithPathTracer(const char* stem, int depth, double tol) {
+	const SceneDescriptor* s = find_example_scene(stem);
+	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
+	const std::string base = std::string("pbrt_agree_") + stem;
+	double pathMean = 0.0, bdptMean = 0.0;
+	ASSERT_EQ(cpu_render_main(48, 48, 256, depth, (base + "_path.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(base + "_path.exr", pathMean));
+	ASSERT_EQ(cpu_render_main_bdpt(48, 48, 256, depth, (base + "_bdpt.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(base + "_bdpt.exr", bdptMean));
+	std::remove((base + "_path.exr").c_str());
+	std::remove((base + "_bdpt.exr").c_str());
+	std::printf("[agree] %s depth %d: path %.4f  bdpt %.4f (%.1f%%)\n", stem, depth, pathMean, bdptMean, 100.0 * bdptMean / pathMean);
+	ASSERT_GT(pathMean, 0.01);
+	EXPECT_GT(bdptMean, (1.0 - tol) * pathMean) << stem << ": BDPT too dark vs the path tracer";
+	EXPECT_LT(bdptMean, (1.0 + tol) * pathMean) << stem << ": BDPT too bright vs the path tracer";
+}
+
+// A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
+// every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU
+// backends, and of BDPT - which a path-tracer-vs-BDPT comparison alone could not, since the two could be wrong together.
+TEST(PbrtBackendAgreementTest, InterreflectionFurnaceHasItsClosedFormAtDepthFourOnEveryIntegrator) {
+	const double expected[3] = {0.9375, 0.9375, 0.9375};
+	expectChannelMeans("bdpt-room-furnace", 256, 4, expected, 0.01, 0.03);
+	const SceneDescriptor* s = find_example_scene("bdpt-room-furnace");
+	ASSERT_TRUE(s);
+	const std::string out = "pbrt_agree_bdpt-room-furnace_bdpt.exr";
+	double bdptMean = 0.0;
+	ASSERT_EQ(cpu_render_main_bdpt(48, 48, 256, 4, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(out, bdptMean));
+	std::remove(out.c_str());
+	std::printf("[furnace] bdpt-room-furnace depth 4: bdpt %.4f (closed form 0.9375)\n", bdptMean);
+	EXPECT_NEAR(bdptMean, 0.9375, 0.01 * 0.9375);
+}
+
+// A spherical area light: BDPT's light sampling drew a point over the whole sphere but divided by the visible-cone density, and dropped the samples
+// on the far side - 0.48x of the path tracer at every depth. See pbrt_scenes/bdpt-room-spherelight.pbrt.
+TEST(PbrtBackendAgreementTest, BdptSphereLightAgreesWithPathTracer) {
+	expectBdptAgreesWithPathTracer("bdpt-room-spherelight", 4, 0.02);
+}
+
+// A two-sided light: the MIS weights' direction density (LightPDFLe) ignored the two sides that SampleLightLe emits to - 0.78x at depth 2.
+// See pbrt_scenes/bdpt-room-twosided-light.pbrt.
+TEST(PbrtBackendAgreementTest, BdptTwoSidedLightAgreesWithPathTracer) {
+	expectBdptAgreesWithPathTracer("bdpt-room-twosided-light", 4, 0.02);
+}
+
+// A large light in a closed box, and its edge in view: the random walk left the light vertex's pdfRev unset (every strategy with s >= 3 then
+// weighted wrongly: 0.75x at depth 6), and the camera rays all went through the same point of their pixel (hard-edged light, mean energy off).
+// See pbrt_scenes/bdpt-box-room.pbrt.
+TEST(PbrtBackendAgreementTest, BdptClosedBoxWithLargeLightAgreesWithPathTracer) {
+	expectBdptAgreesWithPathTracer("bdpt-box-room", 6, 0.02);
+}
+
 TEST(PbrtBackendAgreementTest, ChromaticFogFurnaceStaysInvisibleInEveryChannel) {
 	const double expected[3] = {1.0, 1.0, 1.0};
 	// Measured: every backend within 0.3% of 1 in every channel.
