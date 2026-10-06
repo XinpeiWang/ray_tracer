@@ -202,3 +202,33 @@ add_executable(unit_tests
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
 target_link_libraries(unit_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(unit_tests)
+
+# Precompiled header for the ~150 test translation units: gtest and the standard headers every one of them parses.
+# C++ only - the project also enables C
+# (miniz), and a C++ PCH is a compile error for C sources. target_precompile_headers needs CMake 3.16.
+if(CMAKE_VERSION VERSION_GREATER_EQUAL 3.16)
+    target_precompile_headers(unit_tests PRIVATE
+        "$<$<COMPILE_LANGUAGE:CXX>:<gtest/gtest.h$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<algorithm$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<cmath$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<functional$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<map$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<memory$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<sstream$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<string$<ANGLE-R>>"
+        "$<$<COMPILE_LANGUAGE:CXX>:<vector$<ANGLE-R>>")
+endif()
+
+# The whole suite runs in ~2.6 s optimised, so compile time dominates: a clean build of the 150 translation units at -O3
+# takes ~177 s on an 8-core M2, ~131 s at -O1 and ~76 s at -O0 (60 s with the PCH above), while the run goes from 2.6 s
+# to ~9.6 s. Default ON for GCC/Clang (verified: all tests pass at -O0, and one FMA-sensitive test that fails at -O3 on
+# clang passes); OFF for MSVC until it has been tried there (stack frames are larger at /Od, which matters for the
+# deeply recursive BVH tests) - configure with -DUNIT_TESTS_FAST_COMPILE=ON to opt in, e.g. from CI.
+if(MSVC)
+    option(UNIT_TESTS_FAST_COMPILE "Compile the unit tests without optimisation (faster build, slower run)" OFF)
+else()
+    option(UNIT_TESTS_FAST_COMPILE "Compile the unit tests without optimisation (faster build, slower run)" ON)
+endif()
+if(UNIT_TESTS_FAST_COMPILE)
+    target_compile_options(unit_tests PRIVATE $<IF:$<CXX_COMPILER_ID:MSVC>,/Od;/Ob0,-O0>)
+endif()
