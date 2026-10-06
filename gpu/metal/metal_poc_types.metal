@@ -317,6 +317,11 @@ struct Uniforms {
     float filterMarginalCDF[32];
     // See metal_poc_gpu_types.h. <= 0 means unbounded.
     float fireflyClamp;
+    // Divergence census (METAL_CENSUS=1): record per pixel which material/event each bounce of sample 0 hits.
+    uint debugCensus;
+    // 1 = path regeneration (a lane starts its next sample as soon as its path ends); 0 = lockstep (all lanes of a
+    // SIMD group start their next sample together, as before). Same image either way; see the kernel's loop.
+    uint pathRegen;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/

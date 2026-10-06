@@ -205,6 +205,8 @@ struct Uniforms {
     // value <= 0) means unbounded - the pbrt default - so zero-initialised
     // Uniforms (shader tests) are not clamped to black.
     float fireflyClamp = 0.0f;
+    uint32_t debugCensus = 0;   // see metal_poc_types.metal
+    uint32_t pathRegen = 1;     // see metal_poc_types.metal
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single

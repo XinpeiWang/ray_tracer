@@ -32,6 +32,16 @@ overlaps the Metal render of another; ~98 s single-process, identical verdicts).
 A strict sweep fails if it skipped every scene (e.g. run from a directory where the scene files do not resolve), so
 run it from the build directory or through `ctest`.
 
+**Path regeneration and the divergence census.** A SIMD group (32 lanes, an 8x4 pixel tile) used to start sample s+1 only when
+every lane had finished sample s, so each bounce cost as much as the longest path: `METAL_CENSUS=1` (prints per-scene lane
+utilisation and distinct materials per group-bounce) measured only ~49-56% of lanes active even in A1, and ~1.5 distinct materials
+per group-bounce - so lane idling, not material mixing, is the recoverable waste (a full wavefront split with material sorting was
+judged not worth it for that). The kernel now regenerates: a lane whose path ends immediately starts its next sample. Every lane
+draws its random numbers in exactly the same order, so the image is **bit-identical** (verified by `cmp` on the PNGs). Measured
+(400px, 64spp, depth 8, M2): Cornell-style scenes 9-23% faster, but mesh-heavy scenes (>=2k triangles) 2-15% SLOWER (lanes at
+different bounce depths trace incoherent rays through a big BVH), so the host picks per scene: regeneration below 1500 triangles,
+the old lockstep above. `METAL_REGEN=0|1` forces a mode. Full strict ctest 79 s -> 66 s.
+
 **Golden snapshot (catches what the CPU comparison cannot).** The CPU-vs-Metal tolerance (30% whole image, 50% per block) only
 finds gross errors, and it cannot see a regression that CPU and Metal share. Measured by injecting bugs into the shaders: a
 +15% bias on all diffuse direct lighting and removing the Russian-roulette compensation both PASSED it; +35% and a 40% Fresnel
