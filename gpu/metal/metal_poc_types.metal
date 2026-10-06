@@ -1373,6 +1373,42 @@ struct CylinderIntersectionResult {
     float distance [[distance]];
 };
 
+// The ray's extent inside the SOLID tube (the infinite tube's roots intersected with the end-plane slab), unclamped - may start
+// behind the origin. This is the region of a homogeneous medium bounded by a cylinder: a ray may enter or leave through the open
+// ends as well as the wall, exactly like the CPU's cylinder volume_bounds() and OptiX's dc_solve_tube_quadratic. False when the
+// ray misses the solid.
+inline bool cylinderSolidInterval(float3 origin, float3 direction, CylinderData cyl, thread float& s0, thread float& s1) {
+    const float3 axis = float3(cyl.axis);
+    const float3 oc = origin - float3(cyl.base);
+    const float3 dPerp = direction - dot(direction, axis) * axis;
+    const float3 ocPerp = oc - dot(oc, axis) * axis;
+    const float a = dot(dPerp, dPerp);
+    float tubeT0 = -INFINITY, tubeT1 = INFINITY;
+    if (a < 1e-12) {
+        if (dot(ocPerp, ocPerp) > cyl.radius * cyl.radius) return false;
+    } else {
+        const float b = 2.0 * dot(ocPerp, dPerp);
+        const float c = dot(ocPerp, ocPerp) - cyl.radius * cyl.radius;
+        const float disc = b * b - 4.0 * a * c;
+        if (disc < 0.0) return false;
+        const float sq = sqrt(disc);
+        tubeT0 = (-b - sq) / (2.0 * a);
+        tubeT1 = (-b + sq) / (2.0 * a);
+    }
+    float slabT0 = -INFINITY, slabT1 = INFINITY;
+    const float h0 = dot(oc, axis), hd = dot(direction, axis);
+    if (fabs(hd) < 1e-12) {
+        if (h0 < 0.0 || h0 > cyl.height) return false;
+    } else {
+        const float za = -h0 / hd, zb = (cyl.height - h0) / hd;
+        slabT0 = min(za, zb);
+        slabT1 = max(za, zb);
+    }
+    s0 = max(tubeT0, slabT0);
+    s1 = min(tubeT1, slabT1);
+    return s0 < s1;
+}
+
 // Ray-vs-finite-cylinder in world space: solve the infinite-tube
 // quadratic using only the components of the ray PERPENDICULAR to the
 // cylinder's own axis (the standard "project out the axis" reduction -
@@ -1393,12 +1429,47 @@ CylinderIntersectionResult cylinderIntersectionFunction(
     float minDistance [[min_distance]],
     float maxDistance [[max_distance]],
     uint primitiveIndex [[primitive_id]],
-    device const CylinderData* cylinders [[buffer(2)]])
+    device const CylinderData* cylinders [[buffer(2)]],
+    ray_data SpherePayload& payload [[payload]],
+    // Only read to tell a homogeneous-medium tube (materialType 28) from an ordinary cylinder - see the shadow-ray block below.
+    device const TriangleMaterial* cylinderMaterials [[buffer(4)]])
 {
     CylinderIntersectionResult result;
     result.accept = false;
 
     CylinderData cyl = cylinders[primitiveIndex];
+
+    // A homogeneous-medium tube (Material "interface" + MediumInterface, loaded as materialType 28) is a semi-transparent volume
+    // bounding the SOLID cylinder, not an opaque surface. A primary/continuation ray hits the solid's entry (or, from inside, its
+    // exit). A shadow ray is blocked with probability 1 - exp(-sigma_t * chord), the same stochastic attenuation
+    // sphereIntersectionFunction applies to a medium sphere.
+    if (cylinderMaterials[primitiveIndex].materialType == 28u) {
+        float s0, s1;
+        if (!cylinderSolidInterval(origin, direction, cyl, s0, s1) || s1 <= minDistance) return result;
+        if (!payload.isShadowRay) {
+            const float tHit = (s0 >= minDistance) ? s0 : s1;
+            if (tHit > maxDistance) return result;
+            result.accept = true;
+            result.distance = tHit;
+            return result;
+        }
+        const float chordT0 = max(s0, minDistance);
+        const float chordT1 = min(s1, maxDistance);
+        if (chordT1 <= chordT0) return result;
+        const float chord = (chordT1 - chordT0) * length(direction);
+        const float3 absorbSigma = float3(cylinderMaterials[primitiveIndex].conductorEta);
+        const float sigmaForShadow = cylinderMaterials[primitiveIndex].ior > 0.0 ? cylinderMaterials[primitiveIndex].ior
+            : (payload.shadowChannel >= 0 ? absorbSigma[payload.shadowChannel] : (absorbSigma.x + absorbSigma.y + absorbSigma.z) * (1.0 / 3.0));
+        uint h = as_type<uint>(origin.x) * 73856093u ^ as_type<uint>(origin.y) * 19349663u
+               ^ as_type<uint>(origin.z) * 83492791u ^ as_type<uint>(direction.x) * 2654435761u
+               ^ as_type<uint>(direction.y) * 40503u ^ as_type<uint>(direction.z) * 668265263u
+               ^ primitiveIndex * 374761393u ^ 0x5bd1e995u;
+        h ^= h >> 16; h *= 0x7feb352du; h ^= h >> 15; h *= 0x846ca68bu; h ^= h >> 16;
+        if (float(h >> 8) * (1.0 / 16777216.0) < exp(-sigmaForShadow * chord)) return result;   // passed through
+        result.accept = true;
+        result.distance = chordT0;
+        return result;
+    }
     float3 axis = float3(cyl.axis);
     float3 base = float3(cyl.base);
     float3 oc = origin - base;

@@ -216,6 +216,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // own buffer(4), bound a SECOND time here since this table has its
     // own independent argument namespace (diskGeomDesc's own comment).
     [functionTable setBuffer:sphereMaterialBuffer offset:0 atIndex:3];
+    // cylinderIntersectionFunction likewise needs cylinderMaterials to recognise a medium-bounding tube for shadow rays.
+    [functionTable setBuffer:cylinderMaterialBuffer offset:0 atIndex:4];
 
     // --- Output texture + uniforms ----------------------------------
     MTLTextureDescriptor* texDesc = [MTLTextureDescriptor

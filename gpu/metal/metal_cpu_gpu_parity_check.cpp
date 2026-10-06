@@ -346,10 +346,6 @@ const char* const kKnownGapScenes[] = {
 	// F2 (Triangle Mesh): same cause as C2 - its icosahedron is a reflectance-only conductor. Verified:
 	// with that mesh swapped to diffuse, CPU and Metal agree to ~1.0-1.2x everywhere.
 	"F2",
-	// E6 (Cylinder Medium): a homogeneous medium bounded by a CYLINDER is not representable on Metal (only sphere-
-	// bounded media are). The interface boundary is transparent instead of an opaque gray shape, but the volume
-	// scattering is missing. (E7, the pbrt rgbgrid medium on a sphere, now renders: see the loader.)
-	"E6",
 	// A9 (Final Scene), B13 (wax/jade spheres), E12 (rough dielectric): glass spheres that bound a scattering medium.
 	// The medium is simulated (per-path "inside a glass medium" state, hero colour channel for chromatic media, shadow
 	// rays through the sphere attenuated stochastically, and the MIS state of a scattered path kept across the glass
@@ -359,12 +355,6 @@ const char* const kKnownGapScenes[] = {
 	// lights chromatic scattering media behind a refracting boundary rather than a rough-glass bug. A9 also has a
 	// radius-5000 "world haze" glass sphere enclosing the scene; B13 sits just past the regional tolerance.
 	"A9", "B13", "E12",
-	// C11 (Textured Two-Sided Lights): image-textured disk and cylinder lights. The image can only be mapped
-	// per-pixel on a quad light (one shared texture slot, uv from the quad); for disk/cylinder lights Metal
-	// uses the image's average colour x scale (rows weighted by radius for the disk, as pbrt maps row -> radius)
-	// as a flat emission and NEE-samples them. Total energy is right (was ~1.7x too bright with flat white), but
-	// the visible pattern - and so the red channel, ~1/3 low - is not reproduced.
-	"C11",
 	// B24 (Frosted Prism Dispersion): CPU's shadow rays deliberately walk STRAIGHT THROUGH glass (shadow_ray.h:
 	// is_shadow_transmissive, no refraction), so the delta distant light reaches the diffuse catcher screen
 	// behind the rough glass prism. Metal blocks shadow rays at glass - what pbrt-v4 itself does - so that

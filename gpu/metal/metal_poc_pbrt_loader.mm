@@ -1182,6 +1182,27 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
 }
 
 // --- Spheres ---------------------------------------------------------
+// The bounded-medium material (materialType 28, shadeHomogeneousMediumSpan) of a homogeneous pbrt medium: `color` = per-channel
+// single-scattering albedo, `ior` = sigma_t (mean over RGB - the shader takes one scalar - divided by sceneScale so optical depth
+// survives the rescale), `roughness` = HG g. A pure absorber (no scattering) can be chromatic, which one scalar sigma_t cannot
+// express: sigma_t = 0 plus the per-channel absorption in conductorEta makes the shader apply exp(-sigma_a * chord) per channel.
+static TriangleMaterial homogeneousMediumMaterial(const pbrt_flatten::Medium& m, float sceneScale) {
+    double sigmaT[3], meanSigmaT = 0.0;
+    for (int c = 0; c < 3; ++c) { sigmaT[c] = m.sigma_a[c] + m.sigma_s[c]; meanSigmaT += sigmaT[c]; }
+    meanSigmaT /= 3.0;
+    PackedFloat3 albedo{0, 0, 0};
+    float* a = &albedo.x;
+    for (int c = 0; c < 3; ++c) a[c] = sigmaT[c] > 1e-9 ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
+    TriangleMaterial mat{albedo, /*materialType=*/28u, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
+                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/(float)m.g};
+    if (m.sigma_s[0] == 0.0 && m.sigma_s[1] == 0.0 && m.sigma_s[2] == 0.0 && meanSigmaT > 0.0) {
+        mat.ior = 0.0f;
+        mat.conductorEta = PackedFloat3{(float)(m.sigma_a[0] / sceneScale), (float)(m.sigma_a[1] / sceneScale),
+                                        (float)(m.sigma_a[2] / sceneScale)};
+    }
+    return mat;
+}
+
 void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
     const PbrtMaterialForFn& materialFor, float sceneScale) {
     for (const pbrt_flatten::Sphere& s : scene.spheres) {
@@ -1228,23 +1249,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             s.material >= 0 && s.material < (int)scene.materials.size() &&
             scene.materials[s.material].kind == pbrt_flatten::MaterialKind::Interface &&
             scene.media[s.medium].type == "homogeneous") {
-            const pbrt_flatten::Medium& m = scene.media[s.medium];
-            double sigmaT[3], meanSigmaT = 0.0;
-            for (int c = 0; c < 3; ++c) { sigmaT[c] = m.sigma_a[c] + m.sigma_s[c]; meanSigmaT += sigmaT[c]; }
-            meanSigmaT /= 3.0;
-            PackedFloat3 albedo{0, 0, 0};
-            float* a = &albedo.x;
-            for (int c = 0; c < 3; ++c) a[c] = sigmaT[c] > 1e-9 ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
-            mat = TriangleMaterial{albedo, /*materialType=*/28u, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
-                                   PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/(float)m.g};
-            // A pure absorber (no scattering at all) can be chromatic (sigma_a differs per channel), which one scalar
-            // sigma_t cannot express: sigma_t = 0 plus the per-channel absorption in conductorEta makes the shader apply
-            // exp(-sigma_a * chord) per channel instead (shadeHomogeneousMediumSphere).
-            if (m.sigma_s[0] == 0.0 && m.sigma_s[1] == 0.0 && m.sigma_s[2] == 0.0 && meanSigmaT > 0.0) {
-                mat.ior = 0.0f;
-                mat.conductorEta = PackedFloat3{(float)(m.sigma_a[0] / sceneScale), (float)(m.sigma_a[1] / sceneScale),
-                                                (float)(m.sigma_a[2] / sceneScale)};
-            }
+            mat = homogeneousMediumMaterial(scene.media[s.medium], sceneScale);
         } else if (interfaceSphere && s.medium >= 0 && s.medium < (int)scene.media.size() &&
                    scene.media[s.medium].type == "rgbgrid" && scene.media[s.medium].nx > 0 &&
                    scene.media[s.medium].ny > 0 && scene.media[s.medium].nz > 0) {
@@ -1537,7 +1542,11 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
                scene.materials[idx].kind == pbrt_flatten::MaterialKind::Interface;
     };
     for (const pbrt_flatten::Cylinder& cy : scene.cylinders) {
-        if (isInterfaceMaterial(cy.material)) continue;   // medium boundary only: transparent, not an opaque gray tube
+        // A Material "interface" tube is a medium boundary only. Bounding a homogeneous medium it becomes a bounded-medium tube
+        // (materialType 28); any other interface tube stays transparent rather than an opaque gray one.
+        const bool mediumTube = isInterfaceMaterial(cy.material) && cy.areaLight < 0 && cy.medium >= 0 &&
+            cy.medium < (int)scene.media.size() && scene.media[cy.medium].type == "homogeneous";
+        if (isInterfaceMaterial(cy.material) && !mediumTube) continue;
         if (cy.phiMaxDeg != 360.0) { ++skippedCylinders; continue; }
 
         pbrt_scene::Matrix4 cxform;
@@ -1562,7 +1571,7 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
         if (height < 1e-6f) { ++skippedCylinders; continue; }
         const float3 axis = delta / height;
 
-        TriangleMaterial mat = materialFor(cy.material);
+        TriangleMaterial mat = mediumTube ? homogeneousMediumMaterial(scene.media[cy.medium], sceneScale) : materialFor(cy.material);
         if (cy.areaLight >= 0 && cy.areaLight < (int)scene.areaLights.size()) {
             // Same "emissive, but not NEE-registered" tier loadPbrtDisks()
             // just above already established - visible (direct hit or a
