@@ -560,6 +560,14 @@ kernel void primaryRayKernel(
                         rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                         scatteredInMedium, passedThroughMediumSphere);
                 }
+            } else if (result.type == intersection_type::bounding_box && result.geometry_id == 2u &&
+                       cylinderMaterials[result.primitive_id].materialType == 28u) {
+                // A tube bounding a homogeneous medium (Shape "cylinder" + MediumInterface).
+                shadeHomogeneousMediumCylinder(cylinderMaterials[result.primitive_id], cylinders[result.primitive_id],
+                    lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
+                    isect, accelStructure, functionTable, shadowSpherePayload,
+                    rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
+                    scatteredInMedium, passedThroughMediumSphere);
             }
 
             if (passedThroughMediumSphere) mediumSkippedDist += length(rayOrigin - mediumOriginBefore);

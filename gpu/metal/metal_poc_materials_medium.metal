@@ -29,9 +29,8 @@
 // scattering sphere. See metal_poc_scenes_a.mm's own buildCornellSmoke()
 // comment and this function's own inline comments (unchanged from the
 // original inline kernel code) for the full algorithm.
-inline void shadeHomogeneousMediumSphere(
-    TriangleMaterial mediumMat, uint mediumPrimId, float entryDistance,
-    device const SphereData* spheres, float shutterT,
+inline void shadeHomogeneousMediumSpan(
+    TriangleMaterial mediumMat, float entryT, float exitT,
     device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
     intersector<instancing, triangle_data> isect,
@@ -42,23 +41,6 @@ inline void shadeHomogeneousMediumSphere(
     thread float3& throughput, thread float3& radiance,
     thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState,
     thread bool& scatteredInMedium, thread bool& passedThroughMediumSphere) {
-    SphereData mediumSphere = spheres[mediumPrimId];
-    float3 sphereCenter = float3(mediumSphere.center) + shutterT * float3(mediumSphere.centerDelta1);
-    // `entryDistance` is the first root the intersection function accepted
-    // (> min_distance). For a ray that starts OUTSIDE the sphere that is
-    // the near root (entry), and the far root follows from the roots' sum
-    // (2*dot(C-O,D)). For a ray that starts INSIDE it - e.g. the
-    // continuation ray right after a scatter event inside this very
-    // sphere - the near root is behind the origin, so the accepted root IS
-    // the exit, and the path inside begins at distance 0. Without this
-    // branch the exit came out negative and the ray was stepped backwards.
-    float entryT = entryDistance;
-    float exitT = 2.0 * dot(sphereCenter - rayOrigin, rayDir) - entryT;
-    float3 ocMedium = rayOrigin - sphereCenter;
-    if (dot(ocMedium, ocMedium) < mediumSphere.radius * mediumSphere.radius) {
-        exitT = entryDistance;
-        entryT = 0.0;
-    }
     float sigmaT = mediumMat.ior;
     // A pure absorber (no scattering; sigma_t == 0 here and the per-channel absorption in conductorEta): colour-dependent
     // absorption cannot be expressed as one scalar free-flight distance, so apply exp(-sigma_a * chord) per channel instead.
@@ -176,6 +158,65 @@ inline void shadeHomogeneousMediumSphere(
         rayOrigin = rayOrigin + rayDir * exitT;
         passedThroughMediumSphere = true;
     }
+}
+
+// The sphere's own entry/exit chord, then the shared span shader above.
+inline void shadeHomogeneousMediumSphere(
+    TriangleMaterial mediumMat, uint mediumPrimId, float entryDistance,
+    device const SphereData* spheres, float shutterT,
+    device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
+    texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
+    intersector<instancing, triangle_data> isect,
+    instance_acceleration_structure accelStructure,
+    intersection_function_table<instancing, triangle_data> functionTable,
+    SpherePayload shadowSpherePayload,
+    thread float3& rayDir, thread float3& rayOrigin,
+    thread float3& throughput, thread float3& radiance,
+    thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState,
+    thread bool& scatteredInMedium, thread bool& passedThroughMediumSphere) {
+    SphereData mediumSphere = spheres[mediumPrimId];
+    float3 sphereCenter = float3(mediumSphere.center) + shutterT * float3(mediumSphere.centerDelta1);
+    // `entryDistance` is the first root the intersection function accepted
+    // (> min_distance). For a ray that starts OUTSIDE the sphere that is
+    // the near root (entry), and the far root follows from the roots' sum
+    // (2*dot(C-O,D)). For a ray that starts INSIDE it - e.g. the
+    // continuation ray right after a scatter event inside this very
+    // sphere - the near root is behind the origin, so the accepted root IS
+    // the exit, and the path inside begins at distance 0. Without this
+    // branch the exit came out negative and the ray was stepped backwards.
+    float entryT = entryDistance;
+    float exitT = 2.0 * dot(sphereCenter - rayOrigin, rayDir) - entryT;
+    float3 ocMedium = rayOrigin - sphereCenter;
+    if (dot(ocMedium, ocMedium) < mediumSphere.radius * mediumSphere.radius) {
+        exitT = entryDistance;
+        entryT = 0.0;
+    }
+    shadeHomogeneousMediumSpan(mediumMat, entryT, exitT, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
+        isect, accelStructure, functionTable, shadowSpherePayload,
+        rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
+        scatteredInMedium, passedThroughMediumSphere);
+}
+
+// The same shader for a tube (Shape "cylinder" with MediumInterface): the medium fills the SOLID cylinder (cylinderSolidInterval),
+// so a ray may enter or leave through an open end as well as the wall.
+inline void shadeHomogeneousMediumCylinder(
+    TriangleMaterial mediumMat, CylinderData cyl,
+    device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
+    texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
+    intersector<instancing, triangle_data> isect,
+    instance_acceleration_structure accelStructure,
+    intersection_function_table<instancing, triangle_data> functionTable,
+    SpherePayload shadowSpherePayload,
+    thread float3& rayDir, thread float3& rayOrigin,
+    thread float3& throughput, thread float3& radiance,
+    thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState,
+    thread bool& scatteredInMedium, thread bool& passedThroughMediumSphere) {
+    float s0 = 0.0, s1 = 0.0;
+    if (!cylinderSolidInterval(rayOrigin, rayDir, cyl, s0, s1)) return;
+    shadeHomogeneousMediumSpan(mediumMat, max(s0, 0.0f), s1, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
+        isect, accelStructure, functionTable, shadowSpherePayload,
+        rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
+        scatteredInMedium, passedThroughMediumSphere);
 }
 
 // materialType 29 (E2, section 178) - heterogeneous, procedural
