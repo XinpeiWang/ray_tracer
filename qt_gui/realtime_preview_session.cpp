@@ -6,8 +6,10 @@
 #include <QCoreApplication>
 #include <QMetaObject>
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <mutex>
+#include <thread>
 
 namespace {
 
@@ -644,6 +646,120 @@ void RealtimePreviewWorker::setNeuralUpscale(bool enabled) {
 	}
 }
 
+// A pixel with at least this many samples is never smoothed; below it the effect fades out linearly. (Above the 64-sample cap on
+// history carried over a camera move, so reprojected pixels are covered too.)
+constexpr int kSmoothFullSamples = 96;
+
+// Display-time smoothing of pixels that have few samples so far. After a camera move the reprojected picture keeps its history, but
+// newly revealed areas (and a restart after a setting change) start from one noisy sample per pixel, and a backend with no denoiser (the
+// Metal one) shows that noise until the pixel has gathered enough samples. This builds m_smoothed from m_accum: a pixel with fewer than
+// kSmoothFullSamples samples is replaced by a weighted mean of its neighbourhood, with a strength that fades out as it gains samples (so a
+// settled picture is shown exactly as accumulated, once it is past that). The weights keep it from smearing across edges:
+//   * position - neighbours must be on the same surface: their first-hit world position within a few pixel footprints (a plane at a
+//     grazing angle keeps its neighbours; a depth edge or a crease between walls does not);
+//   * colour - a neighbour whose colour differs by more than the noise level expected at the two pixels' sample counts is down-weighted,
+//     so shadow boundaries and texture edges survive;
+//   * confidence - neighbours with more samples count more, so the smoothing pulls from the reliable pixels around a noisy one.
+// Needs world positions (pixels without one - sky, or a camera type that gives none - are left as they are).
+void RealtimePreviewWorker::smoothLowSampleAccum() {
+	constexpr int kFullSamples = kSmoothFullSamples;
+	const int W = m_width, H = m_height;
+	const size_t numPixels = static_cast<size_t>(W) * H;
+	m_smoothed = m_accum;   // everything not touched below is shown as accumulated
+	if (m_sampleCounts.size() != numPixels || m_worldPos.size() != numPixels * 4 || m_cameraBasis.size() < 12) return;
+
+	// One pixel footprint at distance 1 from the camera: the view plane's height (|vertical|) over the number of rows.
+	const double vx = m_cameraBasis[9], vy = m_cameraBasis[10], vz = m_cameraBasis[11];
+	const float footprintAtUnitDistance = static_cast<float>(std::sqrt(vx * vx + vy * vy + vz * vz) / std::max(1, H));
+	const float ox = m_cameraBasis[0], oy = m_cameraBasis[1], oz = m_cameraBasis[2];
+	if (!(footprintAtUnitDistance > 0.0f)) return;
+
+	// Per-pixel luminance and 1/count, computed once (the neighbourhood loop would otherwise redo them for every tap).
+	m_smoothLuminance.resize(numPixels);
+	for (size_t p = 0; p < numPixels; ++p) {
+		const float* c = &m_accum[p * 3];
+		m_smoothLuminance[p] = 0.2126f * c[0] + 0.7152f * c[1] + 0.0722f * c[2];
+	}
+	static const std::array<float, kSmoothFullSamples + 1> kInverse = [] {
+		std::array<float, kSmoothFullSamples + 1> t{};
+		for (int n = 0; n <= kSmoothFullSamples; ++n) t[n] = 1.0f / static_cast<float>(std::max(1, n));
+		return t;
+	}();
+	// Spatial weights per kernel radius (a small Gaussian over the (2r+1)^2 offsets, sigma = 0.5 r + 0.5).
+	static const std::array<std::array<float, 7 * 7>, 4> kSpatial = [] {
+		std::array<std::array<float, 7 * 7>, 4> t{};
+		for (int r = 1; r <= 3; ++r) {
+			const float s = 0.5f * r + 0.5f;
+			for (int dy = -r; dy <= r; ++dy)
+				for (int dx = -r; dx <= r; ++dx)
+					t[r][(dy + 3) * 7 + (dx + 3)] = std::exp(-(dx * dx + dy * dy) / (2.0f * s * s));
+		}
+		return t;
+	}();
+
+	auto smoothRows = [&](int yBegin, int yEnd) {
+		for (int y = yBegin; y < yEnd; ++y) {
+			for (int x = 0; x < W; ++x) {
+				const size_t i = static_cast<size_t>(y) * W + x;
+				const int ni = m_sampleCounts[i];
+				if (ni >= kFullSamples || m_worldPos[i * 4 + 3] == 0.0f) continue;
+				const float* pi = &m_worldPos[i * 4];
+				const float ex = pi[0] - ox, ey = pi[1] - oy, ez = pi[2] - oz;
+				const float depth = std::sqrt(ex * ex + ey * ey + ez * ez);
+				const float posTolerance = 4.0f * depth * footprintAtUnitDistance;   // same surface: within ~4 pixels' worth of world distance
+				const float tol2 = posTolerance * posTolerance;
+				if (!(tol2 > 0.0f)) continue;
+				const int radius = ni < 4 ? 3 : (ni < 16 ? 2 : 1);
+				const std::array<float, 7 * 7>& spatial = kSpatial[radius];
+				const float lumI = m_smoothLuminance[i];
+				const float invNi = kInverse[ni];
+				float sumW = 0.0f, sumR = 0.0f, sumG = 0.0f, sumB = 0.0f;
+				for (int dy = -radius; dy <= radius; ++dy) {
+					const int yy = y + dy;
+					if (yy < 0 || yy >= H) continue;
+					for (int dx = -radius; dx <= radius; ++dx) {
+						const int xx = x + dx;
+						if (xx < 0 || xx >= W) continue;
+						const size_t j = static_cast<size_t>(yy) * W + xx;
+						const int nj = m_sampleCounts[j];
+						if (nj == 0) continue;
+						const float* pj = &m_worldPos[j * 4];
+						if (pj[3] == 0.0f) continue;
+						const float ddx = pi[0] - pj[0], ddy = pi[1] - pj[1], ddz = pi[2] - pj[2];
+						const float dist2 = ddx * ddx + ddy * ddy + ddz * ddz;
+						if (dist2 >= tol2) continue;
+						const float wPos = 1.0f - dist2 / tol2;
+						// Noise level expected in the difference of the two running means (it grows with the signal and shrinks with the
+						// sample counts); a neighbour further off than a few of these is a real edge, not noise.
+						const float lumJ = m_smoothLuminance[j];
+						const float variance = 6.25f * (0.5f * (lumI + lumJ) + 0.02f) * (invNi + kInverse[std::min(nj, kFullSamples)]);
+						const float dl = lumI - lumJ;
+						const float q = 1.0f / (1.0f + dl * dl / (2.0f * variance));
+						const float w = wPos * spatial[(dy + 3) * 7 + (dx + 3)] * q * q * static_cast<float>(std::min(nj, kFullSamples));
+						const float* cj = &m_accum[j * 3];
+						sumW += w; sumR += w * cj[0]; sumG += w * cj[1]; sumB += w * cj[2];
+					}
+				}
+				if (!(sumW > 1e-9f)) continue;
+				// Fade the effect out as the pixel gains samples of its own: all smoothing at 1 sample, none at kFullSamples.
+				const float alpha = 1.0f - static_cast<float>(ni) / kFullSamples;
+				float* out = &m_smoothed[i * 3];
+				const float* own = &m_accum[i * 3];
+				out[0] = own[0] + alpha * (sumR / sumW - own[0]);
+				out[1] = own[1] + alpha * (sumG / sumW - own[1]);
+				out[2] = own[2] + alpha * (sumB / sumW - own[2]);
+			}
+		}
+	};
+	// Rows are independent (reads m_accum and writes m_smoothed only), so split them over a few threads.
+	const int threads = std::max(1, std::min(4, static_cast<int>(std::thread::hardware_concurrency())));
+	if (threads == 1) { smoothRows(0, H); return; }
+	std::vector<std::thread> pool;
+	for (int t = 1; t < threads; ++t) pool.emplace_back(smoothRows, H * t / threads, H * (t + 1) / threads);
+	smoothRows(0, H / threads);
+	for (std::thread& th : pool) th.join();
+}
+
 void RealtimePreviewWorker::setDof(bool enabled, double aperture, double focusDistance) {
 	if (!m_running) return;
 	// Unlike setFireflyClamp() below, this DOES reset accumulation - see
@@ -661,6 +777,10 @@ void RealtimePreviewWorker::setDof(bool enabled, double aperture, double focusDi
 	m_aperture = aperture;
 	m_focusDistance = focusDistance;
 	if (changed) resetAccumulation();
+}
+
+void RealtimePreviewWorker::setSmoothLowSample(bool enabled) {
+	m_smoothLowSample = enabled;   // display only: no accumulation reset
 }
 
 void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
@@ -1182,11 +1302,16 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				// into m_displayImage IN PLACE. Tonemapping the per-call noisy
 				// sample instead would defeat the whole point of accumulating in
 				// linear space first.
+				// Pixels with few samples may be shown smoothed (smoothLowSampleAccum()); m_accum itself is never altered.
+				// m_sampleCount is the minimum over all pixels: once even the weakest pixel is past the threshold there is nothing to do.
+				const bool smoothNow = m_smoothLowSample && m_sampleCount < kSmoothFullSamples;
+				if (smoothNow) smoothLowSampleAccum();
+				const std::vector<float>& displaySource = smoothNow ? m_smoothed : m_accum;
 				for (int y = 0; y < m_height; ++y) {
 					uchar* row = m_displayImage.scanLine(y);
 					for (int x = 0; x < m_width; ++x) {
 						const size_t idx = (static_cast<size_t>(y) * m_width + x) * 3;
-						double r = m_accum[idx + 0], g = m_accum[idx + 1], b = m_accum[idx + 2];
+						double r = displaySource[idx + 0], g = displaySource[idx + 1], b = displaySource[idx + 2];
 						if (!std::isfinite(r)) r = 0.0;
 						if (!std::isfinite(g)) g = 0.0;
 						if (!std::isfinite(b)) b = 0.0;
@@ -1335,6 +1460,10 @@ void RealtimePreviewSession::setFireflyClamp(double fireflyClamp) {
 void RealtimePreviewSession::setDof(bool enabled, double aperture, double focusDistance) {
 	QMetaObject::invokeMethod(m_worker, "setDof", Qt::QueuedConnection,
 		Q_ARG(bool, enabled), Q_ARG(double, aperture), Q_ARG(double, focusDistance));
+}
+
+void RealtimePreviewSession::setSmoothLowSample(bool enabled) {
+	QMetaObject::invokeMethod(m_worker, "setSmoothLowSample", Qt::QueuedConnection, Q_ARG(bool, enabled));
 }
 
 void RealtimePreviewSession::setSvgfTuning(double temporalAlpha, double maxHistoryLength,

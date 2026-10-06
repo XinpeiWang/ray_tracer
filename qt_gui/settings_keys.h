@@ -48,6 +48,7 @@ constexpr const char *kLivePreviewPathGuidingEnabledKey = "livePreview/pathGuidi
 constexpr const char *kLivePreviewNrcEnabledKey = "livePreview/nrcEnabled";
 constexpr const char *kLivePreviewNeuralUpscaleEnabledKey = "livePreview/neuralUpscaleEnabled";
 constexpr const char *kLivePreviewDofEnabledKey = "livePreview/dofEnabled";
+constexpr const char *kLivePreviewSmoothNoiseKey = "livePreview/smoothNoise";
 constexpr const char *kLivePreviewApertureKey = "livePreview/aperture";
 constexpr const char *kLivePreviewFocusDistanceKey = "livePreview/focusDistance";
 constexpr const char *kLivePreviewTemporalUpscaleFactorKey = "livePreview/temporalUpscaleFactor";

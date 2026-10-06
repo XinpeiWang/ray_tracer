@@ -205,6 +205,11 @@ public slots:
 	// wrong. No-op if not running.
 	void setDof(bool enabled, double aperture, double focusDistance);
 
+	// Backend-independent smoothing of pixels that have few samples so far (after a camera move, in newly revealed areas, while the
+	// picture settles): see RealtimePreviewWorker::smoothLowSampleAccum(). Display only - the accumulation itself is untouched, and a
+	// pixel stops being smoothed as it gains samples. No accumulation reset.
+	void setSmoothLowSample(bool enabled);
+
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
 	// No accumulation reset needed, same reasoning as setRestirGi() above.
@@ -380,6 +385,12 @@ private:
 	bool m_dofEnabled = false;
 	double m_aperture = 1.0;
 	double m_focusDistance = 10.0;
+
+	// Display-time smoothing of low-sample pixels (setSmoothLowSample() above). m_smoothed is its output buffer, sized like m_accum.
+	bool m_smoothLowSample = false;
+	std::vector<float> m_smoothed;
+	std::vector<float> m_smoothLuminance;   // scratch for smoothLowSampleAccum()
+	void smoothLowSampleAccum();
 	// See setTemporalUpscale()'s own comment. Crosses the DLL boundary like
 	// m_pathGuiding above (generate_camera_rays' own jitter sequence choice
 	// is a GPU-side decision). Defaults false/2 for the same reason
@@ -593,6 +604,7 @@ public:
 	void setTemporalUpscale(bool enabled, int factor);
 	void setNeuralUpscale(bool enabled);
 	void setDof(bool enabled, double aperture, double focusDistance);
+	void setSmoothLowSample(bool enabled);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

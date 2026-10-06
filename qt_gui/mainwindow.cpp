@@ -977,6 +977,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	m_liveNrcEnabled = loadSavedLiveNrcEnabled();
 	m_liveNeuralUpscaleEnabled = loadSavedLiveNeuralUpscaleEnabled();
 	m_liveDofEnabled = loadSavedLiveDofEnabled();
+	m_liveSmoothNoise = loadSavedLiveSmoothNoise();
 	m_liveAperture = loadSavedLiveAperture();
 	m_liveFocusDistance = loadSavedLiveFocusDistance();
 	m_liveTemporalUpscaleFactor = loadSavedLiveTemporalUpscaleFactor();

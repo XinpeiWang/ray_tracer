@@ -724,17 +724,33 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		12, 0);
 	liveRenderSettingsGrid->addWidget(m_liveAdaptiveSamplingThresholdSpin, 12, 1);
 
+#ifdef Q_OS_MAC
+	// The Metal backend has no denoiser; this smooths only the pixels that have few samples so far (after a camera move, in newly
+	// revealed areas), guided by surface position and colour so edges survive, and stops as a pixel gains samples. Display only.
+	m_liveSmoothNoiseCheck = createLiveToggleCheckbox(tr("Smooth noisy pixels"), m_liveSmoothNoise, [this](bool checked) {
+		m_liveSmoothNoise = checked;
+		saveLiveSmoothNoise(checked);
+		pushLiveSmoothNoiseToSession();
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveSmoothNoiseCheck,
+		tr("Smooths the pixels that have only a few samples so far - right after a camera move, or in areas the move just "
+		"revealed - using their neighbours on the same surface, so the picture looks calmer while it settles. It never touches "
+		"pixels that have gathered enough samples, so a settled picture is exactly what was rendered, and it does not change "
+		"what is accumulated. Turn it off to see the raw samples.")),
+		13, 0, 1, 4);
+#endif
+
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
 #ifdef Q_OS_MAC
 	// The Metal backend renders plain path-traced frames: it has no AI denoiser, SVGF, ReSTIR, radiance cache, path guiding,
 	// NRC, upscaling or adaptive sampling (those flags are accepted and ignored by realtime_renderer.dylib). Showing controls that
 	// do nothing would mislead, so only the grid rows it honours stay visible: row 5 (Depth of Field), row 8 (Exposure,
-	// Samples/Frame), row 9 (Max Bounces, Firefly Clamp) and row 10 (Aperture, Focus Distance).
+	// Samples/Frame), row 9 (Max Bounces, Firefly Clamp), row 10 (Aperture, Focus Distance) and row 13 (Smooth noisy pixels).
 	for (int i = 0; i < liveRenderSettingsGrid->count(); ++i) {
 		int row = 0, col = 0, rowSpan = 0, colSpan = 0;
 		liveRenderSettingsGrid->getItemPosition(i, &row, &col, &rowSpan, &colSpan);
-		if (row != 5 && (row < 8 || row > 10)) {
+		if (row != 5 && row != 13 && (row < 8 || row > 10)) {
 			if (QWidget *w = liveRenderSettingsGrid->itemAt(i)->widget()) w->hide();
 		}
 	}

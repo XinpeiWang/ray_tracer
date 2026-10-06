@@ -479,6 +479,7 @@ private:
 	void pushLiveNrcToSession();
 	void pushLiveNeuralUpscaleToSession();
 	void pushLiveDofToSession();
+	void pushLiveSmoothNoiseToSession();
 	void pushLiveTemporalUpscaleToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
@@ -585,6 +586,8 @@ private:
 	void saveLiveNrcEnabled(bool value) const;
 	bool loadSavedLiveNeuralUpscaleEnabled() const;
 	void saveLiveNeuralUpscaleEnabled(bool value) const;
+	bool loadSavedLiveSmoothNoise() const;
+	void saveLiveSmoothNoise(bool value) const;
 	bool loadSavedLiveDofEnabled() const;
 	void saveLiveDofEnabled(bool value) const;
 	double loadSavedLiveAperture() const;
@@ -1136,6 +1139,9 @@ private:
 	// Live Preview control - only affects scenes loaded from a scene file
 	// (see this project's own DOF plan for that scope decision); has no
 	// effect on the native demo-gallery scenes.
+	// Smooth low-sample pixels in the displayed picture (RealtimePreviewWorker::smoothLowSampleAccum()). Backend independent code; the control exists on macOS only.
+	bool m_liveSmoothNoise = false;   // loaded from settings at startup; on by default on macOS only (loadSavedLiveSmoothNoise())
+	QCheckBox *m_liveSmoothNoiseCheck = nullptr;
 	bool m_liveDofEnabled = false;
 	double m_liveAperture = 1.0;
 	double m_liveFocusDistance = 10.0;
