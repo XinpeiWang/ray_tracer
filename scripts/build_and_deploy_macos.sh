@@ -44,7 +44,6 @@
 set -euo pipefail
 
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
-BUILD_DIR="$REPO_ROOT/build_macos"
 APP_NAME="RayTracerGUI"
 DEPLOY_DIR="$REPO_ROOT/RayTracer_Package_macOS"
 SKIP_DMG=0
@@ -86,6 +85,10 @@ echo "========================================"
 # architecture of the process executing lipo itself).
 QT_TARGET_ARCH="$(lipo -archs "$(command -v qmake)" 2>/dev/null | awk '{print $1}')"
 [[ -n "$QT_TARGET_ARCH" ]] || { echo "ERROR: could not determine qmake's own architecture via 'lipo -archs'" >&2; exit 1; }
+# Build directories are per architecture, so a release build (x86_64 here, Qt is x86_64-only) never shares objects
+# with, or overwrites, a native arm64 development build in build_macos/, and re-running the script is incremental.
+BUILD_DIR="$REPO_ROOT/build_macos_$QT_TARGET_ARCH"
+
 if [[ "$QT_TARGET_ARCH" != "$(uname -m)" ]]; then
 	echo "NOTE: this Qt install is $QT_TARGET_ARCH, not this Mac's native $(uname -m) - building"
 	echo "      everything as $QT_TARGET_ARCH to match (runs translated/emulated, slower, but the"
@@ -105,8 +108,14 @@ SCENE_METADATA_LIB="$BUILD_DIR/scene_metadata.dylib"
 
 echo
 echo "[2/5] Building Qt GUI (qmake + make)..."
-GUI_BUILD_DIR="$REPO_ROOT/qt_gui/build_macos"
+# Per-architecture Qt build directory, for the same reason as BUILD_DIR above: a qmake build dir that has seen
+# objects of the other architecture fails to link ("found architecture x86_64, required arm64"), which used to
+# mean wiping qt_gui/build_macos before every release. Separate dirs make a re-run INCREMENTAL (minutes -> ~1 min).
+GUI_BUILD_DIR="$REPO_ROOT/qt_gui/build_macos_$QT_TARGET_ARCH"
 mkdir -p "$GUI_BUILD_DIR"
+# RayTracerGUI.pro's DESTDIR puts the .app in RayTracer_Package/ whichever architecture built it, and make would
+# consider an existing .app of the OTHER architecture up to date. Drop it so the (cheap) link always reruns.
+rm -rf "$REPO_ROOT/RayTracer_Package/$APP_NAME.app"
 ( cd "$GUI_BUILD_DIR" && qmake ../RayTracerGUI.pro CONFIG+=release && make -j"$(sysctl -n hw.ncpu)" )
 
 # RayTracerGUI.pro's own DESTDIR ($$PWD/../RayTracer_Package) is NOT

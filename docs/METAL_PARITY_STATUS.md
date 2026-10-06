@@ -75,5 +75,5 @@ scenes that need external meshes beyond the Models set (Sponza, Bistro, the larg
 
 `scripts/build_and_deploy_macos.sh` builds everything as the architecture of the installed `qmake`. The Qt install on
 the dev Mac is x86_64-only, so releases are x86_64 (Rosetta). If the shell is native arm64, run the script as
-`arch -x86_64 bash scripts/build_and_deploy_macos.sh` and clear `qt_gui/build_macos` first, or the link fails on mixed
+`export PATH=$HOME/Qt/bin:$PATH; arch -x86_64 bash scripts/build_and_deploy_macos.sh` (the script now builds into per-architecture directories, `build_macos_x86_64/` and `qt_gui/build_macos_x86_64/`, so it never clobbers a native `build_macos/` and a re-run is incremental; no manual clearing needed anymore), or the link used to fail on mixed
 architectures.
