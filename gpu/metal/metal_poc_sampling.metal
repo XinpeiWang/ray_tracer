@@ -443,6 +443,93 @@ inline float3 tangentFor(uint primId, device const packed_float3* verts, device 
     return normalize(tangent);
 }
 
+// ---------------------------------------------------------------------------
+// Image bump mapping (pbrt "texture displacement" with a grayscale height map) - port of gpu/optix/gpu_bump_map.h, which
+// reproduces the CPU's bump_map_material: displacement = scale * height(u, v) from a bilinear, Repeat lookup (image row 0 at the
+// top, texel centres at (i + 0.5) / size), finite differences at +step along u and v, then pbrt's BumpMap perturbation.
+// ---------------------------------------------------------------------------
+inline float bumpHeightAt(device const float* data, int offset, int w, int h, int x, int y) {
+    x = ((x % w) + w) % w;
+    y = ((y % h) + h) % h;
+    return data[offset + y * w + x];
+}
+
+inline float bumpHeightSample(device const float* data, int offset, int w, int h, float u, float v) {
+    const float uw = clamp(u, -1024.0, 1024.0);
+    const float vw = clamp(1.0 - v, -1024.0, 1024.0);
+    const float x = uw * float(w) - 0.5;
+    const float y = vw * float(h) - 0.5;
+    const int x0 = int(floor(x)), y0 = int(floor(y));
+    const float fx = x - float(x0), fy = y - float(y0);
+    return (1.0 - fy) * ((1.0 - fx) * bumpHeightAt(data, offset, w, h, x0, y0) + fx * bumpHeightAt(data, offset, w, h, x0 + 1, y0))
+         +        fy  * ((1.0 - fx) * bumpHeightAt(data, offset, w, h, x0, y0 + 1) + fx * bumpHeightAt(data, offset, w, h, x0 + 1, y0 + 1));
+}
+
+// The triangle's UNnormalized dpdu and dpdv (the 2x2 UV-edge Jacobian solve), as the CPU's rec.dpdu / rec.dpdv. A degenerate UV mapping
+// falls back to the first edge for dpdu and cross(n, dpdu) for dpdv.
+inline void triangleDpduDpdv(uint primId, device const packed_float3* verts, device const packed_float2* uvs, float3 n,
+                             thread float3& dpdu, thread float3& dpdv) {
+    const float3 p0 = float3(verts[primId * 3 + 0]), p1 = float3(verts[primId * 3 + 1]), p2 = float3(verts[primId * 3 + 2]);
+    const float2 uv0 = uvs[primId * 3 + 0], uv1 = uvs[primId * 3 + 1], uv2 = uvs[primId * 3 + 2];
+    const float3 e1 = p1 - p0, e2 = p2 - p0;
+    const float2 d1 = uv1 - uv0, d2 = uv2 - uv0;
+    const float det = d1.x * d2.y - d1.y * d2.x;
+    if (abs(det) > 1e-12) {
+        const float inv = 1.0 / det;
+        dpdu = inv * (d2.y * e1 - d1.y * e2);
+        dpdv = inv * (-d2.x * e1 + d1.x * e2);
+        return;
+    }
+    const float len2 = dot(e1, e1);
+    dpdu = len2 > 1e-14 ? e1 * rsqrt(len2) : float3(1.0, 0.0, 0.0);
+    dpdv = cross(n, dpdu);
+}
+
+// 0.5 * (|dudx| + |dudy|) for a PRIMARY ray (origin O, unit direction d) of the perspective camera that hit the surface at p: the two
+// one-pixel-offset rays are intersected with the tangent plane (n, p) and the offsets projected onto (dpdu, dpdv) by least squares -
+// the CPU's SurfaceInteraction::compute_differentials(), as in gpu_bump_footprint_step(). 0 where the CPU would have no footprint
+// (callers then use 0.001). The pixel footprint matters: on a distant or tiled surface it spans many texels, so the CPU's primary bump
+// is a smoothed one and a fixed small step would read the texture at full detail and render it too bright.
+inline float bumpFootprintStep(constant Uniforms& u, float3 O, float3 d, float3 p, float3 n, float3 dpdu, float3 dpdv) {
+    const float3 fwd = float3(u.cameraForward);
+    const float cf = dot(fwd, d);
+    if (cf <= 1e-6) return 0.0;
+    const float3 D = d / cf;   // the unnormalized direction that lands on the viewport plane (distance 1 along forward)
+    const float3 Dx = D + float3(u.cameraRight) * (2.0 / float(u.width));
+    const float3 Dy = D + float3(u.cameraUp) * (2.0 / float(u.height));
+    const float dnx = dot(n, Dx), dny = dot(n, Dy);
+    if (dnx == 0.0 || dny == 0.0) return 0.0;
+    const float3 pop = p - O;
+    const float3 dpdx = Dx * (dot(n, pop) / dnx) - pop;
+    const float3 dpdy = Dy * (dot(n, pop) / dny) - pop;
+    const float a00 = dot(dpdu, dpdu), a01 = dot(dpdu, dpdv), a11 = dot(dpdv, dpdv);
+    const float det = a00 * a11 - a01 * a01;
+    if (!(abs(det) > 0.0)) return 0.0;
+    const float inv = 1.0 / det;
+    const float dudx = (a11 * dot(dpdu, dpdx) - a01 * dot(dpdv, dpdx)) * inv;
+    const float dudy = (a11 * dot(dpdu, dpdy) - a01 * dot(dpdv, dpdy)) * inv;
+    const float step = 0.5 * (abs(dudx) + abs(dudy));
+    return (step == step && step < 1e8) ? step : 0.0;
+}
+
+// The perturbed shading normal for `n` (unit, facing the ray) at texture coordinate (u, v).
+inline float3 imageBumpNormal(device const float* data, int offset, int w, int h, float scale, float u, float v,
+                              float3 n, float3 dpdu, float footprintStep) {
+    const float step = footprintStep > 1e-8 ? footprintStep : 0.001;   // 0.001: the CPU's no-footprint fallback
+    const float disp   = scale * bumpHeightSample(data, offset, w, h, u,        v);
+    const float dispU  = scale * bumpHeightSample(data, offset, w, h, u + step, v);
+    const float dispV  = scale * bumpHeightSample(data, offset, w, h, u,        v + step);
+    float3 dpdv = cross(n, dpdu);
+    if (dot(dpdv, dpdv) < 1e-12) dpdv = float3(0.0, 1.0, 0.0);
+    const float3 newDpdu = dpdu + ((dispU - disp) / step) * n;
+    const float3 newDpdv = dpdv + ((dispV - disp) / step) * n;
+    float3 nn = cross(newDpdu, newDpdv);
+    const float len2 = dot(nn, nn);
+    if (!(len2 > 1e-8)) return n;
+    nn *= rsqrt(len2);
+    return dot(nn, n) < 0.0 ? -nn : nn;
+}
+
 // Procedural "egg carton" bump map - an analytic height field h(u,v)
 // instead of a sampled normal-map texture (no new image asset needed for
 // this POC to demonstrate genuine tangent-space shading-normal

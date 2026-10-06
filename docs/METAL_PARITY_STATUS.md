@@ -125,16 +125,14 @@ K1..K160, one per `pbrt_scenes/*.pbrt`) were never compared against the CPU unti
 
 First run: 19 of those scenes differed. Fixed since: K10, K11 (chromatic absorbers), K12 (chromatic camera medium), K75 (point light in
 a fog sphere rendered black), K14 and K15 (RGB-grid medium: now per-channel spectral tracking with per-voxel sigma_a, like the CPU and
-OptiX; the grid also reads zero beyond its outermost voxel centres, and no longer double-counts a constant sky). Six of these scenes
-(K10, K11, K12, K14, K15, K75) are now part of the default sweep (matched by file name; not in the golden snapshot). Still differing (no fix yet - none of these is a crash or a black frame in the GUI):
+OptiX; the grid also reads zero beyond its outermost voxel centres, and no longer double-counts a constant sky). K43 (a rough conductor under a spot light: the CPU, not Metal, was wrong - a plain `conductor` with an "rgb reflectance" was built as the fuzz-mirror `metal`, which cannot show a point-light highlight; it is now the real GGX + complex-Fresnel conductor) and K5 (Metal now implements image bump mapping: a grayscale "texture displacement" height map, stored in the shared float buffer, perturbs the shading normal of triangle hits with the same pixel-footprint finite-difference step as the CPU and OptiX; RGB normal-map displacement is not implemented). Eight of these scenes
+(K10, K11, K12, K14, K15, K43, K5, K75) are now part of the default sweep (matched by file name; not in the golden snapshot). Still differing (no fix yet - none of these is a crash or a black frame in the GUI):
 
 | Scene | pbrt file | CPU vs Metal | Likely cause |
 |---|---|---|---|
 | K49 (= E6) | cylinder-medium | regional | known gap (cylinder medium) |
 | K132 | portal-light | CPU black | not a Metal bug: `sssdragon/textures/small_rural_road_equiarea.exr` is not in the checkout, so the CPU falls back to a black constant light |
 | K94 | maxcomponentvalue-firefly-clamp | Metal 0.13 vs 0.25 | sphere area light is only hit by BSDF sampling on Metal (no NEE), so the 4.0 per-sample clamp removes more energy |
-| K43 | cornell-spotlight | Metal 0.060 vs 0.038 | not diagnosed (spot cone angles match between the two loaders) |
-| K5 | bump-mapped-plane | Metal 0.30 vs 0.18 | not diagnosed |
 | K82, K84 | hair-fibers-scene, hair-sphere-dim-sky | R +30% / -37% | hair BSDF differences |
 | K144-K146 | rough-dielectric-medium, rough-glass-from-inside, rough-glass-lamp | regional | rough glass with a medium / seen from inside |
 | K155, K158, K87 | textured-twosided-lights, triangle-mesh-scene, infinite-light-image | one channel / one block / tiny absolute | not diagnosed |

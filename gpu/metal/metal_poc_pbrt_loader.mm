@@ -14,6 +14,9 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 #include "../../src/shared/curve_tessellate.h"
+#include "../../src/shared/srgb_decode.h"
+#include <array>
+#include <map>
 #include <functional>
 
 // --- Stage 2.5: real pbrt scene loading (v1 - see docs/METAL_GPU_
@@ -1057,6 +1060,52 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
     auto vertexAt = [toWorld](const double* v, int i) {
         return toWorld(float3{(float)v[i * 3 + 0], (float)v[i * 3 + 1], (float)v[i * 3 + 2]});
     };
+    // Image bump maps ("texture displacement"): each distinct grayscale image is decoded once into the shared float buffer.
+    // filename -> {element offset, width, height}; width 0 = could not be used (missing/undecodable/not grayscale).
+    std::map<std::string, std::array<int, 3>> bumpImages;
+    auto applyImageBump = [&](TriangleMaterial& mat, const pbrt_flatten::Material& m) {
+        if (m.displacementTextureFilename.empty() || mat.lightId >= 0 || mat.twoSided != 0u) return;
+        auto it = bumpImages.find(m.displacementTextureFilename);
+        if (it == bumpImages.end()) {
+            std::array<int, 3> entry{0, 0, 0};
+            std::string bytes;
+            if (pbrt_load::loadFileNear(pbrtScenePath, m.displacementTextureFilename, bytes)) {
+                int w = 0, h = 0, ch = 0;
+                unsigned char* px = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(bytes.data()),
+                                                          (int)bytes.size(), &w, &h, &ch, 3);
+                if (px && w > 0 && h > 0) {
+                    // The CPU classifies a displacement image by content: grayscale = height map (bump), otherwise a
+                    // tangent-space normal map. Only the height map is implemented here.
+                    int maxDiff = 0;
+                    for (int sy = 0; sy < 8; ++sy)
+                        for (int sx = 0; sx < 8; ++sx) {
+                            const unsigned char* p = px + ((size_t)((sy * h) / 8) * w + (sx * w) / 8) * 3;
+                            maxDiff = std::max({maxDiff, std::abs((int)p[0] - (int)p[1]), std::abs((int)p[1] - (int)p[2]), std::abs((int)p[0] - (int)p[2])});
+                        }
+                    if (maxDiff <= 10) {
+                        entry = {(int)rgbGridData.size(), w, h};
+                        rgbGridData.reserve(rgbGridData.size() + (size_t)w * h);
+                        for (size_t k = 0; k < (size_t)w * h; ++k) rgbGridData.push_back(srgb_decode::byteToLinear(px[k * 3]));   // pbrt decodes an 8-bit image as sRGB
+                    } else {
+                        fprintf(stderr, "loadPbrtScene: displacement image '%s' is a normal map; only height-map bump mapping is implemented, ignoring it\n",
+                                m.displacementTextureFilename.c_str());
+                    }
+                } else {
+                    fprintf(stderr, "loadPbrtScene: displacement image '%s' could not be decoded; ignoring it\n", m.displacementTextureFilename.c_str());
+                }
+                if (px) stbi_image_free(px);
+            } else {
+                fprintf(stderr, "loadPbrtScene: displacement image '%s' not found; ignoring it\n", m.displacementTextureFilename.c_str());
+            }
+            it = bumpImages.emplace(m.displacementTextureFilename, entry).first;
+        }
+        if (it->second[1] > 0) {
+            mat.bumpOffset = it->second[0];
+            mat.bumpWidth = it->second[1];
+            mat.bumpHeight = it->second[2];
+            mat.bumpScale = (float)m.displacementScale;
+        }
+    };
     for (int i = 0; i < (int)scene.triangles.size(); ++i) {
         if (triangleHandled[i]) continue;
         const pbrt_flatten::Triangle& t = scene.triangles[i];
@@ -1098,6 +1147,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
         }
         TriangleMaterial mat = materialFor(t.material);
+        if (t.material >= 0 && t.material < (int)scene.materials.size()) applyImageBump(mat, scene.materials[t.material]);
         if (mat.materialType == 31u) {
             auto tanIt = pbrtTriangleFiberTangent.find(i);
             if (tanIt != pbrtTriangleFiberTangent.end()) mat.conductorK = tanIt->second;   // real fibre tangent (curves)

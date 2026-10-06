@@ -947,6 +947,11 @@ struct TriangleMaterial {
     // no AreaLight entry (lightId < 0) to look up in the first place.
     // 0 for every non-emissive material.
     uint twoSided;
+    // Image bump map: see metal_poc_gpu_types.h. bumpWidth == 0 means none.
+    int bumpOffset;
+    int bumpWidth;
+    int bumpHeight;
+    float bumpScale;
 };
 
 // E2/section 178: a real heterogeneous, procedural Perlin-FBm-density

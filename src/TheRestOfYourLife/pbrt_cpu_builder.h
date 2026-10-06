@@ -244,7 +244,14 @@ inline std::shared_ptr<material> makeMaterial(const pbrt_flatten::Material &m,
 				m.conductorEta[0], m.conductorEta[1], m.conductorEta[2],
 				m.conductorK[0], m.conductorK[1], m.conductorK[2],
 				m.roughness_u, m.roughness_v, m.remapRoughness);
-		return std::make_shared<metal>(albedo, m.roughness);
+		{
+			// "rgb reflectance" (or nothing given): pbrt-v4's own conversion to eta = 1 and k solved from the reflectance, run through
+			// the same GGX + complex-Fresnel conductor. The old flat-albedo `metal` (roughness as a mirror fuzz) never had a glossy
+			// lobe, so a point/spot light could not make a highlight on it at all (K43 rendered no highlight; Metal and pbrt do).
+			const color k = reflectanceToConductorK(albedo);
+			return std::make_shared<conductor>(1.0, 1.0, 1.0, k.x(), k.y(), k.z(),
+				m.roughness_u, m.roughness_v, m.remapRoughness);
+		}
 	// Pass-through "interface" material (pbrt-v4's Material "none"/"" -
 	// see MaterialKind::Interface's own comment and interface_material's
 	// own comment, material_simple.h). A real dedicated class, not routed
