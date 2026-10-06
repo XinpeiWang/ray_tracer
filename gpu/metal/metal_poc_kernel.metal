@@ -530,7 +530,7 @@ kernel void primaryRayKernel(
                         scatteredInMedium, passedThroughMediumSphere);
                 } else if (mediumMat.materialType == 30u) {
                     shadeRgbGridMediumSphere(mediumMat, result.distance,
-                        rgbGridMediums, rgbGridData, lights, uniforms, pbrtAreaLightTexture, textureSampler,
+                        rgbGridMediums, rgbGridData, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
                         isect, accelStructure, functionTable, shadowSpherePayload,
                         rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                         scatteredInMedium, passedThroughMediumSphere);

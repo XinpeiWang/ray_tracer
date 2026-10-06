@@ -124,11 +124,12 @@ K1..K160, one per `pbrt_scenes/*.pbrt`) were never compared against the CPU unti
     METAL_PARITY_ALL=1 METAL_PARITY_GOLDEN=off ./build_macos/metal_cpu_gpu_parity_check     # run from the repo root
 
 First run: 19 of those scenes differed. Fixed since: K10, K11 (chromatic absorbers), K12 (chromatic camera medium), K75 (point light in
-a fog sphere rendered black). Still differing (no fix yet - none of these is a crash or a black frame in the GUI):
+a fog sphere rendered black), K14 and K15 (RGB-grid medium: now per-channel spectral tracking with per-voxel sigma_a, like the CPU and
+OptiX; the grid also reads zero beyond its outermost voxel centres, and no longer double-counts a constant sky). Six of these scenes
+(K10, K11, K12, K14, K15, K75) are now part of the default sweep (matched by file name; not in the golden snapshot). Still differing (no fix yet - none of these is a crash or a black frame in the GUI):
 
 | Scene | pbrt file | CPU vs Metal | Likely cause |
 |---|---|---|---|
-| K14, K15 | chromatic-rgbgrid-absorber / -furnace | Metal black / 0.40 vs 1.0 | RGB-grid medium uses the brightest channel's extinction with an albedo weight, and a single mean sigma_a with no per-voxel absorption; needs a per-path colour channel (as the camera medium now has) and sigma_a grids |
 | K49 (= E6) | cylinder-medium | regional | known gap (cylinder medium) |
 | K132 | portal-light | CPU black | not a Metal bug: `sssdragon/textures/small_rural_road_equiarea.exr` is not in the checkout, so the CPU falls back to a black constant light |
 | K94 | maxcomponentvalue-firefly-clamp | Metal 0.13 vs 0.25 | sphere area light is only hit by BSDF sampling on Metal (no NEE), so the 4.0 per-sample clamp removes more energy |

@@ -1205,9 +1205,9 @@ inline bool rgbGridAabbSlabIntersect(GpuRgbGridMedium grid, float3 mo, float3 md
 // shared `rgbGridData` buffer - direct port of gpu/optix/
 // optix_intersection_sphere.h's own gpu_rgb_grid_at().
 inline float gpuRgbGridAt(device const float* d, int nx, int ny, int nz, int x, int y, int z) {
-    x = clamp(x, 0, nx - 1);
-    y = clamp(y, 0, ny - 1);
-    z = clamp(z, 0, nz - 1);
+    // Out-of-range voxels read as ZERO (the lookup interpolates towards zero beyond the outermost voxel centres), as pbrt-v4's
+    // SampledGrid, the CPU and OptiX do - clamping to the edge voxel made the grid denser at its border than they render it.
+    if (x < 0 || x >= nx || y < 0 || y >= ny || z < 0 || z >= nz) return 0.0;
     return d[x + nx * (y + ny * z)];
 }
 

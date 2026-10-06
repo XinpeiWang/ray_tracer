@@ -387,6 +387,23 @@ bool metal_supports_scene(const std::string& id) {
 	return pbrtPath && pbrtPath[0];
 }
 
+// Small pbrt example scenes with a closed-form (or CPU-agreed) answer for one feature, kept in the default sweep although their
+// category is not swept: they caught real Metal bugs (colour-dependent media, point light in fog). Matched by file name, because the
+// K ids are assigned by position and shift when a pbrt file is added - which is also why these scenes are left out of the golden
+// snapshot (it is keyed by id); the CPU comparison is their protection.
+bool is_extra_regression_scene(const std::string& id) {
+	const char* p = cpu_scene_pbrt_path_by_id(id.c_str());
+	if (!p || !p[0]) return false;
+	static const char* const kNames[] = {"chromatic-absorber.pbrt", "chromatic-camera-medium-absorber.pbrt", "chromatic-camera-medium.pbrt",
+	                                      "chromatic-rgbgrid-absorber.pbrt", "chromatic-rgbgrid-furnace.pbrt", "fog-point-light.pbrt"};
+	const std::string path(p);
+	for (const char* n : kNames) {
+		const std::string name(n);
+		if (path.size() >= name.size() && path.compare(path.size() - name.size(), name.size(), name) == 0) return true;
+	}
+	return false;
+}
+
 // This process renders only scenes whose position in the selection is congruent to g_shardIndex modulo g_shardCount.
 // A child worker gets it from METAL_PARITY_SHARD="index/count"; the parent runs shard 0 of the same count.
 int g_shardIndex = 0;
@@ -413,7 +430,7 @@ std::vector<const SceneDescriptor*> testable_scenes() {
 			if (std::strcmp(s.category, cat) == 0) { inSweptCategory = true; break; }
 		}
 		const bool isModels = std::strcmp(s.category, SceneCategories::Models) == 0;
-		if (!inSweptCategory && !allCategories) continue;
+		if (!inSweptCategory && !allCategories && !is_extra_regression_scene(s.id)) continue;
 		if (isModels && !includeModels) continue;
 		if (s.requires_files && !(isModels && includeModels)) continue;
 		if (!metal_supports_scene(s.id)) continue;
@@ -665,7 +682,7 @@ int run_sweep() {
 
 		const MPRGBAverage cpuC = mp_avg_channels(cpuImg);
 		const MPRGBAverage metalC = mp_avg_channels(metalImg);
-		if (const char* dump = std::getenv("METAL_PARITY_DUMP")) {   // "id r g b" of the Metal image, for the golden snapshot
+		if (const char* dump = is_extra_regression_scene(s.id) ? nullptr : std::getenv("METAL_PARITY_DUMP")) {   // "id r g b" of the Metal image, for the golden snapshot
 			if (FILE* df = std::fopen(dump, "a")) {
 				std::fprintf(df, "%s %.6f %.6f %.6f", s.id.c_str(), metalC.r, metalC.g, metalC.b);
 				for (float v : mp_block_means(metalImg, kGoldenGrid)) std::fprintf(df, " %.6f", v);
@@ -673,7 +690,7 @@ int run_sweep() {
 				std::fclose(df);
 			}
 		}
-		if (goldenOn) {
+		if (goldenOn && !is_extra_regression_scene(s.id)) {
 			const auto it = golden.find(s.id);
 			if (it == golden.end()) {
 				++goldenMissing;

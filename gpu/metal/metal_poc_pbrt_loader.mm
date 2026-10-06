@@ -1206,25 +1206,38 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             grid.dataOffset = (int)rgbGridData.size();
             grid.sigmaScale = invScale;
             grid.phaseG = (float)gm.g;
-            float maxS = 0.0f;
+            // Per-channel sigma_s and sigma_a, both per voxel: the shader does spectral tracking (a real event with probability
+            // mean_c(sigma_t_c)/majorant, per-channel weights - the same model as the CPU's rgb_grid_medium_hittable.h and
+            // OptiX's heterogeneous_tracking_step), so it needs each channel's own coefficients, not a mean or a maximum.
+            // `majorant` bounds max_c(sigma_s_c + sigma_a_c) everywhere (the sum of the per-channel voxel maxima, trilinear
+            // interpolation never exceeds them).
+            float maxS[3] = {0.0f, 0.0f, 0.0f}, maxA[3] = {0.0f, 0.0f, 0.0f};
+            int ci = 0;
             for (const std::vector<double>* ch : {&gm.sigma_s_r, &gm.sigma_s_g, &gm.sigma_s_b}) {
                 if (hasScatter) {
-                    for (double v : *ch) { rgbGridData.push_back((float)v); maxS = std::max(maxS, (float)v); }
+                    for (double v : *ch) { rgbGridData.push_back((float)v); maxS[ci] = std::max(maxS[ci], (float)v); }
                 } else {
                     rgbGridData.insert(rgbGridData.end(), voxels, 1.0f);   // pbrt's default sigma_s grid value
-                    maxS = std::max(maxS, 1.0f);
+                    maxS[ci] = 1.0f;
                 }
+                ++ci;
             }
-            double absSum = 0.0;
             if (hasAbsorb) {
-                for (const std::vector<double>* ch : {&gm.sigma_a_r, &gm.sigma_a_g, &gm.sigma_a_b})
-                    for (double v : *ch) absSum += v;
-                absSum /= 3.0 * (double)voxels;
+                grid.saDataOffset = (int)rgbGridData.size();
+                grid.sigmaAConst = 0.0f;
+                ci = 0;
+                for (const std::vector<double>* ch : {&gm.sigma_a_r, &gm.sigma_a_g, &gm.sigma_a_b}) {
+                    for (double v : *ch) { rgbGridData.push_back((float)v); maxA[ci] = std::max(maxA[ci], (float)v); }
+                    ++ci;
+                }
             } else {
-                absSum = 1.0;
+                grid.saDataOffset = -1;
+                grid.sigmaAConst = 1.0f * invScale;   // pbrt: no "rgb sigma_a" means sigma_a = 1 everywhere
+                for (int c = 0; c < 3; ++c) maxA[c] = 1.0f;
             }
-            grid.sigmaAConst = (float)absSum * invScale;
-            grid.sigmaMaj = (maxS * invScale + grid.sigmaAConst) * 1.01f;
+            float maxT = 0.0f;
+            for (int c = 0; c < 3; ++c) maxT = std::max(maxT, maxS[c] + maxA[c]);
+            grid.sigmaMaj = maxT * invScale * 1.01f;
             const int gridIdx = (int)rgbGridMediums.size();
             rgbGridMediums.push_back(grid);
             mat = TriangleMaterial{};
