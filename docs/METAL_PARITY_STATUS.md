@@ -115,3 +115,29 @@ scenes that need external meshes beyond the Models set (Sponza, Bistro, the larg
 the dev Mac is x86_64-only, so releases are x86_64 (Rosetta). If the shell is native arm64, run the script as
 `export PATH=$HOME/Qt/bin:$PATH; arch -x86_64 bash scripts/build_and_deploy_macos.sh` (the script now builds into per-architecture directories, `build_macos_x86_64/` and `qt_gui/build_macos_x86_64/`, so it never clobbers a native `build_macos/` and a re-run is incremental; no manual clearing needed anymore), or the link used to fail on mixed
 architectures.
+
+## pbrt example (K) family - not in the default sweep
+
+The default sweep (`ctest` / `METAL_PARITY_STRICT=1`) covers the hand-written feature categories. The ~73 pbrt example scenes (ids
+K1..K160, one per `pbrt_scenes/*.pbrt`) were never compared against the CPU until `METAL_PARITY_ALL=1` was added:
+
+    METAL_PARITY_ALL=1 METAL_PARITY_GOLDEN=off ./build_macos/metal_cpu_gpu_parity_check     # run from the repo root
+
+First run: 19 of those scenes differed. Fixed since: K10, K11 (chromatic absorbers), K12 (chromatic camera medium), K75 (point light in
+a fog sphere rendered black). Still differing (no fix yet - none of these is a crash or a black frame in the GUI):
+
+| Scene | pbrt file | CPU vs Metal | Likely cause |
+|---|---|---|---|
+| K14, K15 | chromatic-rgbgrid-absorber / -furnace | Metal black / 0.40 vs 1.0 | RGB-grid medium uses the brightest channel's extinction with an albedo weight, and a single mean sigma_a with no per-voxel absorption; needs a per-path colour channel (as the camera medium now has) and sigma_a grids |
+| K49 (= E6) | cylinder-medium | regional | known gap (cylinder medium) |
+| K132 | portal-light | CPU black | not a Metal bug: `sssdragon/textures/small_rural_road_equiarea.exr` is not in the checkout, so the CPU falls back to a black constant light |
+| K94 | maxcomponentvalue-firefly-clamp | Metal 0.13 vs 0.25 | sphere area light is only hit by BSDF sampling on Metal (no NEE), so the 4.0 per-sample clamp removes more energy |
+| K43 | cornell-spotlight | Metal 0.060 vs 0.038 | not diagnosed (spot cone angles match between the two loaders) |
+| K5 | bump-mapped-plane | Metal 0.30 vs 0.18 | not diagnosed |
+| K82, K84 | hair-fibers-scene, hair-sphere-dim-sky | R +30% / -37% | hair BSDF differences |
+| K144-K146 | rough-dielectric-medium, rough-glass-from-inside, rough-glass-lamp | regional | rough glass with a medium / seen from inside |
+| K155, K158, K87 | textured-twosided-lights, triangle-mesh-scene, infinite-light-image | one channel / one block / tiny absolute | not diagnosed |
+
+Live Preview (macOS) was also run over all 312 Metal-compatible scenes (`RT_GUI_SELFTEST=livepreview_sweep`, launched from "/"):
+283 start with a well-lit picture; 9 (H13-H21) need external scene assets that are not bundled; the rest are dark by design (a sphere on
+a black background, light-only tests) and show the same lit fraction as the standalone Metal renderer.
