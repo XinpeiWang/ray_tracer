@@ -14,6 +14,9 @@
 #include <QStandardItemModel>
 #include <QTextStream>
 #include <QTimer>
+#include <QPlainTextEdit>
+#include <QRegularExpression>
+#include <QSpinBox>
 #include <memory>
 
 void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
@@ -81,6 +84,20 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		m_modeCombo->setCurrentIndex(idx);
 		startLivePreview();
 		log(QString("started: running=%1").arg(m_livePreviewRunning ? 1 : 0));
+		// The preview must frame the scene like the image render does: same aspect ratio as the Resolution setting.
+		{
+			const QString text = m_logTextEdit ? m_logTextEdit->toPlainText() : QString();
+			QRegularExpressionMatch m = QRegularExpression(R"(\[Live Preview\] Starting: scene=\S+, (\d+)x(\d+))").match(text);
+			if (m.hasMatch()) {
+				const double pw = m.captured(1).toDouble(), ph = m.captured(2).toDouble();
+				const double rw = m_widthSpinBox->value(), rh = m_heightSpinBox->value();
+				log(QString("preview %1x%2 (aspect %3) vs Resolution setting %4x%5 (aspect %6)").arg(pw).arg(ph).arg(pw / ph, 0, 'f', 3)
+					.arg(rw).arg(rh).arg(rw / rh, 0, 'f', 3));
+				if (qAbs(pw / ph - rw / rh) > 0.02) { log("RESULT: FAIL (preview aspect differs from the Resolution setting)"); QApplication::exit(1); return; }
+			} else {
+				log("could not read the preview size from the log");
+			}
+		}
 		// Let it render for a while, then look at what happened.
 		// Timeline: look at 4 s, orbit the camera at 5 s (what a mouse drag does), look again at 9 s, report at 10 s.
 		auto before = std::make_shared<QImage>();
