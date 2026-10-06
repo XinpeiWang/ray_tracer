@@ -1306,6 +1306,15 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
                 grid.sigmaAConst = 1.0f * invScale;   // pbrt: no "rgb sigma_a" means sigma_a = 1 everywhere
                 for (int c = 0; c < 3; ++c) maxA[c] = 1.0f;
             }
+            // pbrt "rgb Le" per voxel (plus "Lescale"): the grid emits at its real collisions (shadeRgbGridMediumSphere).
+            if (gm.Le_scale > 0.0 && gm.Le_r.size() == voxels && gm.Le_g.size() == voxels && gm.Le_b.size() == voxels) {
+                grid.leDataOffset = (int)rgbGridData.size();
+                grid.leScale = (float)gm.Le_scale;
+                for (const std::vector<double>* ch : {&gm.Le_r, &gm.Le_g, &gm.Le_b})
+                    for (double v : *ch) rgbGridData.push_back((float)v);
+            } else {
+                grid.leDataOffset = -1;
+            }
             float maxT = 0.0f;
             for (int c = 0; c < 3; ++c) maxT = std::max(maxT, maxS[c] + maxA[c]);
             grid.sigmaMaj = maxT * invScale * 1.01f;
