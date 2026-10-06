@@ -32,6 +32,25 @@ overlaps the Metal render of another; ~98 s single-process, identical verdicts).
 A strict sweep fails if it skipped every scene (e.g. run from a directory where the scene files do not resolve), so
 run it from the build directory or through `ctest`.
 
+**Golden snapshot (catches what the CPU comparison cannot).** The CPU-vs-Metal tolerance (30% whole image, 50% per block) only
+finds gross errors, and it cannot see a regression that CPU and Metal share. Measured by injecting bugs into the shaders: a
++15% bias on all diffuse direct lighting and removing the Russian-roulette compensation both PASSED it; +35% and a 40% Fresnel
+error only just failed. Metal is deterministic and low-noise (a different seed moves a scene's channel means by <= 2.2% and its
+4x4 block means by <= 11%, over 95 scenes x 3 seeds), so the sweep also compares every scene's Metal image with a committed
+snapshot of Metal's own earlier output, `gpu/metal/parity_golden.txt` (R/G/B means + 4x4 block means, averaged over 3 seeds):
+channel means may move by 6%, blocks (above a small brightness floor) by 20%. With the snapshot: **0** drifts on two unseen
+seeds, and the same bugs are caught: +15% diffuse -> 40 scenes flagged, +8% -> 16, no RR compensation -> 2. Under
+`METAL_PARITY_STRICT=1` (ctest) a drift fails the test.
+
+* A drift you did not intend is a **bug** - find it. If the picture was MEANT to change (a new feature, a deliberate accuracy
+  fix; known-gap scenes improving counts), run `scripts/update_metal_golden.sh` (~3.5 min) and review `git diff` of the snapshot:
+  every scene whose numbers moved should be one you meant to change. Commit it with the change.
+* A different Mac GPU family (M1/M3/M4) should stay inside the tolerance (it only changes float rounding, like a seed change);
+  if it does not, that is worth knowing, but re-snapshot only after understanding why.
+* `METAL_PARITY_GOLDEN=<file>` uses another snapshot, `METAL_PARITY_GOLDEN=off` disables the check, `METAL_PARITY_DUMP=<file>`
+  appends the current numbers to a file. CI cannot run it (the GitHub macOS runner has no hardware ray tracing), so it protects
+  a developer Mac, like the rest of the sweep.
+
 Latest full run (Models included): 119 scenes, **104 pass, 6 marginal, 9 known gaps, 0 failed**.
 The standard 95-scene sweep (what CI/ctest runs): ~81 pass, ~5 marginal, 9 known gaps. All 24 Models
 scenes with assets present match CPU (23 pass, 1 marginal). CI skips the test, non-fatally, on a runner

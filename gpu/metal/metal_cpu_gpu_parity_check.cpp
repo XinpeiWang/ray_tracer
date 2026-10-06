@@ -113,6 +113,7 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <map>
 #include <mach-o/dyld.h>
 #include <spawn.h>
 #include <sys/wait.h>
@@ -215,6 +216,27 @@ struct MPRegionalDiffResult {
 // same algorithm (per-block average-brightness relative difference over a
 // gridSize x gridSize grid, skipping blocks too dark on both sides to be
 // meaningfully comparable), ported rather than shared for the same reason
+// Mean of the RGB values in each cell of a grid x grid partition (row-major), for the golden snapshot.
+std::vector<float> mp_block_means(const MPImage& img, int grid) {
+	std::vector<float> out((size_t)grid * grid, 0.0f);
+	if (!img.valid || img.width <= 0 || img.height <= 0) return out;
+	for (int by = 0; by < grid; ++by) {
+		const int y0 = by * img.height / grid, y1 = (by + 1) * img.height / grid;
+		for (int bx = 0; bx < grid; ++bx) {
+			const int x0 = bx * img.width / grid, x1 = (bx + 1) * img.width / grid;
+			double sum = 0.0; long n = 0;
+			for (int y = y0; y < y1; ++y)
+				for (int x = x0; x < x1; ++x) {
+					const size_t idx = ((size_t)y * img.width + x) * 3;
+					sum += img.pixels[idx] + img.pixels[idx + 1] + img.pixels[idx + 2];
+					n += 3;
+				}
+			out[(size_t)by * grid + bx] = n ? (float)(sum / n) : 0.0f;
+		}
+	}
+	return out;
+}
+
 // MPImage above is.
 MPRegionalDiffResult mp_regional_diff(const MPImage& a, const MPImage& b,
                                        int gridSize, float minComparable, float threshold) {
@@ -282,6 +304,7 @@ constexpr int kVolumeMetalSpp = 900;
 constexpr float kRelTolerance = 0.30f;
 constexpr float kVolumeRelTolerance = 0.30f;
 constexpr int kRegionalGridSize = 6;
+constexpr int kGoldenGrid = 4;   // block grid of the golden snapshot (per-scene Metal means, see METAL_PARITY_DUMP)
 // A regional miss up to this multiple of the regional tolerance is "marginal" (reported, not a failure) - see the
 // verdict code in main(). Whole-image brightness, per-channel and NaN checks are NOT softened by this.
 constexpr float kRegionalGrossFactor = 1.5f;
@@ -498,6 +521,83 @@ bool spawn_worker(int index, int count, Worker& w) {
 }
 
 } // namespace
+// ---------------------------------------------------------------------------
+// Golden snapshot. The CPU-vs-Metal comparison above can only catch gross errors (30% whole-image, 50% per block:
+// a +15% bias on all diffuse direct lighting passes it, and so does dropping the Russian-roulette compensation), and
+// it cannot see a regression that Metal and CPU share. Metal itself is deterministic and low-noise (different seeds
+// move a scene's channel means by <= 2.2% and its 4x4 block means by <= 11%, measured over 95 scenes x 3 seeds), so
+// the sweep ALSO compares each scene's Metal image against a committed snapshot of Metal's own earlier output
+// (gpu/metal/parity_golden.txt: per scene the R/G/B means and the 4x4 block means, averaged over 3 seeds):
+// channel means may move by kGoldenChannelTol (6%), blocks above kGoldenBlockFloor by kGoldenBlockTol (20%).
+// A drift is an UNINTENDED change unless you meant to change the picture; if you did, re-snapshot with
+// scripts/update_metal_golden.sh and review the diff. METAL_PARITY_GOLDEN=<file> overrides the path, =off disables.
+// ---------------------------------------------------------------------------
+constexpr float kGoldenChannelTol = 0.06f;
+constexpr float kGoldenBlockTol = 0.20f;
+constexpr float kGoldenBlockFloor = 0.02f;
+
+std::map<std::string, std::vector<float>> load_golden(bool& enabled) {
+	std::map<std::string, std::vector<float>> golden;
+	enabled = false;
+	const char* env = std::getenv("METAL_PARITY_GOLDEN");
+	if (env && std::strcmp(env, "off") == 0) return golden;
+#ifdef RT_PARITY_GOLDEN_PATH
+	const std::string path = env ? env : RT_PARITY_GOLDEN_PATH;
+#else
+	if (!env) return golden;
+	const std::string path = env;
+#endif
+	FILE* gf = std::fopen(path.c_str(), "r");
+	if (!gf) {
+		fprintf(stderr, "[mcparity] golden snapshot %s not found - Metal-vs-previous-Metal check skipped\n", path.c_str());
+		return golden;
+	}
+	char line[4096];
+	while (std::fgets(line, sizeof(line), gf)) {
+		char id[64];
+		int off = 0;
+		if (std::sscanf(line, "%63s%n", id, &off) != 1) continue;
+		std::vector<float> v;
+		const char* p = line + off;
+		float x; int used = 0;
+		while (std::sscanf(p, "%f%n", &x, &used) == 1) { v.push_back(x); p += used; }
+		if (v.size() == 3 + (size_t)kGoldenGrid * kGoldenGrid) golden[id] = v;
+	}
+	std::fclose(gf);
+	enabled = !golden.empty();
+	return golden;
+}
+
+// Returns a description of the drift of `metalImg` from the golden entry, or "" if it is within tolerance.
+std::string golden_drift(const std::vector<float>& g, const MPRGBAverage& c, const MPImage& metalImg) {
+	char buf[256];
+	const float cur[3] = {c.r, c.g, c.b};
+	const char* names[3] = {"R", "G", "B"};
+	for (int k = 0; k < 3; ++k) {
+		const float mx = std::max(g[k], cur[k]);
+		if (mx < kMinComparableValue) continue;
+		const float rel = std::abs(g[k] - cur[k]) / mx;
+		if (rel > kGoldenChannelTol) {
+			std::snprintf(buf, sizeof(buf), "%s channel mean %.4f vs golden %.4f (%.1f%%, tol %.0f%%)", names[k], cur[k], g[k],
+			              rel * 100.0f, kGoldenChannelTol * 100.0f);
+			return buf;
+		}
+	}
+	const std::vector<float> blocks = mp_block_means(metalImg, kGoldenGrid);
+	for (size_t b = 0; b < blocks.size(); ++b) {
+		const float gv = g[3 + b], cv = blocks[b];
+		const float mx = std::max(gv, cv);
+		if (mx < kGoldenBlockFloor) continue;
+		const float rel = std::abs(gv - cv) / mx;
+		if (rel > kGoldenBlockTol) {
+			std::snprintf(buf, sizeof(buf), "block (%d,%d) mean %.4f vs golden %.4f (%.1f%%, tol %.0f%%)", int(b % kGoldenGrid),
+			              int(b / kGoldenGrid), cv, gv, rel * 100.0f, kGoldenBlockTol * 100.0f);
+			return buf;
+		}
+	}
+	return "";
+}
+
 
 int run_sweep() {
 	MetalDiagnostics diag{};
@@ -512,6 +612,9 @@ int run_sweep() {
 	fprintf(stderr, "[mcparity] %zu scene(s) selected (Materials/Volumes/Textures/Lights/"
 	                "Cameras/Geometry/Basics, Metal-supported, no external files)\n", scenes.size());
 
+	bool goldenOn = false;
+	const std::map<std::string, std::vector<float>> golden = load_golden(goldenOn);
+	int goldenDrifts = 0, goldenMissing = 0;
 	int failures = 0;
 	int knownGaps = 0;
 	int marginals = 0;
@@ -559,6 +662,26 @@ int run_sweep() {
 
 		const MPRGBAverage cpuC = mp_avg_channels(cpuImg);
 		const MPRGBAverage metalC = mp_avg_channels(metalImg);
+		if (const char* dump = std::getenv("METAL_PARITY_DUMP")) {   // "id r g b" of the Metal image, for the golden snapshot
+			if (FILE* df = std::fopen(dump, "a")) {
+				std::fprintf(df, "%s %.6f %.6f %.6f", s.id.c_str(), metalC.r, metalC.g, metalC.b);
+				for (float v : mp_block_means(metalImg, kGoldenGrid)) std::fprintf(df, " %.6f", v);
+				std::fprintf(df, "\n");
+				std::fclose(df);
+			}
+		}
+		if (goldenOn) {
+			const auto it = golden.find(s.id);
+			if (it == golden.end()) {
+				++goldenMissing;
+			} else {
+				const std::string drift = golden_drift(it->second, metalC, metalImg);
+				if (!drift.empty()) {
+					++goldenDrifts;
+					fprintf(stderr, "[mcparity] %-6s GOLDEN DRIFT  %s\n", s.id.c_str(), drift.c_str());
+				}
+			}
+		}
 		const char* chanNames[3] = {"R", "G", "B"};
 		const float cpuCh[3] = {cpuC.r, cpuC.g, cpuC.b};
 		const float metalCh[3] = {metalC.r, metalC.g, metalC.b};
@@ -618,6 +741,15 @@ int run_sweep() {
 	// against it - they're documented, expected, not a regression to
 	// catch - only `failures`, the un-triaged bucket, does).
 	const bool strict = std::getenv("METAL_PARITY_STRICT") != nullptr;
+	if (goldenOn) {
+		fprintf(stderr, "[mcparity] golden snapshot: %d scene(s) drifted beyond tolerance, %d without a golden entry\n", goldenDrifts,
+		        goldenMissing);
+	}
+	if (strict && goldenDrifts > 0) {
+		fprintf(stderr, "FAIL: %d scene(s) drifted from the committed Metal snapshot (METAL_PARITY_STRICT=1) - if the picture was "
+		                "meant to change, re-snapshot with scripts/update_metal_golden.sh and review the diff\n", goldenDrifts);
+		return 1;
+	}
 	// A sweep that compared NOTHING must not pass: every scene skipped (e.g. the scene files could not be found from
 	// the working directory, as when run outside the build tree) used to report "PASS (strict)". A shard that was
 	// handed no scenes at all is fine (few scenes selected); only "had scenes, skipped every one" is an error.

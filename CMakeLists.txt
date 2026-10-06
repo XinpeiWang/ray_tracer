@@ -636,6 +636,9 @@ if(RT_BUILD_METAL)
     # be scanned first there also wins outright, which is why this ordering
     # sensitivity never surfaced until this target added a direct caller.
     target_link_libraries(metal_cpu_gpu_parity_check PRIVATE metal_renderer cpu_renderer)
+    # The committed Metal snapshot the sweep also checks against (see "Golden snapshot" in the harness).
+    target_compile_definitions(metal_cpu_gpu_parity_check PRIVATE
+        RT_PARITY_GOLDEN_PATH="${CMAKE_SOURCE_DIR}/gpu/metal/parity_golden.txt")
     # A real gate: METAL_PARITY_STRICT=1 (set below) makes the sweep exit non-zero - which fails
     # ctest on its own, PASS_REGULAR_EXPRESSION only gates the exit-0 case - when a scene that is
     # NOT a documented known gap exceeds tolerance. The sweep is reproducible (fixed RNG seed for
