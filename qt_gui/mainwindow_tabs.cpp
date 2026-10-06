@@ -743,9 +743,15 @@ void MainWindow::createSettingsTab() {
 	// see its own comment (mainwindow.h) for why nothing here gets disabled
 	// instead. Visible only in Live Preview mode; toggled by onModeChanged().
 	m_liveModeWarningLabel = makeModeWarningBanner(basicTab,
+#ifdef Q_OS_MAC
+		tr("⚠ Live Preview renders a small, fast preview on the GPU and writes no output file - Resolution only sets its "
+		"aspect ratio (so the starting view matches the image render); Samples per Pixel, Max Ray Depth, and Output "
+		"Path don't apply. Scene and Camera Position do."));
+#else
 		tr("⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no "
 		"output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path "
 		"don't apply. Scene and Camera Position do."));
+#endif
 	renderLayout->addRow(QString(), m_liveModeWarningLabel);
 #endif
 
