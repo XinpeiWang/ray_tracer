@@ -207,6 +207,8 @@ struct Uniforms {
     float fireflyClamp = 0.0f;
     uint32_t debugCensus = 0;   // see metal_poc_types.metal
     uint32_t pathRegen = 1;     // see metal_poc_types.metal
+    uint32_t fogChromatic = 0;  // see metal_poc_types.metal
+    PackedFloat3 fogSigmaT3{0, 0, 0};
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single

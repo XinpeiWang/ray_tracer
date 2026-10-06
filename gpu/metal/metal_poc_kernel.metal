@@ -187,6 +187,7 @@ kernel void primaryRayKernel(
     float glassG = 0.0;
     float3 glassAlbedo = float3(1.0);
     int glassChan = -1;   // hero colour channel for a chromatic glass medium, else -1
+    int fogChan = -1;     // hero colour channel for a chromatic camera medium, else -1
     uint rgbChannel = kRgbChannelUnset;
     uint cen0 = 0u, cen1 = 0u, cenN = 0u;
     bool cenRec = false;
@@ -374,6 +375,13 @@ kernel void primaryRayKernel(
         }
 
         throughput = float3(cameraWeight);
+        // Chromatic camera medium: follow one colour channel for this whole path (chosen uniformly, weight x3 on it);
+        // averaged over paths every channel is recovered, and free flight / shadow rays can use that channel's sigma_t.
+        fogChan = -1;
+        if (uniforms.fogChromatic != 0u && uniforms.fogSigmaT > 0.0) {
+            fogChan = min(int(randFloat(rngState) * 3.0), 2);
+            throughput *= float3(fogChan == 0 ? 3.0 : 0.0, fogChan == 1 ? 3.0 : 0.0, fogChan == 2 ? 3.0 : 0.0);
+        }
         radiance = float3(0.0);
         // MIS bookkeeping across bounces: the light quad can be reached
         // two ways - explicit light sampling below (NEE), or landing on
@@ -510,7 +518,7 @@ kernel void primaryRayKernel(
                 TriangleMaterial mediumMat = sphereMaterials[mediumPrimId];
                 if (mediumMat.materialType == 28u) {
                     shadeHomogeneousMediumSphere(mediumMat, mediumPrimId, result.distance,
-                        spheres, shutterT, lights, uniforms, pbrtAreaLightTexture, textureSampler,
+                        spheres, shutterT, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
                         isect, accelStructure, functionTable, shadowSpherePayload,
                         rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                         scatteredInMedium, passedThroughMediumSphere);
@@ -579,13 +587,14 @@ kernel void primaryRayKernel(
             // instead of being skipped - without this the sky region of a foggy scene
             // (E10) rendered black instead of haze-lit.
             if (!scatteredInMedium && !passedThroughMediumSphere && (inGlass || uniforms.fogSigmaT > 0.0)) {
-                const float curSigmaT = inGlass ? (glassChan >= 0 ? glassSigmaT3[glassChan] : glassSigmaT3.x) : uniforms.fogSigmaT;
+                const float fogSigmaTHere = (fogChan >= 0) ? float3(uniforms.fogSigmaT3)[fogChan] : uniforms.fogSigmaT;
+                const float curSigmaT = inGlass ? (glassChan >= 0 ? glassSigmaT3[glassChan] : glassSigmaT3.x) : fogSigmaTHere;
                 const float curG = inGlass ? glassG : uniforms.fogAsymmetryG;
                 const float3 curAlbedo = inGlass ? glassAlbedo : float3(uniforms.fogAlbedo);
                 // Transmittance along shadow rays: a glass sphere's own medium is attenuated stochastically in
                 // sphereIntersectionFunction, so only the camera fog is applied analytically here.
-                const float shadowSigmaT = inGlass ? 0.0f : uniforms.fogSigmaT;
-                shadowSpherePayload.shadowChannel = inGlass ? glassChan : -1;
+                const float shadowSigmaT = inGlass ? 0.0f : fogSigmaTHere;
+                shadowSpherePayload.shadowChannel = inGlass ? glassChan : fogChan;
                 float surfaceDist = (result.type == intersection_type::none) ? INFINITY : result.distance;
                 float u = randFloat(rngState);
                 float t = sampleFreePathDistance(u, curSigmaT);
@@ -1485,7 +1494,9 @@ kernel void primaryRayKernel(
                             // uniformly, weight x3 on it) so free flight and shadow attenuation can use that
                             // channel's sigma_t; averaged over paths every channel is recovered. A grey medium
                             // needs no such colour noise.
-                            if (mat.conductorK.z > 0.5) {
+                            if (fogChan >= 0) {
+                                glassChan = fogChan;   // the camera medium already fixed this path's colour channel
+                            } else if (mat.conductorK.z > 0.5) {
                                 glassChan = min(int(randFloat(rngState) * 3.0), 2);
                                 float3 chanMask = float3(glassChan == 0 ? 3.0 : 0.0, glassChan == 1 ? 3.0 : 0.0, glassChan == 2 ? 3.0 : 0.0);
                                 throughput *= chanMask;

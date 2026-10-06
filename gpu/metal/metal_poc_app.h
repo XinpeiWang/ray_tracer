@@ -243,6 +243,8 @@ struct MetalPocApp {
     std::unordered_map<int, PackedFloat3> pbrtTriangleFiberTangent;
     bool havePbrtMedium = false;
     float pbrtFogSigmaT = 0.0f;
+    float3 pbrtFogSigmaT3{0, 0, 0};   // per-channel extinction (chromatic camera medium); pbrtFogSigmaT is its mean
+    bool pbrtFogChromatic = false;
     float3 pbrtFogAlbedo{1, 1, 1};
     float pbrtFogAsymmetryG = 0.0f;
 
