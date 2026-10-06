@@ -528,7 +528,10 @@ inline bool shadeHair(TriangleMaterial mat, float3 hitPoint, float3 facingNormal
     if (!res.valid) return false;
 
     rayDir = float3(res.wo_x, res.wo_y, res.wo_z);
-    rayOrigin = hitPoint + facingNormal * 0.001f;
+    // Offset toward the side the sampled direction leaves on: a hair fibre scatters light through to the far side too (the TT and
+    // TRT lobes), and starting such a ray on the incoming side re-hit the same surface straight away - for a closed hair sphere a
+    // second, spurious scattering event at the same point.
+    rayOrigin = hitPoint + (dot(rayDir, facingNormal) >= 0.0 ? facingNormal : -facingNormal) * 0.001f;
     throughput *= float3(res.r, res.g, res.b);
     specularBounce = true;
     return true;

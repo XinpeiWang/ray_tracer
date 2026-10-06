@@ -396,7 +396,8 @@ bool is_extra_regression_scene(const std::string& id) {
 	if (!p || !p[0]) return false;
 	static const char* const kNames[] = {"chromatic-absorber.pbrt", "chromatic-camera-medium-absorber.pbrt", "chromatic-camera-medium.pbrt",
 	                                      "chromatic-rgbgrid-absorber.pbrt", "chromatic-rgbgrid-furnace.pbrt", "fog-point-light.pbrt",
-	                                      "cornell-spotlight.pbrt", "bump-mapped-plane.pbrt", "maxcomponentvalue-firefly-clamp.pbrt", "rough-glass-from-inside.pbrt"};
+	                                      "cornell-spotlight.pbrt", "bump-mapped-plane.pbrt", "maxcomponentvalue-firefly-clamp.pbrt", "rough-glass-from-inside.pbrt",
+	                                      "hair-sphere-dim-sky.pbrt"};
 	const std::string path(p);
 	for (const char* n : kNames) {
 		const std::string name(n);
