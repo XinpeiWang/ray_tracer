@@ -1,11 +1,17 @@
 // metal_live_preview.mm - see metal_live_preview.h.
 #include "metal_live_preview.h"
 
+#include <dlfcn.h>
+#include <mach-o/dyld.h>
+#include <climits>
 #include <cstdio>
+#include <cstdlib>
+#include <filesystem>
 #include <cstring>
 #include <memory>
 #include <mutex>
 #include <string>
+#include <vector>
 
 #include "metal_poc_app.h"
 #include "../../cpu_renderer/cpu_interface.h"   // cpu_scene_pbrt_path_by_id
@@ -30,6 +36,39 @@ bool fail(const std::string& msg) {
     return false;
 }
 
+// The registry hands back scene files as relative paths ("pbrt_scenes/x.pbrt"), which only resolve when the current directory
+// is the app's own. A GUI process launched from Finder has cwd "/" (Live Preview runs IN the GUI process, unlike a render job,
+// whose subprocess the GUI starts with the right working directory), so look in the places the files actually live: the
+// current directory, the host executable's directory (Contents/MacOS in the app bundle), this library's directory, and their
+// parents (a development build keeps pbrt_scenes at the repository root, one level above build_macos/).
+std::string resolveSceneFile(const std::string& rel, std::string& tried) {
+    namespace fs = std::filesystem;
+    if (fs::path(rel).is_absolute()) return rel;
+    std::vector<fs::path> dirs;
+    dirs.push_back(fs::current_path());
+    char buf[PATH_MAX];
+    uint32_t size = sizeof(buf);
+    if (_NSGetExecutablePath(buf, &size) == 0) {
+        char real[PATH_MAX];
+        const fs::path exeDir = fs::path(realpath(buf, real) ? real : buf).parent_path();
+        dirs.push_back(exeDir);
+        dirs.push_back(exeDir.parent_path());
+    }
+    Dl_info info;
+    if (dladdr(reinterpret_cast<const void*>(&resolveSceneFile), &info) && info.dli_fname) {
+        const fs::path libDir = fs::path(info.dli_fname).parent_path();
+        dirs.push_back(libDir);
+        dirs.push_back(libDir.parent_path());
+    }
+    std::error_code ec;
+    for (const fs::path& d : dirs) {
+        const fs::path candidate = d / rel;
+        tried += (tried.empty() ? "" : ", ") + d.string();
+        if (fs::exists(candidate, ec)) return candidate.string();
+    }
+    return rel;   // not found: the loader reports it
+}
+
 std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int height, int spp, int maxDepth) {
     const char* pbrtPath = cpu_scene_pbrt_path_by_id(sceneId);
     if (!pbrtPath || !pbrtPath[0]) {
@@ -44,7 +83,12 @@ std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int h
     s->heightStr = std::to_string(height);
     s->sppStr = std::to_string(spp);
     s->depthStr = std::to_string(maxDepth);
-    s->pbrtPath = pbrtPath;
+    std::string tried;
+    s->pbrtPath = resolveSceneFile(pbrtPath, tried);
+    if (!std::filesystem::exists(s->pbrtPath)) {
+        fail(std::string("cannot find the scene file ") + pbrtPath + " (looked in: " + tried + ")");
+        return nullptr;
+    }
     static const char* kOutPath = "live_preview.png";   // never written: a live session renders into memory only
     const char* args[8] = {"metal_live_preview", s->widthStr.c_str(), s->heightStr.c_str(), kOutPath,
                             s->sppStr.c_str(), s->depthStr.c_str(), "none", s->pbrtPath.c_str()};
