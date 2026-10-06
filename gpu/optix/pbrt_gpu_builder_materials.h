@@ -773,41 +773,46 @@ inline MaterialData makeMaterial(const pbrt_flatten::Material &m,
 	case pbrt_flatten::MaterialKind::Conductor:
 		// A recognized named conductor spectrum ("metal-Ag-eta"/"metal-Ag-k"
 		// etc. - see pbrt_flatten.h's conductorElementFromSpectrumName())
-		// gets the real GGX + complex-Fresnel MaterialType::Conductor,
+		// or an explicit "rgb eta"/"rgb k" gets the real GGX +
+		// complex-Fresnel MaterialType::Conductor with that complex IOR,
 		// matching pbrt_cpu_builder.h's identical branch and this codebase's
-		// native B5/B7 scenes. Anything else (explicit RGB k, or an
-		// unrecognized/non-metal named spectrum) keeps the pre-existing
-		// Metal (fuzz-mirror) approximation - a pbrt scene only supplies a
-		// complex IOR as a named spectrum, which is what this case can't
-		// resolve on its own.
+		// native B5/B7 scenes. Everything else - "rgb reflectance", or
+		// nothing given - gets the same Conductor with pbrt-v4's own
+		// conversion (eta = 1, k solved from the reflectance, below), as the
+		// CPU builder now does too (it built the flat-albedo fuzz-mirror
+		// `metal` for this case until the CPU/Metal parity work found it
+		// had no glossy lobe, so a point or spot light made no highlight;
+		// the GPU's MaterialType::Metal fallback had the same defect and
+		// rendered 47% too bright in fuzzed-metal-furnace against the new CPU).
+		d.type = MaterialType::Conductor;
 		if (m.hasConductorPreset) {
-			d.type = MaterialType::Conductor;
 			d.eta_c = make_float3(static_cast<float>(m.conductorEta[0]),
 								   static_cast<float>(m.conductorEta[1]),
 								   static_cast<float>(m.conductorEta[2]));
 			d.k_c = make_float3(static_cast<float>(m.conductorK[0]),
 								 static_cast<float>(m.conductorK[1]),
 								 static_cast<float>(m.conductorK[2]));
-			// Real independent u/v roughness (matches pbrt_cpu_builder.h's
-			// identical Conductor branch) - d.roughness (set generically
-			// from m.roughness above) is overridden to the u-axis value
-			// specifically, since m.roughness and m.roughness_u only
-			// coincide when a scene doesn't set "uroughness"/"roughness"
-			// to different values (see pbrt_flatten.h's own fallback-chain
-			// comment). d.roughnessV is always the real m.roughness_v value,
-			// unconditionally - NOT gated on "does it differ from
-			// roughness_u": m.roughness_v is a real, always-present double
-			// (never an ambiguous "unset" state), and MaterialData::
-			// roughnessV's own sentinel is negative (-1.0f), which no real
-			// roughness value can ever equal - so a scene that authors a
-			// legitimate roughness_v of exactly 0.0 (e.g. only "uroughness"
-			// given) stores a real, unambiguous 0.0f here instead of
-			// colliding with the isotropic sentinel.
-			d.roughness  = static_cast<float>(m.roughness_u);
-			d.roughnessV = static_cast<float>(m.roughness_v);
 		} else {
-			d.type = MaterialType::Metal;
+			d.eta_c = make_float3(1.0f, 1.0f, 1.0f);
+			d.k_c = reflectanceToConductorK(d.albedo);
 		}
+		// Real independent u/v roughness (matches pbrt_cpu_builder.h's
+		// identical Conductor branch) - d.roughness (set generically
+		// from m.roughness above) is overridden to the u-axis value
+		// specifically, since m.roughness and m.roughness_u only
+		// coincide when a scene doesn't set "uroughness"/"roughness"
+		// to different values (see pbrt_flatten.h's own fallback-chain
+		// comment). d.roughnessV is always the real m.roughness_v value,
+		// unconditionally - NOT gated on "does it differ from
+		// roughness_u": m.roughness_v is a real, always-present double
+		// (never an ambiguous "unset" state), and MaterialData::
+		// roughnessV's own sentinel is negative (-1.0f), which no real
+		// roughness value can ever equal - so a scene that authors a
+		// legitimate roughness_v of exactly 0.0 (e.g. only "uroughness"
+		// given) stores a real, unambiguous 0.0f here instead of
+		// colliding with the isotropic sentinel.
+		d.roughness  = static_cast<float>(m.roughness_u);
+		d.roughnessV = static_cast<float>(m.roughness_v);
 		break;
 	// Pass-through "interface" material (pbrt-v4's Material "none"/"" -
 	// see MaterialKind::Interface's own comment). flatten() already forced
