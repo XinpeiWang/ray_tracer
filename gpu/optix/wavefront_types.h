@@ -640,6 +640,9 @@ struct ProbeCacheHitWorkItem {
 // src/shared/volume_scattering.h, which this mirrors with the kWFNWavelengths hero wavelengths standing in for the RGB channels):
 // one wavelength is picked uniformly to sample the free flight, and the balance heuristic over the wavelengths weights the result.
 // ============================================================================
+// MaterialData comes from optix_types.h, which only the OptiX/CUDA branch of the includes above pulls in: without this guard a host-only
+// build of the unit tests (no OptiX SDK - the CI runner, or any macOS/clang build) fails with "unknown type name 'MaterialData'".
+#if defined(__CUDACC__) || defined(OPTIX_RENDERER_AVAILABLE)
 CPU_GPU inline bool wf_medium_is_chromatic(const MaterialData& m) {
 	return (m.chromaSigmaA.x + m.chromaSigmaA.y + m.chromaSigmaA.z + m.chromaSigmaS.x + m.chromaSigmaS.y + m.chromaSigmaS.z) > 0.0f;
 }
@@ -722,6 +725,7 @@ CPU_GPU inline WfChromaEvent wf_chroma_event(const MaterialData& m, const float*
 	for (int i = 0; i < kWFNWavelengths; ++i) ev.w[i] = (pass > 0.0f) ? Tp[i] / pass : 0.0f;
 	return ev;
 }
+#endif  // __CUDACC__ || OPTIX_RENDERER_AVAILABLE (MaterialData helpers)
 
 // ============================================================================
 // Heterogeneous RGB grid media on the spectral backend. A per-voxel RGB coefficient is spread over wavelength with a piecewise-linear
