@@ -17,6 +17,9 @@ set -uo pipefail
 REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP="${1:-$REPO_ROOT/RayTracer_Package/RayTracerGUI.app}"
 OUT="${2:-$(mktemp -d /tmp/gui_selftest.XXXXXX)}"
+[[ -d "$APP" ]] || { echo "ERROR: $APP not found" >&2; exit 2; }
+APP="$(cd "$APP" && pwd)"      # absolute: the app is launched from "/" below
+mkdir -p "$OUT"; OUT="$(cd "$OUT" && pwd)"
 EXE="$APP/Contents/MacOS/RayTracerGUI"
 [[ -x "$EXE" ]] || { echo "ERROR: $EXE not found - build the app first (scripts/build_and_deploy_macos.sh)" >&2; exit 2; }
 command -v qmake >/dev/null || { echo "ERROR: qmake not on PATH (needed to find Qt's offscreen platform plugin)" >&2; exit 2; }
@@ -31,8 +34,10 @@ if [[ "$(file "$EXE" | grep -o 'x86_64\|arm64' | head -1)" == "x86_64" && "$(una
 run_mode() {   # mode, wait-seconds
 	local mode="$1" wait_s="$2" prefix="$OUT/$1"
 	rm -f "$prefix.txt" "$prefix.stdout"
-	( cd "$APP/Contents/MacOS" && HOME="$FAKE_HOME" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORM_PLUGIN_PATH="$PLUGINS" \
-	    RT_GUI_SELFTEST="$mode" RT_GUI_SELFTEST_OUT="$prefix" "${ARCH_PREFIX[@]}" ./RayTracerGUI > "$prefix.stdout" 2>&1 ) &
+	# cwd "/" on purpose: that is where a Finder/Dock launch starts (Live Preview runs inside this process, so it must find its
+	# scene files without help from the working directory - the bug a launch from inside the bundle used to hide).
+	( cd / && HOME="$FAKE_HOME" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORM_PLUGIN_PATH="$PLUGINS" \
+	    RT_GUI_SELFTEST="$mode" RT_GUI_SELFTEST_OUT="$prefix" "${ARCH_PREFIX[@]}" "$EXE" > "$prefix.stdout" 2>&1 ) &
 	local pid=$! waited=0
 	while kill -0 "$pid" 2>/dev/null && (( waited < wait_s )); do sleep 1; waited=$((waited + 1)); done
 	if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; echo "FAIL [$mode]: still running after ${wait_s}s (hung)"; return 1; fi

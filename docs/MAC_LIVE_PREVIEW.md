@@ -29,6 +29,15 @@ the camera and watch the image sharpen. On Windows it is backed by OptiX; on mac
 | G1 (69k-triangle mesh) | 480x480 | 2 | ~26 ms (39 fps) |
 | A1 inside the GUI (400x300 preview) | 400x300 | 1 | ~17 ms (58 fps) |
 
+## Finding the scene files
+
+Live Preview runs inside the GUI process, so unlike a render job (a subprocess the GUI starts with the right working directory) it
+cannot count on the current directory: a Finder/Dock launch starts in `/`. `metal_live_preview.mm` therefore resolves the registry's
+relative scene path against the current directory, the executable's directory (`Contents/MacOS`), the library's directory and their
+parents, and reports where it looked if the file is missing. (v12 shipped without this and showed "the pbrt scene failed to load";
+`scripts/gui_selftest_macos.sh` now launches the app from `/` like Finder does, and `ctest -R metal_realtime_dylib_other_cwd` calls the
+library from a directory without scenes.)
+
 ## Limits
 
 * No reprojection: the library reports "no previous-frame data", so a camera move restarts the accumulation from noise instead of
