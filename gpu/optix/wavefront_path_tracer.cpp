@@ -22,6 +22,7 @@
 #include "../../src/data/cie_data.h"
 #include "rgb_to_spectrum_table.h"
 #include <optix_stack_size.h>
+#include "optix_module_parallel.h"
 #include <cuda.h>
 #include <algorithm>
 #include <fstream>
@@ -257,7 +258,7 @@ bool WavefrontPathTracer::loadModule() {
 	char   log[4096];
 	size_t logSize = sizeof(log);
 
-	OPTIX_CHECK(optixModuleCreate(
+	OPTIX_CHECK(optixModuleCreateParallel(
 		context_,
 		&moduleCompileOptions,
 		&pipelineCompileOptions_,

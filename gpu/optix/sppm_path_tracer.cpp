@@ -10,6 +10,7 @@
 #endif
 
 #include "sppm_path_tracer.h"
+#include "optix_module_parallel.h"
 #include <algorithm>
 #include <fstream>
 #include <iostream>
@@ -100,7 +101,7 @@ bool SPPMPathTracer::loadModule() {
 	char   log[4096];
 	size_t logSize = sizeof(log);
 
-	OPTIX_CHECK(optixModuleCreate(
+	OPTIX_CHECK(optixModuleCreateParallel(
 		context_,
 		&moduleCompileOptions,
 		&pipelineCompileOptions_,

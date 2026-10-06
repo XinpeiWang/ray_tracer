@@ -89,7 +89,7 @@
       <CudaSharedInclude>-I"$(MSBuildProjectDirectory)\..\src\shared"</CudaSharedInclude>
       <CudaCrt Condition="'$(Configuration)'=='Debug'">-Xcompiler /MDd</CudaCrt>
       <CudaCrt Condition="'$(Configuration)'=='Release'">-Xcompiler /MD</CudaCrt>
-      <CudaPtxFlags>--ptx -O3 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</CudaPtxFlags>
+      <CudaPtxFlags>--ptx -O3 --split-compile 0 --use_fast_math --relocatable-device-code=true -arch=sm_86 --std=c++17</CudaPtxFlags>
       <CudaObjFlags>-c -O3 --use_fast_math --relocatable-device-code=true $(CudaObjArchFlags) --std=c++17 $(CudaCrt) -t0</CudaObjFlags>
       <CudaPtxJobFlags>$(CudaPtxFlags) $(CudaIncludes)</CudaPtxJobFlags>
       <CudaPtxSharedJobFlags>$(CudaPtxFlags) $(CudaIncludes) $(CudaSharedInclude)</CudaPtxSharedJobFlags>
