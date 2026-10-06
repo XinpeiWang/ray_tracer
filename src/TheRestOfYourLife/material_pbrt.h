@@ -1527,6 +1527,42 @@ class subsurface : public material {
 
 
 // ---------------------------------------------------------------------------
+// measured_bsdf_pdf -- the sampling density of a measured BRDF (luminance warp, then VNDF warp), for direct-light sampling with MIS.
+// generate() draws a direction with MeasuredBxDF::sample_f; value() is MeasuredBxDF::pdf() (pbrt-v4 MeasuredBxDF::PDF) for any queried
+// direction, e.g. a shadow ray toward a light. A rejected sample (the reflection landed below the horizon) yields a direction under the
+// surface, whose value() is 0, so the integrator ends the path there, as pbrt does when Sample_f returns nothing.
+// ---------------------------------------------------------------------------
+class measured_bsdf_pdf : public pdf {
+  public:
+    measured_bsdf_pdf(const MeasuredBRDFData* data, const ShadingFrame<double>& frame, double wo_x, double wo_y, double wo_z)
+        : bxdf_(data, 612.0, 549.0, 465.0), frame_(frame), wo_x_(wo_x), wo_y_(wo_y), wo_z_(wo_z) {}
+
+    double value(const vec3& direction) const override {
+        const vec3 d = unit_vector(direction);
+        double lx, ly, lz;
+        frame_.to_local(d.x(), d.y(), d.z(), lx, ly, lz);
+        return bxdf_.pdf(wo_x_, wo_y_, wo_z_, lx, ly, lz);
+    }
+
+    vec3 generate() const override {
+        double wi_x, wi_y, wi_z, fr, fg, fb, sampled_pdf;
+        double wx, wy, wz;
+        if (bxdf_.sample_f(wo_x_, wo_y_, wo_z_, static_cast<float>(random_double()), static_cast<float>(random_double()),
+                           wi_x, wi_y, wi_z, fr, fg, fb, sampled_pdf)) {
+            frame_.to_world(wi_x, wi_y, wi_z, wx, wy, wz);
+        } else {
+            frame_.to_world(0.0, 0.0, wo_z_ >= 0.0 ? -1.0 : 1.0, wx, wy, wz);   // under the surface: value() is 0 there
+        }
+        return unit_vector(vec3(wx, wy, wz));
+    }
+
+  private:
+    MeasuredBxDF<double> bxdf_;
+    ShadingFrame<double> frame_;
+    double wo_x_, wo_y_, wo_z_;
+};
+
+// ---------------------------------------------------------------------------
 // measured -- pbrt-v4 MeasuredMaterial (real gonioreflectometer-measured BRDF,
 // e.g. automotive paint scans from the RGL/Dupuy&Jakob "A Practical Guide to
 // Fitting BRDFs" .bsdf format)
@@ -1590,52 +1626,79 @@ class measured : public material {
         if (!data_) return false;
 
         auto ctx = MaterialContext<double>::from_hit(rec, r_in);
-        BxDF bxdf(data_.get(), kLambdaR, kLambdaG, kLambdaB);
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
 
         double wo_x, wo_y, wo_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wo_x, wo_y, wo_z);
 
-        double wi_x, wi_y, wi_z, fr, fg, fb, sampled_pdf;
-        const bool ok = bxdf.sample_f(wo_x, wo_y, wo_z,
-                                      static_cast<float>(random_double()),
-                                      static_cast<float>(random_double()),
-                                      wi_x, wi_y, wi_z, fr, fg, fb, sampled_pdf);
-        if (!ok) return false;
-
-        double wd_x, wd_y, wd_z;
-        frame.to_world(wi_x, wi_y, wi_z, wd_x, wd_y, wd_z);
-        // pbrt-v4 PathIntegrator: beta *= bs->f * AbsDot(wi, n) / bs->pdf. This used to be the bare f (sampled_pdf was computed and dropped), which
-        // made a measured sphere in a white furnace read 7.8/8.1/3.5 (a blue table), 12 (a metallic one) or 0.34 (white paper) instead of
-        // 0.1/0.2/0.4, 0.72 and 1.0 - on the CPU and both OptiX backends alike (see pbrt_scenes/measured-furnace.pbrt).
-        srec.attenuation  = color(fr, fg, fb) * (std::fabs(wi_z) / sampled_pdf);
-        srec.pdf_ptr      = nullptr;
-        srec.skip_pdf     = true;
-        srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
+        // A real, non-delta BSDF: the integrator samples the direction from srec.pdf_ptr, takes direct-light samples with MIS, and weights both
+        // with f * |cos| / pdf. f is RGB but the integrator's f*cos slot (scattering_pdf) is a scalar, so f is split into its largest channel
+        // (scattering_pdf, times |cos|) and the channel ratios (scattering_attenuation, each in [0, 1]); their product is exactly f * |cos|.
+        // (Until 2026-10 this was a specular-style bounce - sample once, no light sampling - which is unbiased but very noisy under a small light.)
+        srec.attenuation = color(1.0, 1.0, 1.0);
+        srec.pdf_ptr     = make_shared<measured_bsdf_pdf>(data_.get(), frame, wo_x, wo_y, wo_z);
+        srec.skip_pdf    = false;
         return true;
     }
 
+    // The scalar half of f * |cos(wi)|: the largest of f's three channels, times |cos|. 0 when f is 0 in every channel (wrong hemisphere,
+    // or a direction the table gives no reflectance), which makes the integrator skip that light sample / end the path.
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
-        if (!data_) return 0.0;
+        double fr, fg, fb, wi_z;
+        if (!eval_f(r_in, rec, scattered, fr, fg, fb, wi_z)) return 0.0;
+        return std::max(fr, std::max(fg, fb)) * std::fabs(wi_z);
+    }
 
+    // The colour half: f's channel ratios, so scattering_attenuation * scattering_pdf == f * |cos| exactly while the colour stays in [0, 1].
+    color scattering_attenuation(const ray& r_in, const hit_record& rec, const ray& scattered,
+                                 const color& srec_attenuation) const override {
+        double fr, fg, fb, wi_z;
+        if (!eval_f(r_in, rec, scattered, fr, fg, fb, wi_z)) return color(0.0, 0.0, 0.0);
+        const double m = std::max(fr, std::max(fg, fb));
+        return color(fr / m, fg / m, fb / m);
+    }
+
+    // The plain BRDF value f(wo, wi) in RGB (no cosine) and the density sample_f draws wi with, for BDPT/MLT/SPPM: bsdf_bridge.h builds its
+    // f and pdf from these directly, since its generic path (scatter()'s colour times scattering_pdf()/cos, and a cosine pdf) assumes a
+    // direction-independent colour and a cosine-shaped density, neither of which holds here.
+    bool bsdf_f_rgb(const ray& r_in, const hit_record& rec, const ray& scattered, double& fr, double& fg, double& fb) const {
+        double wi_z;
+        return eval_f(r_in, rec, scattered, fr, fg, fb, wi_z);
+    }
+
+    double sampling_pdf(const ray& r_in, const hit_record& rec, const ray& scattered) const {
+        if (!data_) return 0.0;
         auto ctx = MaterialContext<double>::from_hit(rec, r_in);
         BxDF bxdf(data_.get(), kLambdaR, kLambdaG, kLambdaB);
         auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
-
         double wo_x, wo_y, wo_z;
         frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wo_x, wo_y, wo_z);
-
-        vec3 out_dir = unit_vector(scattered.direction());
+        const vec3 dir = unit_vector(scattered.direction());
         double wi_x, wi_y, wi_z;
-        frame.to_local(out_dir.x(), out_dir.y(), out_dir.z(), wi_x, wi_y, wi_z);
-
+        frame.to_local(dir.x(), dir.y(), dir.z(), wi_x, wi_y, wi_z);
         return bxdf.pdf(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z);
     }
 
     const MeasuredBRDFData* get_data() const { return data_.get(); }
 
   private:
+    // f(wo, wi) in RGB for the queried direction; false when it is 0 in every channel.
+    bool eval_f(const ray& r_in, const hit_record& rec, const ray& scattered, double& fr, double& fg, double& fb, double& wi_z) const {
+        fr = fg = fb = 0.0;
+        if (!data_) return false;
+        auto ctx = MaterialContext<double>::from_hit(rec, r_in);
+        BxDF bxdf(data_.get(), kLambdaR, kLambdaG, kLambdaB);
+        auto frame = ShadingFrame<double>::from_normal(ctx.nx, ctx.ny, ctx.nz);
+        double wo_x, wo_y, wo_z;
+        frame.to_local(ctx.wo_x, ctx.wo_y, ctx.wo_z, wo_x, wo_y, wo_z);
+        const vec3 dir = unit_vector(scattered.direction());
+        double wi_x, wi_y;
+        frame.to_local(dir.x(), dir.y(), dir.z(), wi_x, wi_y, wi_z);
+        bxdf.f(wo_x, wo_y, wo_z, wi_x, wi_y, wi_z, fr, fg, fb);
+        return std::max(fr, std::max(fg, fb)) > 0.0;
+    }
+
     // sRGB-primary approximations - see this class's own comment above.
     static constexpr double kLambdaR = 612.0;
     static constexpr double kLambdaG = 549.0;

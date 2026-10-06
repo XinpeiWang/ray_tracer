@@ -292,7 +292,7 @@ __device__ __forceinline__ bool sample_principled_material(
 // Device-side real tabulated-measured-BRDF evaluation (MaterialType::
 // Measured, both GPU backends - this is the recursive backend's copy) -
 // needs `params` (declared above) for the flat table arrays and
-// random_float() (defined above) for sample_measured_material()'s own
+// random_float() (defined above) for the Measured case's own
 // per-sample randoms, so this include must stay below both.
 #include "optix_measured_bxdf.h"
 
@@ -1473,26 +1473,90 @@ __device__ __forceinline__ void shade_material(
 		}
 
 		case MaterialType::Measured: {
-			// Real tabulated measured-BRDF (pbrt-v4 Material "measured") -
-			// a single VNDF-importance-sampled BxDF sample per hit, same
-			// *shape* as Metal above (sample once, get a direction + full
-			// throughput weight, continue as a non-NEE specular-style
-			// bounce) - see sample_measured_material() (optix_measured_
-			// bxdf.h) and MaterialType::Measured's own comment in
-			// optix_types.h. Falls back to absorption (scattered=false,
-			// matching CPU's `if (!ok) return false;`) on any of
-			// sample_f()'s own rejection paths (grazing wo, zero pdf, a
-			// reflected half-vector below the horizon) or an invalid table
-			// index.
-			float3 sdir, atten;
-			if (sample_measured_material(ray_dir, normal, mat, seed, sdir, atten)) {
-				scattered_dir = sdir;
-				attenuation   = atten;
-				scattered     = true;
+			// Real tabulated measured BRDF (pbrt-v4 Material "measured"): one VNDF-importance-sampled BxDF sample continues the path with
+			// the weight f * |cos| / pdf, and, like the glossy Conductor below, the vertex also takes direct-light samples (area, punctual,
+			// sky) with MIS against that sampling density, using the BxDF's own f() and pdf() (gpu_measured_f_pdf). It used to be a
+			// specular-style bounce with no light sampling, which is unbiased but very noisy under a small light, and which never lit the
+			// material from a point/spot/distant light at all (a delta light cannot be hit by BSDF sampling).
+			if (mat.textureIdx < 0 || (unsigned int)mat.textureIdx >= params.numMeasuredTables) { scattered = false; break; }
+			const GpuMeasuredTable& m_tab = params.measuredTables[mat.textureIdx];
+			ShadingFrame<float> m_frame = ShadingFrame<float>::from_normal(normal.x, normal.y, normal.z);
+			const float3 m_wo_world = normalize(-ray_dir);
+			float m_wox, m_woy, m_woz;
+			m_frame.to_local(m_wo_world.x, m_wo_world.y, m_wo_world.z, m_wox, m_woy, m_woz);
+			// sRGB-primary approximations - the same fixed query wavelengths as material_pbrt.h's `measured` (kLambdaR/G/B)
+			const float m_lambda[3] = { 612.0f, 549.0f, 465.0f };
+
+			float m_wix, m_wiy, m_wiz, m_wr, m_wg, m_wb, m_spdf;
+			const bool m_ok = gpu_measured_sample_f(m_tab, m_tab.isotropic != 0,
+				params.measuredParamValues, params.measuredData, params.measuredMcdf, params.measuredCcdf,
+				m_wox, m_woy, m_woz, random_float(seed), random_float(seed), m_lambda,
+				m_wix, m_wiy, m_wiz, m_wr, m_wg, m_wb, m_spdf);
+			// A rejected sample (grazing wo, zero pdf, a reflection below the horizon) must not skip this vertex's NEE (pbrt takes the
+			// direct-light sample whether or not the sample that follows succeeds): it carries zero weight and the path ends after the NEE.
+			attenuation = m_ok ? make_float3(m_wr, m_wg, m_wb) : make_float3(0.0f, 0.0f, 0.0f);
+			if (m_ok) {
+				float m_dx, m_dy, m_dz;
+				m_frame.to_world(m_wix, m_wiy, m_wiz, m_dx, m_dy, m_dz);
+				scattered_dir = normalize(make_float3(m_dx, m_dy, m_dz));
 			} else {
-				scattered = false;
+				scattered_dir = normal;
 			}
-			is_specular = true;
+			scattered = true;
+			is_specular = false;
+			brdf_pdf_override = m_ok ? m_spdf : -1.0f;
+
+			{
+				float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+				if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
+					float llx, lly, llz;
+					m_frame.to_local(to_light.x, to_light.y, to_light.z, llx, lly, llz);
+					float fr, fg, fb, brdf_pdf;
+					if (llz > 0.0f && gpu_measured_f_pdf(m_tab, m_tab.isotropic != 0,
+							params.measuredParamValues, params.measuredData, params.measuredMcdf, params.measuredCcdf,
+							m_wox, m_woy, m_woz, llx, lly, llz, m_lambda, fr, fg, fb, brdf_pdf)
+						&& trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb)) {
+						float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+						emission = emission + mis_weight * make_float3(fr, fg, fb) * sampled_light_emission * llz / light_pdf
+							* (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb);
+					}
+				}
+			}
+
+			for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+				float3 wi_p, Li_p; float t_max_p;
+				if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+				float plx, ply, plz;
+				m_frame.to_local(wi_p.x, wi_p.y, wi_p.z, plx, ply, plz);
+				if (plz <= 0.0f) continue;
+				float fr, fg, fb, brdf_pdf;
+				if (!gpu_measured_f_pdf(m_tab, m_tab.isotropic != 0,
+						params.measuredParamValues, params.measuredData, params.measuredMcdf, params.measuredCcdf,
+						m_wox, m_woy, m_woz, plx, ply, plz, m_lambda, fr, fg, fb, brdf_pdf)) continue;
+				if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed, nee_shadow_rgb)) {
+					emission = emission + make_float3(fr, fg, fb) * Li_p * plz * (camera_medium_shadow_trans(t_max_p) * nee_shadow_rgb);
+				}
+			}
+
+			{
+				const float3& skyColor = params.camera.backgroundColor;
+				if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+					float3 sky_dir, sky_Le_val; float pdf_sky;
+					sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
+					float skx, sky_y, skz;
+					m_frame.to_local(sky_dir.x, sky_dir.y, sky_dir.z, skx, sky_y, skz);
+					float fr, fg, fb, brdf_pdf_sky;
+					if (skz > 0.0f && pdf_sky > 0.0f
+						&& gpu_measured_f_pdf(m_tab, m_tab.isotropic != 0,
+							params.measuredParamValues, params.measuredData, params.measuredMcdf, params.measuredCcdf,
+							m_wox, m_woy, m_woz, skx, sky_y, skz, m_lambda, fr, fg, fb, brdf_pdf_sky)
+						&& trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb)) {
+						float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+						emission = emission + mis_weight * make_float3(fr, fg, fb) * sky_Le_val * skz / pdf_sky
+							* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb);
+					}
+				}
+			}
 			break;
 		}
 

@@ -1740,7 +1740,7 @@ CPU_GPU GlossyCtx wf_setup_glossy_context(
 	ctx.alpha_v = (glossyAlphaV >= 0.0f) ? glossyAlphaV : ctx.alpha;
 	const bool glossy_isType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
 		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
-		matType == MaterialType::RoughMetal);
+		matType == MaterialType::RoughMetal || matType == MaterialType::Measured);
 	if (glossy_isType) {
 		// RoughMetal stays on the arbitrary frame (isotropic-only, no
 		// anisotropic variant exists - matches optix_device_helpers.h's
@@ -2609,7 +2609,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// glossyAlphaV above are the coat's. Negative (the default, every other call site) means "derive them from
 	// materials[matIdx]", unregularized.
 	float glossyCondAlpha = -1.0f,
-	float glossyCondAlphaV = -1.0f)
+	float glossyCondAlphaV = -1.0f,
+	// MaterialType::Measured only: the measured-table arrays evalGlossyF below evaluates f() and pdf() from. nullptr for every other
+	// material (and any call site that never reaches a Measured hit).
+	const WfMeasuredTables* measured = nullptr)
 {
 	using SS = SampledSpectrum<kWFNWavelengths>;
 
@@ -2748,7 +2751,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// boolean re-check, not worth widening the struct's contract for.
 	const bool glossy_isType = (matType == MaterialType::Conductor || matType == MaterialType::RoughDielectric ||
 		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
-		matType == MaterialType::RoughMetal);
+		matType == MaterialType::RoughMetal || matType == MaterialType::Measured);
 	const bool glossy_valid = glossyCtx.valid;
 	const float3 glossy_tan = glossyCtx.tan;
 	const float3 glossy_bit = glossyCtx.bit;
@@ -2818,6 +2821,19 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// pbrt's LayeredBxDF::PDF(): the same density the scatter step reports for the sampled continuation
 			// (brdf_pdf_override), here at the queried light direction - MIS weighs both with it.
 			outPdf = bx.pdf(glossy_wi_x, glossy_wi_y, glossy_wi_z, wo_x, wo_y, wo_z);
+		} else if (matType == MaterialType::Measured) {
+			// Real tabulated measured BRDF (pbrt-v4 MeasuredBxDF): f() and pdf() in the local frame the sampling side uses
+			// (ShadingFrame::from_normal, see wf_sample_measured_material), not the UV-aligned glossy frame above.
+			if (measured == nullptr || fm.textureIdx < 0 || (unsigned int)fm.textureIdx >= measured->numTables) return false;
+			const GpuMeasuredTable& mtab = measured->tables[fm.textureIdx];
+			ShadingFrame<float> mframe = ShadingFrame<float>::from_normal(normal.x, normal.y, normal.z);
+			float mwox, mwoy, mwoz, mwix, mwiy, mwiz;
+			mframe.to_local(phaseWo.x, phaseWo.y, phaseWo.z, mwox, mwoy, mwoz);
+			mframe.to_local(queryDir.x, queryDir.y, queryDir.z, mwix, mwiy, mwiz);
+			const float mlambda[3] = { 612.0f, 549.0f, 465.0f };   // the fixed query wavelengths, as the sampling side uses
+			if (!wf_gpu_measured_f_pdf(mtab, mtab.isotropic != 0, measured->paramValues, measured->data, measured->mcdf, measured->ccdf,
+			                           mwox, mwoy, mwoz, mwix, mwiy, mwiz, mlambda, fr, fg, fb, outPdf))
+				return false;
 		} else {
 			float cond_ax = glossyCondAlpha, cond_ay = glossyCondAlphaV;
 			if (cond_ax < 0.0f)

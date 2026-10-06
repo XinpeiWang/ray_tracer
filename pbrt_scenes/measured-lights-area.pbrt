@@ -1,0 +1,30 @@
+# measured-lights-area.pbrt -- measured-lights.pbrt without the point light: the small area light alone.
+#
+# This is the scene whose mean the BSDF-sampling-only estimator could get right (a delta light is invisible to it): that estimator converged
+# to a luminance of 0.0608 (CPU 0.0606, recursive 0.0610, wavefront 0.0609 at 4096 samples, ~75% per-pixel noise). The light-sampled estimator
+# must read the same mean, with ~1.5% noise: see MeasuredAreaLightKeepsTheBsdfSamplingMean in tests/unit/pbrt_example_scenes_tests.cpp.
+#
+# Uses synthetic-gold.bsdf (original, see measured-brdf-showroom.pbrt's header), so it carries no licence constraints.
+
+LookAt  0 3 9    0 0.6 0    0 1 0
+Camera "perspective" "float fov" [ 34 ]
+
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 1 1 1 ] "float scale" [ 55.0 ] "bool twosided" [ true ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 1.5 4 -0.5   2.5 4 -0.5   2.5 4 0.5   1.5 4 0.5 ]
+AttributeEnd
+
+Material "measured" "string filename" [ "synthetic-gold.bsdf" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -8 0 -8   8 0 -8   8 0 8   -8 0 8 ]
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
