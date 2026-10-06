@@ -325,6 +325,9 @@ struct MetalPocApp {
     // above, and QUAD-shaped lights only (see AreaLight::useTexture's
     // own comment for why a disk-shaped one still falls back to flat L).
     bool havePbrtAreaLightImage = false;
+    std::string pbrtAreaLightImageFilename;   // the one image the shared area-light texture slot holds (several lights may share it)
+    // Gives an image-textured area light the shared slot: true if `em` names an image and the slot holds (or now loads) that same image.
+    bool claimAreaLightImage(const pbrt_flatten::Emission& em);
     std::vector<float> pbrtAreaLightImagePixels;
     int pbrtAreaLightImageWidth = 0;
     int pbrtAreaLightImageHeight = 0;

@@ -1357,6 +1357,34 @@ struct LightSample {
     int spherePrimId;
 };
 
+// Image-textured disk / cylinder area lights. pbrt maps the image over a disk with u = angle / 2pi (measured from the shape's object x axis towards
+// y) and v = (R - r) / R, and over a cylinder with u = angle / 2pi and v = height fraction; image rows run top to bottom, so the texture is
+// sampled at (u, 1 - v). The loader stores the object x axis in AreaLight::edgeV for a disk and in AreaLight::normal for a cylinder.
+inline float2 diskLightTexCoord(AreaLight light, float3 p) {
+    const float3 n = float3(light.normal);
+    const float3 t = float3(light.edgeV);
+    const float3 b = cross(n, t);
+    const float3 rel = p - float3(light.center);
+    const float px = dot(rel, t), py = dot(rel, b);
+    float phi = (abs(px) + abs(py) < 1e-12) ? 0.0 : atan2(py, px);   // fast-math atan2(0, 0) is NaN
+    if (phi < 0.0) phi += 2.0 * M_PI_F;
+    const float radius = max(light.edgeU.x, 1e-6);
+    const float r = clamp(sqrt(max(dot(rel, rel) - dot(rel, n) * dot(rel, n), 0.0)), 0.0, radius);
+    return float2(phi * (0.5 / M_PI_F), r / radius);   // (u, 1 - v) with v = (R - r) / R
+}
+
+inline float2 cylinderLightTexCoord(AreaLight light, float3 p) {
+    const float3 axis = float3(light.edgeU);
+    const float3 t = float3(light.normal);
+    const float3 b = cross(axis, t);
+    const float3 rel = p - float3(light.center);
+    const float px = dot(rel, t), py = dot(rel, b);
+    float phi = (abs(px) + abs(py) < 1e-12) ? 0.0 : atan2(py, px);   // fast-math atan2(0, 0) is NaN
+    if (phi < 0.0) phi += 2.0 * M_PI_F;
+    const float v = clamp(dot(rel, axis) / max(light.edgeV.y, 1e-6), 0.0, 1.0);
+    return float2(phi * (0.5 / M_PI_F), 1.0 - v);
+}
+
 inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCount, thread uint& rngState,
                                     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler) {
     // max(lightCount, 1u) guards the `- 1` below from underflowing (uint
@@ -1413,24 +1441,30 @@ inline LightSample sampleAreaLight(device const AreaLight* lights, uint lightCou
         // area = pi*r^2. r = R*sqrt(u), phi = 2*pi*v is exactly uniform over the disk.
         float3 n = float3(light.normal);
         float3 t, b;
-        buildOnb(n, t, b);
+        if (light.useTexture > 0.0) { t = float3(light.edgeV); b = cross(n, t); }   // the image's own angle origin
+        else buildOnb(n, t, b);
         float rr = light.edgeU.x * sqrt(u.x);
         float ph = 2.0 * M_PI_F * u.y;
         result.point = float3(light.center) + rr * (cos(ph) * t + sin(ph) * b);
         result.normal = n;
-        result.emission = float3(light.emission);
+        result.emission = (light.useTexture > 0.0)
+            ? pbrtAreaLightTexture.sample(textureSampler, float2(ph * (0.5 / M_PI_F), rr / max(light.edgeU.x, 1e-6))).rgb * float3(light.emission)
+            : float3(light.emission);
     } else if (light.kind > 2.5 && light.kind < 3.5) {
         // Cylinder light (pbrt "cylinder", lateral surface only): uniform-area sampling.
         // center = base centre, edgeU = unit axis, edgeV.x = radius, edgeV.y = height,
         // area = 2*pi*r*h. The sampled normal is the OUTWARD radial direction.
         float3 axis = float3(light.edgeU);
         float3 t, b;
-        buildOnb(axis, t, b);
+        if (light.useTexture > 0.0) { t = float3(light.normal); b = cross(axis, t); }   // the image's own angle origin
+        else buildOnb(axis, t, b);
         float ph = 2.0 * M_PI_F * u.y;
         float3 radial = cos(ph) * t + sin(ph) * b;
         result.point = float3(light.center) + axis * (light.edgeV.y * u.x) + radial * light.edgeV.x;
         result.normal = radial;
-        result.emission = float3(light.emission);
+        result.emission = (light.useTexture > 0.0)
+            ? pbrtAreaLightTexture.sample(textureSampler, float2(ph * (0.5 / M_PI_F), 1.0 - u.x)).rgb * float3(light.emission)
+            : float3(light.emission);
     } else if (light.kind > 3.5) {
         // Triangle light (one triangle of a non-quad emissive mesh, e.g. a fan): center =
         // vertex 0, edgeU/edgeV = the two edges from it, normal = the winding normal,
