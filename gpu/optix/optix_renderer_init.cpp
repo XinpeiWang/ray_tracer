@@ -24,6 +24,7 @@
 #include "sppm_path_tracer.h"
 #include <optix_function_table_definition.h>
 #include <optix_stack_size.h>
+#include "optix_module_parallel.h"
 #include <cuda.h>
 #include <fstream>
 #include <iostream>
@@ -383,7 +384,7 @@ bool OptiXRenderer::createModule() {
 	// Create module
 	char log[2048];
 	size_t logSize = sizeof(log);
-	OPTIX_CHECK(optixModuleCreate(
+	OPTIX_CHECK(optixModuleCreateParallel(
 		context_,
 		&moduleCompileOptions,
 		&pipelineCompileOptions_,

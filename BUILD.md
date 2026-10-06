@@ -108,11 +108,12 @@ Things that make this work, and what to keep in mind:
 
 - **Change tracking.** `Directory.Build.props`/`Directory.Build.targets` use MSBuild's one-`cl`-per-file mode (`UseMultiToolTask`) instead of `/MP`. With `/MP` the tracking logs lost each project's first source, so every build recompiled the entire solution (~95 s with nothing changed). A project that mixes C and C++ files needs one command line for all of them (`miniz.c` is compiled as C++ for this reason), or the two compile tasks overwrite each other's tracking entries again.
 - **CUDA.** `build_optix.targets` hands all 16 `.cu` files to `scripts/cuda_build.ps1`, which runs the compiles in parallel (`RT_CUDA_JOBS`, default 6) and rebuilds a file only when its source, a header it actually included (nvcc's own `-MD` dependency files, kept in `gpu/optix/.cudadeps/`) or its flags changed. `nvcc -t0` compiles the two target architectures concurrently.
+- **PTX compile and the OptiX cache.** The three OptiX PTX modules compile with `--split-compile 0` (nvcc uses all cores; `optix_programs.ptx` 120 s -> 77 s, same output). A *cold* OptiX cache is a separate cost: OptiX compiles the PTX to machine code on first use (`%LOCALAPPDATA%\NVIDIA\OptixCache`), which took ~5 min for the recursive module on one core. `gpu/optix/optix_module_parallel.h` creates the modules with `optixModuleCreateWithTasks` on every core instead (cold ~2 min); a warm cache is unaffected. After editing device code the first GPU run or test pays that once. Making `shade_material` `__noinline__` was tried and rejected: PTX 45 MB -> 15 MB and nvcc 23 s, but the cold JIT got slower (531 s vs 307 s).
 - **Development-only speed-up.** `msbuild /p:RtCudaLocalArchOnly=true` (or `RT_CUDA_LOCAL_ARCH_ONLY=1`) compiles the plain CUDA kernels only for the GPU in this machine. The result runs only on that GPU, so do not package it; the default builds sm_86 and sm_120.
 - **Running one scene's parity test.** `MaterialCpuGpuParityTest` renders only the scenes your `--gtest_filter` selects (one scene ~4 s; the full sweep ~140 s is unchanged):
 
 ```powershell
-.in\Releaseay_tracer_tests.exe --gtest_filter="*BrightnessAndChannelsConsistentAcrossBackends/Scene21_*"
+.\bin\Release\ray_tracer_tests.exe --gtest_filter="*BrightnessAndChannelsConsistentAcrossBackends/Scene21_*"
 ```
 
 - **If a build ever recompiles everything with no changes**, diagnose it instead of living with it: `msbuild ray_tracer.sln ... /v:diag` and search the log for `command line has changed` / `No output for` - those say which project's tracking is inconsistent. Also check for stale `cl.exe`/`Tracker.exe` processes left by a killed build (`Get-Process cl, Tracker`).
