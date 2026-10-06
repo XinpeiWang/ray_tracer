@@ -17,7 +17,9 @@
 #include <QPlainTextEdit>
 #include <QRegularExpression>
 #include <QSpinBox>
+#include <functional>
 #include <memory>
+#include "scene_metadata_client.h"
 
 void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	auto log = [outPrefix](const QString &line) {
@@ -69,6 +71,66 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	}
 
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	// Starts Live Preview on every Metal-compatible scene in turn (one process, one scene at a time) and reports, per scene, the
+	// frame count and how much of the tile is lit - to catch scenes that fail to load or start with a bad camera. Writes each
+	// scene's displayed picture to <out>_sweep_<id>.png. Optional: RT_GUI_SELFTEST_SCENES=id1,id2,... to restrict it.
+	if (mode == "livepreview_sweep") {
+		const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
+		if (idx < 0) { log("Live Preview mode missing"); QApplication::exit(2); return; }
+		m_modeCombo->setCurrentIndex(idx);
+		QStringList ids;
+		const QStringList only = qEnvironmentVariable("RT_GUI_SELFTEST_SCENES").split(',', Qt::SkipEmptyParts);
+		for (int i = 0, n = SceneMetadataClient::sceneCount(); i < n; ++i) {
+			const QString id = SceneMetadataClient::sceneIdAtIndex(i);
+			bool metal = false;
+			if (!SceneMetadataClient::metalCompatible(id, metal) || !metal) continue;
+			if (!only.isEmpty() && !only.contains(id)) continue;
+			ids << id;
+		}
+		log(QString("sweep: %1 Metal-compatible scenes").arg(ids.size()));
+		auto index = std::make_shared<int>(0);
+		auto bad = std::make_shared<int>(0);
+		auto step = std::make_shared<std::function<void()>>();
+		*step = [this, ids, index, bad, step, log, outPrefix]() {
+			if (*index >= ids.size()) {
+				log(QString("sweep done: %1 of %2 scenes flagged").arg(*bad).arg(ids.size()));
+				QApplication::exit(0);
+				return;
+			}
+			const QString id = ids[*index];
+			stopLivePreview();
+			selectSceneById(id);
+			startLivePreview();
+			QTimer::singleShot(3000, this, [this, id, index, bad, step, log, outPrefix]() {
+				const qint64 frames = m_livePreviewFrameCount;
+				double lit = -1.0;
+				if (m_livePreviewLabel) {
+					const QImage shown = m_livePreviewLabel->pixmap().toImage();
+					if (!shown.isNull()) {
+						qint64 n = 0;
+						for (int y = 0; y < shown.height(); ++y)
+							for (int x = 0; x < shown.width(); ++x) {
+								const QRgb p = shown.pixel(x, y);
+								if (qRed(p) + qGreen(p) + qBlue(p) > 12) ++n;
+							}
+						lit = 100.0 * n / (double(shown.width()) * shown.height());
+						shown.save(outPrefix + "_sweep_" + id + ".png");
+					}
+				}
+				const QString status = m_livePreviewStatusLabel ? m_livePreviewStatusLabel->text() : QString();
+				const bool flagged = frames < 5 || lit < 30.0;
+				if (flagged) ++*bad;
+				log(QString("%1 %2: frames=%3 lit=%4% status=\"%5\" camera=(%6, %7, %8)")
+					.arg(flagged ? "FLAG" : "ok  ", id).arg(frames).arg(lit, 0, 'f', 1).arg(status)
+					.arg(m_cameraPosX->value(), 0, 'g', 5).arg(m_cameraPosY->value(), 0, 'g', 5).arg(m_cameraPosZ->value(), 0, 'g', 5));
+				++*index;
+				(*step)();
+			});
+		};
+		(*step)();
+		return;
+	}
+
 	if (mode == "livepreview") {
 		const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
 		bool enabled = false;
