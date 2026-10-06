@@ -308,8 +308,12 @@ struct BDPTVertex {
 	// the light) - see BDPTEndpointData::dir's own comment. Every caller
 	// must pass a real, meaningful direction here now (not a placeholder);
 	// see each call site's own comment for its derivation.
+	//
+	// `is_delta` marks a delta-DIRECTION light (a distant/directional light), which pbrt-v4 also classifies as an "infinite" light vertex:
+	// Vertex::IsInfiniteLight() is true for LightType::Infinite and LightType::DeltaDirection, and IsDeltaLight() for DeltaDirection too. It has
+	// no position (the disk sampling density is the position density), cannot be connected to or hit, and is excluded from the MIS sums.
 	static BDPTVertex MakeLightInfinite(const T Le[3], T pdf_pos,
-										 int light_id, const T dir[3]) {
+										 int light_id, const T dir[3], bool is_delta = false) {
 		BDPTVertex v;
 		v.type = BDPTVertexType::Light;
 		v.beta[0]=Le[0]; v.beta[1]=Le[1]; v.beta[2]=Le[2];
@@ -317,6 +321,7 @@ struct BDPTVertex {
 		v.ei.Le[0]=Le[0]; v.ei.Le[1]=Le[1]; v.ei.Le[2]=Le[2];
 		v.ei.pdf_pos = pdf_pos;
 		v.ei.is_infinite = true;
+		v.ei.is_delta = is_delta;
 		v.ei.light_id = light_id;
 		v.ei.dir[0]=dir[0]; v.ei.dir[1]=dir[1]; v.ei.dir[2]=dir[2];
 		std::memset(v.ei.p, 0, sizeof(v.ei.p));
@@ -851,7 +856,7 @@ int BDPTGenerateLightSubpath(int maxDepth, const Scene& scene,
 		// (FROM the first real vertex this walk reaches, TOWARD the light)
 		// is the opposite, -les.ray_d.
 		T arrivalDir[3] = { -les.ray_d[0], -les.ray_d[1], -les.ray_d[2] };
-		path[0] = BDPTVertex<T>::MakeLightInfinite(les.L, p_l, les.light_id, arrivalDir);
+		path[0] = BDPTVertex<T>::MakeLightInfinite(les.L, p_l, les.light_id, arrivalDir, les.is_delta_dir);
 	}
 
 	T cos_theta = les.abs_cos_theta;
@@ -932,7 +937,7 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 				// "arrival" convention BDPTEndpointData::dir expects.
 				T Le_scaled[3] = { ls.L[0]/(ls.pdf), ls.L[1]/(ls.pdf), ls.L[2]/(ls.pdf) };
 				sampled = ls.is_infinite
-					? BDPTVertex<T>::MakeLightInfinite(ls.L, ls.pdf, ls.light_id, ls.wi)
+					? BDPTVertex<T>::MakeLightInfinite(ls.L, ls.pdf, ls.light_id, ls.wi, ls.is_delta)
 					: BDPTVertex<T>::MakeLightSurface(ls.p_light, ls.n_light,
 													  ls.L, ls.pdf, ls.light_id, ls.is_delta);
 				sampled.beta[0]=Le_scaled[0]; sampled.beta[1]=Le_scaled[1]; sampled.beta[2]=Le_scaled[2];

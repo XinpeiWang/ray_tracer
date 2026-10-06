@@ -842,7 +842,11 @@ class BDPTSceneAdapter {
 			ls.L[0]=s.Li.x(); ls.L[1]=s.Li.y(); ls.L[2]=s.Li.z();
 			ls.pdf = pmf;
 			ls.wi[0]=s.wi.x(); ls.wi[1]=s.wi.y(); ls.wi[2]=s.wi.z();
-			ls.is_delta = true; ls.is_infinite = false; ls.light_id = toLightId(idx);
+			// An INFINITE delta-direction light, as pbrt-v4 classifies LightType::DeltaDirection (Vertex::IsInfiniteLight): a position-less
+			// vertex whose density is the planar disk density. It used to be a surface vertex at p_light, a made-up point farDist away, while
+			// SampleLightLe below put the same light's vertex on the bounding disk: the two ends of the MIS sum then disagreed about this
+			// one light, the weights summed above 1 and BDPT/MLT read 1.34x the path tracer on every distant-light scene at every depth.
+			ls.is_delta = true; ls.is_infinite = true; ls.light_id = toLightId(idx);
 			return true;
 		}
 		// Sky (idx == skyIdx_, only reachable when hasSky_) -- NOT a delta
@@ -974,8 +978,9 @@ class BDPTSceneAdapter {
 			les.pdf_pos = pmf / (pi * sceneRadius_ * sceneRadius_);   // uniform disk, combined w/ light choice
 			les.pdf_dir = 1.0;   // delta direction
 			les.abs_cos_theta = 1.0;   // disk is perpendicular to rayDir by construction
-			les.is_on_surface = true;
-			les.is_infinite = false;
+			// Position-less, delta-direction: an infinite-light vertex (see SampleLight()'s distant branch), not a surface vertex on the disk.
+			les.is_on_surface = false;
+			les.is_infinite = true;
 			les.is_delta_dir = true;
 			les.light_id = toLightId(idx);
 			return true;

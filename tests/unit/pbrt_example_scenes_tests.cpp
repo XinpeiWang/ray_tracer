@@ -496,6 +496,27 @@ TEST(PbrtBackendAgreementTest, MeasuredAreaLightKeepsTheBsdfSamplingMean) {
 	expectChannelMeans("measured-lights-area", 512, 6, expected, 0.02, 0.02);
 }
 
+// BDPT and MLT must agree with the path tracer on a distant light. They built a distant light as a surface vertex at an invented point in
+// SampleLight() and on the bounding disk in SampleLightLe(), so the MIS weights of the light-sampling and light-tracing strategies summed above 1
+// and every distant-light scene read 1.34x too bright at every depth (pbrt-v4 treats LightType::DeltaDirection as an infinite light vertex). A
+// diffuse sphere with direct lighting only is smooth, so all integrators read the same mean; the three of them are compared here.
+TEST(PbrtBackendAgreementTest, BdptDistantLightAgreesWithPathTracer) {
+	const SceneDescriptor* s = find_example_scene("distant-light-sphere");
+	if (!s) GTEST_SKIP() << "distant-light-sphere.pbrt was not discovered - is pbrt_scenes/ present?";
+	const std::string base = "pbrt_agree_distant-light-sphere";
+	double pathMean = 0.0, bdptMean = 0.0;
+	ASSERT_EQ(cpu_render_main(48, 48, 256, 4, (base + "_path.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(base + "_path.exr", pathMean));
+	ASSERT_EQ(cpu_render_main_bdpt(48, 48, 256, 4, (base + "_bdpt.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(base + "_bdpt.exr", bdptMean));
+	std::remove((base + "_path.exr").c_str());
+	std::remove((base + "_bdpt.exr").c_str());
+	std::printf("[agree] distant-light-sphere: path %.4f  bdpt %.4f (%.1f%%)\n", pathMean, bdptMean, 100.0 * bdptMean / pathMean);
+	ASSERT_GT(pathMean, 0.01);
+	EXPECT_GT(bdptMean, 0.98 * pathMean) << "BDPT too dark vs the path tracer on a distant light";
+	EXPECT_LT(bdptMean, 1.02 * pathMean) << "BDPT too bright vs the path tracer on a distant light";
+}
+
 TEST(PbrtBackendAgreementTest, ChromaticFogFurnaceStaysInvisibleInEveryChannel) {
 	const double expected[3] = {1.0, 1.0, 1.0};
 	// Measured: every backend within 0.3% of 1 in every channel.

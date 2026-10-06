@@ -1,0 +1,21 @@
+# distant-light-sphere.pbrt -- a diffuse sphere under one distant light: smooth shading, no inter-reflection, no hard edges.
+#
+# With nothing but direct lighting every integrator must read the same mean at any depth of 1 or more. It is the scene that showed BDPT and MLT
+# disagreeing with the path tracer on distant lights: their light-vertex bookkeeping built a distant light as a surface vertex at an invented
+# position in one place and on the bounding disk in another, so the MIS weights summed above 1 and every distant-light scene read 1.34x too bright
+# (see BdptDistantLightAgreesWithPathTracer in tests/unit/pbrt_example_scenes_tests.cpp).
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 20 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "distant" "point3 from" [ 2 3 4 ] "point3 to" [ 0 0 0 ] "rgb L" [ 3 3 3 ]
+
+Material "diffuse" "rgb reflectance" [ 0.6 0.5 0.4 ]
+Shape "sphere" "float radius" [ 1 ]
