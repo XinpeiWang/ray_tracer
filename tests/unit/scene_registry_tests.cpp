@@ -377,22 +377,22 @@ TEST(SceneRegistryTest, RecommendedCameraPathCuratedChoices) {
 	EXPECT_STREQ(recommended_camera_path_for("J5"), "linear");    // ProceduralTextureGalleryPbrtExample
 
 	// Volumes (category default: spiral) - a slow push-in orbit for
-	// nebula/fog-like subjects, except E1 (a Cornell box, orbit like every
+	// nebula/fog-like subjects, except E1 (a Cornell box, "tour" like every
 	// other enclosed room).
-	EXPECT_STREQ(recommended_camera_path_for("E1"), "orbit");     // HomogeneousMedium (Cornell box)
+	EXPECT_STREQ(recommended_camera_path_for("E1"), "tour");      // HomogeneousMedium (Cornell box)
 	EXPECT_STREQ(recommended_camera_path_for("E2"), "spiral");    // CloudMedium
 	EXPECT_STREQ(recommended_camera_path_for("E8"), "spiral");    // UniformGridMediumPbrtExample
 
 	// Geometry (category default: showcase) - except F1, a Cornell box.
-	EXPECT_STREQ(recommended_camera_path_for("F1"), "orbit");     // BilinearPatchScene (Cornell box)
+	EXPECT_STREQ(recommended_camera_path_for("F1"), "tour");      // BilinearPatchScene (Cornell box)
 	EXPECT_STREQ(recommended_camera_path_for("F5"), "showcase");  // PlymeshUvPbrtExample
 
-	// Cornell-box-style enclosed rooms keep the plain global default - a
+	// Cornell-box-style enclosed rooms use "tour", NOT the global orbit (it circles outside the opaque walls: black frames) - a
 	// slow full rotation around a small box viewed from its open front is
 	// the classic beauty shot for this shape, unlike H's large interiors.
-	EXPECT_STREQ(recommended_camera_path_for("A1"), "orbit");     // CornellBox itself
+	EXPECT_STREQ(recommended_camera_path_for("A1"), "tour");      // CornellBox itself
 	EXPECT_STREQ(recommended_camera_path_for("B2"), "orbit");     // CornellRoughMetal
-	EXPECT_STREQ(recommended_camera_path_for("I1"), "orbit");     // SamplerComparison (=A1)
+	EXPECT_STREQ(recommended_camera_path_for("I1"), "tour");      // SamplerComparison (=A1)
 
 	// ...and the global default (orbit) for a category with no curation at
 	// all and for an id that doesn't exist.
@@ -831,4 +831,19 @@ TEST(SceneRegistryGuiConsistencyTest, GuiSceneCountMatchesRegistry) {
 	constexpr int kGuiSceneCount = 151;
 	EXPECT_EQ(builtin_scene_count(), kGuiSceneCount)
 		<< "Registry size changed -- update kGuiSceneCount here to match.";
+}
+
+// A Cornell-box-style enclosed room has opaque walls that are unlit from outside, so an orbit-family camera path (orbit,
+// spiral, figure8), which circles OUTSIDE the box, rendered most of the default video solid black (5 of 8 frames of A1's,
+// on CPU and Metal alike, ~40 scenes). These scenes use "tour", which sways in front of the open face. Found by rendering
+// every scene's default video and counting black frames; this pins the result.
+TEST(SceneRegistryTest, EnclosedCornellRoomsDoNotUseAnOrbitFamilyPath) {
+	const char* const kEnclosedRooms[] = {
+		"A1", "A8", "B3", "B5", "B6", "B8", "B9", "B12", "B13", "B15", "B16", "B22", "B23", "B24",
+		"C2", "C3", "C4", "C5", "C6", "C9", "C14", "C15", "C20", "D5", "D6", "D8", "D9", "D10", "D12",
+		"E1", "F1", "I1", "I2", "I4", "I5", "I6", "I7", "I8", "I9", "I10",
+	};
+	for (const char* id : kEnclosedRooms) {
+		EXPECT_STREQ(recommended_camera_path_for(id), "tour") << "scene " << id;
+	}
 }
