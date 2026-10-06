@@ -82,6 +82,18 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			return;
 		}
 		m_modeCombo->setCurrentIndex(idx);
+		// Optional overrides so the same test can cover other scenes / Resolution settings:
+		//   RT_GUI_SELFTEST_SCENE=<scene id>   RT_GUI_SELFTEST_RES=<W>x<H>
+		const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
+		if (!sceneOverride.isEmpty()) selectSceneById(sceneOverride);
+		const QString resOverride = qEnvironmentVariable("RT_GUI_SELFTEST_RES");
+		if (const QRegularExpressionMatch rm = QRegularExpression(R"(^(\d+)x(\d+)$)").match(resOverride); rm.hasMatch()) {
+			m_widthSpinBox->setValue(rm.captured(1).toInt());
+			m_heightSpinBox->setValue(rm.captured(2).toInt());
+		}
+		log(QString("scene=%1, Resolution setting %2x%3").arg(m_sceneCombo->currentData().toString()).arg(m_widthSpinBox->value()).arg(m_heightSpinBox->value()));
+		log(QString("camera spinboxes (%1, %2, %3), look-at (%4, %5, %6)").arg(m_cameraPosX->value()).arg(m_cameraPosY->value()).arg(m_cameraPosZ->value())
+			.arg(m_currentLookatX).arg(m_currentLookatY).arg(m_currentLookatZ));
 		startLivePreview();
 		log(QString("started: running=%1").arg(m_livePreviewRunning ? 1 : 0));
 		// The preview must frame the scene like the image render does: same aspect ratio as the Resolution setting.
@@ -101,8 +113,24 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		// Let it render for a while, then look at what happened.
 		// Timeline: look at 4 s, orbit the camera at 5 s (what a mouse drag does), look again at 9 s, report at 10 s.
 		auto before = std::make_shared<QImage>();
-		QTimer::singleShot(4000, this, [this, log, shot, before]() {
+		auto litPercent = std::make_shared<double>(-1.0);
+		QTimer::singleShot(4000, this, [this, log, shot, before, litPercent]() {
 			log(QString("after 4 s: frames=%1").arg(m_livePreviewFrameCount));
+			// What the tile really shows: the displayed picture's size and the bounding box of its non-black pixels.
+			if (m_livePreviewLabel) {
+				const QImage shown = m_livePreviewLabel->pixmap().toImage();
+				int x0 = shown.width(), y0 = shown.height(), x1 = -1, y1 = -1;
+				qint64 lit = 0;
+				for (int y = 0; y < shown.height(); ++y)
+					for (int x = 0; x < shown.width(); ++x) {
+						const QRgb p = shown.pixel(x, y);
+						if (qRed(p) + qGreen(p) + qBlue(p) > 12) { ++lit; x0 = qMin(x0, x); x1 = qMax(x1, x); y0 = qMin(y0, y); y1 = qMax(y1, y); }
+					}
+				if (!shown.isNull()) *litPercent = 100.0 * lit / (double(shown.width()) * shown.height());
+				log(QString("displayed picture %1x%2, lit pixels %3%, lit box x[%4..%5] y[%6..%7]")
+					.arg(shown.width()).arg(shown.height()).arg(shown.isNull() ? 0 : 100.0 * lit / (double(shown.width()) * shown.height()), 0, 'f', 1)
+					.arg(x0).arg(x1).arg(y0).arg(y1));
+			}
 			shot("live_4s");
 			*before = grab().toImage();
 		});
@@ -111,7 +139,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			updateLivePreviewCameraFromOrbit();
 			log("orbited the camera by 0.7 rad");
 		});
-		QTimer::singleShot(10000, this, [this, log, shot, before]() {
+		QTimer::singleShot(10000, this, [this, log, shot, before, litPercent]() {
 			const qint64 frames = m_livePreviewFrameCount;
 			const double secs = m_livePreviewSessionTimer.elapsed() / 1000.0;
 			log(QString("after 10 s: frames=%1 (%2 fps)").arg(frames).arg(secs > 0 ? frames / secs : 0.0, 0, 'f', 1));
@@ -130,7 +158,11 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			}
 			log(QString("picture change after the camera move: %1 (mean abs diff per channel, 0-255)").arg(diff, 0, 'f', 2));
 			stopLivePreview();
-			const bool ok = frames > 20 && diff > 1.0;
+			// The picture must fill the tile (a wrong start camera showed a small patch in a black tile) - checked for the default scene only,
+			// since other scenes can legitimately be dark.
+			const bool fills = !qEnvironmentVariableIsSet("RT_GUI_SELFTEST_SCENE") ? *litPercent > 50.0 : true;
+			if (!fills) log(QString("picture fills only %1% of the tile").arg(*litPercent, 0, 'f', 1));
+			const bool ok = frames > 20 && diff > 1.0 && fills;
 			log(ok ? "RESULT: OK" : "RESULT: FAIL (too few frames, or the picture did not change when the camera moved)");
 			QApplication::exit(ok ? 0 : 1);
 		});
