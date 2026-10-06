@@ -3,9 +3,19 @@
 #include <QTimer>
 #include <QFontDatabase>
 #include <QTranslator>
+#include <QDir>
+#include <QCoreApplication>
 
 int main(int argc, char *argv[]) {
 	QApplication app(argc, argv);
+
+#ifdef Q_OS_MAC
+	// A Finder/Dock launch starts in "/", but the scene registry (scene_metadata.dylib), the Metal renderer and the ray_tracer
+	// subprocess all find pbrt_scenes/ and models/ relative to the working directory. From "/" the registry silently got no
+	// scenes' cameras (every scene started at (0,0,0) looking down +Z - Live Preview showed a black tile). The bundle puts
+	// those folders next to the executable, so start there.
+	if (QDir(QCoreApplication::applicationDirPath()).exists("pbrt_scenes")) QDir::setCurrent(QCoreApplication::applicationDirPath());
+#endif
 
 	// Guarantees CJK glyph coverage cross-platform regardless of which Font
 	// menu choice is active (font_switch.cpp) - must run before MainWindow is
