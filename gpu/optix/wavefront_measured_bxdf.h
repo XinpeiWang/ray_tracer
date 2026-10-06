@@ -258,9 +258,13 @@ __device__ __forceinline__ bool wf_gpu_measured_sample_f(
 	if (flip) { ox = -ox; oy = -oy; oz = -oz; }
 	wix = ox; wiy = oy; wiz = oz;
 
-	fr = val[0] * scale;
-	fg = val[1] * scale;
-	fb = val[2] * scale;
+	// The path-throughput weight pbrt applies to a BSDF sample, f * |cos(wi)| / pdf, not the bare f: this used to return f alone and
+	// discard final_pdf, so a measured sphere under a uniform white sky read 7.8/8.1/3.5 (blue agate), 12 (a metallic table) and
+	// 0.34 (paper white) instead of 0.11/0.17/0.36, 0.72 and 1.0. CPU, recursive and wavefront all had the same defect.
+	const float weight = abs_cos_wi / final_pdf;
+	fr = val[0] * scale * weight;
+	fg = val[1] * scale * weight;
+	fb = val[2] * scale * weight;
 	return true;
 }
 

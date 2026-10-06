@@ -1605,7 +1605,10 @@ class measured : public material {
 
         double wd_x, wd_y, wd_z;
         frame.to_world(wi_x, wi_y, wi_z, wd_x, wd_y, wd_z);
-        srec.attenuation  = color(fr, fg, fb);
+        // pbrt-v4 PathIntegrator: beta *= bs->f * AbsDot(wi, n) / bs->pdf. This used to be the bare f (sampled_pdf was computed and dropped), which
+        // made a measured sphere in a white furnace read 7.8/8.1/3.5 (a blue table), 12 (a metallic one) or 0.34 (white paper) instead of
+        // 0.1/0.2/0.4, 0.72 and 1.0 - on the CPU and both OptiX backends alike (see pbrt_scenes/measured-furnace.pbrt).
+        srec.attenuation  = color(fr, fg, fb) * (std::fabs(wi_z) / sampled_pdf);
         srec.pdf_ptr      = nullptr;
         srec.skip_pdf     = true;
         srec.skip_pdf_ray = ray(rec.p, unit_vector(vec3(wd_x, wd_y, wd_z)), r_in.time());
