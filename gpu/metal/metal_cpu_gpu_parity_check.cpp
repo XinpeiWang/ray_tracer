@@ -326,11 +326,6 @@ float regional_tolerance_for(float wholeImageTolerance) {
 // either way (METAL_PARITY_STRICT doesn't distinguish the two - both
 // count as "not a clean pass" if that's ever enabled).
 const char* const kKnownGapScenes[] = {
-	// B11 (Hair Fibers, "black fur"): the pbrt hair material IS mapped now (materialType 31, with the real fibre
-	// tangent for curves), but Metal's hair BSDF is float32 and, for high absorption + narrow lobes, is unstable (see
-	// shadeHair's regularisation note); paths that touch hair get a per-sample clamp of 40 to tame the resulting
-	// outliers. B11 lands ~1.4x CPU in the red channel (just over tolerance); B20 and F8 are within it.
-	"B11",
 	// C17 (Portal Light): portal-light.pbrt reads sssdragon/textures/small_rural_road_equiarea.exr,
 	// which is not tracked in this repo (only the sssdragon benchmark checkout has it). Both
 	// backends log "could not be read; using its constant colour instead", but then diverge on
@@ -338,29 +333,6 @@ const char* const kKnownGapScenes[] = {
 	// different failure modes, not two renderers on the same scene. Re-triage (including whether
 	// Metal honours the portal restriction at all) once the EXR is available.
 	"C17",
-	// C2 (Spotlight Cornell): the sphere is a "conductor" given only a reflectance (no named metal
-	// spectrum). CPU approximates that with a fuzzy-mirror `metal` material (pbrt_cpu_builder.h), which
-	// cannot show a highlight from a delta (spot/point) light; Metal uses the real GGX conductor
-	// (closer to pbrt-v4), so it shows one. Direct lighting everywhere else matches CPU block-for-block.
-	"C2",
-	// F2 (Triangle Mesh): same cause as C2 - its icosahedron is a reflectance-only conductor. Verified:
-	// with that mesh swapped to diffuse, CPU and Metal agree to ~1.0-1.2x everywhere.
-	"F2",
-	// A9 (Final Scene), B13 (wax/jade spheres), E12 (rough dielectric): glass spheres that bound a scattering medium.
-	// The medium is simulated (per-path "inside a glass medium" state, hero colour channel for chromatic media, shadow
-	// rays through the sphere attenuated stochastically, and the MIS state of a scattered path kept across the glass
-	// boundary so a light reached straight through is not counted twice - E3 matches CPU to 2%, E11 now passes), but
-	// these still differ. E12 (rough glass) is ~2-3x too bright inside the sphere; CPU sits between Metal's blocked and
-	// pass-through shadow-ray behaviours, and the gap persists at roughness 0, so it is a semantics difference in how CPU
-	// lights chromatic scattering media behind a refracting boundary rather than a rough-glass bug. A9 also has a
-	// radius-5000 "world haze" glass sphere enclosing the scene; B13 sits just past the regional tolerance.
-	"A9", "B13", "E12",
-	// B24 (Frosted Prism Dispersion): CPU's shadow rays deliberately walk STRAIGHT THROUGH glass (shadow_ray.h:
-	// is_shadow_transmissive, no refraction), so the delta distant light reaches the diffuse catcher screen
-	// behind the rough glass prism. Metal blocks shadow rays at glass - what pbrt-v4 itself does - so that
-	// screen region renders black. (abbenumber is not the cause: CPU's default RGB path treats dispersive
-	// glass as plain glass.) Matching CPU would need material-aware shadow tracing at ~70 call sites.
-	"B24",
 };
 
 bool is_known_gap_scene(const std::string& id) {
@@ -461,6 +433,8 @@ void spp_for(const SceneDescriptor& s, int& cpuSpp, int& metalSpp) {
 	const bool isVolume = std::strcmp(s.category, SceneCategories::Volumes) == 0;
 	cpuSpp = isVolume ? kVolumeCpuSpp : kCpuSpp;
 	metalSpp = isVolume ? kVolumeMetalSpp : kMetalSpp;
+	// METAL_PARITY_SPP=<n> renders both at n samples per pixel (a converged reference to tell bias from noise; not for the gate).
+	if (const char* e = std::getenv("METAL_PARITY_SPP")) cpuSpp = metalSpp = std::max(1, std::atoi(e));
 }
 
 // ============================================================================

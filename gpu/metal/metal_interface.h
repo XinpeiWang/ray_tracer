@@ -73,11 +73,10 @@ bool metal_get_diagnostics(MetalDiagnostics* out);
 // (a flat pre-tonemap multiplier, section 148, docs/METAL_GPU_FEASIBILITY.md),
 // options.seed (selects the per-pixel RNG stream - section 204),
 // options.crop_* (render only a pixel window, rest black - section 205), and
-// options.isolate_pbrt_lighting (skips the hardcoded demo room's own
-// lights for a loaded pbrt scene - section 197/199, docs/
-// METAL_GPU_FEASIBILITY.md) are all read - every other RenderOptions field
+// METAL_GPU_FEASIBILITY.md) and options.adaptive_sampling/adaptive_threshold (off by default, like the CPU) are
+// all read - every other RenderOptions field
 // is a documented no-op for this backend (this POC doesn't implement
-// sampler/adaptive_sampling/lightsampler/regularize/max_component_value/
+// sampler/lightsampler/regularize/max_component_value/
 // aperture-or-focus-override/spectral/denoise yet), same "flag
 // has no effect under X" convention render_options.h's own header comment
 // already documents for other backend/field combinations.

@@ -1000,6 +1000,8 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // See MetalPocApp::exposureValue's own comment for why this is a
         // direct field poke rather than a new argv[] slot.
         app.exposureValue = (float)options.exposure;
+        app.adaptiveSamplingRequested = options.adaptive_sampling;
+        app.adaptiveThresholdValue = (float)options.adaptive_threshold;
         // Always true here: metal_render_main() only renders pbrt-backed
         // scenes now (the hand-authored builders are gone), and a pbrt scene
         // must be lit by its OWN lights only. The hardcoded demo room's

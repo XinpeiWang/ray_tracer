@@ -1401,30 +1401,16 @@ kernel void primaryRayKernel(
             }
 
             if (mat.materialType == 2u) {
-                const bool smoothMediumExit = isSphere && inGlass && mat.conductorK.y > 0.5 && !specularBounce;
-                const float smoothPdfBefore = bsdfPdf;
                 if (!shadeDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                       rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
-                if (smoothMediumExit && dot(rayDir, normal) > 0.0) {
-                    specularBounce = false;
-                    bsdfPdf = smoothPdfBefore;
-                }
             } else if (mat.materialType == 22u) {
                 if (!shadeDispersiveDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                       rayDir, rayOrigin, throughput, specularBounce, rngState, rgbChannel)) break;
             } else if (mat.materialType == 5u) {
-                // Rough glass bounding a medium (see the thin-glass note below): keep the MIS state of a scattered
-                // path across the boundary, so the light is not counted by NEE and again at full weight.
-                const bool roughMediumExit = isSphere && inGlass && mat.conductorK.y > 0.5 && !specularBounce;
-                const float roughPdfBefore = bsdfPdf;
                 if (!shadeRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                            uniforms, lights, pbrtAreaLightTexture, textureSampler,
                                            isect, accelStructure, functionTable,
                                            rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-                if (roughMediumExit && dot(rayDir, normal) > 0.0) {
-                    specularBounce = false;
-                    bsdfPdf = roughPdfBefore;
-                }
             } else if (mat.materialType == 23u) {
                 if (!shadeDispersiveRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                            rayDir, rayOrigin, throughput, specularBounce, rngState, rgbChannel)) break;
@@ -1440,20 +1426,8 @@ kernel void primaryRayKernel(
             } else if (mat.materialType == 1u) {
                 if (!shadeMirror(albedo, hitPoint, facingNormal, rayDir, rayOrigin, throughput, specularBounce)) break;
             } else if (mat.materialType == 11u) {
-                // A thin glass sphere bounding a medium: a ray that scattered inside (NEE already added the light
-                // with an MIS weight against this phase-sampled continuation) passes STRAIGHT through the boundary,
-                // so it can hit the light directly. shadeThinDielectric marks every event specular, which would add
-                // that hit at full weight on top of the NEE (~2x too bright, E11). Keep the pre-boundary MIS state
-                // when the ray went straight through.
-                const bool thinMediumExit = isSphere && inGlass && mat.conductorK.y > 0.5 && !specularBounce;
-                const float3 thinDirBefore = rayDir;
-                const float thinPdfBefore = bsdfPdf;
                 if (!shadeThinDielectric(mat, hitPoint, normal, facingNormal,
                                           rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
-                if (thinMediumExit && dot(rayDir, thinDirBefore) > 0.9999) {
-                    specularBounce = false;
-                    bsdfPdf = thinPdfBefore;
-                }
             } else if (mat.materialType == 8u || mat.materialType == 27u) {
                 // materialType 27 (J1, section 172): the SAME clearcoat
                 // shading materialType 8 already uses, just with `albedo`
@@ -1674,7 +1648,7 @@ kernel void primaryRayKernel(
                 if (!blackConverged && convergedCount > 1u) {
                     float variance = convergedM2 / float(convergedCount - 1u);
                     float standardError = sqrt(variance / float(convergedCount));
-                    relativeConverged = (standardError / convergedMean) < kAdaptiveThreshold;
+                    relativeConverged = (standardError / convergedMean) < uniforms.adaptiveThreshold;
                 }
                 if (blackConverged || relativeConverged) {
                     // weightSum/accumColor already reflect only the
