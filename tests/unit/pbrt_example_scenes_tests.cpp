@@ -480,6 +480,22 @@ TEST(PbrtBackendAgreementTest, MeasuredFurnaceReadsTheTablesOwnAlbedoOnEveryBack
 	expectChannelMeans("measured-furnace", 256, 4, expected, 0.03, 0.03);
 }
 
+// The measured material takes direct-light samples with MIS (CPU, recursive and wavefront), instead of sampling its BSDF alone. This scene has
+// a small area light and a point light: the point light is a delta light that BSDF sampling can never hit, so the old estimator never lit the
+// material from it at all. The three backends must agree (each is a separate implementation of the BxDF's f() and pdf()).
+TEST(PbrtBackendAgreementTest, MeasuredLightsAgreeAcrossBackends) {
+	expectBackendsAgree("measured-lights", 256, 0.985, 1.015);
+}
+
+// The same scene with the point light removed: the area light alone, whose mean the old BSDF-sampling-only estimator could get right. It
+// converged to a luminance of 0.0608 (CPU 0.0606, recursive 0.0610, wavefront 0.0609 at 4096 samples, ~75% per-pixel noise); light sampling
+// must read the same mean with ~1.5% noise, so this checks the new estimator is unbiased against an independent one. The expected RGB is the
+// light-sampled estimator's, whose luminance (0.2126 R + 0.7152 G + 0.0722 B) is that 0.0608.
+TEST(PbrtBackendAgreementTest, MeasuredAreaLightKeepsTheBsdfSamplingMean) {
+	const double expected[3] = {0.0685, 0.0608, 0.0384};
+	expectChannelMeans("measured-lights-area", 512, 6, expected, 0.02, 0.02);
+}
+
 TEST(PbrtBackendAgreementTest, ChromaticFogFurnaceStaysInvisibleInEveryChannel) {
 	const double expected[3] = {1.0, 1.0, 1.0};
 	// Measured: every backend within 0.3% of 1 in every channel.

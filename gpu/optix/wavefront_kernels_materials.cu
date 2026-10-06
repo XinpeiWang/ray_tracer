@@ -371,6 +371,8 @@ extern "C" __global__ void evaluate_materials(
 	// BSDF-sampling step just used, instead of re-deriving it a second time.
 	// Left at 0 (harmless - see that parameter's own comment) for every
 	// non-glossy case.
+	// The measured-table arrays, for the Measured case's direct-light evaluation inside wf_finish_material_scatter().
+	const WfMeasuredTables measuredBundle{ measuredTables, numMeasuredTables, measuredParamValues, measuredData, measuredMcdf, measuredCcdf };
 	float glossyAlphaForNEE = 0.0f;
 	float glossyAlphaVForNEE = 0.0f;
 	// CoatedConductor's base-conductor alphas (the two above are the coat's); -1 = not a coated conductor.
@@ -545,26 +547,26 @@ extern "C" __global__ void evaluate_materials(
 		break;
 	}
 	case MaterialType::Measured: {
-		// Real tabulated measured-BRDF - see wf_sample_measured_material's
-		// comment above. Matches material_pbrt.h `class measured`'s
-		// skip_pdf=true: no NEE/MIS (is_specular=true), and the result needs
-		// unboundedSpectrum (not albedoSpectrum) since sample_f()'s returned
-		// fr/fg/fb is already the material's full throughput weight, not a
-		// [0,1] albedo - same convention as MaterialType::Hair/Principled
-		// above (their BxDF::sample() results are likewise already-weighted,
-		// potentially-unbounded values).
+		// Real tabulated measured BRDF (pbrt-v4 MeasuredBxDF): one VNDF-importance-sampled sample continues the path with the weight
+		// f * |cos| / pdf, and the vertex takes direct-light samples (area, sky, punctual) with MIS through wf_finish_material_scatter()'s
+		// evalGlossyF, which evaluates the BxDF's own f() and pdf() (wf_gpu_measured_f_pdf). The weight needs unboundedSpectrum, not
+		// albedoSpectrum: it is a throughput weight, not a [0,1] albedo - same convention as MaterialType::Hair/Principled above.
+		// (It used to be a specular-style bounce with no light sampling, unbiased but very noisy under a small light, which never lit
+		// the material from a point/spot/distant light at all.)
 		float3 sdir, atten;
-		if (wf_sample_measured_material(h.rayDir, normal, mat,
+		float mpdf;
+		const bool m_ok = wf_sample_measured_material(h.rayDir, normal, mat,
 				measuredTables, numMeasuredTables,
 				measuredParamValues, measuredData, measuredMcdf, measuredCcdf,
-				seed, sdir, atten)) {
-			scattered_dir = sdir;
-			attenuation   = unboundedSpectrum(atten);
-			scattered     = true;
-		} else {
-			scattered = false;
-		}
-		is_specular = true;
+				seed, sdir, atten, mpdf);
+		// A rejected sample (grazing wo, zero pdf, a reflection below the horizon) must not skip this vertex's NEE - pbrt takes the
+		// direct-light sample whether or not the sample that follows succeeds. It carries zero weight and the path ends after NEE.
+		scattered_dir = m_ok ? sdir : normal;
+		attenuation   = m_ok ? unboundedSpectrum(atten) : SS(0.f);
+		scattered     = true;
+		is_specular   = false;
+		brdf_pdf_override = m_ok ? mpdf : -1.0f;
+		phaseWo = -normalize(h.rayDir);   // the outgoing direction evalGlossyF evaluates f() and pdf() against
 		break;
 	}
 	case MaterialType::Interface: {
@@ -1628,6 +1630,7 @@ extern "C" __global__ void evaluate_materials(
 		// reproject frame-to-frame.
 		h.hitPoint, restirVolumeReservoirs, restirVolumeCtx, volumeMatIdxOut,
 		mediumMeanFreePath, volumePhaseWoGOut, volumeEntryPointOut,
-		glossyCondAlphaForNEE, glossyCondAlphaVForNEE);
+		glossyCondAlphaForNEE, glossyCondAlphaVForNEE,
+		&measuredBundle);
 }
 

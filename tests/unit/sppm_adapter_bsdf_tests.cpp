@@ -29,6 +29,7 @@
 #include "material.h"
 #include "sppm_adapter.h"
 #include <cmath>
+#include <fstream>
 #include <random>
 
 // ============================================================================
@@ -526,4 +527,60 @@ TEST(SppmResolveMaterial, ResolvedNonDeltaSubMaterialIsClassifiedAsNonDelta) {
 	EXPECT_EQ(resolved.get(), lam.get());
 	hit_record rec;
 	EXPECT_FALSE(sppm_is_delta_material(resolved.get(), rec));
+}
+
+// ============================================================================
+// measured -- BDPT/MLT/SPPM bridge (sppm_bsdf_f / sppm_bsdf_sample_f / sppm_bsdf_pdf)
+// ============================================================================
+
+// The bridge's generic path builds f as scatter()'s colour times scattering_pdf() / cos and assumes a cosine-shaped sampling density. For
+// the measured material that read gray under --bdpt/--mlt (the furnace gave 0.334 in every channel where the table's albedo is
+// 0.43/0.38/0.25) because its colour varies with the queried direction. It now has its own case, and the energy a path carries through
+// the bridge, E[f * cos / pdf] over sppm_bsdf_sample_f, must be the table's own albedo (integrated here from f() alone) in each channel.
+TEST(SppmBsdfSampleF, MeasuredEnergyConservationMatchesTheTablesAlbedo) {
+	const char* const kTable = "pbrt_scenes/synthetic-gold.bsdf";
+	{ std::ifstream probe(kTable); if (!probe) GTEST_SKIP() << kTable << " not found from this working directory"; }
+	auto mat = make_shared<measured>(kTable);
+	ASSERT_TRUE(mat->loaded());
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 1, 0);
+	ctx.mat = mat;
+	const double n[3] = { 0, 1, 0 };
+	const double wo[3] = { std::sin(0.5), std::cos(0.5), 0.0 };   // about 29 degrees off the normal
+
+	// reference: pi * E[f()] over cosine-weighted directions, from the BxDF alone (the local frame's z is the normal, y here)
+	MeasuredBxDF<double> bxdf(mat->get_data(), 612.0f, 549.0f, 465.0f);
+	auto frame = ShadingFrame<double>::from_normal(0, 1, 0);
+	double lwo_x, lwo_y, lwo_z;
+	frame.to_local(wo[0], wo[1], wo[2], lwo_x, lwo_y, lwo_z);
+	double ref[3] = { 0, 0, 0 };
+	const int nRef = 100000;
+	for (int i = 0; i < nRef; ++i) {
+		const double u0 = (i + 0.5) / nRef, u1 = std::fmod((i + 0.5) * 0.6180339887498949, 1.0);
+		const double r = std::sqrt(u0), phi = 2.0 * pi * u1;
+		double fr, fg, fb;
+		bxdf.f(lwo_x, lwo_y, lwo_z, r * std::cos(phi), r * std::sin(phi), std::sqrt(std::max(0.0, 1.0 - u0)), fr, fg, fb);
+		ref[0] += fr; ref[1] += fg; ref[2] += fb;
+	}
+	for (double& v : ref) v *= pi / nRef;
+
+	double sum[3] = { 0, 0, 0 };
+	const int nDraws = 200000;
+	int accepted = 0;
+	for (int i = 0; i < nDraws; ++i) {
+		double dir[3], f[3], pdf;
+		bool specular = true;
+		if (!sppm_bsdf_sample_f(ctx, wo, n, 0.0, 0.0, dir, f, pdf, specular) || pdf <= 0.0) continue;
+		EXPECT_FALSE(specular) << "the measured material is a real, non-delta BSDF";
+		const double cosI = dir[0] * n[0] + dir[1] * n[1] + dir[2] * n[2];
+		for (int c = 0; c < 3; ++c) sum[c] += f[c] * cosI / pdf;
+		++accepted;
+	}
+	ASSERT_GT(accepted, nDraws / 2);
+	for (int c = 0; c < 3; ++c)
+		EXPECT_NEAR(sum[c] / nDraws, ref[c], 0.03 * ref[c]) << "channel " << c << ": the bridge's f, pdf and sampling disagree with the table";
+	// the colour must not be gray: the table is a gold, so red is clearly above blue
+	EXPECT_GT(ref[0], 1.3 * ref[2]);
+	EXPECT_GT(sum[0], 1.3 * sum[2]);
 }

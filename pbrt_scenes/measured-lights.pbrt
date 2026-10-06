@@ -1,0 +1,32 @@
+# measured-lights.pbrt -- a measured-BSDF floor and sphere lit by a small area light and a point light (no sky).
+#
+# The measured material samples its BSDF and, since it was given real light sampling, also takes direct-light samples with MIS. A small bright
+# light is exactly where sampling the BSDF alone is noisy (a glossy lobe rarely points at it), so this scene is the one that shows the difference
+# in noise, and its mean must not move: the three backends must agree with each other and with what the BSDF-only estimator converged to
+# before light sampling existed (see MeasuredLightsAgreeAcrossBackends in tests/unit/pbrt_example_scenes_tests.cpp).
+#
+# Uses synthetic-gold.bsdf (original, see measured-brdf-showroom.pbrt's header), so it carries no licence constraints.
+
+LookAt  0 3 9    0 0.6 0    0 1 0
+Camera "perspective" "float fov" [ 34 ]
+
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 128 ]
+
+WorldBegin
+
+LightSource "point" "point3 from" [ -3.5 3 2.5 ] "rgb I" [ 1.0 0.95 0.85 ] "float scale" [ 45.0 ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 1 1 1 ] "float scale" [ 55.0 ] "bool twosided" [ true ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 1.5 4 -0.5   2.5 4 -0.5   2.5 4 0.5   1.5 4 0.5 ]
+AttributeEnd
+
+Material "measured" "string filename" [ "synthetic-gold.bsdf" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -8 0 -8   8 0 -8   8 0 8   -8 0 8 ]
+AttributeBegin
+  Translate 0 1 0
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

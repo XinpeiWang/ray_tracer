@@ -222,6 +222,123 @@ __device__ __forceinline__ void gpu_pl2d_sample(const GpuPL2DTable& tab,
 }
 
 // ---------------------------------------------------------------------------
+// gpu_pl2d_invert() -- PiecewiseLinear2D<Dim>::Invert() port (src/shared/piecewise_linear_2d.h): given a point (px,py) of the warped domain,
+// recovers the uniform sample that Sample() would have mapped to it, and the density there. The vndf table's inverse is what MeasuredBxDF::f()
+// and PDF() use to turn a half-vector into the spectra/luminance lookup point (pbrt-v4 brdf->vndf.Invert).
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ void gpu_pl2d_invert(const GpuPL2DTable& tab,
+												   const float* data, const float* mcdf, const float* ccdf,
+												   const float* paramValues,
+												   float px, float py, const float p[3],
+												   float& out_px, float& out_py, float& out_pdf) {
+	float pw[6];
+	uint32_t soff;
+	gpu_pl2d_fill_pw(tab, paramValues, p, soff, pw);
+
+	const int nx = tab.nx, ny = tab.ny;
+	const float invx = (float)(nx - 1), invy = (float)(ny - 1);
+	float sx = px * invx, sy = py * invy;
+	int ix = (int)sx; if (ix > nx - 2) ix = nx - 2;
+	int iy = (int)sy; if (iy > ny - 2) iy = ny - 2;
+	sx -= (float)ix; sy -= (float)iy;
+
+	const uint32_t sz = (uint32_t)(nx * ny);
+	uint32_t off = (uint32_t)(ix + iy * nx);
+	if (tab.dim != 0) off += soff * sz;
+	const float* dataBase = data + tab.data_offset;
+	const float* mcdfBase = mcdf + tab.mcdf_offset;
+	const float* ccdfBase = ccdf + tab.ccdf_offset;
+
+	const float v00 = gpu_pl2d_look(dataBase,          off, sz, pw, tab.dim, tab.param_stride);
+	const float v10 = gpu_pl2d_look(dataBase + 1,      off, sz, pw, tab.dim, tab.param_stride);
+	const float v01 = gpu_pl2d_look(dataBase + nx,     off, sz, pw, tab.dim, tab.param_stride);
+	const float v11 = gpu_pl2d_look(dataBase + nx + 1, off, sz, pw, tab.dim, tab.param_stride);
+
+	const float w0y = 1.0f - sy, w1y = sy;
+	const float c0 = w0y * v00 + w1y * v01;
+	const float c1 = w0y * v10 + w1y * v11;
+	const float pdf = (1.0f - sx) * c0 + sx * c1;
+
+	// invert X: undo the quadratic solve, add the conditional CDF base, normalize by the row total
+	float ux = sx * (c0 + 0.5f * sx * (c1 - c0));
+	const float cdf_v0 = gpu_pl2d_look(ccdfBase,      off, sz, pw, tab.dim, tab.param_stride);
+	const float cdf_v1 = gpu_pl2d_look(ccdfBase + nx, off, sz, pw, tab.dim, tab.param_stride);
+	ux += (1.0f - sy) * cdf_v0 + sy * cdf_v1;
+	uint32_t roff = (uint32_t)(iy * nx);
+	if (tab.dim != 0) roff += soff * sz;
+	const float r0 = gpu_pl2d_look(ccdfBase, roff + (uint32_t)nx - 1,       sz, pw, tab.dim, tab.param_stride);
+	const float r1 = gpu_pl2d_look(ccdfBase, roff + (uint32_t)(nx * 2 - 1), sz, pw, tab.dim, tab.param_stride);
+	ux /= (1.0f - sy) * r0 + sy * r1;
+
+	// invert Y: undo the marginal quadratic solve and add the marginal CDF base (mcdf holds one value per row, hence stride ny)
+	float uy = sy * (r0 + 0.5f * sy * (r1 - r0));
+	uint32_t moff = (uint32_t)iy;
+	if (tab.dim != 0) moff += soff * (uint32_t)ny;
+	uy += gpu_pl2d_look(mcdfBase, moff, (uint32_t)ny, pw, tab.dim, tab.param_stride);
+
+	out_px  = fminf(fmaxf(ux, 0.0f), 1.0f);
+	out_py  = fminf(fmaxf(uy, 0.0f), 1.0f);
+	out_pdf = pdf * invx * invy;
+}
+
+// ---------------------------------------------------------------------------
+// gpu_measured_f_pdf() -- MeasuredBxDF<T>::f() and pdf() port in one function (they share the half-vector and the vndf inversion), for
+// direct-light sampling with MIS: f is the BRDF value for (wo, wi) in the local shading frame and pdf the density sample_f would have
+// produced wi with. Returns false (f = 0, pdf = 0) for a direction pair the table gives no reflectance (opposite hemispheres, a degenerate
+// half-vector, a zero normalization).
+// ---------------------------------------------------------------------------
+__device__ __forceinline__ bool gpu_measured_f_pdf(
+	const GpuMeasuredTable& tab, bool isotropic,
+	const float* paramValues, const float* data, const float* mcdf, const float* ccdf,
+	float wox, float woy, float woz, float wix, float wiy, float wiz, const float lambda[3],
+	float& fr, float& fg, float& fb, float& pdf_out)
+{
+	const float kPi = 3.14159265358979323846f;
+	fr = fg = fb = 0.0f; pdf_out = 0.0f;
+	if (woz * wiz <= 0.0f) return false;
+	if (woz < 0.0f) { wox = -wox; woy = -woy; woz = -woz; wix = -wix; wiy = -wiy; wiz = -wiz; }
+
+	float wmx = wix + wox, wmy = wiy + woy, wmz = wiz + woz;
+	const float wm2 = wmx * wmx + wmy * wmy + wmz * wmz;
+	if (wm2 == 0.0f) return false;
+	const float inv = 1.0f / sqrtf(wm2);
+	wmx *= inv; wmy *= inv; wmz *= inv;
+
+	const float theta_o = acosf(fmaxf(-1.0f, fminf(1.0f, woz))), phi_o = atan2f(woy, wox);
+	const float theta_m = acosf(fmaxf(-1.0f, fminf(1.0f, wmz))), phi_m = atan2f(wmy, wmx);
+	const float u_wo_x = sqrtf(theta_o * (2.0f / kPi)), u_wo_y = phi_o * (1.0f / (2.0f * kPi)) + 0.5f;
+	const float u_wm_x = sqrtf(theta_m * (2.0f / kPi));
+	float u_wm_y = (isotropic ? (phi_m - phi_o) : phi_m) * (1.0f / (2.0f * kPi)) + 0.5f;
+	u_wm_y -= floorf(u_wm_y);
+
+	float vndf_p[3] = { phi_o, theta_o, 0.0f };
+	float ui_x, ui_y, ui_pdf;
+	gpu_pl2d_invert(tab.vndf, data, mcdf, ccdf, paramValues, u_wm_x, u_wm_y, vndf_p, ui_x, ui_y, ui_pdf);
+
+	float spec_p[3] = { phi_o, theta_o, 0.0f };
+	float val[3];
+	for (int c = 0; c < 3; ++c) {
+		spec_p[2] = lambda[c];
+		val[c] = fmaxf(0.0f, gpu_pl2d_eval(tab.spectra, data, paramValues, ui_x, ui_y, spec_p));
+	}
+	const float ndf_val   = gpu_pl2d_eval(tab.ndf,   data, paramValues, u_wm_x, u_wm_y, nullptr);
+	const float sigma_val = gpu_pl2d_eval(tab.sigma, data, paramValues, u_wo_x, u_wo_y, nullptr);
+	const float denom = 4.0f * sigma_val * fabsf(wiz);
+	if (denom == 0.0f) return false;
+	const float scale = ndf_val / denom;
+	fr = val[0] * scale; fg = val[1] * scale; fb = val[2] * scale;
+
+	float lum_p[3] = { phi_o, theta_o, 0.0f };
+	const float lum = gpu_pl2d_eval(tab.luminance, data, paramValues, ui_x, ui_y, lum_p);
+	const float sinTheta_m = sqrtf(fmaxf(0.0f, 1.0f - wmz * wmz));
+	const float dot_wo_wm  = wox * wmx + woy * wmy + woz * wmz;
+	const float jacobian   = 4.0f * dot_wo_wm * fmaxf(2.0f * kPi * kPi * u_wm_x * sinTheta_m, 1e-6f);
+	if (jacobian == 0.0f) return true;   // f is valid, the sampling density is not
+	pdf_out = ui_pdf * lum / jacobian;
+	return true;
+}
+
+// ---------------------------------------------------------------------------
 // gpu_measured_sample_f() -- MeasuredBxDF<T>::sample_f() port (see
 // src/shared/measured_bxdf.h's own extensive comment for the algorithm this
 // mirrors step for step). `wo` is in the LOCAL SHADING FRAME (z = shading
@@ -253,10 +370,10 @@ __device__ __forceinline__ bool gpu_measured_sample_f(
 	float wox, float woy, float woz,
 	float u0, float u1, const float lambda[3],
 	float& wix, float& wiy, float& wiz,
-	float& fr, float& fg, float& fb)
+	float& fr, float& fg, float& fb, float& pdf_out)
 {
 	const float kPi = 3.14159265358979323846f;
-	fr = fg = fb = 0.0f;
+	fr = fg = fb = 0.0f; pdf_out = 0.0f;
 
 	const bool flip = (woz < 0.0f);
 	if (flip) { wox = -wox; woy = -woy; woz = -woz; }
@@ -344,51 +461,6 @@ __device__ __forceinline__ bool gpu_measured_sample_f(
 	fr = val[0] * scale * weight;
 	fg = val[1] * scale * weight;
 	fb = val[2] * scale * weight;
-	return true;
-}
-
-// sample_measured_material() -- world-space wrapper matching this file's
-// sibling helpers (sample_hair_material()/sample_principled_material(),
-// optix_device_helpers.h): builds the local shading frame via
-// ShadingFrame<float>::from_normal() (src/shared/shading_frame.h - CPU_GPU-
-// tagged, no std::vector, so it compiles directly for device code with
-// T=float, exactly like HairBxDF<float>/PrincipledBxDF<T> already do
-// elsewhere in this file - this is the "existing world<->local shading-
-// frame helper" this material reuses rather than writing a new one),
-// converts wo to local space, samples once via gpu_measured_sample_f(), and
-// converts the sampled wi back to world. Returns false (matching the
-// Metal-family scatter-rejection pattern) if sample_f() itself rejected the
-// sample or `mat.textureIdx` doesn't name a valid table.
-__device__ __forceinline__ bool sample_measured_material(
-	const float3& ray_dir, const float3& normal, const MaterialData& mat,
-	unsigned int& seed, float3& scattered_dir, float3& attenuation)
-{
-	if (mat.textureIdx < 0 || (unsigned int)mat.textureIdx >= params.numMeasuredTables)
-		return false;
-	const GpuMeasuredTable& tab = params.measuredTables[mat.textureIdx];
-
-	ShadingFrame<float> frame = ShadingFrame<float>::from_normal(normal.x, normal.y, normal.z);
-	float3 wo_world = normalize(-ray_dir);
-	float wox, woy, woz;
-	frame.to_local(wo_world.x, wo_world.y, wo_world.z, wox, woy, woz);
-
-	// sRGB-primary approximations - matches material_pbrt.h `class
-	// measured`'s kLambdaR/G/B exactly (this material queries the tensor's
-	// spectral interpolant at 3 fixed wavelengths rather than pbrt-v4's
-	// stochastic hero-wavelength spectral sampling - see that class's own
-	// comment for why).
-	const float lambda[3] = { 612.0f, 549.0f, 465.0f };
-
-	float wix, wiy, wiz, fr, fg, fb;
-	if (!gpu_measured_sample_f(tab, tab.isotropic != 0,
-			params.measuredParamValues, params.measuredData, params.measuredMcdf, params.measuredCcdf,
-			wox, woy, woz, random_float(seed), random_float(seed), lambda,
-			wix, wiy, wiz, fr, fg, fb))
-		return false;
-
-	float wdx, wdy, wdz;
-	frame.to_world(wix, wiy, wiz, wdx, wdy, wdz);
-	scattered_dir = normalize(make_float3(wdx, wdy, wdz));
-	attenuation   = make_float3(fr, fg, fb);
+	pdf_out = final_pdf;
 	return true;
 }

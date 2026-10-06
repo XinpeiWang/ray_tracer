@@ -278,6 +278,17 @@ inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const
 		return;
 	}
 
+	// measured needs its own case like diffuse_transmission and rough_dielectric: its f is RGB and varies with the queried direction, so the
+	// generic path below (scatter()'s colour, which is only a placeholder here, times scattering_pdf()/cos) would read gray.
+	if (auto me = dynamic_cast<const measured*>(ctx.mat.get())) {
+		if (cos_wi <= 0.0) return;
+		hit_record rec = sppm_reconstruct_hit_record(ctx, n);
+		ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
+		ray fake_scattered(ctx.p, vec3(wi[0], wi[1], wi[2]));
+		me->bsdf_f_rgb(fake_in, rec, fake_scattered, out[0], out[1], out[2]);
+		return;
+	}
+
 	// lambertian fast path: f(wo,wi) = albedo/pi is a closed form (cosine_pdf
 	// cancels exactly against scattering_pdf()'s own cos_theta/pi - see this
 	// function's return statement below for the general form this collapses
@@ -438,6 +449,13 @@ inline double sppm_bsdf_pdf(const SPPMShadingContext& ctx, const double wo[3], c
 		ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
 		ray fake_scattered(ctx.p, vec3(wi[0], wi[1], wi[2]));
 		return std::max(0.0, ctx.mat->scattering_pdf(fake_in, rec, fake_scattered));
+	}
+	// measured samples its own VNDF density, not a cosine lobe.
+	if (auto me = dynamic_cast<const measured*>(ctx.mat.get())) {
+		hit_record rec = sppm_reconstruct_hit_record(ctx, n);
+		ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
+		ray fake_scattered(ctx.p, vec3(wi[0], wi[1], wi[2]));
+		return std::max(0.0, me->sampling_pdf(fake_in, rec, fake_scattered));
 	}
 	double cos_wi = wi[0]*n[0] + wi[1]*n[1] + wi[2]*n[2];
 	return cos_wi > 0.0 ? cos_wi / pi : 0.0;
