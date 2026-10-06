@@ -1317,7 +1317,11 @@ kernel void primaryRayKernel(
                     // (scale,scale,scale) multiplier (see AreaLight::
                     // useTexture's own comment), not a direct radiance -
                     // pbrt-v4 ignores L entirely once an image is given.
-                    float2 texUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                    // A disk or cylinder light has no triangle UV: derive pbrt's (u, v) for it from the hit point and the light's own frame.
+                    float2 texUV;
+                    if (isDisk && mat.lightId >= 0) texUV = diskLightTexCoord(lights[mat.lightId], hitPoint);
+                    else if (isCylinder && mat.lightId >= 0) texUV = cylinderLightTexCoord(lights[mat.lightId], hitPoint);
+                    else texUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                     hitEmission = pbrtAreaLightTexture.sample(textureSampler, texUV).rgb * hitEmission;
                 }
                 if (specularBounce || mat.lightId < 0) {

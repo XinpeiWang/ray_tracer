@@ -913,6 +913,24 @@ static PackedFloat3 pbrtFlatLightEmission(const std::string& pbrtScenePath, cons
     return PackedFloat3{(float)(em.L[0] * em.scale), (float)(em.L[1] * em.scale), (float)(em.L[2] * em.scale)};
 }
 
+// The shared area-light texture slot holds ONE image. A light that names an image gets it if the slot is free (the image is decoded into it)
+// or already holds that same image, so a scene may light several shapes from one texture; a light naming a different image, or one that
+// cannot be decoded, falls back to its flat colour.
+bool MetalPocApp::claimAreaLightImage(const pbrt_flatten::Emission& em) {
+    if (em.filename.empty()) return false;
+    if (havePbrtAreaLightImage) return em.filename == pbrtAreaLightImageFilename;
+    std::string bytes;
+    if (pbrt_load::loadFileNear(pbrtScenePath, em.filename, bytes) &&
+        pbrt_load::detail::decodeInfiniteLightImage(em.filename, bytes,
+            pbrtAreaLightImagePixels, pbrtAreaLightImageWidth, pbrtAreaLightImageHeight)) {
+        havePbrtAreaLightImage = true;
+        pbrtAreaLightImageFilename = em.filename;
+        return true;
+    }
+    fprintf(stderr, "loadPbrtScene: area light's own image '%s' could not be read/decoded; falling back to its flat colour\n", em.filename.c_str());
+    return false;
+}
+
 void MetalPocApp::loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
     const PbrtMaterialForFn& materialFor, std::vector<bool>& triangleHandled,
     std::unordered_map<int, std::pair<float3, bool>>& unhandledLightEmission) {
@@ -957,19 +975,10 @@ void MetalPocApp::loadPbrtAreaLights(const pbrt_flatten::FlatScene& scene, const
                 // filename were named, same "safe fallback over dropping
                 // the light" reasoning as every other image-based
                 // feature in this loader.
-                if (!em.filename.empty() && !havePbrtAreaLightImage) {
-                    std::string bytes;
-                    if (pbrt_load::loadFileNear(pbrtScenePath, em.filename, bytes) &&
-                        pbrt_load::detail::decodeInfiniteLightImage(em.filename, bytes,
-                            pbrtAreaLightImagePixels, pbrtAreaLightImageWidth, pbrtAreaLightImageHeight)) {
-                        havePbrtAreaLightImage = true;
-                        quadMaterialType = 15u;
-                        useTextureFlag = 1.0f;
-                        emission = float3{(float)em.scale, (float)em.scale, (float)em.scale};
-                    } else {
-                        fprintf(stderr, "loadPbrtScene: area light's own image '%s' could not be read/decoded; "
-                                        "falling back to its flat colour\n", em.filename.c_str());
-                    }
+                if (claimAreaLightImage(em)) {
+                    quadMaterialType = 15u;
+                    useTextureFlag = 1.0f;
+                    emission = float3{(float)em.scale, (float)em.scale, (float)em.scale};
                 }
                 const TriangleMaterial lightMat = materialFor(t0.material);
                 const int32_t lightId = (int32_t)lights.size();
@@ -1464,6 +1473,15 @@ void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const Pbrt
             mat.emission = pbrtFlatLightEmission(pbrtScenePath, em, /*radialRowWeight=*/true);
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
+            // An image-textured disk light: pbrt maps the image over the disk (u = angle / 2pi from the object x axis towards y, v = (R - r) / R).
+            // The shared texture slot is sampled by the light sampler and by direct hits; emission is then the pure scale.
+            const bool texturedLight = claimAreaLightImage(em);
+            float3 objectX{1, 0, 0};
+            if (texturedLight) {
+                mat.emission = PackedFloat3{(float)em.scale, (float)em.scale, (float)em.scale};
+                mat.materialType = 15u;
+                objectX = simd::normalize(float3{(float)worldAxisX[0], (float)worldAxisX[1], (float)worldAxisX[2]} - wOrigin);
+            }
             // Register as a real disk light (AreaLightData kind 2, uniform-area sampling),
             // with lightId set so the emissive-hit MIS weight pairs with NEE. Image-textured
             // lights keep the old "emissive but unsampled" tier.
@@ -1472,12 +1490,12 @@ void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const Pbrt
                 const int32_t lightId = (int32_t)lights.size();
                 lights.push_back(AreaLightData{
                     PackedFloat3{center.x, center.y, center.z},
-                    PackedFloat3{diskRadius, 0.0f, 0.0f}, PackedFloat3{0.0f, 0.0f, 0.0f},
+                    PackedFloat3{diskRadius, 0.0f, 0.0f}, PackedFloat3{objectX.x, objectX.y, objectX.z},   // edgeV: the object x axis (the image's u = 0 direction), used only when textured
                     PackedFloat3{normal.x, normal.y, normal.z},
                     (float)M_PI * diskRadius * diskRadius,
                     mat.emission,
                     /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
-                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f, /*useTexture=*/0.0f,
+                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f, /*useTexture=*/texturedLight ? 1.0f : 0.0f,
                     /*pmf=*/0.0f, /*aliasProb=*/1.0f, /*aliasIndex=*/0u,
                     /*kind=*/2.0f, /*spherePrimId=*/-1});
                 mat.lightId = lightId;
@@ -1550,6 +1568,15 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
             mat.emission = pbrtFlatLightEmission(pbrtScenePath, em);
             mat.lightId = -1;
             mat.twoSided = em.twoSided ? 1u : 0u;
+            // Image-textured: pbrt maps u = angle / 2pi (from the object x axis towards y), v = height fraction. The x axis goes in the
+            // light's (otherwise unused) normal slot.
+            const bool texturedLight = claimAreaLightImage(em);
+            float3 objectX = axis;
+            if (texturedLight) {
+                mat.emission = PackedFloat3{(float)em.scale, (float)em.scale, (float)em.scale};
+                mat.materialType = 15u;
+                objectX = simd::normalize(float3{(float)worldAxisX[0], (float)worldAxisX[1], (float)worldAxisX[2]} - wOrigin);
+            }
             // Register as a real cylinder light (AreaLightData kind 3, lateral surface only,
             // uniform-area sampling); lightId set so emissive-hit MIS pairs with NEE.
             {
@@ -1559,11 +1586,11 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
                     PackedFloat3{base.x, base.y, base.z},
                     PackedFloat3{axis.x, axis.y, axis.z},          // edgeU = unit axis
                     PackedFloat3{cylRadius, height, 0.0f},         // edgeV = (radius, height)
-                    PackedFloat3{axis.x, axis.y, axis.z},
+                    PackedFloat3{objectX.x, objectX.y, objectX.z},   // normal slot: the object x axis when textured (axis otherwise, as before)
                     2.0f * (float)M_PI * cylRadius * height,
                     mat.emission,
                     /*patternTileB=*/0.0f, /*patternScale=*/0.0f,
-                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f, /*useTexture=*/0.0f,
+                    /*twoSided=*/em.twoSided ? 1.0f : 0.0f, /*useTexture=*/texturedLight ? 1.0f : 0.0f,
                     /*pmf=*/0.0f, /*aliasProb=*/1.0f, /*aliasIndex=*/0u,
                     /*kind=*/3.0f, /*spherePrimId=*/-1});
                 mat.lightId = lightId;
