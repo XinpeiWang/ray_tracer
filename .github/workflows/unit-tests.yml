@@ -97,8 +97,22 @@ jobs:
     steps:
       - uses: actions/checkout@v4
 
+      # Compiler cache: the Metal build is ~2 min from scratch every run; with a warm cache a typical PR only
+      # recompiles what it touched. ccache is keyed by the compiler + preprocessed source, so a stale entry
+      # cannot produce a wrong object. Ninja (preinstalled on the runner image) for the faster scheduler.
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: metal-poc-macos-14
+          max-size: 500M
+
+      - name: Ensure Ninja
+        run: command -v ninja || brew install ninja
+
       - name: Configure (CMake, RT_BUILD_METAL=ON)
-        run: cmake -B build -DRT_BUILD_METAL=ON -DCMAKE_BUILD_TYPE=Release
+        run: >
+          cmake -B build -G Ninja -DRT_BUILD_METAL=ON -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_OBJCXX_COMPILER_LAUNCHER=ccache
 
       - name: Build (Release)
         # Builds cpu_renderer, metal_renderer (every gpu/metal/*.mm +
