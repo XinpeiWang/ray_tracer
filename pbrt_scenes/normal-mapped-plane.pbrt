@@ -1,0 +1,26 @@
+# normal-mapped-plane.pbrt -- regression scene for image normal maps (a tangent-space RGB "texture displacement").
+#
+# A diffuse plane lit grazing from one side by a tall area light, like bump-mapped-plane.pbrt, but its displacement image is an RGB
+# tangent-space normal map (images/normal-checker.png) instead of a grayscale height map. The CPU wraps such a material in
+# normal_map_material (the image is read LINEAR, bilinear, Repeat; the decoded normal 2*rgb-1 is rotated into the shading frame);
+# a backend that ignores it renders the plane flat. The checker's two tile normals tilt towards and away from the lamp, so a
+# regression in the decode, the wrap, or the dpdu frame moves the mean and the picture a lot.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt 0 4 6  0 0 0  0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Film "rgb" "integer xresolution" [ 100 ] "integer yresolution" [ 100 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+Texture "normalimg" "float" "imagemap" "string filename" [ "../images/normal-checker.png" ]
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -6 1.5 3   -6 1.5 -3   -6 4.5 -3   -6 4.5 3 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ] "texture displacement" [ "normalimg" ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -5 0 -5   5 0 -5   5 0 5   -5 0 5 ] "point2 uv" [ 0 0  1 0  1 1  0 1 ]

@@ -1074,21 +1074,22 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
         return toWorld(float3{(float)v[i * 3 + 0], (float)v[i * 3 + 1], (float)v[i * 3 + 2]});
     };
     // Image bump maps ("texture displacement"): each distinct grayscale image is decoded once into the shared float buffer.
-    // filename -> {element offset, width, height}; width 0 = could not be used (missing/undecodable/not grayscale).
-    std::map<std::string, std::array<int, 3>> bumpImages;
+    // filename -> {element offset, width, height, 1 if a normal map}; width 0 = could not be used (missing/undecodable).
+    // A grayscale image is a height map (1 float per texel, sRGB-decoded); anything else is read as a tangent-space RGB normal map
+    // (3 floats per texel, LINEAR - a normal map holds vectors, not colours), as the CPU classifies and reads them.
+    std::map<std::string, std::array<int, 4>> bumpImages;
     auto applyImageBump = [&](TriangleMaterial& mat, const pbrt_flatten::Material& m) {
         if (m.displacementTextureFilename.empty() || mat.lightId >= 0 || mat.twoSided != 0u) return;
         auto it = bumpImages.find(m.displacementTextureFilename);
         if (it == bumpImages.end()) {
-            std::array<int, 3> entry{0, 0, 0};
+            std::array<int, 4> entry{0, 0, 0, 0};
             std::string bytes;
             if (pbrt_load::loadFileNear(pbrtScenePath, m.displacementTextureFilename, bytes)) {
                 int w = 0, h = 0, ch = 0;
                 unsigned char* px = stbi_load_from_memory(reinterpret_cast<const unsigned char*>(bytes.data()),
                                                           (int)bytes.size(), &w, &h, &ch, 3);
                 if (px && w > 0 && h > 0) {
-                    // The CPU classifies a displacement image by content: grayscale = height map (bump), otherwise a
-                    // tangent-space normal map. Only the height map is implemented here.
+                    // The CPU classifies a displacement image by content: grayscale = height map (bump), otherwise a normal map.
                     int maxDiff = 0;
                     for (int sy = 0; sy < 8; ++sy)
                         for (int sx = 0; sx < 8; ++sx) {
@@ -1096,12 +1097,13 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
                             maxDiff = std::max({maxDiff, std::abs((int)p[0] - (int)p[1]), std::abs((int)p[1] - (int)p[2]), std::abs((int)p[0] - (int)p[2])});
                         }
                     if (maxDiff <= 10) {
-                        entry = {(int)rgbGridData.size(), w, h};
+                        entry = {(int)rgbGridData.size(), w, h, 0};
                         rgbGridData.reserve(rgbGridData.size() + (size_t)w * h);
                         for (size_t k = 0; k < (size_t)w * h; ++k) rgbGridData.push_back(srgb_decode::byteToLinear(px[k * 3]));   // pbrt decodes an 8-bit image as sRGB
                     } else {
-                        fprintf(stderr, "loadPbrtScene: displacement image '%s' is a normal map; only height-map bump mapping is implemented, ignoring it\n",
-                                m.displacementTextureFilename.c_str());
+                        entry = {(int)rgbGridData.size(), w, h, 1};
+                        rgbGridData.reserve(rgbGridData.size() + (size_t)w * h * 3);
+                        for (size_t k = 0; k < (size_t)w * h * 3; ++k) rgbGridData.push_back(px[k] / 255.0f);
                     }
                 } else {
                     fprintf(stderr, "loadPbrtScene: displacement image '%s' could not be decoded; ignoring it\n", m.displacementTextureFilename.c_str());
@@ -1117,6 +1119,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             mat.bumpWidth = it->second[1];
             mat.bumpHeight = it->second[2];
             mat.bumpScale = (float)m.displacementScale;
+            mat.bumpIsNormalMap = it->second[3];
         }
     };
     for (int i = 0; i < (int)scene.triangles.size(); ++i) {
