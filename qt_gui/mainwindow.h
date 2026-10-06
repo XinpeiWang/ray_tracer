@@ -205,6 +205,12 @@ public:
 	explicit MainWindow(QWidget *parent = nullptr, const QString &startupLanguageCode = QString());
 	~MainWindow();
 
+	// Automated GUI smoke test, started by main.cpp when RT_GUI_SELFTEST=<mode> is set (see mainwindow_selftest.cpp):
+	// drives the real window, writes a log and a screenshot of THIS window next to RT_GUI_SELFTEST_OUT, then exits the
+	// application with a status code. Modes: "ui" (report the Output Mode items), "livepreview" (start Live Preview, let it
+	// render, report frames).
+	void runSelfTest(const QString &mode, const QString &outPrefix);
+
 	// Called from main.cpp, before any MainWindow exists, to decide which
 	// QTranslator (if any) to install - see language_switch.cpp's own
 	// comment for why language switching is restart-to-apply.
@@ -306,7 +312,7 @@ private:
 	static bool probeMetalGpuAvailable();
 #endif
 	void createRenderOptionsTab();
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Split out of createRenderOptionsTab() (a code-health pass - that
 	// function had grown to ~1779 lines as every Live Preview feature this
 	// session got appended to it) into qt_gui/mainwindow_tabs_render_live.cpp,
@@ -355,7 +361,7 @@ private:
 	void applyLogFontSize();
 	void changeLogFontSize(int deltaPoints);
 	void resetLogFontSize();
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// GPU-only (see realtime_renderer.dll's own build - MSVC/CUDA/OptiX,
 	// same RT_GUI_HAVE_GPU scope as the "Use GPU" toggle itself). See this
 	// project's own real-time-preview plan for the progressive-refinement
@@ -540,7 +546,7 @@ private:
 	void createThemeMenu();
 	QString loadSavedThemeId() const;
 	void saveThemeId(const QString &themeId) const;
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Live Preview mouse/keyboard sensitivity persistence - same
 	// QSettings(settings_keys::kOrg, settings_keys::kApp) location and
 	// "own local QSettings instance per call" shape as loadSavedThemeId()/
@@ -995,7 +1001,7 @@ private:
 	QLabel *m_statusWarningLabel;
 	QLabel *m_currentJobLabel;          // Which job is actually rendering - see startRenderJob()/describeRenderJob()
 	int m_progressTabIndex = -1;        // Index of the Progress tab within m_tabWidget (see createProgressTab())
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Live Preview - GPU progressive-refinement preview, driven by the same
 	// pinned Render/Stop button pair as Image/Video mode (see OutputMode's
 	// own comment) but NOT by RenderController/QProcess: this needs an
@@ -1596,7 +1602,7 @@ private:
 	// behavior - see createSettingsTab()'s own comment). Toggled by
 	// onModeChanged().
 	QLabel *m_videoModeWarningLabel = nullptr;
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Same "banner, don't hide" convention as m_videoModeWarningLabel above -
 	// visible only when Output Mode is LivePreview, explaining that
 	// Resolution/Samples/Max Depth/Output Path don't apply to Live
@@ -1716,7 +1722,7 @@ private:
 	// line shared by both builds instead of two near-duplicate #ifdef/#else
 	// lines that could drift out of sync.
 	bool isLivePreviewActive() const {
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 		return m_livePreviewRunning;
 #else
 		return false;
@@ -1733,7 +1739,7 @@ private:
 	// actually being watched" intent. See isLivePreviewSubTabVisible()'s
 	// comment for what "visible" means here. A no-op on a non-GPU build,
 	// where none of this state exists.
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	void stopLivePreviewIfNavigatedAway();
 #else
 	void stopLivePreviewIfNavigatedAway() {}
@@ -1747,7 +1753,7 @@ private:
 	// preset auto-switch), which broke the moment a third item could exist
 	// at all.
 	void selectOutputMode(OutputMode mode);
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Single source of truth for the pinned Render/Stop/Pause/Abandon
 	// buttons' enabled state whenever Live Preview is (or was just)
 	// involved - called from onModeChanged(), startRenderJob(),

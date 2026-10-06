@@ -950,7 +950,7 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// is about to apply anyway.
 	m_activeTheme = theme::byId(loadSavedThemeId());
 	m_startupFontId = loadSavedFontId();
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Loaded here (not lazily on first Live Preview start) so
 	// createSettingsTab() below can read the real saved value straight into
 	// its sensitivity spinboxes' initial setValue() calls, same reasoning
@@ -1103,7 +1103,7 @@ void MainWindow::setupUI() {
 	createSettingsTab();
 	createRenderOptionsTab();
 	createPreviewTab();
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	initLivePreviewSession();
 #endif
 	createProgressTab();

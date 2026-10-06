@@ -138,7 +138,7 @@ void MainWindow::onRenderClicked() {
 		onLogMessage("Paused background thumbnail generation to start this render.");
 	}
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Live Preview never becomes a RenderJob - it has no output file, no
 	// completion state, and runs in-process rather than as a
 	// RenderController/QProcess job (see OutputMode's own comment). Branch
@@ -412,7 +412,7 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	m_stopButton->setEnabled(true);
 	m_pauseButton->setEnabled(true);
 	m_abandonButton->setEnabled(true);
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	updateTransportButtons();
 #endif
 	// Always starts in "Pause" state regardless of how the previous job
@@ -804,7 +804,7 @@ void MainWindow::updateGenerateThumbnailsButtonState() {
 }
 
 void MainWindow::onStopClicked() {
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Checked first (though §3's mutual-exclusion rule means m_isRendering
 	// and m_livePreviewRunning are never both true, so the order isn't
 	// actually load-bearing) - RenderController::stopRender() exists to
@@ -1426,7 +1426,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	m_stopButton->setEnabled(false);
 	m_pauseButton->setEnabled(false);
 	m_abandonButton->setEnabled(false);
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	updateTransportButtons();
 #endif
 	m_pauseStartedAt = QDateTime();
@@ -1861,7 +1861,7 @@ void MainWindow::selectOutputMode(OutputMode mode) {
 
 void MainWindow::onModeChanged(int index) {
 	m_outputMode = static_cast<OutputMode>(m_modeCombo->itemData(index).toInt());
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Live Preview only ever runs while it's the selected mode - leaving it
 	// stops any in-progress session, the same "only costs anything while
 	// actually being watched" intent stopLivePreviewIfNavigatedAway()
@@ -1894,7 +1894,7 @@ void MainWindow::onModeChanged(int index) {
 	// dimming, one level deeper (mainwindow_tabs_render.cpp's own comment on
 	// m_denoiserGroupBox).
 	setGroupDimmed(m_denoiserImageVideoGroupBox, isLiveMode());
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	if (m_liveModeWarningLabel) m_liveModeWarningLabel->setVisible(isLiveMode());
 	if (m_liveModeOptionsWarningLabel) m_liveModeOptionsWarningLabel->setVisible(isLiveMode());
 	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
@@ -1924,7 +1924,7 @@ void MainWindow::onModeChanged(int index) {
 		                              "Queues behind it instead if a render is already running."));
 		m_statusLabel->setText(tr("Ready to render video frames"));
 		break;
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	case OutputMode::LivePreview:
 		m_renderButton->setText(tr("START LIVE &PREVIEW"));
 		icon_tint::apply(m_renderButton, ":/icons/gpu.svg",
@@ -1945,20 +1945,20 @@ void MainWindow::onModeChanged(int index) {
 		break;
 	}
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	updateTransportButtons();
 #endif
 
 	// Log mode change
 	QString modeName = tr("Single Image");
 	if (isVideoMode()) modeName = tr("Video Generation");
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	else if (isLiveMode()) modeName = tr("Live Preview");
 #endif
 	onLogMessage(tr("Mode changed to: %1").arg(modeName));
 }
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 // Single source of truth for the pinned Render/Stop/Pause/Abandon buttons'
 // enabled state whenever Live Preview is (or was just) involved - called
 // from onModeChanged(), startRenderJob(), onRenderComplete(), and both

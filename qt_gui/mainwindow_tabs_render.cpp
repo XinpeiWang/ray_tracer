@@ -15,7 +15,7 @@
 
 #include <QTabBar>
 #include "scene_metadata_client.h"
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 #include "realtime_preview_session.h"
 #endif
 #include <QVBoxLayout>
@@ -76,7 +76,7 @@ void MainWindow::createRenderOptionsTab() {
 	layout->setSpacing(14);
 	layout->setContentsMargins(12, 12, 12, 12);
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Same "banner, don't hide" convention as the Settings tab's own
 	// m_videoModeWarningLabel/m_liveModeWarningLabel - see their comments
 	// (mainwindow.h). Live Preview always renders via the GPU wavefront path
@@ -84,10 +84,16 @@ void MainWindow::createRenderOptionsTab() {
 	// the Denoiser group's own "Live Preview" subsection further down,
 	// which is specifically FOR it (and is dimmed/undimmed the same way
 	// this banner is shown/hidden).
+#ifdef Q_OS_MAC
+	m_liveModeOptionsWarningLabel = makeModeWarningBanner(optionsTab,
+		tr("⚠ Live Preview uses the Metal progressive path tracer directly - none of the "
+		"settings on this tab apply to it, except the \"Live Preview Settings\" group below."));
+#else
 	m_liveModeOptionsWarningLabel = makeModeWarningBanner(optionsTab,
 		tr("⚠ Live Preview uses the GPU progressive path tracer directly - none of the "
 		"settings on this tab apply to it, except the Denoiser section's own "
 		"\"Live Preview\" subsection below."));
+#endif
 	layout->addWidget(m_liveModeOptionsWarningLabel);
 #endif
 
@@ -1016,19 +1022,19 @@ void MainWindow::createRenderOptionsTab() {
 			"Metal equivalent, so it stays grayed out on macOS.")), denoiseRow);
 	}
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	buildDenoiserLivePreviewSubsection(optionsTab);
 #endif
 
 	denoiserGroupLayout->addWidget(m_denoiserImageVideoGroupBox);
 	setGroupDimmed(m_denoiserImageVideoGroupBox, isLiveMode());
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	denoiserGroupLayout->addWidget(m_denoiserLivePreviewGroupBox);
 	setGroupDimmed(m_denoiserLivePreviewGroupBox, !isLiveMode());
 #endif
 
 	layout->addWidget(m_denoiserGroupBox);
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	buildLivePreviewSettingsSection(optionsTab, layout);
 #endif
 
@@ -1562,7 +1568,7 @@ void MainWindow::createPreviewTab() {
 	connect(m_tabWidget, &QTabWidget::currentChanged, this, &MainWindow::stopLivePreviewIfNavigatedAway);
 }
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 // Live Preview - GPU progressive-refinement preview (see this project's own
 // real-time-preview plan), just another Output Mode (see that enum's own
 // comment, mainwindow_jobtypes.h) driven by the same pinned Render/Stop
@@ -2471,7 +2477,7 @@ void MainWindow::updatePreviewSidebarForActiveTab() {
 void MainWindow::closePreviewSubTab(int index) {
 	if (!m_previewSubTabs) return;
 	QWidget *page = m_previewSubTabs->widget(index);
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	if (page == m_livePreviewPage) {
 		// Stop BEFORE clearing the tracking pointers below - stopLivePreview()
 		// itself dereferences m_livePreviewStatusLabel, so it must run while

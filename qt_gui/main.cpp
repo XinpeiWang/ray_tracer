@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include <QApplication>
+#include <QTimer>
 #include <QFontDatabase>
 #include <QTranslator>
 
@@ -44,6 +45,13 @@ int main(int argc, char *argv[]) {
 
 	MainWindow window(nullptr, languageCode);
 	window.show();
+
+	// Opt-in automated smoke test of the real window (see mainwindow_selftest.cpp); a no-op unless RT_GUI_SELFTEST is set.
+	if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) {
+		const QString mode = qEnvironmentVariable("RT_GUI_SELFTEST");
+		const QString out = qEnvironmentVariable("RT_GUI_SELFTEST_OUT", "gui_selftest");
+		QTimer::singleShot(1500, &window, [&window, mode, out]() { window.runSelfTest(mode, out); });
+	}
 
 	return app.exec();
 }

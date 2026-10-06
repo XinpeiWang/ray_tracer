@@ -820,7 +820,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	RenderFrameFn renderFrame = handle().renderFrameFn;
 	bool ok = false;
 	if (!renderFrame) {
-		emit statusChanged(QStringLiteral("realtime_renderer.dll not found or missing its export"));
+		emit statusChanged(QString::fromLatin1(kLibraryFileName) + QStringLiteral(" not found or missing its export"));
 		m_running = false;
 	} else {
 		// Low-spp samples per loop iteration (GUI-configurable, default 1/8 -

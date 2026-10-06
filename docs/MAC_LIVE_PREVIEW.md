@@ -1,0 +1,49 @@
+# Live Preview on macOS (Metal)
+
+Live Preview (Output Mode -> "Live Preview (interactive)") renders continuously at a small fixed size so you can drag to orbit
+the camera and watch the image sharpen. On Windows it is backed by OptiX; on macOS it is backed by the Metal path tracer.
+
+## How it fits together
+
+* The GUI (`qt_gui/realtime_preview_session.cpp`) runs a worker thread that calls one function per frame,
+  `realtime_render_frame(...)`, from `realtime_renderer.dll` / **`realtime_renderer.dylib`**, and accumulates the frames itself
+  (running mean per pixel, reset when the camera moves).
+* `realtime_renderer/realtime_renderer_mac.cpp` exports that exact C ABI (34 arguments, hand-duplicated by the GUI) and forwards to
+  `gpu/metal/metal_live_preview.h`.
+* `metal_live_preview.mm` keeps ONE persistent session per (scene, size): the pbrt scene, acceleration structures and shader
+  pipeline are built on the first frame (~0.25 s, ~15 s the very first time ever while macOS compiles the shaders); every later
+  frame only updates the camera, frame seed and sample count and dispatches. This works because
+  `MetalPocApp::compileShaderAndDispatch()` now keeps its per-frame dispatch as a re-runnable function (`liveRender`) that owns every
+  GPU resource it needs; a normal single-image render is unchanged (the golden snapshot shows no drift).
+* The library returns the plain linear mean of `samples_per_pixel` samples. The OptiX-only flags in the signature (AI denoiser, SVGF,
+  ReSTIR, radiance cache, path guiding, temporal/neural upscale, NRC, adaptive sampling, depth of field) are accepted and ignored.
+  The GUI hides those controls on macOS: the Live Preview Settings group shows only Exposure, Samples/Frame, Max Bounces and
+  Firefly Clamp, and the Live denoiser group is hidden.
+
+## Performance (M2, measured with `build/metal_live_bench`)
+
+| scene | size | spp/frame | frame time |
+|---|---|---|---|
+| A1 (Cornell, glass sphere) | 480x480 | 2 | ~35 ms (28 fps) |
+| A1 | 640x640 | 4 | ~120 ms (8 fps) |
+| G1 (69k-triangle mesh) | 480x480 | 2 | ~26 ms (39 fps) |
+| A1 inside the GUI (400x300 preview) | 400x300 | 1 | ~17 ms (58 fps) |
+
+## Limits
+
+* No reprojection: the library reports "no previous-frame data", so a camera move restarts the accumulation from noise instead of
+  reusing the previous frame's samples (the OptiX path fills a world-position buffer for that). Frame rates are high enough that
+  this reads fine; filling those buffers is the obvious next step.
+* No depth of field, denoising or ReSTIR yet. Scenes the Metal backend cannot render (see METAL_PARITY_STATUS.md) fail to start.
+
+## Testing
+
+* `ctest -R metal_realtime_dylib` calls `realtime_renderer.dylib` through the GUI's own function-pointer type (dlopen), renders three
+  frames and checks that the picture is not black, that two frames with the same camera differ (the seed changes), that moving the
+  camera changes the picture, and that the output is finite.
+* `scripts/gui_selftest_macos.sh [App.app]` smoke-tests the real GUI, headless (Qt `offscreen`, a throwaway HOME): the Output Mode
+  list must contain an enabled "Live Preview (interactive)", and starting it must produce frames (>20 in 10 s) that change when
+  the camera is orbited. It saves screenshots of the app's own window. The hook behind it is `RT_GUI_SELFTEST=<ui|livepreview|options>`
+  (`qt_gui/mainwindow_selftest.cpp`), a no-op unless that variable is set. Do NOT run the app without the throwaway HOME from a
+  tool: macOS asks for permission to read ~/Pictures and an unanswered prompt blocks startup with no visible window.
+* `build/metal_live_bench [scene] [w] [h] [spp] [frames]` drives the live API with an orbiting camera, prints frame times and writes PNGs.

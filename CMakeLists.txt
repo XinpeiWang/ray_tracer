@@ -382,6 +382,7 @@ if(RT_BUILD_METAL)
         # same pure-code-motion precedent as the two splits just above.
         gpu/metal/metal_poc_gpu_resources.mm
         gpu/metal/metal_poc_dispatch.mm
+        gpu/metal/metal_live_preview.mm
         # tinyexr's own zip/pxr24 codecs need miniz's real mz_compress/
         # mz_uncompress symbols (see the target_include_directories
         # comment below on why metal_renderer now needs tinyexr's real
@@ -473,6 +474,25 @@ if(RT_BUILD_METAL)
     # scoped inside this RT_BUILD_METAL block only - `ctest` still finds
     # nothing here unless RT_BUILD_METAL=ON, same additive posture as
     # every other choice in this block.
+    # Live Preview API driver: orbiting camera, frame timings, a few PNGs (see gpu/metal/metal_live_preview.h).
+    add_executable(metal_live_bench gpu/metal/metal_live_bench.cpp src/external/image_writer.cpp)
+    target_include_directories(metal_live_bench PRIVATE ${CMAKE_SOURCE_DIR})
+    target_link_libraries(metal_live_bench PRIVATE metal_renderer cpu_renderer)
+
+    # macOS Live Preview library: the C ABI qt_gui/realtime_preview_session.cpp loads (realtime_renderer.dylib next to the
+    # GUI executable), backed by the Metal live session. PREFIX "" so the file is exactly "realtime_renderer.dylib".
+    add_library(realtime_renderer SHARED realtime_renderer/realtime_renderer_mac.cpp src/external/image_writer.cpp)
+    set_target_properties(realtime_renderer PROPERTIES PREFIX "" OUTPUT_NAME "realtime_renderer")
+    target_link_libraries(realtime_renderer PRIVATE metal_renderer cpu_renderer)
+
+    # Calls realtime_renderer.dylib through the GUI's own function pointer type (see the file's header).
+    add_executable(metal_realtime_dylib_check gpu/metal/metal_realtime_dylib_check.cpp)
+    add_dependencies(metal_realtime_dylib_check realtime_renderer)
+    add_test(NAME metal_realtime_dylib COMMAND metal_realtime_dylib_check $<TARGET_FILE:realtime_renderer>)
+    set_tests_properties(metal_realtime_dylib PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "REALTIME_DYLIB_OK|SKIP: no usable Metal device")
+
     add_executable(metal_poc_validate gpu/metal/metal_poc_validate.cpp)
 
     # --- Real regression coverage, not just a smoke test - see

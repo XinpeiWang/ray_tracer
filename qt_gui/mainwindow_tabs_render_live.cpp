@@ -12,7 +12,7 @@
 #include "mainwindow.h"
 #include "settings_keys.h"
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -330,6 +330,11 @@ void MainWindow::buildDenoiserLivePreviewSubsection(QWidget *optionsTab) {
 	connect(m_liveSvgfAtrousPassesSpin, QOverload<int>::of(&QSpinBox::valueChanged), this, pushSvgfTuning);
 
 	denoiserLivePreviewLayout->addRow(m_liveSvgfTuningGroupBox);
+
+#ifdef Q_OS_MAC
+	// The AI denoiser and SVGF are OptiX features; the Metal Live Preview has neither, so the whole group stays hidden.
+	m_denoiserLivePreviewGroupBox->hide();
+#endif
 }
 
 void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayout *layout) {
@@ -721,7 +726,21 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
+#ifdef Q_OS_MAC
+	// The Metal backend renders plain path-traced frames: it has no AI denoiser, SVGF, ReSTIR, radiance cache, path guiding,
+	// NRC, upscaling or adaptive sampling (those flags are accepted and ignored by realtime_renderer.dylib), and does not do
+	// depth of field yet. Showing controls that do nothing would mislead, so only the grid rows it honours stay visible:
+	// row 8 (Exposure, Samples/Frame) and row 9 (Max Bounces, Firefly Clamp).
+	for (int i = 0; i < liveRenderSettingsGrid->count(); ++i) {
+		int row = 0, col = 0, rowSpan = 0, colSpan = 0;
+		liveRenderSettingsGrid->getItemPosition(i, &row, &col, &rowSpan, &colSpan);
+		if (row < 8 || row > 9) {
+			if (QWidget *w = liveRenderSettingsGrid->itemAt(i)->widget()) w->hide();
+		}
+	}
+#endif
+
 	layout->addWidget(m_liveRenderSettingsGroupBox);
 }
 
-#endif // RT_GUI_HAVE_GPU
+#endif // RT_GUI_HAVE_LIVE_PREVIEW
