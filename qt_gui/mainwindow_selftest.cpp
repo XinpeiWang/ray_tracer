@@ -122,9 +122,9 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 				const QString status = m_livePreviewStatusLabel ? m_livePreviewStatusLabel->text() : QString();
 				const bool flagged = frames < 5 || lit < 30.0;
 				if (flagged) ++*bad;
-				log(QString("%1 %2: frames=%3 lit=%4% status=\"%5\" camera=(%6, %7, %8)")
+				log(QString("%1 %2: frames=%3 lit=%4% status=\"%5\" camera=(%6, %7, %8) recommendedExposure=%9")
 					.arg(flagged ? "FLAG" : "ok  ", id).arg(frames).arg(lit, 0, 'f', 1).arg(status)
-					.arg(m_cameraPosX->value(), 0, 'g', 5).arg(m_cameraPosY->value(), 0, 'g', 5).arg(m_cameraPosZ->value(), 0, 'g', 5));
+					.arg(m_cameraPosX->value(), 0, 'g', 5).arg(m_cameraPosY->value(), 0, 'g', 5).arg(m_cameraPosZ->value(), 0, 'g', 5).arg(m_exposureSpin ? m_exposureSpin->value() : -1.0, 0, 'g', 4));
 				++*index;
 				(*step)();
 			});
@@ -142,6 +142,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
 		if (!sceneOverride.isEmpty()) selectSceneById(sceneOverride);
 		if (qEnvironmentVariable("RT_GUI_SELFTEST_SMOOTH") == "0" && m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
+		if (qEnvironmentVariable("RT_GUI_SELFTEST_AUTOEXP") == "0" && m_liveAutoExposureCheck) m_liveAutoExposureCheck->setChecked(false);
 		startLivePreview();
 		auto frames = std::make_shared<QList<QImage>>();
 		auto grabTile = [this, frames]() { if (m_livePreviewLabel) frames->append(m_livePreviewLabel->pixmap().toImage()); };
@@ -183,6 +184,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		}
 		m_modeCombo->setCurrentIndex(idx);
 		if (qEnvironmentVariable("RT_GUI_SELFTEST_SMOOTH") == "0" && m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
+		if (qEnvironmentVariable("RT_GUI_SELFTEST_AUTOEXP") == "0" && m_liveAutoExposureCheck) m_liveAutoExposureCheck->setChecked(false);
 		// Optional overrides so the same test can cover other scenes / Resolution settings:
 		//   RT_GUI_SELFTEST_SCENE=<scene id>   RT_GUI_SELFTEST_RES=<W>x<H>
 		const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
