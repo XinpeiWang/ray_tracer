@@ -561,6 +561,48 @@ TEST(PbrtBackendAgreementTest, InterreflectionFurnaceHasItsClosedFormAtDepthFour
 	EXPECT_NEAR(bdptMean, 0.9375, 0.01 * 0.9375);
 }
 
+// The debug integrators (--simplepath, --randomwalk, --lightpath) against the path tracer / a closed form. They were written for the scene convention
+// "BSDFf() returns f * |cos|" but the BDPT adapter hands back the plain f, so they dropped the cosine at every bounce and every direct-light sample
+// (--simplepath read 0.5 / 1.0 / 2.0 / 3.95 at depths 1 / 2 / 4 / 8 on a furnace whose answer is 0.5 / 0.75 / 0.94 / 1.0); --lightpath also counted the
+// light-selection probability twice (once folded into pdf_pos, once as p_light), 2x too bright with two emitters.
+static double renderMeanWith(const char* integrator, const SceneDescriptor* s, int depth, int spp) {
+	const std::string out = std::string("pbrt_agree_dbg_") + integrator + ".exr";
+	int rc = -1;
+	const std::string name = integrator;
+	if (name == "path") rc = cpu_render_main(32, 32, spp, depth, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0);
+	else if (name == "simplepath") rc = cpu_render_main_simplepath(32, 32, spp, depth, 1, 1, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0, 0);
+	else if (name == "randomwalk") rc = cpu_render_main_randomwalk(32, 32, spp, depth, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0, 0);
+	else if (name == "lightpath") rc = cpu_render_main_lightpath(32, 32, spp, depth, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0, 0);
+	double mean = -1.0;
+	if (rc == 0) loadLinearMean(out, mean);
+	std::remove(out.c_str());
+	return mean;
+}
+
+TEST(PbrtBackendAgreementTest, SimplePathHasTheInterreflectionFurnaceClosedForm) {
+	const SceneDescriptor* s = find_example_scene("bdpt-room-furnace");
+	if (!s) GTEST_SKIP() << "bdpt-room-furnace.pbrt was not discovered - is pbrt_scenes/ present?";
+	const double kDepth4 = 0.9375;   // 0.5 * (1 + 0.5 + 0.25 + 0.125)
+	const double m = renderMeanWith("simplepath", s, 4, 128);
+	std::printf("[debug-integrators] bdpt-room-furnace depth 4: simplepath %.4f (closed form %.4f)\n", m, kDepth4);
+	EXPECT_NEAR(m, kDepth4, 0.015 * kDepth4);
+}
+
+TEST(PbrtBackendAgreementTest, DebugIntegratorsAgreeWithPathTracerInAClosedBox) {
+	const SceneDescriptor* s = find_example_scene("bdpt-box-room");
+	if (!s) GTEST_SKIP() << "bdpt-box-room.pbrt was not discovered - is pbrt_scenes/ present?";
+	const int depth = 4, spp = 512;
+	const double path = renderMeanWith("path", s, depth, spp);
+	ASSERT_GT(path, 0.05);
+	const struct { const char* name; double tol; } kCases[] = {{"simplepath", 0.03}, {"randomwalk", 0.05}, {"lightpath", 0.06}};
+	for (const auto& c : kCases) {
+		const double m = renderMeanWith(c.name, s, depth, spp);
+		std::printf("[debug-integrators] bdpt-box-room depth %d: path %.4f  %s %.4f (%.1f%%)\n", depth, path, c.name, m, 100.0 * m / path);
+		EXPECT_GT(m, (1.0 - c.tol) * path) << c.name << " too dark vs the path tracer";
+		EXPECT_LT(m, (1.0 + c.tol) * path) << c.name << " too bright vs the path tracer";
+	}
+}
+
 // A spherical area light: BDPT's light sampling drew a point over the whole sphere but divided by the visible-cone density, and dropped the samples
 // on the far side - 0.48x of the path tracer at every depth. See pbrt_scenes/bdpt-room-spherelight.pbrt.
 TEST(PbrtBackendAgreementTest, BdptSphereLightAgreesWithPathTracer) {

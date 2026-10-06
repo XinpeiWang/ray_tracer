@@ -595,6 +595,60 @@ inline void parallel_render_tile_loop(int width, int height, int spp, std::vecto
 	for (auto& th : threads) th.join();
 }
 
+// The adapter's BSDFf()/BSDFSampleF() return the plain BSDF value f (BDPT multiplies the cosine in itself, as pbrt's BDPT does), but SimplePathLi,
+// RandomWalkLi and LightPathTrace were written - and their tests' mock scenes built - for pbrt's SimplePathIntegrator convention, where the scene hands
+// back f * |cos(wi, n)|. Driven straight from the adapter they dropped the cosine at every bounce and every direct-light sample: --simplepath read
+// 0.5 / 1.0 / 2.0 / 3.95 at depths 1 / 2 / 4 / 8 on a furnace whose answer is 0.5 / 0.75 / 0.94 / 1.0, and --randomwalk and --lightpath were just as far
+// off. This view hands them the convention they expect; everything else forwards to the adapter unchanged.
+class BDPTCosineBsdfView {
+  public:
+	explicit BDPTCosineBsdfView(const BDPTSceneAdapter& a) : a_(a) {}
+
+	void BSDFf(int id, const double wo[3], const double wi[3], const double n[3], double out[3]) const {
+		a_.BSDFf(id, wo, wi, n, out);
+		scale_by_cos(wi, n, out);
+	}
+	bool BSDFSampleF(int id, const double wo[3], const double n[3], double u1, double u2,
+	                  double new_dir[3], double f_val[3], double& pdf, bool& is_specular) const {
+		if (!a_.BSDFSampleF(id, wo, n, u1, u2, new_dir, f_val, pdf, is_specular)) return false;
+		scale_by_cos(new_dir, n, f_val);
+		return true;
+	}
+	void BSDFfImportance(int id, const double wo[3], const double wi[3], const double n[3], double out[3]) const {
+		a_.BSDFfImportance(id, wo, wi, n, out);
+		scale_by_cos(wi, n, out);
+	}
+	bool BSDFSampleFImportance(int id, const double wo[3], const double n[3], double u1, double u2,
+	                            double new_dir[3], double f_val[3], double& pdf) const {
+		if (!a_.BSDFSampleFImportance(id, wo, n, u1, u2, new_dir, f_val, pdf)) return false;
+		scale_by_cos(new_dir, n, f_val);
+		return true;
+	}
+
+#define RT_FORWARD_TO_ADAPTER(name) 	template <typename... Args> 	auto name(Args&&... args) const -> decltype(std::declval<const BDPTSceneAdapter&>().name(std::forward<Args>(args)...)) { 		return a_.name(std::forward<Args>(args)...); 	}
+	RT_FORWARD_TO_ADAPTER(Intersect)
+	RT_FORWARD_TO_ADAPTER(Unoccluded)
+	RT_FORWARD_TO_ADAPTER(UnoccludedWithin)
+	RT_FORWARD_TO_ADAPTER(SpawnRay)
+	RT_FORWARD_TO_ADAPTER(SurfaceLe)
+	RT_FORWARD_TO_ADAPTER(InfiniteLightLe)
+	RT_FORWARD_TO_ADAPTER(SampleLight)
+	RT_FORWARD_TO_ADAPTER(BSDFIsNull)
+	RT_FORWARD_TO_ADAPTER(BSDFIsReflectiveAndTransmissive)
+	RT_FORWARD_TO_ADAPTER(SampleLightEmission)
+	RT_FORWARD_TO_ADAPTER(LightSurfaceLe)
+	RT_FORWARD_TO_ADAPTER(LightPdfLi)
+	RT_FORWARD_TO_ADAPTER(SampleCameraConnection)
+#undef RT_FORWARD_TO_ADAPTER
+
+  private:
+	static void scale_by_cos(const double wi[3], const double n[3], double f[3]) {
+		const double c = std::abs(wi[0] * n[0] + wi[1] * n[1] + wi[2] * n[2]);
+		f[0] *= c; f[1] *= c; f[2] *= c;
+	}
+	const BDPTSceneAdapter& a_;
+};
+
 inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int width, int height,
                                             int spp, int maxDepth, std::vector<double>& out_rgb,
                                             int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
@@ -603,7 +657,7 @@ inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 		[&](double px, double py, double L[3]) {
 			double cam_p[3], cam_n[3], ray_d[3];
 			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) return false;
-			RandomWalkLi<double>(cam_p, ray_d, scene, maxDepth, rand2d, L);
+			RandomWalkLi<double>(cam_p, ray_d, BDPTCosineBsdfView(scene), maxDepth, rand2d, L);
 			return true;
 		});
 }
@@ -632,7 +686,7 @@ inline void simplepath_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 		[&](double px, double py, double L[3]) {
 			double cam_p[3], cam_n[3], ray_d[3];
 			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) return false;
-			SimplePathLi<double>(cam_p, ray_d, scene, maxDepth, sampleLights, sampleBsdf, rand2d, rand1d, L);
+			SimplePathLi<double>(cam_p, ray_d, BDPTCosineBsdfView(scene), maxDepth, sampleLights, sampleBsdf, rand2d, rand1d, L);
 			return true;
 		});
 }
@@ -671,7 +725,7 @@ inline void lightpath_render_with_adapter(const BDPTSceneAdapter& scene, int wid
 		while (true) {
 			long long idx = next_path.fetch_add(1);
 			if (idx >= total_paths) break;
-			LightPathTrace<double>(scene, film, maxDepth, rand1d, rand2d);
+			LightPathTrace<double>(BDPTCosineBsdfView(scene), film, maxDepth, rand1d, rand2d);
 		}
 	};
 	std::vector<std::thread> threads;
