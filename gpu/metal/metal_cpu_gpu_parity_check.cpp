@@ -403,6 +403,9 @@ std::vector<const SceneDescriptor*> testable_scenes() {
 	// checkouts do not have the assets. METAL_PARITY_MODELS=1 includes the Models-category scenes (their
 	// OBJ files live in models/).
 	const bool includeModels = std::getenv("METAL_PARITY_MODELS") != nullptr;
+	// METAL_PARITY_ALL=1: every Metal-capable scene that needs no external files, whatever its category (the default sweep
+	// covers the hand-written feature categories only, not the pbrt example families).
+	const bool allCategories = std::getenv("METAL_PARITY_ALL") != nullptr;
 	std::vector<const SceneDescriptor*> out;
 	for (const SceneDescriptor& s : get_scene_registry()) {
 		bool inSweptCategory = false;
@@ -410,7 +413,7 @@ std::vector<const SceneDescriptor*> testable_scenes() {
 			if (std::strcmp(s.category, cat) == 0) { inSweptCategory = true; break; }
 		}
 		const bool isModels = std::strcmp(s.category, SceneCategories::Models) == 0;
-		if (!inSweptCategory) continue;
+		if (!inSweptCategory && !allCategories) continue;
 		if (isModels && !includeModels) continue;
 		if (s.requires_files && !(isModels && includeModels)) continue;
 		if (!metal_supports_scene(s.id)) continue;
