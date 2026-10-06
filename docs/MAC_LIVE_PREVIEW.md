@@ -19,7 +19,7 @@ the camera and watch the image sharpen. On Windows it is backed by OptiX; on mac
   the ray through each pixel's centre and the camera basis, and honours the depth-of-field override. The other OptiX-only flags in the
   signature (AI denoiser, SVGF, ReSTIR, radiance cache, path guiding, temporal/neural upscale, NRC, adaptive sampling) are accepted and
   ignored. The GUI hides those controls on macOS: the Live Preview Settings group shows only Depth of Field, Aperture/Focus Distance,
-  Exposure, Samples/Frame, Max Bounces and Firefly Clamp, and the Live denoiser group is hidden.
+  Exposure, Samples/Frame, Max Bounces, Firefly Clamp and Smooth noisy pixels, and the Live denoiser group is hidden.
 
 ## Performance (M2, measured with `build/metal_live_bench`)
 
@@ -46,7 +46,13 @@ library from a directory without scenes.)
   artefacts of that method (streaks on bright emitters, stale history on a surface seen from behind, which takes tens of frames to wash
   out) and costs one extra primary ray per pixel per frame. Pinhole cameras only.
 * Depth of field is the scene's thin-lens model with the GUI's Aperture (lens diameter) and Focus Distance in scene units. There is no
-  denoising or ReSTIR yet. Scenes the Metal backend cannot render (see METAL_PARITY_STATUS.md) fail to start.
+  AI denoiser or ReSTIR (OptiX-only features).
+* "Smooth noisy pixels" (on by default on macOS, `RealtimePreviewWorker::smoothLowSampleAccum()`, backend independent) replaces the
+  display of a pixel that has fewer than 96 samples by a weighted mean of its neighbours, weighted by being on the same surface (the
+  first-hit world positions), by colour similarity relative to the expected noise, and by the neighbours' own sample counts; the effect
+  fades out as the pixel gains samples, so a settled picture is exactly what was accumulated. It only changes what is displayed, not the
+  accumulation. After a camera move the picture 8 frames later is about 27% closer to the settled one with it on, at no measurable
+  frame-rate cost. `RT_GUI_SELFTEST=livepreview_drag` writes a filmstrip of a simulated mouse drag for judging this. Scenes the Metal backend cannot render (see METAL_PARITY_STATUS.md) fail to start.
 
 ## Testing
 

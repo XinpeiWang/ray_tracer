@@ -1733,6 +1733,7 @@ void MainWindow::startLivePreview() {
 	m_livePreviewSession->setExposure(m_liveExposure);
 	pushLiveSvgfTuningToSession();
 	pushLiveAdaptiveSamplingToSession();
+	pushLiveSmoothNoiseToSession();
 	m_livePreviewSession->start(sceneId, kPreviewWidth, kPreviewHeight, camera.x, camera.y, camera.z,
 								 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z,
 								 m_liveDenoiseEnabled, m_liveDenoiseBlend, m_liveDenoiseShowLatest,
@@ -1927,6 +1928,11 @@ void MainWindow::pushLiveNeuralUpscaleToSession() {
 	m_livePreviewSession->setNeuralUpscale(m_liveNeuralUpscaleEnabled);
 	if (m_livePreviewRunning)
 		onLogMessage(QString("[Live Preview] Neural Upscale: %1").arg(m_liveNeuralUpscaleEnabled ? "on" : "off"));
+}
+
+void MainWindow::pushLiveSmoothNoiseToSession() {
+	if (!m_livePreviewSession) return;
+	m_livePreviewSession->setSmoothLowSample(m_liveSmoothNoise);
 }
 
 void MainWindow::pushLiveDofToSession() {
@@ -2229,6 +2235,21 @@ bool MainWindow::loadSavedLiveNeuralUpscaleEnabled() const {
 void MainWindow::saveLiveNeuralUpscaleEnabled(bool value) const {
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	settings.setValue(settings_keys::kLivePreviewNeuralUpscaleEnabledKey, value);
+}
+
+bool MainWindow::loadSavedLiveSmoothNoise() const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+#ifdef Q_OS_MAC
+	const bool defaultValue = true;    // the Metal backend has no denoiser of its own
+#else
+	const bool defaultValue = false;   // the OptiX build has its own denoisers, and this setting has no control there
+#endif
+	return settings.value(settings_keys::kLivePreviewSmoothNoiseKey, defaultValue).toBool();
+}
+
+void MainWindow::saveLiveSmoothNoise(bool value) const {
+	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
+	settings.setValue(settings_keys::kLivePreviewSmoothNoiseKey, value);
 }
 
 bool MainWindow::loadSavedLiveDofEnabled() const {

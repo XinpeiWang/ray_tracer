@@ -9,6 +9,8 @@
 #include <QComboBox>
 #include <QFile>
 #include <QPixmap>
+#include <QPainter>
+#include <QList>
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QStandardItemModel>
@@ -131,6 +133,42 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		return;
 	}
 
+	// Simulates a mouse drag (many small orbit steps over ~1.5 s) and writes a filmstrip of the displayed tile before, during and after
+	// it: <out>_drag_strip.png. For judging what a user sees while orbiting: ghosting, streaks, how fast the picture settles.
+	if (mode == "livepreview_drag") {
+		const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
+		if (idx < 0) { QApplication::exit(2); return; }
+		m_modeCombo->setCurrentIndex(idx);
+		const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
+		if (!sceneOverride.isEmpty()) selectSceneById(sceneOverride);
+		if (qEnvironmentVariable("RT_GUI_SELFTEST_SMOOTH") == "0" && m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
+		startLivePreview();
+		auto frames = std::make_shared<QList<QImage>>();
+		auto grabTile = [this, frames]() { if (m_livePreviewLabel) frames->append(m_livePreviewLabel->pixmap().toImage()); };
+		const double total = qEnvironmentVariable("RT_GUI_SELFTEST_ORBIT", "0.5").toDouble();
+		for (int step = 0; step < 36; ++step)   // 36 steps x 40 ms
+			QTimer::singleShot(5000 + step * 40, this, [this, total]() {
+				m_orbit.azimuth += total / 36.0;
+				m_orbit.elevation += 0.1 * total / 36.0;
+				updateLivePreviewCameraFromOrbit();
+			});
+		// before the drag, mid drag, end of drag, then 100 ms, 300 ms, 1 s, 4 s after
+		const int marks[] = {4900, 5500, 6430, 6550, 6750, 7450, 10450};
+		for (int t : marks) QTimer::singleShot(t, this, grabTile);
+		QTimer::singleShot(10600, this, [this, frames, outPrefix, log]() {
+			stopLivePreview();
+			if (frames->isEmpty() || frames->first().isNull()) { log("no frames captured"); QApplication::exit(1); return; }
+			const int w = frames->first().width(), h = frames->first().height(), n = frames->size();
+			QImage strip(w * n + 4 * (n - 1), h, QImage::Format_RGB32);
+			strip.fill(QColor(40, 40, 40));
+			for (int i = 0; i < n; ++i) { QPainter p(&strip); p.drawImage(i * (w + 4), 0, (*frames)[i]); }
+			strip.save(outPrefix + "_drag_strip.png");
+			log("wrote the drag filmstrip");
+			QApplication::exit(0);
+		});
+		return;
+	}
+
 	if (mode == "livepreview") {
 		const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
 		bool enabled = false;
@@ -144,6 +182,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			return;
 		}
 		m_modeCombo->setCurrentIndex(idx);
+		if (qEnvironmentVariable("RT_GUI_SELFTEST_SMOOTH") == "0" && m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
 		// Optional overrides so the same test can cover other scenes / Resolution settings:
 		//   RT_GUI_SELFTEST_SCENE=<scene id>   RT_GUI_SELFTEST_RES=<W>x<H>
 		const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
