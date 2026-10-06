@@ -590,8 +590,12 @@ void MetalPocApp::loadPbrtScene() {
                 // authored value needs this remap; false means it already
                 // IS alpha.
                 const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness) : m.roughness);
-                TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alpha,
-                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alpha};
+                // shadeConductor() takes a roughness-style value in `ior` / `roughness` and SQUARES it into alpha (the hand-written
+                // scenes are authored that way), so it is handed sqrt(alpha): storing alpha itself made every pbrt conductor render with
+                // alpha^2 - roughness 0.04 (alpha 0.2) got alpha 0.04, a far sharper highlight than the CPU and pbrt give.
+                const float alphaStored = std::sqrt(alpha);
+                TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alphaStored,
+                                     PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alphaStored};
                 setConductorOptics(mat, m);
                 return mat;
             }

@@ -396,7 +396,7 @@ bool is_extra_regression_scene(const std::string& id) {
 	if (!p || !p[0]) return false;
 	static const char* const kNames[] = {"chromatic-absorber.pbrt", "chromatic-camera-medium-absorber.pbrt", "chromatic-camera-medium.pbrt",
 	                                      "chromatic-rgbgrid-absorber.pbrt", "chromatic-rgbgrid-furnace.pbrt", "fog-point-light.pbrt",
-	                                      "cornell-spotlight.pbrt", "bump-mapped-plane.pbrt"};
+	                                      "cornell-spotlight.pbrt", "bump-mapped-plane.pbrt", "maxcomponentvalue-firefly-clamp.pbrt"};
 	const std::string path(p);
 	for (const char* n : kNames) {
 		const std::string name(n);
@@ -404,6 +404,20 @@ bool is_extra_regression_scene(const std::string& id) {
 	}
 	return false;
 }
+
+// The categories the default sweep covers (the hand-written feature scenes).
+bool in_swept_category(const char* category) {
+	static const char* const kCats[] = {
+		SceneCategories::Materials, SceneCategories::Volumes, SceneCategories::Textures, SceneCategories::Lights,
+		SceneCategories::Cameras, SceneCategories::Geometry, SceneCategories::Basics, SceneCategories::Models,
+	};
+	for (const char* c : kCats) if (std::strcmp(category, c) == 0) return true;
+	return false;
+}
+
+// An extra regression scene that is NOT also a swept-category scene has no stable id, so it stays out of the golden snapshot. (One that is,
+// like cornell-spotlight = C2, keeps its golden entry under its stable id.)
+bool golden_exempt(const SceneDescriptor& s) { return is_extra_regression_scene(s.id) && !in_swept_category(s.category); }
 
 // This process renders only scenes whose position in the selection is congruent to g_shardIndex modulo g_shardCount.
 // A child worker gets it from METAL_PARITY_SHARD="index/count"; the parent runs shard 0 of the same count.
@@ -683,7 +697,7 @@ int run_sweep() {
 
 		const MPRGBAverage cpuC = mp_avg_channels(cpuImg);
 		const MPRGBAverage metalC = mp_avg_channels(metalImg);
-		if (const char* dump = is_extra_regression_scene(s.id) ? nullptr : std::getenv("METAL_PARITY_DUMP")) {   // "id r g b" of the Metal image, for the golden snapshot
+		if (const char* dump = golden_exempt(s) ? nullptr : std::getenv("METAL_PARITY_DUMP")) {   // "id r g b" of the Metal image, for the golden snapshot
 			if (FILE* df = std::fopen(dump, "a")) {
 				std::fprintf(df, "%s %.6f %.6f %.6f", s.id.c_str(), metalC.r, metalC.g, metalC.b);
 				for (float v : mp_block_means(metalImg, kGoldenGrid)) std::fprintf(df, " %.6f", v);
@@ -691,7 +705,7 @@ int run_sweep() {
 				std::fclose(df);
 			}
 		}
-		if (goldenOn && !is_extra_regression_scene(s.id)) {
+		if (goldenOn && !golden_exempt(s)) {
 			const auto it = golden.find(s.id);
 			if (it == golden.end()) {
 				++goldenMissing;
