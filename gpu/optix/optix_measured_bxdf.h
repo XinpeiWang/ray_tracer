@@ -335,9 +335,12 @@ __device__ __forceinline__ bool gpu_measured_sample_f(
 	if (flip) { ox = -ox; oy = -oy; oz = -oz; }
 	wix = ox; wiy = oy; wiz = oz;
 
-	fr = val[0] * scale;
-	fg = val[1] * scale;
-	fb = val[2] * scale;
+	// The path-throughput weight pbrt applies to a BSDF sample, f * |cos(wi)| / pdf, not the bare f (see wavefront_measured_bxdf.h:
+	// the bare f made measured materials read 8-12x too bright or 3x too dark in a white furnace, identically on all backends).
+	const float weight = abs_cos_wi / final_pdf;
+	fr = val[0] * scale * weight;
+	fg = val[1] * scale * weight;
+	fb = val[2] * scale * weight;
 	return true;
 }
 

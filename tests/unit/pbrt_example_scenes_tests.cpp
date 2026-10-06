@@ -28,6 +28,7 @@
 #include <gtest/gtest.h>
 #include "../../src/external/tinyexr.h"
 #include <algorithm>
+#include <array>
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
@@ -303,7 +304,7 @@ static bool loadLinearChannelMeans(const std::string& path, double mean[3]) {
 // One bundled scene on all three backends, each channel's linear mean against a known answer (a closed form, or a furnace's 1.0):
 // the CPU and recursive backends sample in RGB and must be within `tol` of it, the spectral wavefront backend within `tolWavefront`
 // (its uplifted sigma(lambda) is not exactly the per-channel exp(-sigma t) - see pbrt_scenes/chromatic-absorber.pbrt).
-static void expectChannelMeans(const char* stem, int spp, int depth, const double* expectedIn, double tol, double tolWavefront) {
+static void expectChannelMeans(const char* stem, int spp, int depth, const double* expectedIn, double tol, double tolWavefront, int cpuRepeats = 1) {
 	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
 	const SceneDescriptor* s = find_example_scene(stem);
 	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
@@ -317,9 +318,25 @@ static void expectChannelMeans(const char* stem, int spp, int depth, const doubl
 	};
 	const std::string base = std::string("pbrt_chroma_") + stem;
 	double cpu[3], rec[3], wf[3];
-	ASSERT_EQ(cpu_render_main(64, 64, spp, depth, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
-	const bool cpuOk = loadLinearChannelMeans(base + "_cpu.exr", cpu);
-	std::remove((base + "_cpu.exr").c_str());
+	// The CPU reference is the per-channel median of `cpuRepeats` renders: a scene whose CPU estimate has a heavy tail (one very bright path
+	// sample in a thousand) otherwise fails now and then on a single outlier while the GPU backends, which converge, stay put.
+	bool cpuOk = true;
+	std::vector<std::array<double, 3>> cpuRuns;
+	for (int rep = 0; rep < cpuRepeats && cpuOk; ++rep) {
+		ASSERT_EQ(cpu_render_main(64, 64, spp, depth, (base + "_cpu.exr").c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+		double one[3];
+		cpuOk = loadLinearChannelMeans(base + "_cpu.exr", one);
+		std::remove((base + "_cpu.exr").c_str());
+		cpuRuns.push_back({one[0], one[1], one[2]});
+	}
+	if (cpuOk) {
+		for (int c = 0; c < 3; ++c) {
+			std::vector<double> v;
+			for (const auto& r : cpuRuns) v.push_back(r[c]);
+			std::sort(v.begin(), v.end());
+			cpu[c] = v[v.size() / 2];
+		}
+	}
 	bool gpuOk[2];
 	double* gpuMeans[2] = {rec, wf};
 	const char* gpuMode[2] = {"0", "1"};
@@ -367,7 +384,9 @@ TEST(PbrtBackendAgreementTest, ChromaticCameraMediumAbsorberFollowsBeerLambertPe
 // all carry per-channel weights. No closed form; the CPU is the reference, per channel. Measured: recursive +0.5/+1.2/+2.2% (R/G/B), wavefront
 // +1.5/+0.2/+0.8%.
 TEST(PbrtBackendAgreementTest, ChromaticCameraMediumRoomAgreesPerChannel) {
-	expectChannelMeans("chromatic-camera-medium", 256, 8, nullptr, 0.04, 0.04);
+	// The CPU reference is the median of seven renders: one render's blue channel ranged 0.0785-0.0821 across runs and once read 0.469 (a
+	// single very bright path sample), which failed the 4% bound now and then, while the GPU backends are steady.
+	expectChannelMeans("chromatic-camera-medium", 256, 8, nullptr, 0.04, 0.04, /*cpuRepeats=*/7);
 }
 
 // BDPT, MLT and SPPM draw a medium event from constant_medium::hit() - one luminance extinction - so a chromatic medium renders attenuated
@@ -407,6 +426,18 @@ TEST(PbrtBackendAgreementTest, ChromaticRgbGridFurnaceStaysInvisibleInEveryChann
 
 // A fog whose scattering differs by colour but absorbs nothing is invisible under a uniform sky in every channel. A collision weight
 // that does not average to the transmittance (the balance heuristic across channels, volume_scattering.h) shows up here as a cast.
+// A measured-BSDF sphere under a uniform white sky: its radiance is the directional albedo, averaged over the view angles the camera sees
+// (up to ~47 degrees off the normal). The measured material used to return the bare f instead of the path weight f * |cos| / pdf on the
+// CPU and both GPU backends, so a blue measured table read 7.8/8.1/3.5 here, a metallic one 12 and a white-paper one 0.34 (physically
+// 0.1/0.2/0.4, 0.72 and 1.0), identically on every backend, so a CPU-vs-GPU comparison could not see it. This scene uses the repository's own
+// synthetic-gold.bsdf, whose albedo cannot be derived independently (its sample_f and f() disagree by ~26%, being a synthetic lobe, not a
+// measurement), so the expected values are the ones the corrected weight gives on all three backends; the bare f gave 0.848/0.757/0.486 on
+// the CPU, 18% higher, and a different value from the GPU backends' own wrong one.
+TEST(PbrtBackendAgreementTest, MeasuredFurnaceReadsTheAlbedoOnEveryBackend) {
+	const double expected[3] = {0.7187, 0.6404, 0.4098};
+	expectChannelMeans("measured-furnace", 256, 4, expected, 0.03, 0.03);
+}
+
 TEST(PbrtBackendAgreementTest, ChromaticFogFurnaceStaysInvisibleInEveryChannel) {
 	const double expected[3] = {1.0, 1.0, 1.0};
 	// Measured: every backend within 0.3% of 1 in every channel.
