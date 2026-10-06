@@ -603,6 +603,20 @@ TEST(PbrtBackendAgreementTest, DebugIntegratorsAgreeWithPathTracerInAClosedBox) 
 	}
 }
 
+// Glossy and refracting materials in the BDPT bridge (bsdf_bridge.h). Each of these rooms read measurably off the path tracer before; the whole-image
+// mean at depth 6 is what shows it (the lit surfaces dominate - the light is facing the ceiling and not in view).
+TEST(PbrtBackendAgreementTest, BdptSmoothGlassSphereAgreesWithPathTracer) {
+	expectBdptAgreesWithPathTracer("bdpt-box-room-glass", 6, 0.012);
+}
+
+TEST(PbrtBackendAgreementTest, BdptRoughGlassSphereAgreesWithPathTracer) {
+	expectBdptAgreesWithPathTracer("bdpt-box-room-roughglass", 6, 0.012);
+}
+
+TEST(PbrtBackendAgreementTest, BdptRoughConductorSphereAgreesWithPathTracer) {
+	expectBdptAgreesWithPathTracer("bdpt-box-room-roughmetal", 6, 0.012);
+}
+
 // A spherical area light: BDPT's light sampling drew a point over the whole sphere but divided by the visible-cone density, and dropped the samples
 // on the far side - 0.48x of the path tracer at every depth. See pbrt_scenes/bdpt-room-spherelight.pbrt.
 TEST(PbrtBackendAgreementTest, BdptSphereLightAgreesWithPathTracer) {

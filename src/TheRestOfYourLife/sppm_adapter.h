@@ -171,7 +171,7 @@ class SPPMSceneAdapter {
 			: rec.mat;
 
 		// Thread-local, no lock: see this method's own leading comment.
-		transient_ctx_ = SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat };
+		transient_ctx_ = SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat, rec.front_face };
 
 		for (int c = 0; c < 3; ++c) hit.p[c] = rec.p[c];
 		for (int c = 0; c < 3; ++c) hit.geo_n[c] = rec.normal[c];       // no separate geometric normal in this codebase

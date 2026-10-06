@@ -57,6 +57,9 @@ struct SPPMShadingContext {
 	vec3   normal;
 	double u = 0.0, v = 0.0;
 	shared_ptr<material> mat;
+	// Whether the ray arrived from the outside of the surface (hit_record::front_face). `normal` is always the ray-facing one, so this is the
+	// only record of which side that was; a dielectric needs it to pick the refraction ratio (entering vs leaving the glass).
+	bool front_face = true;
 };
 
 // True when this material instance's scatter() sets srec.skip_pdf=true --
@@ -172,7 +175,7 @@ inline shared_ptr<material> sppm_resolve_material(const shared_ptr<material>& ma
 // thread their own `n` parameter through rather than trusting a stored one,
 // so shading math here honors that `n` (expected to match ctx.normal in
 // non-degenerate cases; ctx.normal is kept mainly for future diagnostic
-// use). front_face=true throughout: `n` is already the shading-facing
+// use). `n` is already the shading-facing
 // normal by construction (the caller -- ultimately the owning adapter's
 // Intersect() -- is responsible for always supplying a properly
 // outward/ray-facing normal, the same convention hit_record::set_face_normal
@@ -184,7 +187,7 @@ inline hit_record sppm_reconstruct_hit_record(const SPPMShadingContext& ctx, con
 	rec.u = ctx.u;
 	rec.v = ctx.v;
 	rec.mat = ctx.mat;
-	rec.front_face = true;
+	rec.front_face = ctx.front_face;
 	rec.t = 0.0;
 	return rec;
 }
@@ -323,9 +326,32 @@ inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const
 	scatter_record srec;
 	if (!ctx.mat->scatter(fake_in, rec, srec)) return;
 
-	out[0] = srec.attenuation.x() * f_cos / cos_wi;
-	out[1] = srec.attenuation.y() * f_cos / cos_wi;
-	out[2] = srec.attenuation.z() * f_cos / cos_wi;
+	// The colour for THIS direction pair, as camera.h asks for it (scattering_attenuation()): a rough conductor evaluates its Fresnel term at the
+	// half vector, whereas scatter()'s srec.attenuation is one colour per hit (Fresnel at the view-normal cosine) and over-brightens it. BDPT/MLT used
+	// srec.attenuation here and read ~1% brighter than the path tracer on a scene with one rough conductor sphere (more at larger roughness).
+	const color atten = ctx.mat->scattering_attenuation(fake_in, rec, fake_scattered, srec.attenuation);
+	out[0] = atten.x() * f_cos / cos_wi;
+	out[1] = atten.y() * f_cos / cos_wi;
+	out[2] = atten.z() * f_cos / cos_wi;
+}
+
+// The BSDF value for light flowing from the `wo_v` side to the `wi_next` side - what a LIGHT-subpath vertex needs. The bridge's f is oriented the way
+// the path tracer uses it (wo toward the camera, wi toward the light), so at a vertex of a path traced from the light, where `wo_v` points back toward
+// the light and `wi_next` toward the camera, the radiance-oriented value is f(wo = wi_next, wi = wo_v). For a symmetric BSDF (diffuse, GGX reflection)
+// that equals f(wo_v, wi_next); for a refraction it does not (this codebase's dielectric f carries a 1/eta^2 that depends on which side wo is), so
+// BDPT/MLT's light subpaths read 4% (smooth-glass-free rough glass sphere) to 20% too bright through rough dielectrics from s = 3 on. The side of
+// `wi_next` also decides the entering/leaving flag, since ctx.front_face describes the side of `wo_v`.
+inline void sppm_bsdf_f_adjoint(const SPPMShadingContext& ctx, const double wo_v[3], const double wi_next[3],
+                                 const double n[3], double out[3]) {
+	const double cos_next = wi_next[0]*n[0] + wi_next[1]*n[1] + wi_next[2]*n[2];
+	if (cos_next >= 0.0) {
+		sppm_bsdf_f(ctx, wi_next, wo_v, n, out);
+		return;
+	}
+	SPPMShadingContext flipped = ctx;
+	flipped.front_face = !ctx.front_face;
+	const double n_flipped[3] = { -n[0], -n[1], -n[2] };
+	sppm_bsdf_f(flipped, wi_next, wo_v, n_flipped, out);
 }
 
 // Importance-samples a new direction at a captured shading context, shaped
@@ -444,6 +470,15 @@ inline bool sppm_bsdf_sample_f(const SPPMShadingContext& ctx, const double wo[3]
 inline double sppm_bsdf_pdf(const SPPMShadingContext& ctx, const double wo[3], const double wi[3],
                              const double n[3]) {
 	if (!ctx.mat) return 0.0;
+	// BDPT's reverse densities ask for the density of sampling `wi` when light arrives along an `wo` that can lie on the OTHER side of the surface
+	// from this vertex's own ray (the path being traversed from its far end, through a refraction). `n` and ctx.front_face describe the vertex's own
+	// side, so the query is re-expressed from wo's side: flipped normal and entering/leaving flag - the same treatment sppm_bsdf_f_adjoint() gives f.
+	if (wo[0]*n[0] + wo[1]*n[1] + wo[2]*n[2] < 0.0) {
+		SPPMShadingContext flipped = ctx;
+		flipped.front_face = !ctx.front_face;
+		const double n_flipped[3] = { -n[0], -n[1], -n[2] };
+		return sppm_bsdf_pdf(flipped, wo, wi, n_flipped);
+	}
 	if (auto dt = dynamic_cast<const diffuse_transmission*>(ctx.mat.get())) {
 		hit_record rec = sppm_reconstruct_hit_record(ctx, n);
 		ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
@@ -457,6 +492,18 @@ inline double sppm_bsdf_pdf(const SPPMShadingContext& ctx, const double wo[3], c
 		ray fake_scattered(ctx.p, vec3(wi[0], wi[1], wi[2]));
 		return std::max(0.0, me->sampling_pdf(fake_in, rec, fake_scattered));
 	}
-	double cos_wi = wi[0]*n[0] + wi[1]*n[1] + wi[2]*n[2];
-	return cos_wi > 0.0 ? cos_wi / pi : 0.0;
+	// lambertian and normalized_fresnel sample a plain cosine lobe: closed form, no scatter() call (this is on BDPT's O(depth^2) MIS path).
+	if (dynamic_cast<const lambertian*>(ctx.mat.get()) || dynamic_cast<const normalized_fresnel*>(ctx.mat.get())) {
+		double cos_wi = wi[0]*n[0] + wi[1]*n[1] + wi[2]*n[2];
+		return cos_wi > 0.0 ? cos_wi / pi : 0.0;
+	}
+	// Every other non-delta material (rough conductor / dielectric, coated, mix ...) samples directions from its own srec.pdf_ptr - a GGX VNDF
+	// density, not a cosine lobe - and sppm_bsdf_sample_f() reports exactly that density as the sample's pdf. The reverse density BDPT's MIS
+	// weights ask for here must be the same function evaluated for the queried direction; the cosine/pi it used to return made the weights of
+	// every path through a glossy surface sum to something other than 1.
+	hit_record rec = sppm_reconstruct_hit_record(ctx, n);
+	ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
+	scatter_record srec;
+	if (!ctx.mat->scatter(fake_in, rec, srec) || srec.skip_pdf || !srec.pdf_ptr) return 0.0;
+	return std::max(0.0, srec.pdf_ptr->value(unit_vector(vec3(wi[0], wi[1], wi[2]))));
 }
