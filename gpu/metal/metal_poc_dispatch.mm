@@ -224,6 +224,13 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     texDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
     texDesc.storageMode = MTLStorageModeShared;
     id<MTLTexture> outTexture = [device newTextureWithDescriptor:texDesc];
+    // Divergence census (METAL_CENSUS=1): a per-pixel record of the materials sample 0 hit; a 1x1 dummy otherwise.
+    const bool censusOn = getenv("METAL_CENSUS") != nullptr;
+    MTLTextureDescriptor* censusDesc = [MTLTextureDescriptor texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Uint
+        width:(censusOn ? width : 1) height:(censusOn ? height : 1) mipmapped:NO];
+    censusDesc.usage = MTLTextureUsageShaderWrite | MTLTextureUsageShaderRead;
+    censusDesc.storageMode = MTLStorageModeShared;
+    id<MTLTexture> censusTexture = [device newTextureWithDescriptor:censusDesc];
 
     // --- Earth texture (the back wall's materialType=3 source) -----
     // stb_image decodes straight to interleaved 8-bit RGBA regardless
@@ -627,6 +634,13 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uniforms.ggxEnergyRoughRes = (uint32_t)ggxEnergyTable.roughRes;
     uniforms.ggxEnergyMuRes = (uint32_t)ggxEnergyTable.muRes;
     uniforms.fireflyClamp = pbrtMaxComponentValue;
+    uniforms.debugCensus = censusOn ? 1u : 0u;
+    // Path regeneration pays off on simple scenes (Cornell-style: -9..-23%) but costs 2-15% on mesh-heavy ones, where lanes
+    // at different bounce depths trace incoherent rays through a big BVH (measured over ~40 scenes: break-even near 1-2k
+    // triangles). The picture is identical either way.
+    const size_t sceneTriangles = verts.size() / 3;
+    uniforms.pathRegen = (sceneTriangles < 1500) ? 1u : 0u;
+    if (const char* regenEnv = getenv("METAL_REGEN")) uniforms.pathRegen = atoi(regenEnv) ? 1u : 0u;   // tuning/diagnostics
 
     if (havePbrtCamera) {
         // A real pbrt scene was loaded (loadPbrtScene()) - override every
@@ -902,6 +916,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         [enc setTexture:pbrtAreaLightTexture atIndex:6];
         [enc setTexture:pbrtDiffuseTexture atIndex:7];
         [enc setTexture:pbrtTransmitTexture atIndex:8];
+        [enc setTexture:censusTexture atIndex:9];
         [enc setAccelerationStructure:instAS atBufferIndex:0];
         [enc setBuffer:uniformBuffer offset:0 atIndex:1];
         [enc setBuffer:materialBuffer offset:0 atIndex:2];
@@ -983,6 +998,53 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             }
         }
         bandStart += thisBandHeight;
+    }
+
+    if (censusOn) {
+        // Divergence census: per 8x4 tile (the dispatch's SIMD group) and bounce, how many serial passes the megakernel pays
+        // (one per distinct material among the active lanes) against what sorted/compacted wavefront queues would pay.
+        std::vector<uint32_t> cen((size_t)width * height * 4);
+        [censusTexture getBytes:cen.data() bytesPerRow:width * 16 fromRegion:MTLRegionMake2D(0, 0, width, height) mipmapLevel:0];
+        double sumDistinct = 0, sumAnyActive = 0, sumActive = 0, lanesTotal = 0, pathLenSum = 0, pathCount = 0;
+        double shDistinct = 0, shGroups = 0, shActive = 0;   // shading only: lanes that hit a material or a medium (not a miss)
+        long codeCount[256] = {0};
+        for (uint32_t ty = 0; ty < height; ty += 4) {
+            for (uint32_t tx = 0; tx < width; tx += 8) {
+                int len[32], lanes = 0; uint8_t codes[32][8];
+                for (uint32_t y = ty; y < std::min(height, ty + 4); ++y)
+                    for (uint32_t x = tx; x < std::min(width, tx + 8); ++x) {
+                        const uint32_t* p = &cen[((size_t)y * width + x) * 4];
+                        len[lanes] = (int)std::min<uint32_t>(p[2], 8u);
+                        for (int k = 0; k < 8; ++k) codes[lanes][k] = (uint8_t)((k < 4 ? p[0] >> (8 * k) : p[1] >> (8 * (k - 4))) & 0xFFu);
+                        pathLenSum += len[lanes]; pathCount += 1;
+                        for (int k = 0; k < len[lanes]; ++k) codeCount[codes[lanes][k]]++;
+                        ++lanes;
+                    }
+                lanesTotal += lanes;
+                for (int k = 0; k < 8; ++k) {
+                    bool seen[256] = {false}; int active = 0, distinct = 0, shAct = 0, shDist = 0; bool shSeen[256] = {false};
+                    for (int l = 0; l < lanes; ++l)
+                        if (len[l] > k) {
+                            ++active; if (!seen[codes[l][k]]) { seen[codes[l][k]] = true; ++distinct; }
+                            if (codes[l][k] != 255) { ++shAct; if (!shSeen[codes[l][k]]) { shSeen[codes[l][k]] = true; ++shDist; } }
+                        }
+                    if (shAct > 0) { shDistinct += shDist; shGroups += 1; shActive += shAct; }
+                    if (active == 0) continue;
+                    sumDistinct += distinct; sumAnyActive += 1; sumActive += active;
+                }
+            }
+        }
+        const double idealPasses = sumActive / 32.0, idealShade = shActive / 32.0;
+        fprintf(stderr, "[census] %ux%u  mean recorded bounces/path %.2f  lane utilisation per group-bounce %.1f%%  "
+                        "distinct materials per active group-bounce %.2f\n", width, height, pathLenSum / std::max(1.0, pathCount),
+                100.0 * sumActive / std::max(1.0, 32.0 * sumAnyActive), sumDistinct / std::max(1.0, sumAnyActive));
+        fprintf(stderr, "[census] SHADING only (misses excluded): lane utilisation %.1f%%, distinct materials per group-bounce %.2f, passes %.2fx fewer if sorted+compacted\n",
+                100.0 * shActive / std::max(1.0, 32.0 * shGroups), shDistinct / std::max(1.0, shGroups), shDistinct / std::max(1e-9, idealShade));
+        fprintf(stderr, "[census] upper bound: all-event passes %.2fx fewer with sorted queues, traversal passes %.2fx fewer with compaction\n",
+                sumDistinct / std::max(1e-9, idealPasses), sumAnyActive / std::max(1e-9, idealPasses));
+        fprintf(stderr, "[census] event mix:");
+        for (int c = 0; c < 256; ++c) if (codeCount[c] > 0) fprintf(stderr, " %s%d=%.1f%%", c == 255 ? "miss" : (c == 100 ? "medium" : "mat"), c == 255 || c == 100 ? 0 : c, 100.0 * codeCount[c] / std::max(1.0, pathLenSum));
+        fprintf(stderr, "\n");
     }
 
     // --- Read back into `pixels` (post-processed and written to disk

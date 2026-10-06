@@ -1,3 +1,7 @@
+// Divergence census probe (see Uniforms::debugCensus): packs the material/event code of each bounce of sample 0 into
+// cen0/cen1 (4 codes of 8 bits each) and counts them in cenN. A no-op unless the census is on.
+#define CENSUS_PUSH(code) if (cenRec) { uint c_ = (uint(code)) & 0xFFu; if (cenN < 4u) cen0 |= c_ << (8u * cenN); else if (cenN < 8u) cen1 |= c_ << (8u * (cenN - 4u)); ++cenN; }
+
 kernel void primaryRayKernel(
     texture2d<float, access::write> outTexture [[texture(0)]],
     texture2d<float, access::sample> earthTexture [[texture(1)]],
@@ -88,6 +92,7 @@ kernel void primaryRayKernel(
     // GpuCloudMedium's own scalar parameters do.
     device const GpuRgbGridMedium* rgbGridMediums [[buffer(29)]],
     device const float* rgbGridData [[buffer(30)]],
+    texture2d<uint, access::write> censusTexture [[texture(9)]],
     uint2 tidInBand [[thread_position_in_grid]])
 {
     // Row-band dispatch (see Uniforms::rowOffset's own comment) - this
@@ -161,7 +166,37 @@ kernel void primaryRayKernel(
     // sampleFilterPosition()'s own comment and this loop's own
     // `accumColor += radiance * filterSample.weight` line.
     float weightSum = 0.0;
-    for (uint s = 0; s < uniforms.samplesPerPixel; ++s) {
+    // PATH REGENERATION. The 32 lanes of a SIMD group used to run sample s together, so every group-bounce cost as much as
+    // its longest path (measured with METAL_CENSUS: only ~50% of lanes active per bounce even in A1). Now a lane whose path
+    // ends immediately starts its next sample instead of waiting; each lane still draws its random numbers in exactly the
+    // same order (sample after sample, bounce after bounce), so the image is unchanged.
+    uint s = 0;                  // index of the sample whose path is in flight (or the next one to start)
+    bool pathActive = false;
+    bool converged = false;
+    uint depth = 0;
+    MetalFilterSample filterSample;
+    float shutterT = 0.0;
+    float3 rayOrigin = float3(0.0), rayDir = float3(0.0);
+    float3 throughput = float3(0.0), radiance = float3(0.0);
+    bool specularBounce = true;
+    float bsdfPdf = 0.0;
+    float mediumSkippedDist = 0.0;
+    bool pathTouchedHair = false;
+    bool inGlass = false;
+    float3 glassSigmaT3 = float3(0.0);
+    float glassG = 0.0;
+    float3 glassAlbedo = float3(1.0);
+    int glassChan = -1;   // hero colour channel for a chromatic glass medium, else -1
+    uint rgbChannel = kRgbChannelUnset;
+    uint cen0 = 0u, cen1 = 0u, cenN = 0u;
+    bool cenRec = false;
+    while (true) {
+        // Lockstep mode only needs to know whether any lane of the group is still mid-path (a SIMD vote over the lanes
+        // that are still in this loop - every lane reaches this line together).
+        const bool groupBusy = simd_any(pathActive);
+        if (!pathActive) {
+        if (s >= uniforms.samplesPerPixel || converged) break;
+        if (uniforms.pathRegen == 0u && groupBusy) continue;   // lockstep: wait for the lanes still tracing
         // Filter-importance-sampled sub-pixel sample position - the
         // multi-sample loop's own antialiasing AND reconstruction-filter
         // reach in one draw (sampleFilterPosition()'s own comment);
@@ -169,7 +204,7 @@ kernel void primaryRayKernel(
         // ray. Replaces the old uniform-in-[0,1)-pixel jitter, which was
         // exactly a hardcoded 0.5-pixel-radius box filter - see section
         // 207, docs/METAL_GPU_FEASIBILITY.md.
-        MetalFilterSample filterSample = sampleFilterPosition(uniforms, randFloat(rngState), randFloat(rngState));
+        filterSample = sampleFilterPosition(uniforms, randFloat(rngState), randFloat(rngState));
         float2 pixelNDC = (float2(tid) + 0.5 + float2(filterSample.px, filterSample.py)) / float2(uniforms.width, uniforms.height);
         float2 screen = pixelNDC * 2.0 - 1.0;
         screen.y = -screen.y;
@@ -182,8 +217,7 @@ kernel void primaryRayKernel(
         // pixel), same as the pixel jitter above, so different samples
         // genuinely see a moving camera rather than one shared static
         // offset re-jittered.
-        float shutterT = randFloat(rngState);
-        float3 rayOrigin, rayDir;
+        shutterT = randFloat(rngState);
         // Real multi-element-lens camera's own per-sample weight (see
         // Uniforms::cameraRealistic's own comment) - 1.0 (a true no-op)
         // for every other camera mode, folded into `throughput`'s own
@@ -339,8 +373,8 @@ kernel void primaryRayKernel(
             rayDir = normalize(focusPoint - rayOrigin);
         }
 
-        float3 throughput = float3(cameraWeight);
-        float3 radiance = float3(0.0);
+        throughput = float3(cameraWeight);
+        radiance = float3(0.0);
         // MIS bookkeeping across bounces: the light quad can be reached
         // two ways - explicit light sampling below (NEE), or landing on
         // it by chance via a Lambertian BSDF-sampled continuation ray.
@@ -352,31 +386,31 @@ kernel void primaryRayKernel(
         // strategy to weight against, so its own hits - direct light
         // visibility - are always full weight, same as a mirror/glass
         // bounce's next hit); bsdfPdf is only meaningful when false.
-        bool specularBounce = true;
-        float bsdfPdf = 0.0;
+        specularBounce = true;
+        bsdfPdf = 0.0;
         // Distance this ray has already travelled since the last real bounce or
         // scatter, but which rayOrigin no longer reflects: stepping THROUGH a medium
         // sphere moves rayOrigin to its exit point. The emissive-hit MIS weight
         // needs the true distance from the previous bounce (that is what the NEE
         // strategy it is weighed against measured), not from the exit point.
-        float mediumSkippedDist = 0.0;
+        mediumSkippedDist = 0.0;
         // Set when this path bounced off a hair (materialType 31) surface. Metal's hair BSDF is float32,
         // where the near-cancelling logI0 terms occasionally produce absurd weights (single samples of
         // ~1e4 where CPU's double-precision hair peaks near 4); those compound across bounces. The scene-
         // driven Film maxcomponentvalue below is unbounded by default, so hair paths get the old fixed
         // per-sample clamp (40) - it is applied only to paths that touched hair, so every other material
         // stays unclamped.
-        bool pathTouchedHair = false;
+        pathTouchedHair = false;
         // Glass-bounded medium state (a dielectric/thin/rough SPHERE whose material carries a homogeneous
         // medium in conductorEta = (sigma_t, g, 1) and transmitColor = albedo): true while this path
         // travels inside such a sphere. Updated after every dielectric event from the NEW direction vs the
         // outward normal. While true, the free-flight block below uses these parameters instead of the
         // camera medium's.
-        bool inGlass = false;
-        float3 glassSigmaT3 = float3(0.0);
-        float glassG = 0.0;
-        float3 glassAlbedo = float3(1.0);
-        int glassChan = -1;   // hero colour channel for a chromatic glass medium, else -1
+        inGlass = false;
+        glassSigmaT3 = float3(0.0);
+        glassG = 0.0;
+        glassAlbedo = float3(1.0);
+        glassChan = -1;   // hero colour channel for a chromatic glass medium, else -1
         // Recursive-backend dispersion state (materialType 22, B23/B24) -
         // kRgbChannelUnset means "no dispersive hit yet, this sample
         // stays full RGB". See shadeDispersiveDielectric()'s own
@@ -384,9 +418,15 @@ kernel void primaryRayKernel(
         // selection" rationale, ported from OptiX's own identical
         // per-path convention (gpu/optix/optix_raygen.h/
         // optix_device_helpers.h).
-        uint rgbChannel = kRgbChannelUnset;
+        rgbChannel = kRgbChannelUnset;
 
-        for (uint depth = 0; depth < uniforms.maxDepth; ++depth) {
+        cen0 = 0u; cen1 = 0u; cenN = 0u;
+        cenRec = (uniforms.debugCensus != 0u) && (s == 0u);
+        depth = 0;
+        pathActive = true;
+        }
+        bool continuePath = false;
+        if (depth < uniforms.maxDepth) do {
             ray r;
             r.origin = rayOrigin;
             r.direction = rayDir;
@@ -732,8 +772,10 @@ kernel void primaryRayKernel(
             }
 
             if (scatteredInMedium) mediumSkippedDist = 0.0;  // global-fog scatter: new segment
+            if (scatteredInMedium) { CENSUS_PUSH(100u); }
             if (!scatteredInMedium && !passedThroughMediumSphere) {
             if (result.type == intersection_type::none) {
+                CENSUS_PUSH(255u);
                 if (uniforms.useEnvironmentMap != 0u) {
                     float2 envUV = equirectangularUV(normalize(rayDir));
                     float3 envColor = earthTexture.sample(textureSampler, envUV).rgb;
@@ -908,6 +950,7 @@ kernel void primaryRayKernel(
             // primId-indexed vertex/uv lookup is valid (see materialType
             // 7's own comment above) - never true for a sphere/disk/
             // Suzanne-instance hit, so this is simply skipped for those.
+            CENSUS_PUSH(mat.materialType);
             if (mat.materialType == 7u && !isSphere && !isDisk && !isSuzanneInstance) {
                 float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 float3 tangent = tangentFor(primId, vertices, uvs);
@@ -1486,7 +1529,15 @@ kernel void primaryRayKernel(
                 if (randFloat(rngState) > p) break;
                 throughput /= max(p, 0.0001);
             }
+            continuePath = true;
+        } while (false);   // a `break` in the body above ends the PATH (every one of them did, in the old depth loop)
+        if (continuePath) {
+            ++depth;
+            if (depth < uniforms.maxDepth) continue;   // next bounce of this path (other lanes may be starting new ones)
         }
+        // The path is finished (terminated, or out of depth): finalize this sample below.
+
+        if (cenRec) censusTexture.write(uint4(cen0, cen1, cenN, 0u), tid);
 
         // Firefly clamp - see Uniforms::fireflyClamp (metal_poc_gpu_types.h).
         // Applied once per SAMPLE, here, not per NEE contribution inside
@@ -1551,10 +1602,12 @@ kernel void primaryRayKernel(
                     // "how many samples ran" count needed for the
                     // normalization below, unlike before this function
                     // divided by a plain actualSamples/sample-count.
-                    break;
+                    converged = true;
                 }
             }
         }
+        ++s;
+        pathActive = false;
     }
 
     // Normalize by filter weight sum, not actualSamples - mirrors
