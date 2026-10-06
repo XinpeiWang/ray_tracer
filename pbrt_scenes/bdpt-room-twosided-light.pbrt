@@ -1,0 +1,21 @@
+# bdpt-room-twosided-light.pbrt -- a two-sided plate light at the centre of a closed diffuse sphere; BDPT and the path tracer must agree.
+#
+# A two-sided emitter radiates from either face with probability 1/2 each. SampleLightLe() halves the density that way, but LightPDFLe() (used by every
+# MIS weight) returned the one-sided cos/pi in front of the stored normal and 0 behind it, so the light-subpath and camera-subpath ends of the MIS sum
+# disagreed about every two-sided light and BDPT/MLT read 22% dark at depth 2.
+
+LookAt  0.6 0 0    1.6 0 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 20 20 20 ] "bool twosided" true
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -0.2 -0.2 0   0.2 -0.2 0   0.2 0.2 0   -0.2 0.2 0 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+Shape "sphere" "float radius" [ 1 ]

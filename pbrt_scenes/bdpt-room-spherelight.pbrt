@@ -1,0 +1,22 @@
+# bdpt-room-spherelight.pbrt -- a small spherical area light at the centre of a closed diffuse sphere; BDPT and the path tracer must agree.
+#
+# BDPT's light sampling drew a point uniformly over the whole sphere's surface but divided by the sphere's visible-cone density (hittable::pdf_value),
+# and dropped the samples that landed on the far side, so light sampling read 0.45x of the true value and BDPT/MLT came out at half the path
+# tracer's brightness on every sphere-lit scene (a quad's pdf_value is the same density as its area sampling, which is why only spheres showed it).
+# Direct light here is exact: the sphere radiates L * pi r^2 = 0.628 along the wall normal at distance 1, so each wall point reads rho * 0.628 / pi = 0.1.
+
+LookAt  0.6 0 0    1.6 0 0    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 20 20 20 ]
+  Shape "sphere" "float radius" [ 0.1 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.5 ]
+Shape "sphere" "float radius" [ 1 ]

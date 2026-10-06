@@ -798,11 +798,13 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 			anyNonSpecular = true;
 		}
 
-		// Convert reverse pdf to area measure and store on previous vertex
-		if (bounces >= 2) {
-			path[bounces-2].pdfRev =
-				path[bounces-1].ConvertDensity(pdfRev, path[bounces-2]);
-		}
+		// Convert reverse pdf to area measure and store on previous vertex. For the first surface vertex the previous vertex is the
+		// endpoint (path[-1]: the camera, or the light), and pbrt-v4's RandomWalk sets its pdfRev too. This used to skip it
+		// (`if (bounces >= 2)`), so a light vertex that is not overwritten by BDPTMISWeight (every strategy with s >= 3) kept pdfRev = 0, which
+		// remap0() turns into 1: the s' = 0 term of the weights' sums then used the wrong density, and on a scene where the BSDF strategy
+		// finds the light often (a large light, a closed box) the MIS weights stopped summing to 1 - BDPT/MLT read 8-25% dark from depth 2 on.
+		path[bounces-2].pdfRev =
+			path[bounces-1].ConvertDensity(pdfRev, path[bounces-2]);
 
 		// Spawn next ray
 		org[0]=hit.p[0]; org[1]=hit.p[1]; org[2]=hit.p[2];

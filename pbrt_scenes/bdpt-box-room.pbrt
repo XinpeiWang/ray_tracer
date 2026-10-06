@@ -1,0 +1,31 @@
+# bdpt-box-room.pbrt -- a closed white box lit by one large plate light that the camera sees the edge of: BDPT and the path tracer must agree at any depth.
+#
+# Two BDPT defects showed up only here. (1) The random walk never set the endpoint's pdfRev (pbrt's RandomWalk does), so for every strategy with
+# s >= 3 the light vertex's reverse density read 0, which remap0() turns into 1; in a closed box the BSDF strategy finds a large light often, the MIS
+# weights stopped summing to 1, and BDPT/MLT read 25% dark at depth 6 (a Cornell box: 8-20%). (2) BDPT built its camera rays through the same point of
+# every pixel (the integer truncation of the sample position dropped the fraction), so the light's edge came out as hard binary pixels instead of
+# antialiased ones. The sphere rooms miss (1) because their small light is rarely hit by a BSDF sample.
+
+LookAt  5 5 1    5 5 10    0 1 0
+Camera "perspective" "float fov" [ 70 ]
+
+Film "rgb" "integer xresolution" [ 48 ] "integer yresolution" [ 48 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+# The light: a 3 x 3 plate near the ceiling, facing down (counter-clockwise seen from below gives the normal -y).
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+    "point3 P" [ 3.5 8 5   3.5 8 8   6.5 8 8   6.5 8 5 ]
+AttributeEnd
+
+Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ]
+# floor, ceiling, back, front, left, right
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 0 0 0   0 0 10   10 0 10   10 0 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 0 10 0   10 10 0   10 10 10   0 10 10 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 0 0 10   0 10 10   10 10 10   10 0 10 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 0 0 0   10 0 0   10 10 0   0 10 0 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 0 0 0   0 10 0   0 10 10   0 0 10 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 10 0 0   10 0 10   10 10 10   10 10 0 ]
