@@ -130,6 +130,8 @@ qt_gui/build/
 # unrelated fix.
 build_macos/
 qt_gui/build_macos/
+build_macos_*/
+qt_gui/build_macos_*/
 
 # Qt Creator
 *.autosave
