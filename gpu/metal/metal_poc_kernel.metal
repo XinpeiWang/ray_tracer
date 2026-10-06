@@ -959,6 +959,19 @@ kernel void primaryRayKernel(
             // primId-indexed vertex/uv lookup is valid (see materialType
             // 7's own comment above) - never true for a sphere/disk/
             // Suzanne-instance hit, so this is simply skipped for those.
+            // Image bump map ("texture displacement"): perturbs ONLY the shading normal of a triangle hit, like materialType 7 below.
+            if (mat.bumpWidth > 0 && !isBoundingBox && !isSuzanneInstance) {
+                const float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
+                float3 bumpDpdu, bumpDpdv;
+                triangleDpduDpdv(primId, vertices, uvs, facingNormal, bumpDpdu, bumpDpdv);
+                float footprint = 0.0;
+                if (depth == 0u && uniforms.cameraOrthographic == 0u && uniforms.cameraSpherical == 0u &&
+                    uniforms.cameraRealistic == 0u && uniforms.hasCameraOrbitBlur == 0u) {
+                    footprint = bumpFootprintStep(uniforms, rayOrigin, rayDir, hitPoint, facingNormal, bumpDpdu, bumpDpdv);
+                }
+                facingNormal = imageBumpNormal(rgbGridData, mat.bumpOffset, mat.bumpWidth, mat.bumpHeight, mat.bumpScale,
+                                               bumpUV.x, bumpUV.y, facingNormal, bumpDpdu, footprint);
+            }
             CENSUS_PUSH(mat.materialType);
             if (mat.materialType == 7u && !isSphere && !isDisk && !isSuzanneInstance) {
                 float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);

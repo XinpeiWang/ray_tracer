@@ -388,14 +388,15 @@ bool metal_supports_scene(const std::string& id) {
 }
 
 // Small pbrt example scenes with a closed-form (or CPU-agreed) answer for one feature, kept in the default sweep although their
-// category is not swept: they caught real Metal bugs (colour-dependent media, point light in fog). Matched by file name, because the
+// category is not swept: they caught real bugs (colour-dependent media, point light in fog, a CPU conductor with no glossy lobe, missing Metal bump mapping). Matched by file name, because the
 // K ids are assigned by position and shift when a pbrt file is added - which is also why these scenes are left out of the golden
 // snapshot (it is keyed by id); the CPU comparison is their protection.
 bool is_extra_regression_scene(const std::string& id) {
 	const char* p = cpu_scene_pbrt_path_by_id(id.c_str());
 	if (!p || !p[0]) return false;
 	static const char* const kNames[] = {"chromatic-absorber.pbrt", "chromatic-camera-medium-absorber.pbrt", "chromatic-camera-medium.pbrt",
-	                                      "chromatic-rgbgrid-absorber.pbrt", "chromatic-rgbgrid-furnace.pbrt", "fog-point-light.pbrt"};
+	                                      "chromatic-rgbgrid-absorber.pbrt", "chromatic-rgbgrid-furnace.pbrt", "fog-point-light.pbrt",
+	                                      "cornell-spotlight.pbrt", "bump-mapped-plane.pbrt"};
 	const std::string path(p);
 	for (const char* n : kNames) {
 		const std::string name(n);

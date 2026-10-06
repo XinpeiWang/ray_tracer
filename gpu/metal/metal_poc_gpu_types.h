@@ -449,6 +449,14 @@ struct TriangleMaterial {
     // 104) - see metal_poc.metal's own mirrored comment. 0 for every
     // non-emissive material.
     uint32_t twoSided = 0;
+    // Image bump map ("texture displacement" on a Material): a grayscale height map stored as floats (one per texel,
+    // sRGB-decoded) in the shared `rgbGridData` buffer at element offset bumpOffset; bumpWidth == 0 means none. The
+    // shading normal of a TRIANGLE hit is perturbed from finite differences of scale * height(u, v), as the CPU's
+    // bump_map_material and OptiX's gpu_bump_map.h do.
+    int32_t bumpOffset = 0;
+    int32_t bumpWidth = 0;
+    int32_t bumpHeight = 0;
+    float bumpScale = 0.0f;
 };
 
 // Mirrors metal_poc_types.metal's GpuCloudMedium byte-for-byte (E2,

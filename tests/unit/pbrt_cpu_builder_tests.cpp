@@ -2055,20 +2055,18 @@ TEST(PbrtCpuBuildTest, ExplicitRgbEtaKConductorBuildsTheRealConductorClass) {
 		   "to the flat-albedo metal fuzz-mirror approximation";
 }
 
-TEST(PbrtCpuBuildTest, ExplicitRgbEtaOnlyConductorFallsBackToMetal) {
-	// Giving only ONE of eta/k (not both) as an explicit RGB triple must NOT
-	// activate the real model - there's no well-defined "the other one
-	// defaults to what" for an arbitrary explicit pair (unlike the
-	// documented Cu-default for giving NEITHER).
+TEST(PbrtCpuBuildTest, ExplicitRgbEtaOnlyConductorUsesTheReflectanceConversion) {
+	// Giving only ONE of eta/k (not both) as an explicit RGB triple does not select measured eta/k - there is no well-defined "the
+	// other one defaults to what" for an arbitrary explicit pair - so, like a conductor with a plain "reflectance", it is built
+	// from its reflectance (eta = 1, k solved from it) as the real GGX + complex-Fresnel conductor (not the flat-albedo fuzz mirror).
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Material \"conductor\" \"rgb eta\" [ 0.2 0.9 1.4 ] \"float roughness\" [ 0.1 ]\n"
 		+ std::string(kQuad));
 	hit_record rec;
 	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
 							 interval(0.001, infinity), rec));
-	EXPECT_NE(dynamic_cast<metal *>(rec.mat.get()), nullptr)
-		<< "a pbrt conductor with only eta (no k) as explicit RGB must keep "
-		   "the pre-existing metal fuzz-mirror approximation";
+	EXPECT_NE(dynamic_cast<conductor *>(rec.mat.get()), nullptr)
+		<< "a pbrt conductor with only eta (no k) as explicit RGB is built from its reflectance as the real conductor class";
 }
 
 TEST(PbrtCpuBuildTest, CoatedConductorNamedSpectrumBuildsTheRealConductorFresnel) {
@@ -2144,7 +2142,7 @@ TEST(PbrtCpuBuildTest, CoatedConductorBareRoughnessStillMeansBothInterfaces) {
 	EXPECT_NEAR(baseOnly->get_coat_roughness(), 0.0, 1e-12) << "interface.roughness defaults to 0 once the pbrt names are used";
 }
 
-TEST(PbrtCpuBuildTest, UnrecognizedConductorSpectrumFallsBackToMetal) {
+TEST(PbrtCpuBuildTest, ReflectanceConductorBuildsTheRealConductorClass) {
 	const pbrt_cpu::BuildResult b = buildFrom(
 		"Material \"conductor\" \"rgb reflectance\" [ .8 .8 .8 ] "
 		"\"float roughness\" [ 0.1 ]\n"
@@ -2152,10 +2150,11 @@ TEST(PbrtCpuBuildTest, UnrecognizedConductorSpectrumFallsBackToMetal) {
 	hit_record rec;
 	ASSERT_TRUE(b.world->hit(ray(point3(0.5, 0.5, -5), vec3(0, 0, 1)),
 							 interval(0.001, infinity), rec));
-	EXPECT_NE(dynamic_cast<metal *>(rec.mat.get()), nullptr)
-		<< "a pbrt conductor with no eta/k (or an explicit RGB k) must keep "
-		   "the pre-existing metal fuzz-mirror approximation";
-	EXPECT_EQ(dynamic_cast<conductor *>(rec.mat.get()), nullptr);
+	// pbrt-v4 turns "rgb reflectance" into eta = 1 and k = 2 sqrt(r) / sqrt(1 - r); the old flat-albedo `metal` (roughness as a
+	// mirror fuzz) had no glossy lobe, so a point or spot light could not make a highlight on it.
+	EXPECT_NE(dynamic_cast<conductor *>(rec.mat.get()), nullptr)
+		<< "a pbrt conductor given only a reflectance must build the real GGX + complex-Fresnel conductor class";
+	EXPECT_EQ(dynamic_cast<metal *>(rec.mat.get()), nullptr);
 }
 
 // ---------------------------------------------------------------------------
@@ -2181,8 +2180,8 @@ TEST(PbrtCpuBuildTest, MixMaterialBuildsTheRealMixOfItsTwoSubMaterials) {
 	ASSERT_NE(mix, nullptr)
 		<< "a pbrt mix material must build the real mix_material class, not "
 		   "silently fall back to lambertian";
-	EXPECT_NE(dynamic_cast<metal *>(mix->get_mat_a().get()), nullptr)
-		<< "sub-material 'a' (conductor) must build the real metal class";
+	EXPECT_NE(dynamic_cast<conductor *>(mix->get_mat_a().get()), nullptr)
+		<< "sub-material 'a' (conductor) must build the real conductor class";
 	EXPECT_NE(dynamic_cast<dielectric *>(mix->get_mat_b().get()), nullptr)
 		<< "sub-material 'b' (dielectric) must build the real dielectric class";
 	EXPECT_DOUBLE_EQ(mix->get_weight()->value(0, 0, point3(0, 0, 0)).x(), 0.75);
