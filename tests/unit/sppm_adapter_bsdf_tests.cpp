@@ -29,6 +29,7 @@
 #include "material.h"
 #include "sppm_adapter.h"
 #include <cmath>
+#include <functional>
 #include <fstream>
 #include <random>
 
@@ -583,4 +584,77 @@ TEST(SppmBsdfSampleF, MeasuredEnergyConservationMatchesTheTablesAlbedo) {
 	// the colour must not be gray: the table is a gold, so red is clearly above blue
 	EXPECT_GT(ref[0], 1.3 * ref[2]);
 	EXPECT_GT(sum[0], 1.3 * sum[2]);
+}
+
+
+// ============================================================================
+// Rough dielectric seen from either side of the surface
+// ============================================================================
+// The bridge rebuilds a hit_record for every BSDF query. It used to hard-code front_face = true, so a ray leaving the glass was shaded as one entering it,
+// and it gave a pdf asked for from the far side of the surface (BDPT's reverse densities) the near side's normal and flag. These pin down: f and pdf agree
+// (E[f cos / pdf] == integral of f cos) from inside the glass as well as outside, the entering and leaving albedos really differ (they would be equal if
+// the flag were ignored), and a query from the far side equals the same query made from that side.
+namespace {
+double integrate_over_sphere(const std::function<double(const double*)>& g) {
+	const int N = 300000;
+	double sum = 0.0;
+	for (int i = 0; i < N; ++i) {
+		const double u = (i + 0.5) / N, v = std::fmod((i + 0.5) * 0.6180339887498949, 1.0);
+		const double z = 1.0 - 2.0 * u, r = std::sqrt(std::max(0.0, 1.0 - z * z)), phi = 2.0 * pi * v;
+		const double w[3] = { r * std::cos(phi), r * std::sin(phi), z };
+		sum += g(w);
+	}
+	return sum * 4.0 * pi / N;
+}
+}
+
+TEST(SppmBsdfRoughDielectric, FAndPdfAgreeFromInsideAndOutside) {
+	auto mat = make_shared<rough_dielectric>(1.5, 0.5);
+	const double n[3] = { 0, 0, 1 };
+	double wo[3] = { 0.3, 0.0, 0.95 };
+	const double len = std::sqrt(wo[0]*wo[0] + wo[2]*wo[2]);
+	wo[0] /= len; wo[2] /= len;
+
+	double albedo[2] = { 0.0, 0.0 };
+	for (int inside = 0; inside < 2; ++inside) {
+		SPPMShadingContext ctx;
+		ctx.p = point3(0, 0, 0);
+		ctx.normal = vec3(0, 0, 1);
+		ctx.mat = mat;
+		ctx.front_face = (inside == 0);
+		const double ref = integrate_over_sphere([&](const double* wi) {
+			double f[3];
+			sppm_bsdf_f(ctx, wo, wi, n, f);
+			return f[0] * std::fabs(wi[2]);
+		});
+		double sum = 0.0;
+		const int nDraws = 200000;
+		for (int i = 0; i < nDraws; ++i) {
+			double dir[3], f[3], pdf;
+			bool specular = true;
+			if (!sppm_bsdf_sample_f(ctx, wo, n, 0.0, 0.0, dir, f, pdf, specular) || pdf <= 0.0) continue;
+			sum += f[0] * std::fabs(dir[2]) / pdf;
+		}
+		EXPECT_NEAR(sum / nDraws, ref, 0.02 * ref) << (inside ? "inside" : "outside") << ": sampled and integrated albedo disagree";
+		albedo[inside] = ref;
+	}
+	EXPECT_GT(std::fabs(albedo[0] - albedo[1]), 0.1 * albedo[0]) << "entering and leaving must not give the same albedo (front_face ignored?)";
+}
+
+TEST(SppmBsdfRoughDielectric, PdfFromTheFarSideEqualsTheSameQueryMadeFromThatSide) {
+	auto mat = make_shared<rough_dielectric>(1.5, 0.5);
+	SPPMShadingContext ctx;
+	ctx.p = point3(0, 0, 0);
+	ctx.normal = vec3(0, 0, 1);
+	ctx.mat = mat;
+	ctx.front_face = true;
+	SPPMShadingContext flipped = ctx;
+	flipped.front_face = false;
+	const double n[3] = { 0, 0, 1 }, n_flipped[3] = { 0, 0, -1 };
+	const double wo_below[3] = { 0.3, 0.0, -0.9539392014169457 };   // on the far side of n
+	for (int i = 0; i < 40; ++i) {
+		const double a = 2.0 * pi * (i + 0.5) / 40.0, c = -0.9 + 1.8 * (i % 7) / 6.0, s = std::sqrt(1.0 - c * c);
+		const double wi[3] = { s * std::cos(a), s * std::sin(a), c };
+		EXPECT_DOUBLE_EQ(sppm_bsdf_pdf(ctx, wo_below, wi, n), sppm_bsdf_pdf(flipped, wo_below, wi, n_flipped));
+	}
 }

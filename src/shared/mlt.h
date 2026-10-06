@@ -353,6 +353,10 @@ MLTPathResult<T> MLTEvalPath(MLTSampler<T>& sampler, int depth,
 		void BSDFf(int id, const T wo[3], const T wi[3], const T n[3], T out[3]) const {
 			scene.BSDFf(id, wo, wi, n, out);
 		}
+		// The wrapped scene's own adjoint when it has one, its BSDFf otherwise (bdpt.h's bsdf_f_light() makes that choice).
+		void BSDFfAdjoint(int id, const T wo[3], const T wi[3], const T n[3], T out[3]) const {
+			bdpt_detail::bsdf_f_light(scene, id, wo, wi, n, out, 0);
+		}
 		bool BSDFSampleF(int id, const T wo[3], const T n[3], T u1, T u2,
 						 T new_dir[3], T f_val[3], T& pdf, bool& is_specular) const {
 			return scene.BSDFSampleF(id, wo, n, u1, u2, new_dir, f_val, pdf, is_specular);

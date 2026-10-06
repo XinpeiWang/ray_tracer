@@ -200,6 +200,18 @@ inline T absdot3(const T a[3], const T b[3]) {
 	return std::abs(dot3(a,b));
 }
 
+// The BSDF value for light flowing from the `wo` side to the `wi` side at a LIGHT-subpath vertex (pbrt's TransportMode::Importance). A scene whose
+// f is not symmetric (a refracting dielectric) provides BSDFfAdjoint(); every other scene's BSDFf already is the adjoint, so it is the fallback.
+template<typename Scene, typename T>
+inline auto bsdf_f_light(const Scene& scene, int id, const T wo[3], const T wi[3], const T n[3], T out[3], int)
+	-> decltype(scene.BSDFfAdjoint(id, wo, wi, n, out), void()) {
+	scene.BSDFfAdjoint(id, wo, wi, n, out);
+}
+template<typename Scene, typename T>
+inline void bsdf_f_light(const Scene& scene, int id, const T wo[3], const T wi[3], const T n[3], T out[3], long) {
+	scene.BSDFf(id, wo, wi, n, out);
+}
+
 // Default SplatFn for BDPTLi() below - lets callers that don't want t==1
 // light-tracing contributions (e.g. unit tests exercising a single
 // strategy directly) omit the splat argument entirely via BDPTLi's own
@@ -457,6 +469,22 @@ struct BDPTVertex {
 		} else {
 			out[0]=out[1]=out[2]=T(0);
 		}
+	}
+
+	// f for a vertex of a path traced FROM THE LIGHT (light subpath): light arrives along si.wo and leaves toward `next`, so the radiance-oriented value
+	// is the adjoint one - see bdpt_detail::bsdf_f_light().
+	template<typename Scene>
+	void fLight(const BDPTVertex& next, const Scene& scene, T out[3]) const {
+		if (type != BDPTVertexType::Surface) { out[0]=out[1]=out[2]=T(0); return; }
+		T wn[3];
+		if (next.IsInfiniteLight()) {
+			wn[0]=next.ei.dir[0]; wn[1]=next.ei.dir[1]; wn[2]=next.ei.dir[2];
+		} else {
+			wn[0] = next.p()[0]-p()[0]; wn[1] = next.p()[1]-p()[1]; wn[2] = next.p()[2]-p()[2];
+			if (bdpt_detail::len2_3(wn) == T(0)) { out[0]=out[1]=out[2]=T(0); return; }
+			bdpt_detail::norm3(wn);
+		}
+		bdpt_detail::bsdf_f_light(scene, si.bsdf_id, si.wo, wn, si.shading_n, out, 0);
 	}
 
 	// ---------- ConvertDensity: directional -> area pdf ----------
@@ -775,6 +803,11 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 										  new_dir, f_val, pdf_bsdf, is_specular);
 		if (!sampled || pdf_bsdf == T(0)) break;
 
+		// A light subpath carries importance: its throughput uses the adjoint value (see bdpt_detail::bsdf_f_light()). A specular sample keeps
+		// the f_val/pdf pair the scene engineered to collapse to the attenuation.
+		if (!camera_mode && !is_specular)
+			bdpt_detail::bsdf_f_light(scene, hit.bsdf_id, wo, new_dir, hit.shading_n, f_val, 0);
+
 		T cos_theta = std::abs(
 			new_dir[0]*hit.shading_n[0] + new_dir[1]*hit.shading_n[1] + new_dir[2]*hit.shading_n[2]);
 
@@ -1004,7 +1037,7 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 				sampled = BDPTVertex<T>::MakeCamera(p_cam, cam_n, Le_cam, pdf_we);
 
 				T f_qs[3];
-				qs.template f<Scene>(sampled, scene, f_qs);
+				qs.template fLight<Scene>(sampled, scene, f_qs);
 
 				T cos_qs = bdpt_detail::absdot3(wi, qs.ns());
 				L[0] = qs.beta[0] * f_qs[0] * Le_cam[0] * cos_qs;
@@ -1026,7 +1059,7 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 		const BDPTVertex<T>& pt = cameraVerts[t-1];
 		if (qs.IsConnectible() && pt.IsConnectible()) {
 			T f_qs[3], f_pt[3];
-			qs.template f<Scene>(pt, scene, f_qs);
+			qs.template fLight<Scene>(pt, scene, f_qs);
 			pt.template f<Scene>(qs, scene, f_pt);
 
 			T g = BDPTGeometryTerm(qs, pt);

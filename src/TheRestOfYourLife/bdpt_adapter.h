@@ -360,7 +360,7 @@ class BDPTSceneAdapter {
 			? sppm_resolve_material(rec.mat, rec.u, rec.v, rec.p)
 			: rec.mat;
 
-		int pool_idx = push_context(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat });
+		int pool_idx = push_context(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat, rec.front_face });
 
 		for (int c = 0; c < 3; ++c) hit.p[c] = rec.p[c];
 		for (int c = 0; c < 3; ++c) hit.geo_n[c] = rec.normal[c];       // no separate geometric normal in this codebase
@@ -389,6 +389,13 @@ class BDPTSceneAdapter {
 		const SPPMShadingContext* ctx = context_for(id);
 		if (!ctx) { out[0]=out[1]=out[2]=0.0; return; }
 		sppm_bsdf_f(*ctx, wo, wi, n, out);
+	}
+
+	// f for light flowing from the wo side to the wi side (a light-subpath vertex): see sppm_bsdf_f_adjoint()'s comment.
+	void BSDFfAdjoint(int id, const double wo[3], const double wi[3], const double n[3], double out[3]) const {
+		const SPPMShadingContext* ctx = context_for(id);
+		if (!ctx) { out[0]=out[1]=out[2]=0.0; return; }
+		sppm_bsdf_f_adjoint(*ctx, wo, wi, n, out);
 	}
 
 	bool BSDFSampleF(int id, const double wo[3], const double n[3], double u1, double u2,
