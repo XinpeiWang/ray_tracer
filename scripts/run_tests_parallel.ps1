@@ -292,6 +292,12 @@ $jobs = for ($i = 0; $i -lt $Shards; $i++) {
 	Start-Job -Name "shard_$i" -ArgumentList $testsExe, $Shards, $i, $Filter, $logFile, $shardDir, $threadsPerShard -ScriptBlock {
 		param($exe, $total, $index, $filter, $log, $cwd, $threads)
 		Set-Location $cwd
+		# Each shard's own TEMP/TMP: about ten test fixtures build a scratch tree under a FIXED name in %TEMP% (pbrt_load_tests, pbrt_discover_tests,
+		# ...), and tests of one fixture land in different shards, so two shards used to delete each other's files mid-test ("found.size() 0, expected 2").
+		$shardTemp = Join-Path $cwd "tmp"
+		New-Item -ItemType Directory -Force -Path $shardTemp | Out-Null
+		$env:TEMP = $shardTemp
+		$env:TMP = $shardTemp
 		$env:GTEST_TOTAL_SHARDS = $total
 		$env:GTEST_SHARD_INDEX = $index
 		$env:RAY_TRACER_THREADS = $threads

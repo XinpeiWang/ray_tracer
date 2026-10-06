@@ -474,10 +474,11 @@ TEST(PbrtBackendAgreementTest, HairSphereDimSkyAgreesAcrossBackends) {
 // twice, recursive GPU ignored the scattering albedo (and its builder dropped sigma_s/sigma_t), wavefront GPU had no
 // camera medium at all. See the scene's header for the Monte Carlo numbers they now match.
 TEST(PbrtBackendAgreementTest, CameraMediumAbsorbingAgreesAcrossBackends) {
-	// 16 CPU renders of this scene: 1.537-1.683, median 1.577 (a point light in fog: heavy tail, upward). The GPU backends read 99.7%
-	// (recursive) and 102% (wavefront) of that median, so the CPU reference is the median of five draws and the bounds leave room for
-	// the spread of that median.
-	expectBackendsAgree("camera-medium-absorbing", 128, 0.95, 1.06, /*cpuRepeats=*/5);
+	// 16 CPU renders of this scene: 1.537-1.683, median 1.577 (a point light in fog: heavy tail, upward). The GPU backends are steady
+	// (recursive 1.57, wavefront 1.54-1.55 in every run), but a median of five CPU draws still ranged 1.556-1.627, which put the
+	// wavefront at 94.8-99.1% of it and failed the 95% bound now and then. The CPU reference is the median of fifteen draws, whose
+	// spread is about 1.7x smaller, and the bounds leave room for what remains.
+	expectBackendsAgree("camera-medium-absorbing", 128, 0.95, 1.06, /*cpuRepeats=*/15);
 }
 
 // Disk and cylinder area lights. The CPU's cylinder pdf counted only the first of a ray's two crossings of the
