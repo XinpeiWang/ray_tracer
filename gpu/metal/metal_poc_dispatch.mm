@@ -634,7 +634,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // scene already has plenty of - a real render-TIME win at
     // (ideally) no visible quality cost, verified via a dedicated
     // A/B render, not assumed.
-    uniforms.adaptiveSampling = 1u;
+    uniforms.adaptiveSampling = adaptiveSamplingRequested ? 1u : 0u;
+    uniforms.adaptiveThreshold = adaptiveThresholdValue;
     uniforms.pbrtEnvMapWidth = pbrtEnvMapWidth;
     uniforms.pbrtEnvMapHeight = pbrtEnvMapHeight;
     uniforms.envMapWidth = envMapWidth;

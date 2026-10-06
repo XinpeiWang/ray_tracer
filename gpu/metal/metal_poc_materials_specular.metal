@@ -240,9 +240,10 @@ inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 n
     applyBeerLambertAbsorption(throughput, mat.color, frontFace, hitDistance);
 
     // Next-event estimation to the area lights, MIS-weighted against this vertex's own BSDF sampling. Without it a small bright
-    // light seen through frosted glass is found only by chance (sparse fireflies, an under-converged mean). Glass that bounds a
-    // medium (conductorK.y > 0.5) keeps its old behaviour: the kernel carries the MIS state of a scattered path across its boundary.
-    const bool lightSampling = !(mat.conductorK.y > 0.5) && uniforms.lightCount > 0u && all(mat.emission == float3(0.0));
+    // light seen through frosted glass is found only by chance (sparse fireflies, an under-converged mean).
+    // Glass that bounds a medium samples lights too: a path scattered inside reaches it, and pbrt takes the direct sample there like at any
+    // other vertex.
+    const bool lightSampling = uniforms.lightCount > 0u && all(mat.emission == float3(0.0));
     if (lightSampling) {
         LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         const float3 toLight = ls.point - hitPoint;

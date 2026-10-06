@@ -94,6 +94,12 @@ struct MetalPocApp {
     // applyCameraOverride() call already uses. 1.0 (default) is a no-op,
     // unaffected for every scene/caller that never touches this field.
     float exposureValue = 1.0f;
+    // RenderOptions::adaptive_sampling / adaptive_threshold, poked by metal_render_main() like exposureValue. Off by default, as on the CPU:
+    // the kernel's early stop freezes a pixel whose first samples are all (near) black, which is a large bias for light that is found only
+    // rarely (caustics, light seen through glass - a rough-glass-fog sphere under a small lamp read ~10x too dark and kept black dots at any
+    // sample count).
+    bool adaptiveSamplingRequested = false;
+    float adaptiveThresholdValue = 0.01f;
     // Skips buildScene()'s own hardcoded demo room lights (sun/fill/area/
     // projection/goniometric) when set - RenderOptions::isolate_pbrt_lighting's
     // own doc comment for the full "why" (section 197's C9 finding).

@@ -329,6 +329,8 @@ struct Uniforms {
     packed_float3 fogSigmaT3;
     // 1 during a Live Preview session: the kernel records each pixel's first hit position in worldPosTexture.
     uint liveWorldPos;
+    // Adaptive sampling's relative-error threshold (RenderOptions::adaptive_threshold); only read when adaptiveSampling != 0.
+    float adaptiveThreshold;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -1200,8 +1202,11 @@ SphereIntersectionResult sphereIntersectionFunction(
     {
         uint mt = sphereMaterials[primitiveIndex].materialType;
         if (payload.isShadowRay && (mt == 29u || mt == 30u)) return result;
-        const bool glassWithMedium = (mt == 2u || mt == 5u || mt == 11u) && sphereMaterials[primitiveIndex].conductorK.y > 0.5;
-        if (payload.isShadowRay && (mt == 28u || glassWithMedium)) {
+        // A glass sphere that bounds a medium is NOT in this list: like every pbrt-v4 surface with a material it is opaque to NEE
+        // shadow rays (VolPathIntegrator::SampleLd), so a scatter vertex inside it cannot see a light through its own shell and the fog is
+        // lit only along specular chains - the same rule the CPU and both OptiX backends follow (commit 2f8dc3d). A boundary that should
+        // not block is Material "interface", which is materialType 28 here.
+        if (payload.isShadowRay && mt == 28u) {
             // Homogeneous medium sphere vs a shadow ray: not an opaque
             // blocker, but it does attenuate. Visibility through it is
             // exp(-sigma_t * chord), and a binary occlusion test can

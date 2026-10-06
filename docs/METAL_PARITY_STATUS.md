@@ -61,8 +61,8 @@ seeds, and the same bugs are caught: +15% diffuse -> 40 scenes flagged, +8% -> 1
   appends the current numbers to a file. CI cannot run it (the GitHub macOS runner has no hardware ray tracing), so it protects
   a developer Mac, like the rest of the sweep.
 
-Latest full run (Models included): 119 scenes, **104 pass, 6 marginal, 9 known gaps, 0 failed**.
-The standard 95-scene sweep (what CI/ctest runs): ~81 pass, ~5 marginal, 9 known gaps. All 24 Models
+Latest full run (all categories, METAL_PARITY_ALL=1): 133 scenes, **130 pass, 3 marginal, 2 un-triaged (both CPU-side or a missing asset, below), 0 known gaps**.
+The standard sweep (what CI/ctest runs): 56 scenes, all pass. All 24 Models
 scenes with assets present match CPU (23 pass, 1 marginal). CI skips the test, non-fatally, on a runner
 whose Metal device cannot do hardware ray tracing, so the gate really protects a developer Mac.
 
@@ -89,17 +89,13 @@ materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D check
 * The Film `maxcomponentvalue` firefly clamp is unbounded by default (as on CPU). Paths that bounced off hair get
   a per-sample clamp of 40, because the float32 hair BSDF occasionally yields absurd weights.
 * A shape with `Material "interface"` is transparent (it only bounds a medium), never an opaque gray mesh.
-* Glass shadow rays: clear and rough glass **block** shadow rays (as pbrt-v4 does); a glass sphere bounding a
-  medium lets them through with stochastic attenuation (as CPU does).
+* Glass shadow rays: clear, thin and rough glass **block** shadow rays (as pbrt-v4 and, since commit 2f8dc3d, the CPU and OptiX do), including a glass sphere that bounds a medium: a scatter vertex inside it cannot see a light through its own shell, so the fog is lit only along specular chains. A boundary that should not block is Material "interface". (Metal used to let shadow rays through such glass with stochastic attenuation and to keep a scattered path's MIS state across the boundary, which only agreed with the CPU for sky lights; a small lamp read ~2x too bright.)
+* Adaptive sampling is **off** unless `RenderOptions::adaptive_sampling` asks for it (as on the CPU). It used to be hard-wired on, and its "mean below 1e-4 after 16 samples" early stop froze every pixel that had not yet seen a rare light path (caustics, a lamp seen through glass): E12 read ~10x too dark in places and kept black pixels at any sample count.
 
 ## Known gaps (`kKnownGapScenes`)
 
 | scene(s) | cause | notes |
 |---|---|---|
-| C2, F2 | reflectance-only conductor | CPU renders a fuzzy mirror (no highlight from point/spot lights); Metal renders real GGX metal. A CPU-side decision. |
-| B24 | CPU shadow rays pass through glass | CPU's `shadow_ray_hit` walks through glass; Metal blocks like pbrt-v4. Matching needs material-aware shadow tracing (~70 call sites). |
-| A9, B13, E12 | glass + scattering medium, remaining differences | the medium is simulated (E3 matches CPU to 2%, E11 thin glass now passes after keeping the MIS state across the boundary); E12's rough glass is ~2-3x too bright inside (CPU sits between Metal's blocked and pass-through shadow behaviour, also at roughness 0); A9 also has a radius-5000 "world haze" sphere; B13 is just past the regional tolerance. |
-| B11 | hair "black fur" | float32 hair BSDF instability for high absorption + narrow lobes; red channel ~1.4x CPU. |
 | C17 | missing asset | `sssdragon/textures/small_rural_road_equiarea.exr` is not in the repo; both backends fall back differently. |
 
 Smaller approximations not covered by a scene: shadow rays use shutter time 0 (a moving sphere casts its
@@ -136,6 +132,6 @@ Live Preview (macOS) was also run over all 312 Metal-compatible scenes (`RT_GUI_
 283 start with a well-lit picture; 9 (H13-H21) need external scene assets that are not bundled; the rest are dark by design (a sphere on
 a black background, light-only tests) and show the same lit fraction as the standalone Metal renderer.
 
-Still open among the rough-glass scenes: K146 (a lamp inside a rough glass sphere: the means agree to 3% but light that crosses two glass surfaces is found only by path sampling in both renderers, so the 60x60 picture is speckled and the regional comparison is noise-limited) and K144 (rough glass bounding a scattering medium; marginal - that glass keeps the old no-light-sampling behaviour because the kernel carries the MIS state of a scattered path across its boundary).
+Rough glass bounding a medium (E12, `rough-dielectric-medium.pbrt`) now matches the CPU to about 1% (0.1130 vs 0.1128, rows within 5% at 3000 spp): the glass takes direct-light samples like any other vertex, and adaptive sampling no longer freezes its rare-light pixels. The earlier note that K146 (a lamp inside a rough glass sphere) was noise-limited was the same adaptive-sampling bias: it now passes (0.8246 vs 0.8246). Still different: A9 (a radius-5000 "world haze" glass sphere enclosing the scene) stays marginal.
 
 Measured BSDFs (pbrt "measured", a tabulated Dupuy-Jakob BRDF) now render on Metal (materialType 32, `shadeMeasured`): a port of `measured_bxdf.h` / `piecewise_linear_2d.h` via the OptiX device code, with the five warp tables and a descriptor kept in the shared `rgbGridData` float buffer. Importance-sampled continuation (weight f*|cos|/pdf, luminance-warped) plus direct-light sampling with MIS (area, point, spot, distant, projection, goniometric, environment) like the CPU. `measured-furnace`, `measured-lights`, `measured-lights-area` and the B14 showroom now match the CPU to 0.1-0.3% (before this Metal rendered every measured material as flat gray Lambertian). They are in the regression set (by file name).
