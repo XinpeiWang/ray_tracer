@@ -1,0 +1,33 @@
+# rgbgrid-emission.pbrt -- a self-glowing RGB voxel grid (pbrt-v4's per-voxel "rgb Le" plus "Lescale") in an otherwise black scene, no lights.
+#
+# The only light is the medium's own emission, which differs per voxel: the x = 0 side glows orange, the x = 1 side blue-green. pbrt weights
+# it by the share of the collision that is absorption, so sigma_a > 0 is what makes it glow. A Metal renderer that ignores "rgb Le"
+# renders this scene black.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 20 ]
+
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate -1 -1 -1
+  Scale 2 2 2
+  MakeNamedMedium "glow" "string type" [ "rgbgrid" ]
+    "integer nx" [ 2 ] "integer ny" [ 2 ] "integer nz" [ 2 ]
+    "float g" [ 0 ]
+    "float Lescale" [ 2 ]
+    "rgb sigma_a" [ 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 0.6 ]
+    "rgb sigma_s" [ 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 0.5 ]
+    "rgb Le" [ 1.0 0.5 0.2  0.1 0.4 0.8  1.0 0.5 0.2  0.1 0.4 0.8  1.0 0.5 0.2  0.1 0.4 0.8  1.0 0.5 0.2  0.1 0.4 0.8 ]
+AttributeEnd
+
+AttributeBegin
+  Material "interface"
+  MediumInterface "glow" ""
+  Shape "sphere" "float radius" [ 1.8 ]
+AttributeEnd

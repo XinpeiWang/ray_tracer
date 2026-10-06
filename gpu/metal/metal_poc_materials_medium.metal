@@ -556,6 +556,7 @@ inline void shadeRgbGridMediumSphere(
     float missedExitT = entryDistance;   // outside the grid's own (tighter) box the loose trigger sphere is just passed through
     float3 w = float3(1.0);              // running product of the null-collision weights
     float3 collideW = float3(0.0);       // path weight of the real event, if any
+    float3 collideEm = float3(0.0);      // the event's absorption share, w * sigma_a / mean(sigma_t): the weight of the grid's own emission
     if (hasSeg && sigmaMaj > 0.0) {
         float tt = max(segMin, 0.0);
         for (int iter = 0; iter < 128 && !didScatter; ++iter) {
@@ -570,6 +571,7 @@ inline void shadeRgbGridMediumSphere(
                 didScatter = true;
                 mediumPoint = p;
                 collideW = w * ss / meanT;
+                collideEm = w * sa / meanT;
             } else {
                 const float nullMean = sigmaMaj - meanT;
                 if (nullMean > 1e-30) w *= (float3(sigmaMaj) - sigmaTc) / nullMean;
@@ -579,6 +581,19 @@ inline void shadeRgbGridMediumSphere(
     }
 
     if (didScatter) {
+        // Self-emission at the real collision (pbrt "rgb Le" x "Lescale"), weighted by this event's absorption share, the same
+        // estimator as the CPU rgb_grid_medium_hittable::sample_event and the OptiX grid.
+        if (grid.leDataOffset >= 0) {
+            const int voxelCount = grid.nx * grid.ny * grid.nz;
+            const float3 mp = rgbGridWorldToMediumPoint(grid, mediumPoint);
+            device const float* lR = rgbGridData + grid.leDataOffset;
+            device const float* lG = lR + voxelCount;
+            device const float* lB = lG + voxelCount;
+            const float3 le = float3(gpuRgbGridTrilinear(lR, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z),
+                                     gpuRgbGridTrilinear(lG, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z),
+                                     gpuRgbGridTrilinear(lB, grid.nx, grid.ny, grid.nz, mp.x, mp.y, mp.z)) * grid.leScale;
+            radiance += throughput * le * collideEm;
+        }
         // Area lights.
         if (uniforms.lightCount > 0u) {
             LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);

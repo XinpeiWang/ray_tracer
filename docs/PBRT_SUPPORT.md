@@ -548,7 +548,7 @@ loader and no longer match the code:
   both CPU and GPU** — pbrt-v4 gives them no equivalent `"Le"` parameter at
   all (only `rgbgrid`'s does), so this isn't a scope gap, just a
   non-feature for those two types. **`rgbgrid`'s own `"Le"` support is now
-  real on GPU too**, not CPU-only (`GpuRgbGridMedium::leDataOffset`/
+  real on GPU too**, not CPU-only (Metal too: `GpuRgbGridMedium::leDataOffset`/`leScale`, `shadeRgbGridMediumSphere` - see `rgbgrid-emission.pbrt`; `GpuRgbGridMedium::leDataOffset`/
   `Le_scale`, `optix_intersection_sphere.h`/`wavefront_kernels_materials.cu`'s own
   RgbGridMedium closest-hit cases, `gpu/optix/pbrt_gpu_builder.h`'s scene
   builder). The GPU weights it by the event's absorption share like the CPU does (`Le_c * w_c * sigma_a_c / mean(sigma_t)`) now that its grid carries

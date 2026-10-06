@@ -1029,6 +1029,9 @@ struct GpuRgbGridMedium {
     // Element offset of the per-voxel sigma_a blocks (R, then G at +nx*ny*nz, B at +2*nx*ny*nz) in `rgbGridData`; -1 when
     // the scene gave no "rgb sigma_a" (then sigmaAConst applies to every channel).
     int saDataOffset;
+    // Per-voxel emission ("rgb Le"): element offset of the R, G, B blocks in `rgbGridData`, or -1 for none; leScale is pbrt's "Lescale".
+    int leDataOffset;
+    float leScale;
 };
 
 // A sphere is a custom (non-triangle) primitive - Metal has no built-in
