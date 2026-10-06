@@ -19,7 +19,7 @@ the camera and watch the image sharpen. On Windows it is backed by OptiX; on mac
   the ray through each pixel's centre and the camera basis, and honours the depth-of-field override. The other OptiX-only flags in the
   signature (AI denoiser, SVGF, ReSTIR, radiance cache, path guiding, temporal/neural upscale, NRC, adaptive sampling) are accepted and
   ignored. The GUI hides those controls on macOS: the Live Preview Settings group shows only Depth of Field, Aperture/Focus Distance,
-  Exposure, Samples/Frame, Max Bounces, Firefly Clamp and Smooth noisy pixels, and the Live denoiser group is hidden.
+  Exposure, Samples/Frame, Max Bounces, Firefly Clamp and Smooth noisy pixels, Auto exposure, and the Live denoiser group is hidden.
 
 ## Performance (M2, measured with `build/metal_live_bench`)
 
@@ -47,6 +47,10 @@ library from a directory without scenes.)
   out) and costs one extra primary ray per pixel per frame. Pinhole cameras only.
 * Depth of field is the scene's thin-lens model with the GUI's Aperture (lens diameter) and Focus Distance in scene units. There is no
   AI denoiser or ReSTIR (OptiX-only features).
+* "Auto exposure" (on by default on macOS, `RealtimePreviewWorker::updateAutoExposure()`) brightens a dim scene so it does not come up nearly black at the
+  default Exposure of 1: the log-average luminance of the lit pixels is brought up towards 0.15, by at most 64x, eased in every few frames. It never
+  darkens (a normally exposed or bright scene looks exactly as with it off) and multiplies the manual Exposure value. The scene metadata's
+  "recommended exposure" cannot do this job - it is 1.0 for every scene that renders dark in Live Preview.
 * "Smooth noisy pixels" (on by default on macOS, `RealtimePreviewWorker::smoothLowSampleAccum()`, backend independent) replaces the
   display of a pixel that has fewer than 96 samples by a weighted mean of its neighbours, weighted by being on the same surface (the
   first-hit world positions), by colour similarity relative to the expected noise, and by the neighbours' own sample counts; the effect

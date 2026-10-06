@@ -210,6 +210,11 @@ public slots:
 	// pixel stops being smoothed as it gains samples. No accumulation reset.
 	void setSmoothLowSample(bool enabled);
 
+	// Auto exposure: scales the displayed picture so that a dim scene is not shown (nearly) black - the log-average brightness of the lit
+	// pixels is brought up towards a mid-grey, never lowered below the manual Exposure (a bright scene is left as it is), and the factor
+	// follows the picture smoothly. Multiplies the manual setExposure() value. Display only: no accumulation reset.
+	void setAutoExposure(bool enabled);
+
 	// Samples-per-frame / max ray depth for each low-spp render() call - see
 	// renderLoop()'s own comment on why a small per-call cost is used at all.
 	// No accumulation reset needed, same reasoning as setRestirGi() above.
@@ -390,6 +395,15 @@ private:
 	bool m_smoothLowSample = false;
 	std::vector<float> m_smoothed;
 	std::vector<float> m_smoothLuminance;   // scratch for smoothLowSampleAccum()
+
+	// Auto exposure (setAutoExposure()): m_autoFactor is the current brightening factor (>= 1), updated every few frames by
+	// updateAutoExposure(); m_autoFactorValid is false until the first estimate (the first one is applied at once, later ones eased in).
+	bool m_autoExposure = false;
+	double m_autoFactor = 1.0;
+	bool m_autoFactorValid = false;
+	int m_autoFrame = 0;
+	double effectiveExposure() const { return m_exposure * (m_autoExposure ? m_autoFactor : 1.0); }
+	void updateAutoExposure();
 	void smoothLowSampleAccum();
 	// See setTemporalUpscale()'s own comment. Crosses the DLL boundary like
 	// m_pathGuiding above (generate_camera_rays' own jitter sequence choice
@@ -605,6 +619,7 @@ public:
 	void setNeuralUpscale(bool enabled);
 	void setDof(bool enabled, double aperture, double focusDistance);
 	void setSmoothLowSample(bool enabled);
+	void setAutoExposure(bool enabled);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);
 	void setSvgfTuning(double temporalAlpha, double maxHistoryLength, double varianceBootstrapFrames,

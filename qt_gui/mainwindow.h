@@ -480,6 +480,7 @@ private:
 	void pushLiveNeuralUpscaleToSession();
 	void pushLiveDofToSession();
 	void pushLiveSmoothNoiseToSession();
+	void pushLiveAutoExposureToSession();
 	void pushLiveTemporalUpscaleToSession();
 	void pushLiveExposureToSession();
 	void pushLiveSppMaxDepthToSession();
@@ -586,6 +587,8 @@ private:
 	void saveLiveNrcEnabled(bool value) const;
 	bool loadSavedLiveNeuralUpscaleEnabled() const;
 	void saveLiveNeuralUpscaleEnabled(bool value) const;
+	bool loadSavedLiveAutoExposure() const;
+	void saveLiveAutoExposure(bool value) const;
 	bool loadSavedLiveSmoothNoise() const;
 	void saveLiveSmoothNoise(bool value) const;
 	bool loadSavedLiveDofEnabled() const;
@@ -1141,6 +1144,9 @@ private:
 	// effect on the native demo-gallery scenes.
 	// Smooth low-sample pixels in the displayed picture (RealtimePreviewWorker::smoothLowSampleAccum()). Backend independent code; the control exists on macOS only.
 	bool m_liveSmoothNoise = false;   // loaded from settings at startup; on by default on macOS only (loadSavedLiveSmoothNoise())
+	// Auto exposure for Live Preview (RealtimePreviewWorker::updateAutoExposure()): brightens a dim scene; the control exists on macOS only.
+	bool m_liveAutoExposure = false;
+	QCheckBox *m_liveAutoExposureCheck = nullptr;
 	QCheckBox *m_liveSmoothNoiseCheck = nullptr;
 	bool m_liveDofEnabled = false;
 	double m_liveAperture = 1.0;

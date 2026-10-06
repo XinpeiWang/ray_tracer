@@ -738,6 +738,18 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		"pixels that have gathered enough samples, so a settled picture is exactly what was rendered, and it does not change "
 		"what is accumulated. Turn it off to see the raw samples.")),
 		13, 0, 1, 4);
+
+	// A dim scene (a small bright object on black, a light-only test) shows as a nearly black tile at the default Exposure of 1.
+	m_liveAutoExposureCheck = createLiveToggleCheckbox(tr("Auto exposure"), m_liveAutoExposure, [this](bool checked) {
+		m_liveAutoExposure = checked;
+		saveLiveAutoExposure(checked);
+		pushLiveAutoExposureToSession();
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(m_liveAutoExposureCheck,
+		tr("Brightens a dim scene so it does not come up nearly black: the average brightness of the lit pixels is brought up towards a "
+		"mid-grey, up to 64x, following the picture smoothly. It never darkens anything - a normally exposed or bright scene looks "
+		"exactly as it does with this off - and it multiplies the Exposure value above, which still works as a manual correction.")),
+		14, 0, 1, 4);
 #endif
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
@@ -746,11 +758,11 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	// The Metal backend renders plain path-traced frames: it has no AI denoiser, SVGF, ReSTIR, radiance cache, path guiding,
 	// NRC, upscaling or adaptive sampling (those flags are accepted and ignored by realtime_renderer.dylib). Showing controls that
 	// do nothing would mislead, so only the grid rows it honours stay visible: row 5 (Depth of Field), row 8 (Exposure,
-	// Samples/Frame), row 9 (Max Bounces, Firefly Clamp), row 10 (Aperture, Focus Distance) and row 13 (Smooth noisy pixels).
+	// Samples/Frame), row 9 (Max Bounces, Firefly Clamp), row 10 (Aperture, Focus Distance) row 13 (Smooth noisy pixels) and row 14 (Auto exposure).
 	for (int i = 0; i < liveRenderSettingsGrid->count(); ++i) {
 		int row = 0, col = 0, rowSpan = 0, colSpan = 0;
 		liveRenderSettingsGrid->getItemPosition(i, &row, &col, &rowSpan, &colSpan);
-		if (row != 5 && row != 13 && (row < 8 || row > 10)) {
+		if (row != 5 && row != 13 && row != 14 && (row < 8 || row > 10)) {
 			if (QWidget *w = liveRenderSettingsGrid->itemAt(i)->widget()) w->hide();
 		}
 	}

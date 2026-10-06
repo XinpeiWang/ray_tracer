@@ -522,6 +522,8 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	m_maxDepth = maxDepth;
 	m_fireflyClamp = fireflyClamp;
 	m_cameraDirty = false;
+	m_autoFactorValid = false;   // a new scene/session: estimate the auto-exposure brightening afresh
+	m_autoFactor = 1.0;
 	resetAccumulation();
 	m_running = true;
 	renderLoop(++m_epoch);
@@ -760,6 +762,36 @@ void RealtimePreviewWorker::smoothLowSampleAccum() {
 	for (std::thread& th : pool) th.join();
 }
 
+// Auto exposure (see setAutoExposure()). The log-average luminance of the LIT pixels (black ones - sky, empty space - would drag it down
+// and make a small bright object look overexposed) is compared with a mid-grey target; if the picture is darker than that, the display is
+// brightened by the ratio (up to 64x). It never goes below 1, so a normally exposed or bright scene is shown exactly as before. The
+// estimate is refreshed every few frames and eased in (the first one is applied at once), so the brightness does not flicker with
+// the noise of a few samples or jump while orbiting.
+void RealtimePreviewWorker::updateAutoExposure() {
+	if (!m_autoExposure) return;
+	constexpr int kRefreshEveryFrames = 6;
+	constexpr double kTargetLuminance = 0.15;   // where the log-average of the lit pixels should land after exposure
+	constexpr double kMaxBrightening = 64.0;
+	if (m_autoFactorValid && (++m_autoFrame % kRefreshEveryFrames) != 0) return;
+	const size_t numPixels = static_cast<size_t>(m_width) * m_height;
+	if (m_accum.size() < numPixels * 3) return;
+	double sumLog = 0.0;
+	size_t lit = 0, sampled = 0;
+	for (size_t p = 0; p < numPixels; p += 3) {   // every third pixel is plenty for a global average
+		++sampled;
+		const float* c = &m_accum[p * 3];
+		const double lum = 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+		if (!(lum > 1e-4) || !std::isfinite(lum)) continue;
+		sumLog += std::log(lum);
+		++lit;
+	}
+	if (lit < sampled / 200 + 1) return;   // (almost) nothing lit yet: keep the current factor
+	const double logAverage = std::exp(sumLog / static_cast<double>(lit));
+	const double target = std::min(kMaxBrightening, std::max(1.0, kTargetLuminance / (logAverage * std::max(1e-9, m_exposure))));
+	if (!m_autoFactorValid) { m_autoFactor = target; m_autoFactorValid = true; }
+	else m_autoFactor *= std::pow(target / m_autoFactor, 0.2);
+}
+
 void RealtimePreviewWorker::setDof(bool enabled, double aperture, double focusDistance) {
 	if (!m_running) return;
 	// Unlike setFireflyClamp() below, this DOES reset accumulation - see
@@ -777,6 +809,12 @@ void RealtimePreviewWorker::setDof(bool enabled, double aperture, double focusDi
 	m_aperture = aperture;
 	m_focusDistance = focusDistance;
 	if (changed) resetAccumulation();
+}
+
+void RealtimePreviewWorker::setAutoExposure(bool enabled) {
+	m_autoExposure = enabled;   // display only: no accumulation reset
+	m_autoFactorValid = false;
+	m_autoFactor = 1.0;
 }
 
 void RealtimePreviewWorker::setSmoothLowSample(bool enabled) {
@@ -1049,7 +1087,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 					if (!std::isfinite(r)) r = 0.0;
 					if (!std::isfinite(g)) g = 0.0;
 					if (!std::isfinite(b)) b = 0.0;
-					r *= m_exposure; g *= m_exposure; b *= m_exposure;
+					r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
 					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
 					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
 					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
@@ -1149,7 +1187,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 					if (!std::isfinite(r)) r = 0.0;
 					if (!std::isfinite(g)) g = 0.0;
 					if (!std::isfinite(b)) b = 0.0;
-					r *= m_exposure; g *= m_exposure; b *= m_exposure;
+					r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
 					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
 					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
 					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
@@ -1302,6 +1340,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				// into m_displayImage IN PLACE. Tonemapping the per-call noisy
 				// sample instead would defeat the whole point of accumulating in
 				// linear space first.
+				updateAutoExposure();
 				// Pixels with few samples may be shown smoothed (smoothLowSampleAccum()); m_accum itself is never altered.
 				// m_sampleCount is the minimum over all pixels: once even the weakest pixel is past the threshold there is nothing to do.
 				const bool smoothNow = m_smoothLowSample && m_sampleCount < kSmoothFullSamples;
@@ -1319,7 +1358,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
 						// see m_exposure's own comment for why Live Preview needs this
 						// pulled down further than batch's default for the same scene.
-						r *= m_exposure; g *= m_exposure; b *= m_exposure;
+						r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
 						r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
 						g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
 						b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
@@ -1460,6 +1499,10 @@ void RealtimePreviewSession::setFireflyClamp(double fireflyClamp) {
 void RealtimePreviewSession::setDof(bool enabled, double aperture, double focusDistance) {
 	QMetaObject::invokeMethod(m_worker, "setDof", Qt::QueuedConnection,
 		Q_ARG(bool, enabled), Q_ARG(double, aperture), Q_ARG(double, focusDistance));
+}
+
+void RealtimePreviewSession::setAutoExposure(bool enabled) {
+	QMetaObject::invokeMethod(m_worker, "setAutoExposure", Qt::QueuedConnection, Q_ARG(bool, enabled));
 }
 
 void RealtimePreviewSession::setSmoothLowSample(bool enabled) {
