@@ -1171,6 +1171,14 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             for (int c = 0; c < 3; ++c) a[c] = sigmaT[c] > 1e-9 ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
             mat = TriangleMaterial{albedo, /*materialType=*/28u, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
                                    PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/(float)m.g};
+            // A pure absorber (no scattering at all) can be chromatic (sigma_a differs per channel), which one scalar
+            // sigma_t cannot express: sigma_t = 0 plus the per-channel absorption in conductorEta makes the shader apply
+            // exp(-sigma_a * chord) per channel instead (shadeHomogeneousMediumSphere).
+            if (m.sigma_s[0] == 0.0 && m.sigma_s[1] == 0.0 && m.sigma_s[2] == 0.0 && meanSigmaT > 0.0) {
+                mat.ior = 0.0f;
+                mat.conductorEta = PackedFloat3{(float)(m.sigma_a[0] / sceneScale), (float)(m.sigma_a[1] / sceneScale),
+                                                (float)(m.sigma_a[2] / sceneScale)};
+            }
         } else if (interfaceSphere && s.medium >= 0 && s.medium < (int)scene.media.size() &&
                    scene.media[s.medium].type == "rgbgrid" && scene.media[s.medium].nx > 0 &&
                    scene.media[s.medium].ny > 0 && scene.media[s.medium].nz > 0) {
@@ -1885,6 +1893,14 @@ void MetalPocApp::loadPbrtMedium(const pbrt_flatten::FlatScene& scene, float sce
         // faint, and PR #88's own on/off verification wasn't sensitive
         // to the WRONG-MAGNITUDE case, only presence/absence).
         pbrtFogSigmaT = (float)(meanSigmaT / sceneScale);
+        // Chromatic medium: the kernel follows one colour channel per path (like a chromatic glass medium) and samples free
+        // flight with that channel's sigma_t, so the per-channel extinction has to be handed over too.
+        pbrtFogSigmaT3 = float3{(float)(sigmaT[0] / sceneScale), (float)(sigmaT[1] / sceneScale), (float)(sigmaT[2] / sceneScale)};
+        {
+            double lo = sigmaT[0], hi = sigmaT[0];
+            for (int c = 1; c < 3; ++c) { lo = std::min(lo, sigmaT[c]); hi = std::max(hi, sigmaT[c]); }
+            pbrtFogChromatic = hi > 0.0 && (hi - lo) > 0.01 * hi;
+        }
         // fogAlbedo is single-scattering albedo (sigma_s/sigma_t) PER
         // CHANNEL (metal_poc.metal's own field comment) - unlike sigmaT
         // itself, this ratio is dimensionless and scale-invariant, so the

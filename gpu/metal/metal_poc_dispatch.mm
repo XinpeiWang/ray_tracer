@@ -726,6 +726,8 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         uniforms.cameraVelocity = sceneCameraVelocity;
         if (havePbrtMedium) {
             uniforms.fogSigmaT = pbrtFogSigmaT;
+            uniforms.fogSigmaT3 = PackedFloat3{pbrtFogSigmaT3.x, pbrtFogSigmaT3.y, pbrtFogSigmaT3.z};
+            uniforms.fogChromatic = pbrtFogChromatic ? 1u : 0u;
             uniforms.fogAlbedo = PackedFloat3{pbrtFogAlbedo.x, pbrtFogAlbedo.y, pbrtFogAlbedo.z};
             uniforms.fogAsymmetryG = pbrtFogAsymmetryG;
         } else {

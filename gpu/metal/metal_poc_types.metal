@@ -322,6 +322,11 @@ struct Uniforms {
     // 1 = path regeneration (a lane starts its next sample as soon as its path ends); 0 = lockstep (all lanes of a
     // SIMD group start their next sample together, as before). Same image either way; see the kernel's loop.
     uint pathRegen;
+    // 1 when the camera medium has different extinction per colour channel: the kernel then follows ONE channel per path
+    // (chosen uniformly, weight x3 on it, as for a chromatic glass medium) and uses that channel of fogSigmaT3 for free
+    // flight and shadow-ray attenuation. 0: grey medium, the scalar fogSigmaT is used.
+    uint fogChromatic;
+    packed_float3 fogSigmaT3;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -1206,9 +1211,9 @@ SphereIntersectionResult sphereIntersectionFunction(
             if (t1 <= t0) return result;
             float chord = (t1 - t0) * sqrt(msA);
             float sigmaForShadow;
-            if (mt == 28u) {
+            if (mt == 28u && sphereMaterials[primitiveIndex].ior > 0.0) {
                 sigmaForShadow = sphereMaterials[primitiveIndex].ior;
-            } else {
+            } else {   // glass-with-medium, or a pure absorber (sigma_t 0, per-channel sigma_a in conductorEta)
                 const float3 gEta = float3(sphereMaterials[primitiveIndex].conductorEta);
                 sigmaForShadow = (payload.shadowChannel >= 0) ? gEta[payload.shadowChannel] : (gEta.x + gEta.y + gEta.z) * (1.0 / 3.0);
             }

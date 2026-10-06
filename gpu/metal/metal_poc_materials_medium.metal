@@ -32,7 +32,7 @@
 inline void shadeHomogeneousMediumSphere(
     TriangleMaterial mediumMat, uint mediumPrimId, float entryDistance,
     device const SphereData* spheres, float shutterT,
-    device const AreaLight* lights, constant Uniforms& uniforms,
+    device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
     intersector<instancing, triangle_data> isect,
     instance_acceleration_structure accelStructure,
@@ -60,12 +60,44 @@ inline void shadeHomogeneousMediumSphere(
         entryT = 0.0;
     }
     float sigmaT = mediumMat.ior;
+    // A pure absorber (no scattering; sigma_t == 0 here and the per-channel absorption in conductorEta): colour-dependent
+    // absorption cannot be expressed as one scalar free-flight distance, so apply exp(-sigma_a * chord) per channel instead.
+    const float3 absorbSigma = float3(mediumMat.conductorEta);
+    if (sigmaT <= 0.0 && (absorbSigma.x + absorbSigma.y + absorbSigma.z) > 0.0) {
+        throughput *= exp(-absorbSigma * (exitT - entryT));
+        rayOrigin = rayOrigin + rayDir * exitT;
+        passedThroughMediumSphere = true;
+        return;
+    }
     float u = randFloat(rngState);
     float tScatter = sampleFreePathDistance(u, sigmaT);
     if (tScatter < (exitT - entryT)) {
         float3 scatterPoint = rayOrigin + rayDir * (entryT + tScatter);
         float3 wo = -rayDir;
 
+        // Punctual (point/spot) lights: summed, not picked, full weight - the shadow ray is attenuated by the medium
+        // spheres it crosses inside sphereIntersectionFunction, like the area-light shadow ray below.
+        for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+            PointLight pl = pointLights[pli];
+            float3 toPl = float3(pl.position) - scatterPoint;
+            float plDistSq = dot(toPl, toPl);
+            float plDist = sqrt(plDistSq);
+            float3 plWi = toPl / plDist;
+            ray plShadowRay;
+            plShadowRay.origin = scatterPoint;
+            plShadowRay.direction = plWi;
+            plShadowRay.min_distance = 0.001f;
+            plShadowRay.max_distance = plDist - 0.002f;
+            intersection_result<instancing, triangle_data> plShadowResult =
+                traceShadowAnyP(isect, plShadowRay, accelStructure, functionTable, shadowSpherePayload);
+            if (plShadowResult.type == intersection_type::none) {
+                float plPhase = henyeyGreensteinPhase(dot(wo, plWi), mediumMat.roughness);
+                float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                radiance += throughput * float3(mediumMat.color) * plPhase * float3(pl.emission) * plSpot / plDistSq;
+            }
+        }
+
+        if (uniforms.lightCount > 0u) {
         LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
         float3 toLight = ls.point - scatterPoint;
         float distSq = dot(toLight, toLight);
@@ -124,6 +156,7 @@ inline void shadeHomogeneousMediumSphere(
                 radiance += throughput * float3(mediumMat.color) * phaseValue * ls.emission * transmittance
                             / pdfSolidAngle * weight;
             }
+        }
         }
 
         float3 newDir = sampleHenyeyGreenstein(wo, mediumMat.roughness, rngState);
