@@ -562,7 +562,10 @@ class BDPTSceneAdapter {
 		les.ray_o[0]=as.p.x(); les.ray_o[1]=as.p.y(); les.ray_o[2]=as.p.z();
 		les.ray_d[0]=dir.x();  les.ray_d[1]=dir.y();  les.ray_d[2]=dir.z();
 		les.Le[0]=Le.x(); les.Le[1]=Le.y(); les.Le[2]=Le.z();
-		les.pdf_pos = as.pdf_pos * emitter_alias_.pmf(idx);
+		// LightPathTrace divides by p_light * pdf_pos * pdf_dir itself, so the light-selection probability goes in p_light alone: it was also
+		// folded into pdf_pos (BDPT's own SampleLightLe() does that, since bdpt.h wants the combined density), counting it twice - 2x too bright
+		// with two emitters (a triangle-mesh light), 1/pmf^2 in general.
+		les.pdf_pos = as.pdf_pos;
 		les.pdf_dir = side_pdf * cos_theta / pi;
 		les.p_light = emitter_alias_.pmf(idx);
 		les.abs_cos_theta = cos_theta;
@@ -593,16 +596,17 @@ class BDPTSceneAdapter {
 	}
 
 	// pbrt-v4's light.PDF_Li(pLens, -wi) -- the solid-angle density of
-	// sampling THIS light's direction from p_lens, i.e. exactly what
-	// SampleLight() above already computes inline as
-	// `light->pdf_value(P, wi) * emitter_alias_.pmf(idx)`; factored out
+	// sampling THIS light's direction from p_lens, i.e. what SampleLight()
+	// above computes inline as `light->pdf_value(P, wi)` (before it
+	// multiplies the light-selection probability in); factored out
 	// here so LightPathTrace's direct area-light-to-camera splat can query
 	// it independently of drawing a new sample.
 	double LightPdfLi(int light_id, const double* p_lens, const double* neg_wi) const {
 		if (light_id < 0 || light_id >= nEmitters_) return 0.0;
 		point3 P(p_lens[0], p_lens[1], p_lens[2]);
 		vec3 wi(neg_wi[0], neg_wi[1], neg_wi[2]);
-		return emitters_[light_id]->pdf_value(P, wi) * emitter_alias_.pmf(light_id);
+		// Without the light-selection probability: LightPathTrace divides by p_light itself (pbrt's PDF_Li is the per-light density).
+		return emitters_[light_id]->pdf_value(P, wi);
 	}
 
 	// Core camera importance-sampling math, shared by SampleCameraConnection()
