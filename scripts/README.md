@@ -71,6 +71,11 @@ Utility scripts for building, packaging, and testing the ray tracer.
     oversubscribing tests
   - See `tests/TESTING_GUIDE.md` for the full usage pattern
 
+- **`render_baseline.py`** (+ `exr_io.py`, its EXR reader) - Renders 15 scenes on the CPU and both GPU backends and compares them with a
+  baseline captured before a change, pixel by pixel with measured noise, to catch brightness shifts of ~0.3% or less that the test suite
+  tolerates. `capture <name>` before, `compare <name>` after (`--expect-identical` for a pure refactor). See BUILD.md.
+  Needs numpy; baselines go under `baselines/` (git-ignored).
+
 ### Maintenance
 - **`clean_vs_cache.bat`** - Batch script to clean Visual Studio build cache
   - Removes intermediate files
