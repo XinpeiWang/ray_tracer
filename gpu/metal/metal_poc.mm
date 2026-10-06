@@ -1075,3 +1075,20 @@ int metal_poc_cli_main(int argc, const char** argv) {
     }
     return 0;
 }
+
+void MetalPocApp::applyCameraLookAt(double cam_x, double cam_y, double cam_z, bool hasLookAt,
+                                    double look_x, double look_y, double look_z) {
+    const float3 rawLookfrom{(float)cam_x, (float)cam_y, (float)cam_z};
+    const float3 lookfrom = (rawLookfrom - pbrtBboxCenter) * pbrtSceneScale + pbrtSceneOffset;
+    const float3 lookat = hasLookAt
+        ? (float3{(float)look_x, (float)look_y, (float)look_z} - pbrtBboxCenter) * pbrtSceneScale + pbrtSceneOffset
+        : pbrtCameraLookAtWorld;
+    const float3 forward = simd::normalize(lookat - lookfrom);
+    float3 up = pbrtCameraUpRaw;
+    if (simd::length(simd::cross(forward, up)) < 1e-4f) up = float3{0.0f, 0.0f, 1.0f};   // looking straight along "up"
+    const float3 right = simd::normalize(simd::cross(forward, up));
+    pbrtCameraPos = lookfrom;
+    pbrtCameraForward = forward;
+    pbrtCameraRight = right;
+    pbrtCameraUp = simd::cross(right, forward);
+}

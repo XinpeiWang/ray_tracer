@@ -892,8 +892,18 @@ struct MetalPocApp {
     // metal_render_main()'s own comment for why only lookfrom moves. Only
     // valid to call after a successful loadPbrtScene() (havePbrtCamera).
     void applyCameraOverride(double cam_x, double cam_y, double cam_z);
+    // Same, with an explicit look-at point (scene units) instead of the scene's own - Live Preview orbits around one.
+    void applyCameraLookAt(double cam_x, double cam_y, double cam_z, bool hasLookAt, double look_x, double look_y, double look_z);
     bool buildGPUResources();
     bool compileShaderAndDispatch(int argc, const char** argv);
+
+    // --- Live Preview session (gpu/metal/metal_live_preview.mm) -----------------------------------------------
+    // When set before compileShaderAndDispatch(), that call also keeps its per-frame dispatch in `liveRender`: calling
+    // it again renders another frame with every GPU resource reused (no scene load, no AS build, no pipeline
+    // compile). The argument updates the uniforms (camera, frame seed, sample count) before dispatching; the result
+    // is left in `pixels` (linear RGBA, width*height*4 floats).
+    bool liveSession = false;
+    std::function<bool(const std::function<void(Uniforms&)>&)> liveRender;
     bool postProcessAndWrite();  // false if the output file could not be written
 };
 

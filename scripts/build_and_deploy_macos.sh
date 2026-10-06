@@ -133,6 +133,11 @@ echo "[3/5] Copying ray_tracer CLI + scene_metadata.dylib into the app bundle...
 # find these two files at runtime.
 cp "$CLI_BIN" "$APP_BUNDLE/Contents/MacOS/ray_tracer"
 cp "$SCENE_METADATA_LIB" "$APP_BUNDLE/Contents/MacOS/scene_metadata.dylib"
+# Live Preview: the Metal-backed realtime_renderer.dylib the GUI dlopen()s (qt_gui/realtime_preview_session.cpp). Built
+# only with RT_BUILD_METAL=ON; without it the GUI shows Live Preview greyed out.
+if [[ -f "$BUILD_DIR/realtime_renderer.dylib" ]]; then
+	cp "$BUILD_DIR/realtime_renderer.dylib" "$APP_BUNDLE/Contents/MacOS/realtime_renderer.dylib"
+fi
 chmod +x "$APP_BUNDLE/Contents/MacOS/ray_tracer"
 
 echo

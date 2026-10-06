@@ -42,6 +42,7 @@ SOURCES += \
 	mainwindow_tabs.cpp \
 	mainwindow_tabs_render.cpp \
 	mainwindow_tabs_render_live.cpp \
+	mainwindow_selftest.cpp \
 	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
@@ -103,9 +104,15 @@ win32 {
 	# scope below, where the CLI this GUI launches is always the CPU-only
 	# CMake build (root CMakeLists.txt's ray_tracer target, no RT_HAVE_OPTIX).
 	DEFINES += RT_GUI_HAVE_GPU
+	# Live Preview (the in-process realtime_renderer.dll session). Separate from RT_GUI_HAVE_GPU, which only says the
+	# OptiX "GPU (CUDA)" renderer option is offered: macOS has a Metal-backed realtime_renderer.dylib too.
+	DEFINES += RT_GUI_HAVE_LIVE_PREVIEW
 }
 
 macx {
+	# Live Preview via realtime_renderer.dylib (gpu/metal/metal_live_preview.h) - built by the root CMake with
+	# RT_BUILD_METAL and copied next to the executable by scripts/build_and_deploy_macos.sh.
+	DEFINES += RT_GUI_HAVE_LIVE_PREVIEW
 	# app_icon.icns - generated from app_icon.png (the same source Windows'
 	# own app_icon.ico, above, is built from) via `sips` (10 sizes, 16-1024px,
 	# upscaled from the 256x256 source for the two largest) piped into

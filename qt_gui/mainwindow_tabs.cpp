@@ -21,7 +21,7 @@
 
 #include <QTabBar>
 #include "scene_metadata_client.h"
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 #include "realtime_preview_session.h"
 #endif
 #include <QStandardItemModel>
@@ -683,7 +683,7 @@ void MainWindow::createSettingsTab() {
 					   static_cast<int>(OutputMode::Image), m_activeTheme.textBody);
 	icon_tint::addItem(m_modeCombo, ":/icons/video.svg", tr("Generate Video"),
 					   static_cast<int>(OutputMode::Video), m_activeTheme.textBody);
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Added even when realtime_renderer.dll isn't found (RealtimePreviewSession::
 	// isAvailable() == false) - disabled with an explanatory tooltip instead
 	// of omitted, so the feature is at least discoverable rather than
@@ -699,7 +699,11 @@ void MainWindow::createSettingsTab() {
 		if (auto *model = qobject_cast<QStandardItemModel *>(m_modeCombo->model())) {
 			if (QStandardItem *item = model->item(liveIndex)) item->setEnabled(false);
 		}
+#ifdef Q_OS_MAC
+		m_modeCombo->setItemData(liveIndex, tr("realtime_renderer.dylib wasn't found next to the application."), Qt::ToolTipRole);
+#else
 		m_modeCombo->setItemData(liveIndex, tr("realtime_renderer.dll wasn't found next to the application."), Qt::ToolTipRole);
+#endif
 	}
 #endif
 	m_modeCombo->setCurrentIndex(0);
@@ -734,7 +738,7 @@ void MainWindow::createSettingsTab() {
 	m_integratorVideoWarningLabelBasic->setVisible(false);
 	renderLayout->addRow(QString(), m_integratorVideoWarningLabelBasic);
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Same "banner, don't hide" convention as m_videoModeWarningLabel below -
 	// see its own comment (mainwindow.h) for why nothing here gets disabled
 	// instead. Visible only in Live Preview mode; toggled by onModeChanged().
@@ -1234,7 +1238,7 @@ void MainWindow::createSettingsTab() {
 
 	layout->addWidget(m_videoGroupBox);
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// --- Live Preview Settings: mouse/keyboard sensitivity - its own
 	// independent group rather than living inline in Render Settings, so
 	// it's as discoverable as Video's own settings are. No separate warning
@@ -1566,7 +1570,7 @@ void MainWindow::createSettingsTab() {
 		2, 0);
 	cameraLayout->addWidget(m_cameraPosZ, 2, 1);
 
-#ifdef RT_GUI_HAVE_GPU
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Live Preview (addLivePreviewTab()) forwards a camera move onto its
 	// already-running session - a no-op whenever that session isn't running
 	// (onLivePreviewCameraChanged()'s own guard), so this connect is always

@@ -877,6 +877,10 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // no-crop renders stay exactly as they were. cropX1 < 0 = no crop
     // requested, the whole image: every expression below then reduces to what
     // this loop computed before crop existed (cy0 = 0, cropRows = height).
+    // Everything from here to the readback is ONE frame of work: pulled into a lambda that owns copies of the GPU
+    // resources set up above, so a Live Preview session can run it again and again without rebuilding anything.
+    auto renderFrame = [=](const std::function<void(Uniforms&)>& tweak) mutable -> bool {
+    if (tweak) tweak(*(Uniforms*)uniformBuffer.contents);
     const uint32_t cx0 = (cropX1 >= 0) ? (uint32_t)cropX0 : 0;
     const uint32_t cx1 = (cropX1 >= 0) ? (uint32_t)cropX1 : width;
     const uint32_t cy0 = (cropX1 >= 0) ? (uint32_t)cropY0 : 0;
@@ -1066,5 +1070,10 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             }
         }
     }
-    return true;
+        return true;
+    };
+    // Live Preview session: keep the re-runnable dispatch (it owns every GPU resource it needs) for later frames; the
+    // caller updates the camera/seed/sample-count uniforms through `tweak` before each one.
+    if (liveSession) liveRender = renderFrame;
+    return renderFrame(nullptr);
 }
