@@ -450,7 +450,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                 intersection_result<instancing, triangle_data> envShadowResult =
                     traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
                 if (envShadowResult.type == intersection_type::none) {
-                    float2 envUV = equirectangularUV(envWi);
+                    float2 envUV = envMapUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
                         / (envPdfSolidAngle * envPdfSolidAngle + uniformPdf * uniformPdf);
@@ -478,7 +478,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                     traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
-                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + uniformPdf * uniformPdf);
@@ -1184,7 +1184,7 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
                 shadowRay.min_distance = 0.001f;
                 shadowRay.max_distance = 1e5f;
                 if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
-                    float3 envRadiance = earthTexture.sample(textureSampler, equirectangularUV(envWi)).rgb;
+                    float3 envRadiance = earthTexture.sample(textureSampler, envMapUV(envWi)).rgb;
                     float envWeight = (envPdf * envPdf) / (envPdf * envPdf + pdfBsdf * pdfBsdf);
                     radiance += throughput * f * envRadiance * envCos / envPdf * envWeight;
                 }
@@ -1204,7 +1204,7 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
                 shadowRay.min_distance = 0.001f;
                 shadowRay.max_distance = 1e5f;
                 if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
-                    float3 envRadiance = pbrtEnvTexture.sample(textureSampler, equirectangularUV(envWi)).rgb;
+                    float3 envRadiance = pbrtEnvTexture.sample(textureSampler, envMapUV(envWi)).rgb;
                     float envWeight = (envPdf * envPdf) / (envPdf * envPdf + pdfBsdf * pdfBsdf);
                     radiance += throughput * f * envRadiance * envCos / envPdf * envWeight;
                 }

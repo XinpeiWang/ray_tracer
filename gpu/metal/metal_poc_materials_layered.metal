@@ -191,7 +191,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 intersection_result<instancing, triangle_data> envShadowResult =
                     traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
                 if (envShadowResult.type == intersection_type::none) {
-                    float2 envUV = equirectangularUV(envWi);
+                    float2 envUV = envMapUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
                     float envPdfBsdf = lambertianPdf(envCosSurface);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
@@ -220,7 +220,7 @@ inline bool shadeOrenNayar(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                     traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
-                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
                     float pbrtEnvPdfBsdf = lambertianPdf(pbrtEnvCosSurface);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
@@ -455,7 +455,7 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
                 intersection_result<instancing, triangle_data> envShadowResult =
                     traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
                 if (envShadowResult.type == intersection_type::none) {
-                    float2 envUV = equirectangularUV(envWi);
+                    float2 envUV = envMapUV(envWi);
                     float3 envRadiance = earthTexture.sample(textureSampler, envUV).rgb;
                     float envPdfBsdf = lambertianPdf(envCosSurface);
                     float envWeight = (envPdfSolidAngle * envPdfSolidAngle)
@@ -481,7 +481,7 @@ inline bool shadeNormalizedFresnel(TriangleMaterial mat, float3 hitPoint, float3
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                     traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
-                    float2 pbrtEnvUV = equirectangularUV(pbrtEnvWi);
+                    float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
                     float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
                     float pbrtEnvPdfBsdf = lambertianPdf(pbrtEnvCosSurface);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)

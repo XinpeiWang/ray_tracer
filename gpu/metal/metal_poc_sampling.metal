@@ -622,6 +622,17 @@ inline float2 equirectangularUV(float3 dir) {
     return float2(u, v);
 }
 
+// The environment-map (sky image) mapping, the one the CPU's sky_light and the OptiX backends use: row 0 of the image is straight up
+// (v = theta / pi, theta measured from +y) and u = phi / (2 pi) with phi = atan2(-z, x) taken into [0, 1). equirectangularUV() above is a
+// different, older convention (v = 1 at +y, longitude mirrored and shifted) that the procedural patterns and sphere textures still use, so
+// environment lookups, the importance-sampling table and its pdf must go through THIS function and sampleEnvironmentDirection()'s inverse.
+inline float2 envMapUV(float3 dir) {
+    float u = atan2(-dir.z, dir.x) * (0.5 / M_PI_F);
+    if (u < 0.0) u += 1.0;
+    float v = acos(clamp(dir.y, -1.0, 1.0)) * (1.0 / M_PI_F);
+    return float2(u, v);
+}
+
 // --- Environment-map importance sampling (phase 2) --------------------
 // Device-side counterpart to gpu/metal/metal_poc_host_math.h's own
 // EnvDistribution2D/findCdfInterval/sampleEnvDistribution2D/
@@ -674,10 +685,11 @@ inline float3 sampleEnvironmentDirection(device const float* marginalCDF, device
     float sinTheta = max(sin(M_PI_F * v), 1e-6);
     pdfSolidAngle = pdfImage / (2.0 * M_PI_F * M_PI_F * sinTheta);
 
-    float phi = 2.0 * M_PI_F * (u - 0.5);
-    float lambda = M_PI_F * (v - 0.5);
-    float cosLambda = cos(lambda);
-    return float3(cosLambda * cos(phi), sin(lambda), cosLambda * sin(phi));
+    // Inverse of envMapUV(): theta = pi*v from +y, phi = 2*pi*u, dir = (sin(theta)cos(phi), cos(theta), -sin(theta)sin(phi)).
+    float phi = 2.0 * M_PI_F * u;
+    float theta = M_PI_F * v;
+    float sinT = sin(theta);
+    return float3(sinT * cos(phi), cos(theta), -sinT * sin(phi));
 }
 
 // Evaluates the SAME solid-angle pdf at an arbitrary world direction -
@@ -686,7 +698,7 @@ inline float3 sampleEnvironmentDirection(device const float* marginalCDF, device
 // contribution, see primaryRayKernel's own comment on this).
 inline float pdfEnvironmentDirection(device const float* marginalCDF, device const float* conditionalCDF,
                                       int width, int height, float3 dir) {
-    float2 uv = equirectangularUV(dir);
+    float2 uv = envMapUV(dir);
     int row = clamp(int(uv.y * float(height)), 0, height - 1);
     int col = clamp(int(uv.x * float(width)), 0, width - 1);
     float rowPdf = (marginalCDF[row + 1] - marginalCDF[row]) * float(height);

@@ -819,7 +819,7 @@ kernel void primaryRayKernel(
             if (result.type == intersection_type::none) {
                 CENSUS_PUSH(255u);
                 if (uniforms.useEnvironmentMap != 0u) {
-                    float2 envUV = equirectangularUV(normalize(rayDir));
+                    float2 envUV = envMapUV(normalize(rayDir));
                     float3 envColor = earthTexture.sample(textureSampler, envUV).rgb;
                     // MIS weight against the environment-light NEE
                     // strategy's own pdf for this EXACT escaping
@@ -853,7 +853,7 @@ kernel void primaryRayKernel(
                     // pbrtEnvTexture directly via pbrtEnvMapWidth, so a
                     // BSDF-sampled ray escaping toward it needs the same
                     // double-count protection.
-                    float2 pbrtEnvUV = equirectangularUV(normalize(rayDir));
+                    float2 pbrtEnvUV = envMapUV(normalize(rayDir));
                     float3 pbrtEnvColorSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
                     float pbrtEnvMissWeight = 1.0;
                     if (!specularBounce && uniforms.pbrtEnvMapWidth > 0u) {
