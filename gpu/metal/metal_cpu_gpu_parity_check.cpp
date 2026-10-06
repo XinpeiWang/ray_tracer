@@ -113,6 +113,14 @@
 #include <vector>
 #include <algorithm>
 #include <numeric>
+#include <mach-o/dyld.h>
+#include <spawn.h>
+#include <sys/wait.h>
+#include <csignal>
+#include <fcntl.h>
+#include <unistd.h>
+
+extern char** environ;
 
 #include "../../src/external/tinyexr.h"
 #include "scene_registry.h"
@@ -356,6 +364,11 @@ bool metal_supports_scene(const std::string& id) {
 	return pbrtPath && pbrtPath[0];
 }
 
+// This process renders only scenes whose position in the selection is congruent to g_shardIndex modulo g_shardCount.
+// A child worker gets it from METAL_PARITY_SHARD="index/count"; the parent runs shard 0 of the same count.
+int g_shardIndex = 0;
+int g_shardCount = 1;
+
 std::vector<const SceneDescriptor*> testable_scenes() {
 	static const char* const kSweptCategories[] = {
 		SceneCategories::Materials, SceneCategories::Volumes, SceneCategories::Textures,
@@ -380,6 +393,12 @@ std::vector<const SceneDescriptor*> testable_scenes() {
 		if (!metal_supports_scene(s.id)) continue;
 		const SceneDescriptor* found = find_scene(s.id);
 		if (found) out.push_back(found);
+	}
+	if (g_shardCount > 1) {
+		std::vector<const SceneDescriptor*> mine;
+		for (size_t i = 0; i < out.size(); ++i)
+			if ((int)(i % (size_t)g_shardCount) == g_shardIndex) mine.push_back(out[i]);
+		out.swap(mine);
 	}
 	if (const char* only = std::getenv("METAL_PARITY_ONLY_SCENE_ID")) {
 		std::vector<const SceneDescriptor*> filtered;
@@ -429,9 +448,58 @@ MPImage render_metal_once(const SceneDescriptor& s, int spp) {
 	return img;
 }
 
+// ---------------------------------------------------------------------------
+// Worker processes. The sweep is sequential per scene (CPU reference render, then Metal render) and the two phases
+// use different hardware (all CPU cores vs the GPU), so one process leaves the GPU idle ~45% of the time. The parent
+// therefore re-executes itself as METAL_PARITY_WORKERS-1 children (default 2 workers in total), each taking every
+// n-th scene (METAL_PARITY_SHARD="k/n"), so one worker's CPU render overlaps another's Metal render: ~100 s -> ~60 s
+// on an M2. Processes, not threads, because cpu_render_main/metal_render_main keep process-global state. Each child's
+// output goes to a log file that the parent prints when it is done, so the report stays readable and the verdicts are
+// identical to a single-process run (the renders are seeded per scene). METAL_PARITY_WORKERS=1 runs everything in
+// this process.
+// ---------------------------------------------------------------------------
+
+struct Worker {
+	pid_t pid = -1;
+	std::string logPath;
+};
+
+std::string self_executable_path() {
+	char buf[4096];
+	uint32_t size = sizeof(buf);
+	if (_NSGetExecutablePath(buf, &size) != 0) return "";
+	return buf;
+}
+
+// Starts child `index` of `count`. Returns false if it could not be started (the parent then renders that shard
+// itself, so a spawn failure only costs time, never coverage).
+bool spawn_worker(int index, int count, Worker& w) {
+	const std::string exe = self_executable_path();
+	if (exe.empty()) return false;
+	w.logPath = "mcparity_worker_" + std::to_string(index) + ".log";
+
+	std::vector<std::string> envStrings;
+	for (char** e = environ; e && *e; ++e) {
+		if (std::strncmp(*e, "METAL_PARITY_SHARD=", 19) != 0) envStrings.push_back(*e);
+	}
+	envStrings.push_back("METAL_PARITY_SHARD=" + std::to_string(index) + "/" + std::to_string(count));
+	std::vector<char*> envp;
+	for (std::string& s : envStrings) envp.push_back(s.data());
+	envp.push_back(nullptr);
+
+	posix_spawn_file_actions_t fa;
+	posix_spawn_file_actions_init(&fa);
+	posix_spawn_file_actions_addopen(&fa, STDOUT_FILENO, w.logPath.c_str(), O_WRONLY | O_CREAT | O_TRUNC, 0644);
+	posix_spawn_file_actions_adddup2(&fa, STDOUT_FILENO, STDERR_FILENO);
+	char* argv[] = {const_cast<char*>(exe.c_str()), nullptr};
+	const int rc = posix_spawn(&w.pid, exe.c_str(), &fa, nullptr, argv, envp.data());
+	posix_spawn_file_actions_destroy(&fa);
+	return rc == 0;
+}
+
 } // namespace
 
-int main() {
+int run_sweep() {
 	MetalDiagnostics diag{};
 	if (!metal_get_diagnostics(&diag)) {
 		fprintf(stderr, "SKIP: no Metal device available (%s) - nothing to compare against CPU\n",
@@ -550,6 +618,14 @@ int main() {
 	// against it - they're documented, expected, not a regression to
 	// catch - only `failures`, the un-triaged bucket, does).
 	const bool strict = std::getenv("METAL_PARITY_STRICT") != nullptr;
+	// A sweep that compared NOTHING must not pass: every scene skipped (e.g. the scene files could not be found from
+	// the working directory, as when run outside the build tree) used to report "PASS (strict)". A shard that was
+	// handed no scenes at all is fine (few scenes selected); only "had scenes, skipped every one" is an error.
+	if (strict && !scenes.empty() && skipped == int(scenes.size())) {
+		fprintf(stderr, "FAIL: all %d scene(s) were skipped - nothing was compared (METAL_PARITY_STRICT=1). Run from the build "
+		                "directory so the scene files resolve.\n", skipped);
+		return 1;
+	}
 	if (strict && failures > 0) {
 		fprintf(stderr, "FAIL: %d scene(s) exceeded CPU-vs-Metal parity tolerance (METAL_PARITY_STRICT=1)\n",
 		        failures);
@@ -564,4 +640,54 @@ int main() {
 	                "%d un-triaged finding(s) for follow-up - see this file's own header comment\n",
 	        passed, scenes.size(), knownGaps, failures);
 	return 0;
+}
+
+int main() {
+	// Worker setup - see the "Worker processes" comment above. A child (METAL_PARITY_SHARD set) just renders its shard.
+	std::vector<Worker> workers;
+	if (const char* shard = std::getenv("METAL_PARITY_SHARD")) {
+		int k = 0, n = 1;
+		if (std::sscanf(shard, "%d/%d", &k, &n) == 2 && n >= 1 && k >= 0 && k < n) {
+			g_shardIndex = k;
+			g_shardCount = n;
+		}
+	} else if (!std::getenv("METAL_PARITY_ONLY_SCENE_ID")) {
+		int count = 2;
+		if (const char* w = std::getenv("METAL_PARITY_WORKERS")) count = std::max(1, std::atoi(w));
+		MetalDiagnostics diag{};
+		if (count > 1 && metal_get_diagnostics(&diag)) {
+			bool allStarted = true;
+			for (int k = 1; k < count && allStarted; ++k) {
+				Worker w;
+				if (spawn_worker(k, count, w)) workers.push_back(w); else allStarted = false;
+			}
+			if (allStarted) {
+				g_shardIndex = 0;
+				g_shardCount = count;
+			} else {
+				fprintf(stderr, "[mcparity] could not start worker processes; running the whole sweep in this process\n");
+				for (const Worker& w : workers) { kill(w.pid, SIGTERM); int st; waitpid(w.pid, &st, 0); }
+				workers.clear();
+			}
+		}
+	}
+
+	int rc = run_sweep();
+
+	// Collect the children, print what each one reported, and fold their results into the exit status.
+	for (const Worker& w : workers) {
+		int status = 0;
+		waitpid(w.pid, &status, 0);
+		const bool ok = WIFEXITED(status) && WEXITSTATUS(status) == 0;
+		fprintf(stderr, "[mcparity] ---- worker output (%s, exit %d) ----\n", w.logPath.c_str(),
+		        WIFEXITED(status) ? WEXITSTATUS(status) : -1);
+		if (FILE* log = std::fopen(w.logPath.c_str(), "r")) {
+			char line[4096];
+			while (std::fgets(line, sizeof(line), log)) std::fputs(line, stderr);
+			std::fclose(log);
+		}
+		std::remove(w.logPath.c_str());
+		if (!ok) rc = 1;
+	}
+	return rc;
 }
