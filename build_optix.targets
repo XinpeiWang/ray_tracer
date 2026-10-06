@@ -76,9 +76,13 @@
        Why the .obj files carry explicit SASS for each architecture and not embedded PTX: they use relocatable device code, and the dlink step
        below only emits resolved SASS, dropping any embedded PTX, so each supported architecture needs its own gencode entry rather than JIT
        (found when sm_86-only kernels failed with "no device code available" on an RTX 5080). The OptiX PTX modules are always PTX and JIT. -->
+  <!-- BeforeTargets names the two device-link targets as well as Build. AfterTargets="CompileCudaSources" on those is not enough: they hang off Lib, which runs
+       BEFORE Build finishes, so MSBuild reached them first, found the old objs up to date and skipped them, then compiled the kernels. The result was a stale
+       wavefront_dlink.obj and optix_renderer.lib, and an exe still running the old wavefront kernels, until a second build (found while checking that a
+       roughness change in wavefront_device_helpers.h reached the renderer: it had not). -->
   <Target Name="CompileCudaSources"
           Condition="'$(SolutionDir)' != '' and '$(MSBuildProjectName)' == 'optix_renderer'"
-          BeforeTargets="Build">
+          BeforeTargets="DeviceLinkWavefront;DeviceLinkSppm;Build">
 
     <PropertyGroup>
       <NvccPath>$(CudaToolkitPath)\bin\nvcc.exe</NvccPath>
