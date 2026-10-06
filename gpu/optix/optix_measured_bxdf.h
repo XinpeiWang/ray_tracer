@@ -309,10 +309,13 @@ __device__ __forceinline__ bool gpu_measured_sample_f(
 	if (wi_z <= 0.0f) return false;
 
 	float spec_p[3] = { phi_o, theta_o, 0.0f };
+	// The spectra are evaluated at the luminance-warped point (lum_px, lum_py), as pbrt-v4 MeasuredBxDF::Sample_f does (its `u` after the
+	// luminance Sample) and as f() does through vndf.Invert - NOT at u_wm, which this used to pass. With u_wm the sampled f disagreed with
+	// f() by up to 26% on the synthetic table; with this they agree to 4 digits on every table tried.
 	float val[3];
 	for (int c = 0; c < 3; ++c) {
 		spec_p[2] = lambda[c];
-		val[c] = fmaxf(0.0f, gpu_pl2d_eval(tab.spectra, data, paramValues, u_wm_x, u_wm_y, spec_p));
+		val[c] = fmaxf(0.0f, gpu_pl2d_eval(tab.spectra, data, paramValues, lum_px, lum_py, spec_p));
 	}
 
 	const float u_wo_x = sqrtf(theta_o * (2.0f / kPi));
