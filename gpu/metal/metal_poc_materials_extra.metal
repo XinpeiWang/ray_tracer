@@ -679,3 +679,545 @@ inline bool shadePrincipled(TriangleMaterial mat, float3 hitPoint, float3 facing
     return true;
 }
 
+
+// ---------------------------------------------------------------------------
+// materialType 32 - tabulated measured BRDF (pbrt-v4 Material "measured", Dupuy & Jakob 2018): a port of src/shared/measured_bxdf.h and
+// piecewise_linear_2d.h by way of gpu/optix/optix_measured_bxdf.h (same flat-table layout, same math). The tables (ndf, sigma, vndf,
+// luminance, spectra) and the descriptors that locate them are float data in the shared `rgbGridData` buffer (the kernel has no free buffer
+// slot); a descriptor field is an int stored bit-for-bit in a float slot (as_type<int>). The material's conductorEta.x holds the float index
+// of its descriptor, so a table block must start below 2^24 floats (the loader checks).
+//
+// Descriptor layout: five MeasuredPL2D blocks of 15 ints - ndf, sigma, vndf, luminance, spectra - then one int, isotropic. Every offset in a
+// block is an absolute index into rgbGridData.
+// ---------------------------------------------------------------------------
+struct MeasuredPL2D {
+    int nx, ny, dim;
+    int paramRes[3];
+    int paramStride[3];
+    int paramValueOffset[3];
+    int dataOffset, mcdfOffset, ccdfOffset;
+};
+
+struct MeasuredTables {
+    MeasuredPL2D ndf, sigma, vndf, lum, spec;
+    int isotropic;
+};
+
+inline MeasuredPL2D measuredReadPL2D(device const float* g, int base) {
+    MeasuredPL2D t;
+    t.nx = as_type<int>(g[base + 0]);
+    t.ny = as_type<int>(g[base + 1]);
+    t.dim = as_type<int>(g[base + 2]);
+    for (int k = 0; k < 3; ++k) {
+        t.paramRes[k] = as_type<int>(g[base + 3 + k]);
+        t.paramStride[k] = as_type<int>(g[base + 6 + k]);
+        t.paramValueOffset[k] = as_type<int>(g[base + 9 + k]);
+    }
+    t.dataOffset = as_type<int>(g[base + 12]);
+    t.mcdfOffset = as_type<int>(g[base + 13]);
+    t.ccdfOffset = as_type<int>(g[base + 14]);
+    return t;
+}
+
+inline MeasuredTables measuredReadTables(device const float* g, int base) {
+    MeasuredTables m;
+    m.ndf = measuredReadPL2D(g, base);
+    m.sigma = measuredReadPL2D(g, base + 15);
+    m.vndf = measuredReadPL2D(g, base + 30);
+    m.lum = measuredReadPL2D(g, base + 45);
+    m.spec = measuredReadPL2D(g, base + 60);
+    m.isotropic = as_type<int>(g[base + 75]);
+    return m;
+}
+
+// Folds the 2^dim corner values of one slice-blended lookup (PiecewiseLinear2D::LookImpl): `data` points at the table, i0 is the base flat
+// index, sz the per-slice element count, pw the per-axis (1-t, t) weight pairs.
+inline float measuredPL2DLook(device const float* data, uint i0, uint sz, thread const float* pw, thread const MeasuredPL2D& tab) {
+    float result = 0.0f;
+    const int combos = 1 << tab.dim;
+    for (int mask = 0; mask < combos; ++mask) {
+        uint idx = i0;
+        float w = 1.0f;
+        for (int k = 0; k < tab.dim; ++k) {
+            const int bit = (mask >> k) & 1;
+            if (bit) idx += uint(tab.paramStride[k]) * sz;
+            w *= pw[2 * k + bit];
+        }
+        result += w * data[idx];
+    }
+    return result;
+}
+
+// PiecewiseLinear2D::FillPW: for each conditioning axis the bracketing pair and its interpolation weights, plus the slice offset.
+inline void measuredPL2DFillPW(device const float* g, thread const MeasuredPL2D& tab, thread const float* p,
+                               thread uint& soff, thread float* pw) {
+    soff = 0u;
+    for (int d = 0; d < tab.dim; ++d) {
+        const int n = tab.paramRes[d];
+        if (n <= 1) { pw[2 * d] = 1.0f; pw[2 * d + 1] = 0.0f; continue; }
+        device const float* axis = g + tab.paramValueOffset[d];
+        const float pv = p[d];
+        uint lo = 0u, hi = uint(n);
+        while (lo + 1u < hi) {
+            const uint mid = (lo + hi) >> 1;
+            if (axis[mid] <= pv) lo = mid; else hi = mid;
+        }
+        int idx = int(lo);
+        if (idx + 1 >= n) idx = n - 2;
+        const float p0 = axis[idx], p1 = axis[idx + 1];
+        const float t = clamp((pv - p0) / (p1 - p0), 0.0f, 1.0f);
+        pw[2 * d + 1] = t;
+        pw[2 * d] = 1.0f - t;
+        soff += uint(tab.paramStride[d]) * uint(idx);
+    }
+}
+
+// PiecewiseLinear2D::Eval - the bilinearly interpolated normalised density at (px, py).
+inline float measuredPL2DEval(device const float* g, thread const MeasuredPL2D& tab, float px, float py, thread const float* p) {
+    float pw[6] = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+    uint soff;
+    measuredPL2DFillPW(g, tab, p, soff, pw);
+    const float invx = float(tab.nx - 1), invy = float(tab.ny - 1);
+    const float x = px * invx, y = py * invy;
+    int ix = min(int(x), tab.nx - 2);
+    int iy = min(int(y), tab.ny - 2);
+    const float wx1 = x - float(ix), wx0 = 1.0f - wx1;
+    const float wy1 = y - float(iy), wy0 = 1.0f - wy1;
+    uint idx = uint(ix + iy * tab.nx);
+    const uint sz = uint(tab.nx * tab.ny);
+    if (tab.dim != 0) idx += soff * sz;
+    device const float* base = g + tab.dataOffset;
+    const float v00 = measuredPL2DLook(base, idx, sz, pw, tab);
+    const float v10 = measuredPL2DLook(base + 1, idx, sz, pw, tab);
+    const float v01 = measuredPL2DLook(base + tab.nx, idx, sz, pw, tab);
+    const float v11 = measuredPL2DLook(base + tab.nx + 1, idx, sz, pw, tab);
+    return (wy0 * (wx0 * v00 + wx1 * v10) + wy1 * (wx0 * v01 + wx1 * v11)) * invx * invy;
+}
+
+// PiecewiseLinear2D::Sample - warps (u0, u1) through the table's bilinear-patch density: marginal row from mcdf, conditional column from
+// ccdf, then an analytic quadratic inverse inside the patch.
+inline void measuredPL2DSample(device const float* g, thread const MeasuredPL2D& tab, float u0, float u1, thread const float* p,
+                               thread float& outPx, thread float& outPy, thread float& outPdf) {
+    const float kOme = 1.0f - 1.19209e-7f;
+    u0 = clamp(u0, 1.0f - kOme, kOme);
+    u1 = clamp(u1, 1.0f - kOme, kOme);
+    float pw[6] = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+    uint soff;
+    measuredPL2DFillPW(g, tab, p, soff, pw);
+    const int nx = tab.nx, ny = tab.ny;
+    const uint sz = uint(nx * ny);
+    device const float* dataBase = g + tab.dataOffset;
+    device const float* mcdfBase = g + tab.mcdfOffset;
+    device const float* ccdfBase = g + tab.ccdfOffset;
+
+    // mcdf holds one value per row per slice, so its slice stride is ny, not nx*ny.
+    const uint mb = (tab.dim != 0) ? (soff * uint(ny)) : 0u;
+    uint rlo = 0u, rhi = uint(ny);
+    while (rlo + 1u < rhi) {
+        const uint mid = (rlo + rhi) >> 1;
+        const float fm = measuredPL2DLook(mcdfBase, mb + mid, uint(ny), pw, tab);
+        if (fm < u1) rlo = mid; else rhi = mid;
+    }
+    const uint row = rlo;
+    u1 -= measuredPL2DLook(mcdfBase, mb + row, uint(ny), pw, tab);
+
+    uint off = row * uint(nx) + ((tab.dim != 0) ? soff * sz : 0u);
+    const float r0 = measuredPL2DLook(ccdfBase, off + uint(nx) - 1u, sz, pw, tab);
+    const float r1 = measuredPL2DLook(ccdfBase, off + uint(nx * 2 - 1), sz, pw, tab);
+    const bool ky = fabs(r0 - r1) < 1e-4f * (r0 + r1);
+    u1 = ky ? (2.0f * u1) : (r0 - sqrt(max(0.0f, r0 * r0 - 2.0f * u1 * (r0 - r1))));
+    u1 /= ky ? (r0 + r1) : (r0 - r1);
+
+    u0 *= (1.0f - u1) * r0 + u1 * r1;
+    uint clo = 0u, chi = uint(nx);
+    while (clo + 1u < chi) {
+        const uint mid = (clo + chi) >> 1;
+        const float v0 = measuredPL2DLook(ccdfBase, off + mid, sz, pw, tab);
+        const float v1 = measuredPL2DLook(ccdfBase + nx, off + mid, sz, pw, tab);
+        if ((1.0f - u1) * v0 + u1 * v1 < u0) clo = mid; else chi = mid;
+    }
+    const uint col = clo;
+    {
+        const float v0 = measuredPL2DLook(ccdfBase, off + col, sz, pw, tab);
+        const float v1 = measuredPL2DLook(ccdfBase + nx, off + col, sz, pw, tab);
+        u0 -= (1.0f - u1) * v0 + u1 * v1;
+    }
+    off += col;
+
+    const float v00 = measuredPL2DLook(dataBase, off, sz, pw, tab);
+    const float v10 = measuredPL2DLook(dataBase + 1, off, sz, pw, tab);
+    const float v01 = measuredPL2DLook(dataBase + nx, off, sz, pw, tab);
+    const float v11 = measuredPL2DLook(dataBase + nx + 1, off, sz, pw, tab);
+    const float c0 = (1.0f - u1) * v00 + u1 * v01;
+    const float c1 = (1.0f - u1) * v10 + u1 * v11;
+    const bool kx = fabs(c0 - c1) < 1e-4f * (c0 + c1);
+    u0 = kx ? (2.0f * u0) : (c0 - sqrt(max(0.0f, c0 * c0 - 2.0f * u0 * (c0 - c1))));
+    u0 /= kx ? (c0 + c1) : (c0 - c1);
+
+    outPx = (float(col) + u0) / float(nx - 1);
+    outPy = (float(row) + u1) / float(ny - 1);
+    outPdf = ((1.0f - u0) * c0 + u0 * c1) * float(nx - 1) * float(ny - 1);
+}
+
+// PiecewiseLinear2D::Invert - the uniform sample Sample() would have mapped to (px, py), and the density there.
+inline void measuredPL2DInvert(device const float* g, thread const MeasuredPL2D& tab, float px, float py, thread const float* p,
+                               thread float& outPx, thread float& outPy, thread float& outPdf) {
+    float pw[6] = {1.0f, 0.0f, 1.0f, 0.0f, 1.0f, 0.0f};
+    uint soff;
+    measuredPL2DFillPW(g, tab, p, soff, pw);
+    const int nx = tab.nx, ny = tab.ny;
+    const float invx = float(nx - 1), invy = float(ny - 1);
+    float sx = px * invx, sy = py * invy;
+    const int ix = min(int(sx), nx - 2);
+    const int iy = min(int(sy), ny - 2);
+    sx -= float(ix); sy -= float(iy);
+    const uint sz = uint(nx * ny);
+    uint off = uint(ix + iy * nx);
+    if (tab.dim != 0) off += soff * sz;
+    device const float* dataBase = g + tab.dataOffset;
+    device const float* mcdfBase = g + tab.mcdfOffset;
+    device const float* ccdfBase = g + tab.ccdfOffset;
+
+    const float v00 = measuredPL2DLook(dataBase, off, sz, pw, tab);
+    const float v10 = measuredPL2DLook(dataBase + 1, off, sz, pw, tab);
+    const float v01 = measuredPL2DLook(dataBase + nx, off, sz, pw, tab);
+    const float v11 = measuredPL2DLook(dataBase + nx + 1, off, sz, pw, tab);
+    const float w0y = 1.0f - sy, w1y = sy;
+    const float c0 = w0y * v00 + w1y * v01;
+    const float c1 = w0y * v10 + w1y * v11;
+    const float pdf = (1.0f - sx) * c0 + sx * c1;
+
+    float ux = sx * (c0 + 0.5f * sx * (c1 - c0));
+    const float cdf0 = measuredPL2DLook(ccdfBase, off, sz, pw, tab);
+    const float cdf1 = measuredPL2DLook(ccdfBase + nx, off, sz, pw, tab);
+    ux += (1.0f - sy) * cdf0 + sy * cdf1;
+    uint roff = uint(iy * nx);
+    if (tab.dim != 0) roff += soff * sz;
+    const float r0 = measuredPL2DLook(ccdfBase, roff + uint(nx) - 1u, sz, pw, tab);
+    const float r1 = measuredPL2DLook(ccdfBase, roff + uint(nx * 2 - 1), sz, pw, tab);
+    ux /= (1.0f - sy) * r0 + sy * r1;
+
+    float uy = sy * (r0 + 0.5f * sy * (r1 - r0));
+    uint moff = uint(iy);
+    if (tab.dim != 0) moff += soff * uint(ny);
+    uy += measuredPL2DLook(mcdfBase, moff, uint(ny), pw, tab);
+
+    outPx = clamp(ux, 0.0f, 1.0f);
+    outPy = clamp(uy, 0.0f, 1.0f);
+    outPdf = pdf * invx * invy;
+}
+
+// MeasuredBxDF::f() and pdf() in one function (they share the half vector and the vndf inversion), local shading frame (z = normal).
+// Returns false (f = 0, pdf = 0) for a pair the table gives no reflectance.
+inline bool measuredFPdf(device const float* g, thread const MeasuredTables& tab, float3 wo, float3 wi,
+                         thread float3& f, thread float& pdfOut) {
+    const float kPi = 3.14159265358979323846f;
+    const float3 lambda = float3(612.0f, 549.0f, 465.0f);   // the CPU's fixed R/G/B query wavelengths (material_pbrt.h kLambdaR/G/B)
+    f = float3(0.0f); pdfOut = 0.0f;
+    if (wo.z * wi.z <= 0.0f) return false;
+    if (wo.z < 0.0f) { wo = -wo; wi = -wi; }
+    float3 wm = wi + wo;
+    const float wm2 = dot(wm, wm);
+    if (wm2 == 0.0f) return false;
+    wm *= rsqrt(wm2);
+
+    const float thetaO = acos(clamp(wo.z, -1.0f, 1.0f)), phiO = atan2(wo.y, wo.x);
+    const float thetaM = acos(clamp(wm.z, -1.0f, 1.0f)), phiM = atan2(wm.y, wm.x);
+    const float uWoX = sqrt(thetaO * (2.0f / kPi)), uWoY = phiO * (0.5f / kPi) + 0.5f;
+    const float uWmX = sqrt(thetaM * (2.0f / kPi));
+    float uWmY = (tab.isotropic != 0 ? (phiM - phiO) : phiM) * (0.5f / kPi) + 0.5f;
+    uWmY -= floor(uWmY);
+
+    float p[3] = {phiO, thetaO, 0.0f};
+    float uiX, uiY, uiPdf;
+    measuredPL2DInvert(g, tab.vndf, uWmX, uWmY, p, uiX, uiY, uiPdf);
+
+    float val[3];
+    for (int c = 0; c < 3; ++c) {
+        p[2] = lambda[c];
+        val[c] = max(0.0f, measuredPL2DEval(g, tab.spec, uiX, uiY, p));
+    }
+    const float ndfVal = measuredPL2DEval(g, tab.ndf, uWmX, uWmY, p);
+    const float sigmaVal = measuredPL2DEval(g, tab.sigma, uWoX, uWoY, p);
+    const float denom = 4.0f * sigmaVal * fabs(wi.z);
+    if (denom == 0.0f) return false;
+    f = float3(val[0], val[1], val[2]) * (ndfVal / denom);
+
+    p[2] = 0.0f;
+    const float lum = measuredPL2DEval(g, tab.lum, uiX, uiY, p);
+    const float sinThetaM = sqrt(max(0.0f, 1.0f - wm.z * wm.z));
+    const float jacobian = 4.0f * dot(wo, wm) * max(2.0f * kPi * kPi * uWmX * sinThetaM, 1e-6f);
+    if (jacobian == 0.0f) return true;   // f is valid, the sampling density is not
+    pdfOut = uiPdf * lum / jacobian;
+    return true;
+}
+
+// MeasuredBxDF::sample_f(): importance-samples wi (local frame) and returns the path weight f * |cos(wi)| / pdf, as pbrt-v4 applies it.
+inline bool measuredSampleF(device const float* g, thread const MeasuredTables& tab, float3 wo, float u0, float u1,
+                            thread float3& wiOut, thread float3& weightOut, thread float& pdfOut) {
+    const float kPi = 3.14159265358979323846f;
+    const float3 lambda = float3(612.0f, 549.0f, 465.0f);
+    weightOut = float3(0.0f); pdfOut = 0.0f;
+    const bool flip = wo.z < 0.0f;
+    if (flip) wo = -wo;
+    if (wo.z <= 0.0f) return false;
+    const float thetaO = acos(clamp(wo.z, -1.0f, 1.0f)), phiO = atan2(wo.y, wo.x);
+
+    float p[3] = {phiO, thetaO, 0.0f};
+    float lumPx, lumPy, lumPdf;
+    measuredPL2DSample(g, tab.lum, u0, u1, p, lumPx, lumPy, lumPdf);
+    if (lumPdf == 0.0f) return false;
+    float uWmX, uWmY, vndfPdf;
+    measuredPL2DSample(g, tab.vndf, lumPx, lumPy, p, uWmX, uWmY, vndfPdf);
+    if (vndfPdf == 0.0f) return false;
+
+    float phiM = (2.0f * uWmY - 1.0f) * kPi;
+    const float thetaM = uWmX * uWmX * (kPi * 0.5f);
+    if (tab.isotropic != 0) phiM += phiO;
+    // phiM can land in [-2pi, 2pi]; fast-math sin/cos lose accuracy outside [-pi, pi], so wrap back first.
+    phiM -= 2.0f * kPi * floor((phiM + kPi) * (0.5f / kPi));
+    const float sinThetaM = sin(thetaM), cosThetaM = cos(thetaM);
+    const float3 wm = float3(sinThetaM * cos(phiM), sinThetaM * sin(phiM), cosThetaM);
+    const float dotWoWm = dot(wo, wm);
+    const float3 wi = 2.0f * dotWoWm * wm - wo;
+    if (wi.z <= 0.0f) return false;
+
+    // The spectra are evaluated at the luminance-warped point, as pbrt-v4 Sample_f (and f() via vndf.Invert) do.
+    float val[3];
+    for (int c = 0; c < 3; ++c) {
+        p[2] = lambda[c];
+        val[c] = max(0.0f, measuredPL2DEval(g, tab.spec, lumPx, lumPy, p));
+    }
+    const float uWoX = sqrt(thetaO * (2.0f / kPi)), uWoY = phiO * (0.5f / kPi) + 0.5f;
+    const float ndfVal = measuredPL2DEval(g, tab.ndf, uWmX, uWmY, p);
+    const float sigmaVal = measuredPL2DEval(g, tab.sigma, uWoX, uWoY, p);
+    const float absCosWi = fabs(wi.z);
+    const float denom = 4.0f * sigmaVal * absCosWi;
+    if (denom == 0.0f) return false;
+    const float scale = ndfVal / denom;
+    const float jacobian = 4.0f * dotWoWm * max(2.0f * kPi * kPi * uWmX * sinThetaM, 1e-6f);
+    if (jacobian == 0.0f) return false;
+    const float finalPdf = vndfPdf * lumPdf / jacobian;
+    if (finalPdf == 0.0f) return false;
+
+    wiOut = flip ? -wi : wi;
+    weightOut = float3(val[0], val[1], val[2]) * (scale * absCosWi / finalPdf);
+    pdfOut = finalPdf;
+    return true;
+}
+
+// Evaluates the measured BRDF for a WORLD-space direction `wi`: f (RGB) and the sampling density, both for the local frame (t, b, n).
+inline bool measuredEvalWorld(device const float* g, thread const MeasuredTables& tab, float3 woLocal, float3 wi,
+                              float3 t, float3 b, float3 n, thread float3& f, thread float& pdf) {
+    const float3 wiLocal = float3(dot(wi, t), dot(wi, b), dot(wi, n));
+    return measuredFPdf(g, tab, woLocal, wiLocal, f, pdf);
+}
+
+inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNormal,
+                          constant Uniforms& uniforms,
+                          device const float* rgbGridData,
+                          device const AreaLight* lights,
+                          device const PointLight* pointLights,
+                          device const DirectionalLight* directionalLights,
+                          device const ProjectionLight* projectionLights,
+                          device const GoniometricLight* goniometricLights,
+                          device const float* envMarginalCDF,
+                          device const float* envConditionalCDF,
+                          uint envMapWidth, uint envMapHeight,
+                          device const float* pbrtEnvMarginalCDF,
+                          device const float* pbrtEnvConditionalCDF,
+                          uint pbrtEnvMapWidth, uint pbrtEnvMapHeight,
+                          texture2d<float, access::sample> earthTexture,
+                          texture2d<float, access::sample> pbrtEnvTexture,
+                          texture2d<float, access::sample> goniometricTexture,
+                          texture2d<float, access::sample> pbrtGoniometricTexture,
+                          texture2d<float, access::sample> pbrtProjectionTexture,
+                          texture2d<float, access::sample> pbrtAreaLightTexture,
+                          sampler textureSampler,
+                          intersector<instancing, triangle_data> isect,
+                          instance_acceleration_structure accelStructure,
+                          intersection_function_table<instancing, triangle_data> functionTable,
+                          thread float3& rayDir, thread float3& rayOrigin,
+                          thread float3& throughput, thread float3& radiance,
+                          thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState) {
+    // One VNDF-importance-sampled BxDF sample continues the path with weight f * |cos| / pdf; the vertex also takes direct-light samples
+    // (area, punctual, environment) with MIS against that density, using the BxDF's own f() and pdf() - the same structure as the
+    // OptiX backends (optix_device_helpers.h, MaterialType::Measured). A rejected sample (grazing wo, zero pdf, a reflection below the
+    // horizon) still gets its direct-light samples, then ends the path.
+    const MeasuredTables tab = measuredReadTables(rgbGridData, int(mat.conductorEta.x));
+    float3 tangent, bitangent;
+    buildAnisotropicOnb(facingNormal, tangent, bitangent);
+    const float3 woWorld = -rayDir;
+    float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
+    const float3 origin = hitPoint + facingNormal * 0.001f;
+
+    if (all(mat.emission == float3(0.0))) {
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
+        float3 toLight = ls.point - hitPoint;
+        float distSq = dot(toLight, toLight);
+        float dist = sqrt(distSq);
+        float3 wi = toLight / dist;
+        float cosSurface = dot(facingNormal, wi);
+        float cosLight = dot(ls.normal, -wi);
+        if (cosSurface > 0.0 && (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0))) {
+            float3 f; float pdfBsdf;
+            if (measuredEvalWorld(rgbGridData, tab, woLocal, wi, tangent, bitangent, facingNormal, f, pdfBsdf)) {
+                ray shadowRay;
+                shadowRay.origin = origin;
+                shadowRay.direction = wi;
+                shadowRay.min_distance = 0.001f;
+                shadowRay.max_distance = dist - 0.002f;
+                if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
+                    float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
+                    float weight = (pdfSolidAngle * pdfSolidAngle) / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
+                    float transmittance = exp(-uniforms.fogSigmaT * dist);
+                    radiance += throughput * f * ls.emission * cosSurface * transmittance / pdfSolidAngle * weight;
+                }
+            }
+        }
+
+        for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+            PointLight pl = pointLights[pli];
+            float3 toP = float3(pl.position) - hitPoint;
+            float pDistSq = dot(toP, toP);
+            float pDist = sqrt(pDistSq);
+            float3 pWi = toP / pDist;
+            float pCos = dot(facingNormal, pWi);
+            if (pCos > 0.0) {
+                float3 f; float pdfUnused;
+                if (measuredEvalWorld(rgbGridData, tab, woLocal, pWi, tangent, bitangent, facingNormal, f, pdfUnused)) {
+                    ray shadowRay;
+                    shadowRay.origin = origin;
+                    shadowRay.direction = pWi;
+                    shadowRay.min_distance = 0.001f;
+                    shadowRay.max_distance = pDist - 0.002f;
+                    if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
+                        float spot = spotLightFalloff(-pWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                        radiance += throughput * f * float3(pl.emission) * pCos * spot * exp(-uniforms.fogSigmaT * pDist) / pDistSq;
+                    }
+                }
+            }
+        }
+
+        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+            DirectionalLight dl = directionalLights[dli];
+            float3 dWi = normalize(-float3(dl.direction));
+            float dCos = dot(facingNormal, dWi);
+            if (dCos > 0.0) {
+                float3 f; float pdfUnused;
+                if (measuredEvalWorld(rgbGridData, tab, woLocal, dWi, tangent, bitangent, facingNormal, f, pdfUnused)) {
+                    ray shadowRay;
+                    shadowRay.origin = origin;
+                    shadowRay.direction = dWi;
+                    shadowRay.min_distance = 0.001f;
+                    shadowRay.max_distance = kDirectionalLightMaxDistance;
+                    if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
+                        float dTrans = (uniforms.fogSigmaT > 0.0)
+                            ? exp(-uniforms.fogSigmaT * rayBoxExitDistance(shadowRay.origin, dWi, kRoomBoundsMin, kRoomBoundsMax))
+                            : 1.0;
+                        radiance += throughput * f * float3(dl.emission) * dCos * dTrans;
+                    }
+                }
+            }
+        }
+
+        for (uint pji = 0; pji < uniforms.projectionLightCount; ++pji) {
+            ProjectionLight pj = projectionLights[pji];
+            float3 toP = float3(pj.position) - hitPoint;
+            float pDistSq = dot(toP, toP);
+            float pDist = sqrt(pDistSq);
+            float3 pWi = toP / pDist;
+            float pCos = dot(facingNormal, pWi);
+            if (pCos > 0.0) {
+                float3 pjRadiance = projectionLightRadiance(-pWi, pj.forward, pj.right, pj.up, pj.tanHalfFovX, pj.tanHalfFovY, pj.scale,
+                                                            (pj.usePbrtTexture != 0u ? pbrtProjectionTexture : earthTexture), textureSampler);
+                float3 f; float pdfUnused;
+                if (any(pjRadiance > float3(0.0)) &&
+                    measuredEvalWorld(rgbGridData, tab, woLocal, pWi, tangent, bitangent, facingNormal, f, pdfUnused)) {
+                    ray shadowRay;
+                    shadowRay.origin = origin;
+                    shadowRay.direction = pWi;
+                    shadowRay.min_distance = 0.001f;
+                    shadowRay.max_distance = pDist - 0.002f;
+                    if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none)
+                        radiance += throughput * f * pjRadiance * pCos * exp(-uniforms.fogSigmaT * pDist) / pDistSq;
+                }
+            }
+        }
+
+        for (uint gli = 0; gli < uniforms.goniometricLightCount; ++gli) {
+            GoniometricLight gl = goniometricLights[gli];
+            float3 toG = float3(gl.position) - hitPoint;
+            float gDistSq = dot(toG, toG);
+            float gDist = sqrt(gDistSq);
+            float3 gWi = toG / gDist;
+            float gCos = dot(facingNormal, gWi);
+            if (gCos > 0.0) {
+                float3 glRadiance = goniometricLightRadiance(-gWi, gl.forward, gl.right, gl.up, gl.emission, gl.scale,
+                                                             (gl.usePbrtTexture != 0u ? pbrtGoniometricTexture : goniometricTexture), textureSampler);
+                float3 f; float pdfUnused;
+                if (any(glRadiance > float3(0.0)) &&
+                    measuredEvalWorld(rgbGridData, tab, woLocal, gWi, tangent, bitangent, facingNormal, f, pdfUnused)) {
+                    ray shadowRay;
+                    shadowRay.origin = origin;
+                    shadowRay.direction = gWi;
+                    shadowRay.min_distance = 0.001f;
+                    shadowRay.max_distance = gDist - 0.002f;
+                    if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none)
+                        radiance += throughput * f * glRadiance * gCos * exp(-uniforms.fogSigmaT * gDist) / gDistSq;
+                }
+            }
+        }
+
+        // Image-based environments, importance-sampled with MIS (same gating as shadeConductor).
+        if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
+            float envPdf;
+            float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF, int(envMapWidth), int(envMapHeight),
+                                                      randFloat(rngState), randFloat(rngState), envPdf);
+            float envCos = dot(facingNormal, envWi);
+            float3 f; float pdfBsdf;
+            if (envCos > 0.0 && envPdf > 1e-9 &&
+                measuredEvalWorld(rgbGridData, tab, woLocal, envWi, tangent, bitangent, facingNormal, f, pdfBsdf)) {
+                ray shadowRay;
+                shadowRay.origin = origin;
+                shadowRay.direction = envWi;
+                shadowRay.min_distance = 0.001f;
+                shadowRay.max_distance = 1e5f;
+                if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
+                    float3 envRadiance = earthTexture.sample(textureSampler, equirectangularUV(envWi)).rgb;
+                    float envWeight = (envPdf * envPdf) / (envPdf * envPdf + pdfBsdf * pdfBsdf);
+                    radiance += throughput * f * envRadiance * envCos / envPdf * envWeight;
+                }
+            }
+        }
+        if (pbrtEnvMapWidth > 0u) {
+            float envPdf;
+            float3 envWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+                                                      randFloat(rngState), randFloat(rngState), envPdf);
+            float envCos = dot(facingNormal, envWi);
+            float3 f; float pdfBsdf;
+            if (envCos > 0.0 && envPdf > 1e-9 &&
+                measuredEvalWorld(rgbGridData, tab, woLocal, envWi, tangent, bitangent, facingNormal, f, pdfBsdf)) {
+                ray shadowRay;
+                shadowRay.origin = origin;
+                shadowRay.direction = envWi;
+                shadowRay.min_distance = 0.001f;
+                shadowRay.max_distance = 1e5f;
+                if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
+                    float3 envRadiance = pbrtEnvTexture.sample(textureSampler, equirectangularUV(envWi)).rgb;
+                    float envWeight = (envPdf * envPdf) / (envPdf * envPdf + pdfBsdf * pdfBsdf);
+                    radiance += throughput * f * envRadiance * envCos / envPdf * envWeight;
+                }
+            }
+        }
+    }
+
+    float3 wiLocal, weight; float samplePdf;
+    if (!measuredSampleF(rgbGridData, tab, woLocal, randFloat(rngState), randFloat(rngState), wiLocal, weight, samplePdf)) return false;
+    throughput *= weight;
+    rayDir = normalize(wiLocal.x * tangent + wiLocal.y * bitangent + wiLocal.z * facingNormal);
+    rayOrigin = origin;
+    bsdfPdf = samplePdf;
+    specularBounce = false;
+    return true;
+}

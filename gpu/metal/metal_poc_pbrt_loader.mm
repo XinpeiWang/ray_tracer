@@ -15,6 +15,8 @@
 #include "metal_poc_app.h"
 #include "../../src/shared/curve_tessellate.h"
 #include "../../src/shared/srgb_decode.h"
+#include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
+#include <cstring>
 #include <array>
 #include <map>
 #include <functional>
@@ -201,6 +203,39 @@ size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene,
 
 }  // namespace
 
+// A measured BRDF (pbrt "measured") for the Metal shader (materialType 32, metal_poc_materials_extra.metal): its five PiecewiseLinear2D
+// tables go into the shared float buffer `g` behind a 76-int descriptor. Descriptor fields are ints stored bit-for-bit in float slots and
+// every offset is an absolute index into `g`; the descriptor comes FIRST so its own index (stored in a float, exact below 2^24) stays small
+// however large the tables are. Returns that index.
+template <size_t Dim>
+static void putMeasuredPL2D(const PiecewiseLinear2D<Dim>& t, std::vector<float>& g, size_t descBase) {
+    int d[15] = {t.XSize(), t.YSize(), (int)Dim, 1, 1, 1, 0, 0, 0, -1, -1, -1, 0, -1, -1};
+    for (size_t i = 0; i < Dim; ++i) {
+        d[3 + i] = (int)t.ParamRes()[i];
+        d[6 + i] = (int)t.ParamStride()[i];
+        d[9 + i] = (int)g.size();
+        g.insert(g.end(), t.ParamValues(i).begin(), t.ParamValues(i).end());
+    }
+    d[12] = (int)g.size();
+    g.insert(g.end(), t.Data().begin(), t.Data().end());
+    if (!t.Mcdf().empty()) { d[13] = (int)g.size(); g.insert(g.end(), t.Mcdf().begin(), t.Mcdf().end()); }
+    if (!t.Ccdf().empty()) { d[14] = (int)g.size(); g.insert(g.end(), t.Ccdf().begin(), t.Ccdf().end()); }
+    std::memcpy(&g[descBase], d, sizeof(d));
+}
+
+static size_t appendMeasuredBrdf(const MeasuredBRDFData& m, std::vector<float>& g) {
+    const size_t base = g.size();
+    g.resize(base + 76, 0.0f);
+    putMeasuredPL2D(m.ndf, g, base);
+    putMeasuredPL2D(m.sigma, g, base + 15);
+    putMeasuredPL2D(m.vndf, g, base + 30);
+    putMeasuredPL2D(m.luminance, g, base + 45);
+    putMeasuredPL2D(m.spectra, g, base + 60);
+    const int iso = m.isotropic ? 1 : 0;
+    std::memcpy(&g[base + 75], &iso, sizeof(iso));
+    return base;
+}
+
 void MetalPocApp::loadPbrtScene() {
     pbrt_load::LoadResult result = pbrt_load::loadFile(pbrtScenePath);
     if (!result.ok) {
@@ -341,12 +376,13 @@ void MetalPocApp::loadPbrtScene() {
     // own 66,532-triangle "coateddiffuse" mesh) used to print that exact
     // line 66,532 times.
     std::unordered_set<std::string> warnedUnsupportedMaterialKinds;
+    std::unordered_map<std::string, int> measuredTableCache;   // resolved .bsdf path -> descriptor index in rgbGridData, or -1
     // std::function (not auto), capturing itself by reference, so the
     // Mix case below can recurse into mapMaterial() for its own two
     // named sub-materials - an ordinary auto lambda can't reference its
     // own name inside its own body (not yet in scope at that point).
     std::function<TriangleMaterial(const pbrt_flatten::Material&, int)> mapMaterial =
-        [this, &warnedUnsupportedMaterialKinds, &scene, &mapMaterial, sceneScale, bboxCenter, sceneOffset](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
+        [this, &warnedUnsupportedMaterialKinds, &measuredTableCache, &scene, &mapMaterial, sceneScale, bboxCenter, sceneOffset](const pbrt_flatten::Material& m, int depth) -> TriangleMaterial {
         PackedFloat3 color{(float)m.color[0], (float)m.color[1], (float)m.color[2]};
         // Complex IOR for a GGX conductor (materialType 4). A named metal spectrum or
         // explicit eta/k (m.hasConductorPreset) is used directly. Otherwise the scene gave
@@ -642,6 +678,35 @@ void MetalPocApp::loadPbrtScene() {
                 mat.conductorEta = PackedFloat3{(float)m.metallic, (float)m.clearcoat, (float)m.clearcoatRoughness};
                 return mat;
             }
+            case pbrt_flatten::MaterialKind::Measured: {
+                // pbrt-v4 "measured" (tabulated BRDF) -> materialType 32 (shadeMeasured). conductorEta.x = the table descriptor's index in
+                // rgbGridData. A file that cannot be read keeps the gray Lambertian fallback, as the CPU does.
+                int tableIndex = -1;
+                if (!m.measuredFilename.empty()) {
+                    const auto cached = measuredTableCache.find(m.measuredFilename);
+                    if (cached != measuredTableCache.end()) {
+                        tableIndex = cached->second;
+                    } else {
+                        std::string error;
+                        const std::shared_ptr<const MeasuredBRDFData> data = measured_bxdf_io::GetMeasuredBRDFDataCached(m.measuredFilename, error);
+                        if (data) {
+                            const size_t base = appendMeasuredBrdf(*data, rgbGridData);
+                            if (base < (size_t)(1 << 24)) tableIndex = (int)base;
+                            else fprintf(stderr, "loadPbrtScene: measured BRDF '%s' cannot be addressed (table block starts past 2^24 floats)\n", m.measuredFilename.c_str());
+                        } else {
+                            fprintf(stderr, "loadPbrtScene: measured BRDF '%s' could not be loaded (%s); using gray Lambertian\n", m.measuredFilename.c_str(), error.c_str());
+                        }
+                        measuredTableCache.emplace(m.measuredFilename, tableIndex);
+                    }
+                }
+                if (tableIndex >= 0) {
+                    TriangleMaterial mat{PackedFloat3{1, 1, 1}, /*materialType=*/32u, /*ior=*/1.0f,
+                                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                    mat.conductorEta = PackedFloat3{(float)tableIndex, 0.0f, 0.0f};
+                    return mat;
+                }
+                return TriangleMaterial{PackedFloat3{0.5f, 0.5f, 0.5f}, 0u, 1.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
+            }
             case pbrt_flatten::MaterialKind::Hair: {
                 // pbrt-v4 HairMaterial -> materialType 31 (Metal's port of hair_material.h).
                 // Field reuse: color = sigma_a (already resolved from eumelanin/pheomelanin or
@@ -829,15 +894,6 @@ void MetalPocApp::loadPbrtScene() {
                 // scene case in this file.
                 [[fallthrough]];
             }
-            // MaterialKind::Measured falls through to here too (no case
-            // above) - notably, scene "B14" (pbrt_scenes/measured-brdf-
-            // showroom.pbrt) uses it, so Metal currently renders B14 as
-            // flat gray rather than the real importance-sampled gold BRDF
-            // CPU/OptiX render for the same scene post-migration (see
-            // metal_poc_scenes_b.mm's buildMeasuredBrdfScene() - now dead
-            // code - for the full history). Real support would mean
-            // porting src/shared/measured_bxdf.h's PiecewiseLinear2D/
-            // MeasuredBxDF machinery to Metal shaders - not done yet.
             default:
                 if (warnedUnsupportedMaterialKinds.insert(m.pbrtType).second) {
                     fprintf(stderr, "loadPbrtScene: material kind '%s' not supported by this POC's "

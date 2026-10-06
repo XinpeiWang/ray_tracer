@@ -1496,6 +1496,14 @@ kernel void primaryRayKernel(
             } else if (mat.materialType == 24u) {
                 if (!shadePrincipled(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
+            } else if (mat.materialType == 32u) {
+                if (!shadeMeasured(mat, hitPoint, facingNormal, uniforms, rgbGridData,
+                                  lights, pointLights, directionalLights, projectionLights, goniometricLights,
+                                  envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
+                                  pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                  earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
+                                  isect, accelStructure, functionTable,
+                                  rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
             } else if (mat.materialType == 31u) {
                 pathTouchedHair = true;
                 if (!shadeHair(mat, hitPoint, facingNormal,
