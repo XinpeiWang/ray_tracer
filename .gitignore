@@ -436,6 +436,8 @@ tests/build_test/dda_mini.cpp
 
 # Temporary root-level scripts and logs
 *.py
+# ...but the scripts directory holds real, maintained tools (render_baseline.py, exr_io.py, compare_images.py, ...)
+!scripts/*.py
 total.txt
 *.txt
 # CMakeLists.txt files are real, hand-written build files, not stray logs -
@@ -464,3 +466,4 @@ gpu/optix/.cudadeps/
 # outputs the pbrt agreement tests write to the working directory (left behind if an assertion aborts a test before it cleans up)
 pbrt_agree_*.exr
 pbrt_chroma_*.exr
+baselines/
