@@ -23,6 +23,15 @@ METAL_PARITY_ONLY_SCENE_ID=C4 ./metal_cpu_gpu_parity_check        # one scene
 METAL_PARITY_MODELS=1 ./metal_cpu_gpu_parity_check                # also the Models scenes (need models/)
 ```
 
+**Fast Mac dev loop** (measured on an 8-core M2): configure with Ninja (`cmake -S . -B build_macos -G Ninja -DCMAKE_BUILD_TYPE=Release -DRT_BUILD_METAL=ON`):
+a clean build is ~65 s (Unix Makefiles `-j8`: ~81 s), editing a `.mm` rebuilds in ~5 s, `metal_poc_app.h` ~17 s, a shared CPU
+header 35-45 s, and editing a `.metal` shader needs no rebuild at all (shaders are compiled at run time). The full `ctest`
+is ~79 s, almost all of it the parity sweep, which runs as **2 worker processes** (the CPU reference render of one scene
+overlaps the Metal render of another; ~98 s single-process, identical verdicts). `METAL_PARITY_WORKERS=N` changes that
+(1 = single process; 3-4 barely help, the CPU renders are the bottleneck); a single-scene run is always one process.
+A strict sweep fails if it skipped every scene (e.g. run from a directory where the scene files do not resolve), so
+run it from the build directory or through `ctest`.
+
 Latest full run (Models included): 119 scenes, **104 pass, 6 marginal, 9 known gaps, 0 failed**.
 The standard 95-scene sweep (what CI/ctest runs): ~81 pass, ~5 marginal, 9 known gaps. All 24 Models
 scenes with assets present match CPU (23 pass, 1 marginal). CI skips the test, non-fatally, on a runner
