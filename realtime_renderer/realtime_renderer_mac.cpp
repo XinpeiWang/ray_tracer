@@ -43,8 +43,8 @@ RT_REALTIME_API bool realtime_render_frame(
 	bool /*enable_nrc*/,
 	bool /*enable_neural_upscale*/,
 	float* /*out_neural_upscale_buffer*/,
-	double /*aperture_override*/,
-	double /*focus_distance_override*/,
+	double aperture_override,
+	double focus_distance_override,
 	bool /*enable_adaptive_sampling*/,
 	const unsigned char* /*in_active_pixel_mask*/
 ) {
@@ -52,7 +52,8 @@ RT_REALTIME_API bool realtime_render_frame(
 	static std::atomic<unsigned int> frame{0};
 	return metal_live_render_frame(scene_id, image_width, image_height, samples_per_pixel, max_depth,
 		cam_x, cam_y, cam_z, has_custom_lookat, lookat_x, lookat_y, lookat_z,
-		max_component_value, frame.fetch_add(1u), out_rgb_buffer, out_world_pos_buffer, out_camera_basis);
+		max_component_value, frame.fetch_add(1u), out_rgb_buffer, out_world_pos_buffer, out_camera_basis,
+		aperture_override, focus_distance_override);
 }
 
 RT_REALTIME_API const char* realtime_get_last_error() {

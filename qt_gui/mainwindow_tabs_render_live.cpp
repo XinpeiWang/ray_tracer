@@ -728,13 +728,13 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 
 #ifdef Q_OS_MAC
 	// The Metal backend renders plain path-traced frames: it has no AI denoiser, SVGF, ReSTIR, radiance cache, path guiding,
-	// NRC, upscaling or adaptive sampling (those flags are accepted and ignored by realtime_renderer.dylib), and does not do
-	// depth of field yet. Showing controls that do nothing would mislead, so only the grid rows it honours stay visible:
-	// row 8 (Exposure, Samples/Frame) and row 9 (Max Bounces, Firefly Clamp).
+	// NRC, upscaling or adaptive sampling (those flags are accepted and ignored by realtime_renderer.dylib). Showing controls that
+	// do nothing would mislead, so only the grid rows it honours stay visible: row 5 (Depth of Field), row 8 (Exposure,
+	// Samples/Frame), row 9 (Max Bounces, Firefly Clamp) and row 10 (Aperture, Focus Distance).
 	for (int i = 0; i < liveRenderSettingsGrid->count(); ++i) {
 		int row = 0, col = 0, rowSpan = 0, colSpan = 0;
 		liveRenderSettingsGrid->getItemPosition(i, &row, &col, &rowSpan, &colSpan);
-		if (row < 8 || row > 9) {
+		if (row != 5 && (row < 8 || row > 10)) {
 			if (QWidget *w = liveRenderSettingsGrid->itemAt(i)->widget()) w->hide();
 		}
 	}

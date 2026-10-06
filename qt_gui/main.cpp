@@ -5,9 +5,15 @@
 #include <QTranslator>
 #include <QDir>
 #include <QCoreApplication>
+#include <QSettings>
+#include "settings_keys.h"
 
 int main(int argc, char *argv[]) {
 	QApplication app(argc, argv);
+
+	// Self-test mode (RT_GUI_SELFTEST) uses its own settings domain (settings_keys.h); start every run from a clean slate so one run's
+	// changes (it enables depth of field, ...) cannot leak into the next.
+	if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) QSettings(settings_keys::kOrg, settings_keys::kApp).clear();
 
 #ifdef Q_OS_MAC
 	// A Finder/Dock launch starts in "/", but the scene registry (scene_metadata.dylib), the Metal renderer and the ray_tracer

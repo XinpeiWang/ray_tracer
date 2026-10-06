@@ -113,7 +113,8 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
                              double cam_x, double cam_y, double cam_z,
                              bool has_custom_lookat, double lookat_x, double lookat_y, double lookat_z,
                              float max_component_value, unsigned int frame_seed,
-                             float* out_rgb, float* out_world_pos, float* out_camera_basis) {
+                             float* out_rgb, float* out_world_pos, float* out_camera_basis,
+                             double aperture, double focus_distance) {
     if (!scene_id || !out_rgb || width <= 0 || height <= 0) return fail("bad arguments");
     std::lock_guard<std::mutex> lock(gMutex);
     @autoreleasepool {
@@ -128,6 +129,7 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
         const PackedFloat3 fwd{app.pbrtCameraForward.x, app.pbrtCameraForward.y, app.pbrtCameraForward.z};
         const PackedFloat3 right{app.pbrtCameraRight.x, app.pbrtCameraRight.y, app.pbrtCameraRight.z};
         const PackedFloat3 up{app.pbrtCameraUp.x, app.pbrtCameraUp.y, app.pbrtCameraUp.z};
+        const float sceneScale = app.pbrtSceneScale;
         // A well-mixed seed: the kernel derives each pixel's stream from frameSeed linearly, so consecutive small
         // integers would give strongly correlated noise between frames.
         const uint32_t seed = (frame_seed + 1u) * 2654435761u;
@@ -141,6 +143,10 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
             u.frameSeed = seed;
             u.adaptiveSampling = 0u;   // a fixed few samples per frame; the GUI does the accumulating
             if (max_component_value > 0.0f) u.fireflyClamp = max_component_value;
+            if (aperture >= 0.0) {   // thin-lens depth of field, scene units -> this scene's internal units
+                u.lensRadius = (float)(0.5 * aperture) * sceneScale;
+                u.focusDistance = (float)focus_distance * sceneScale;
+            }
         });
         if (!ok) return fail("the frame failed to render");
         const size_t n = (size_t)width * height;
@@ -150,8 +156,39 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
             out_rgb[i * 3 + 1] = app.pixels[i * 4 + 1];
             out_rgb[i * 3 + 2] = app.pixels[i * 4 + 2];
         }
-        if (out_world_pos) std::memset(out_world_pos, 0, n * 4 * sizeof(float));
-        if (out_camera_basis) std::memset(out_camera_basis, 0, 12 * sizeof(float));
+        if (out_world_pos) {
+            // Back from this scene's internal (recentred, rescaled) units to the caller's: p = (q - offset) / scale + bboxCenter.
+            const bool haveData = app.liveWorldPos.size() >= n * 4;
+            for (size_t i = 0; i < n; ++i) {
+                const float* q = haveData ? &app.liveWorldPos[i * 4] : nullptr;
+                float* o = &out_world_pos[i * 4];
+                if (q && q[3] > 0.5f) {
+                    o[0] = (q[0] - app.pbrtSceneOffset.x) / sceneScale + app.pbrtBboxCenter.x;
+                    o[1] = (q[1] - app.pbrtSceneOffset.y) / sceneScale + app.pbrtBboxCenter.y;
+                    o[2] = (q[2] - app.pbrtSceneOffset.z) / sceneScale + app.pbrtBboxCenter.z;
+                    o[3] = 1.0f;
+                } else {
+                    o[0] = o[1] = o[2] = o[3] = 0.0f;
+                }
+            }
+        }
+        if (out_camera_basis) {
+            // The view plane at distance 1 along forward: the kernel casts normalize(forward + sx * right * tanHalfFov * aspect +
+            // sy * up * tanHalfFov), sx and sy in [-1, 1]. Same units as the caller's camera position (directions are unchanged by
+            // the uniform rescale).
+            const double aspect = (double)width / (double)height, halfH = app.pbrtTanHalfFov, halfW = halfH * aspect;
+            const double o[3] = {cam_x, cam_y, cam_z};
+            const double f[3] = {app.pbrtCameraForward.x, app.pbrtCameraForward.y, app.pbrtCameraForward.z};
+            const double r[3] = {app.pbrtCameraRight.x, app.pbrtCameraRight.y, app.pbrtCameraRight.z};
+            const double uu[3] = {app.pbrtCameraUp.x, app.pbrtCameraUp.y, app.pbrtCameraUp.z};
+            for (int k = 0; k < 3; ++k) {
+                const double h = 2.0 * halfW * r[k], v = 2.0 * halfH * uu[k];
+                out_camera_basis[0 + k] = (float)o[k];
+                out_camera_basis[3 + k] = (float)(o[k] + f[k] - 0.5 * h - 0.5 * v);
+                out_camera_basis[6 + k] = (float)h;
+                out_camera_basis[9 + k] = (float)v;
+            }
+        }
     }
     return true;
 }

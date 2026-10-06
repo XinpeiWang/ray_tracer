@@ -175,6 +175,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		// Let it render for a while, then look at what happened.
 		// Timeline: look at 4 s, orbit the camera at 5 s (what a mouse drag does), look again at 9 s, report at 10 s.
 		auto before = std::make_shared<QImage>();
+		auto justAfterMove = std::make_shared<QImage>();
 		auto litPercent = std::make_shared<double>(-1.0);
 		QTimer::singleShot(4000, this, [this, log, shot, before, litPercent]() {
 			log(QString("after 4 s: frames=%1").arg(m_livePreviewFrameCount));
@@ -196,10 +197,37 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			shot("live_4s");
 			*before = grab().toImage();
 		});
-		QTimer::singleShot(5000, this, [this, log]() {
-			m_orbit.azimuth += 0.7;
+		// How much of the old picture survives a camera move: the displayed tile a fixed number of frames after the move against the
+		// settled one. With temporal reprojection the old accumulation is carried over, so the two are close; restarting from noise
+		// (a few samples per pixel) puts them far apart. Counted in frames, not milliseconds, so it does not depend on the frame rate.
+		QTimer::singleShot(5000, this, [this, log, justAfterMove]() {
+			m_orbit.azimuth += qEnvironmentVariable("RT_GUI_SELFTEST_ORBIT", "0.15").toDouble();
 			updateLivePreviewCameraFromOrbit();
-			log("orbited the camera by 0.7 rad");
+			log(QString("orbited the camera by %1 rad").arg(qEnvironmentVariable("RT_GUI_SELFTEST_ORBIT", "0.15")));
+			const qint64 frameAtMove = m_livePreviewFrameCount;
+			auto poll = std::make_shared<std::function<void()>>();
+			*poll = [this, justAfterMove, frameAtMove, poll]() {
+				if (m_livePreviewFrameCount >= frameAtMove + 8) {   // the first couple of frames after the move may still be in flight
+					if (m_livePreviewLabel) *justAfterMove = m_livePreviewLabel->pixmap().toImage();
+					return;
+				}
+				QTimer::singleShot(2, this, *poll);
+			};
+			(*poll)();
+		});
+		QTimer::singleShot(9500, this, [this, log, justAfterMove, outPrefix]() {
+			justAfterMove->save(outPrefix + "_after_move.png");
+			if (!m_livePreviewLabel || justAfterMove->isNull()) return;
+			const QImage settled = m_livePreviewLabel->pixmap().toImage();
+			if (settled.size() != justAfterMove->size()) return;
+			qint64 sum = 0, n = 0;
+			for (int y = 0; y < settled.height(); ++y)
+				for (int x = 0; x < settled.width(); ++x) {
+					const QRgb a = justAfterMove->pixel(x, y), b = settled.pixel(x, y);
+					sum += qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b)) + qAbs(qBlue(a) - qBlue(b));
+					n += 3;
+				}
+			log(QString("recovery after the move: tile 8 frames after vs settled differ by %1 (mean abs diff per channel, 0-255)").arg(n ? double(sum) / n : 0.0, 0, 'f', 2));
 		});
 		QTimer::singleShot(10000, this, [this, log, shot, before, litPercent]() {
 			const qint64 frames = m_livePreviewFrameCount;
@@ -219,14 +247,37 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 				diff = n ? double(sum) / n : 0.0;
 			}
 			log(QString("picture change after the camera move: %1 (mean abs diff per channel, 0-255)").arg(diff, 0, 'f', 2));
-			stopLivePreview();
 			// The picture must fill the tile (a wrong start camera showed a small patch in a black tile) - checked for the default scene only,
 			// since other scenes can legitimately be dark.
 			const bool fills = !qEnvironmentVariableIsSet("RT_GUI_SELFTEST_SCENE") ? *litPercent > 50.0 : true;
 			if (!fills) log(QString("picture fills only %1% of the tile").arg(*litPercent, 0, 'f', 1));
 			const bool ok = frames > 20 && diff > 1.0 && fills;
-			log(ok ? "RESULT: OK" : "RESULT: FAIL (too few frames, or the picture did not change when the camera moved)");
-			QApplication::exit(ok ? 0 : 1);
+			// Depth of field: switch it on with a wide aperture focused well in front of the scene; the picture must change.
+			const QImage beforeDof = m_livePreviewLabel ? m_livePreviewLabel->pixmap().toImage() : QImage();
+			if (m_liveApertureSpin) m_liveApertureSpin->setValue(150.0);
+			if (m_liveFocusDistanceSpin) m_liveFocusDistanceSpin->setValue(300.0);
+			if (m_liveDofCheck) m_liveDofCheck->setChecked(true);
+			log("enabled depth of field (aperture 150, focus 300)");
+			QTimer::singleShot(2500, this, [this, log, shot, ok, beforeDof]() {
+				shot("dof");
+				double dofDiff = 0.0;
+				const QImage afterDof = m_livePreviewLabel ? m_livePreviewLabel->pixmap().toImage() : QImage();
+				if (!beforeDof.isNull() && beforeDof.size() == afterDof.size()) {
+					qint64 sum = 0, n = 0;
+					for (int y = 0; y < afterDof.height(); ++y)
+						for (int x = 0; x < afterDof.width(); ++x) {
+							const QRgb a = beforeDof.pixel(x, y), b = afterDof.pixel(x, y);
+							sum += qAbs(qRed(a) - qRed(b)) + qAbs(qGreen(a) - qGreen(b)) + qAbs(qBlue(a) - qBlue(b));
+							n += 3;
+						}
+					dofDiff = n ? double(sum) / n : 0.0;
+				}
+				log(QString("picture change after enabling depth of field: %1").arg(dofDiff, 0, 'f', 2));
+				stopLivePreview();
+				const bool dofOk = dofDiff > 1.0;
+				log((ok && dofOk) ? "RESULT: OK" : "RESULT: FAIL (too few frames, no picture change on the camera move, a mostly empty tile, or no change from depth of field)");
+				QApplication::exit((ok && dofOk) ? 0 : 1);
+			});
 		});
 		return;
 	}

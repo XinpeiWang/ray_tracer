@@ -420,6 +420,8 @@ struct MetalPocApp {
     // --- Render output: written by compileShaderAndDispatch(), read by
     // postProcessAndWrite() ----------------------------------------------
     std::vector<float> pixels;
+    // Live Preview: the last frame's per-pixel first-hit positions (RGBA32F: xyz in this scene's internal units, w = 1 for a hit, 0 for a miss).
+    std::vector<float> liveWorldPos;
 
     bool parseArgsAndCreateDevice(int argc, const char** argv);
     void buildScene();

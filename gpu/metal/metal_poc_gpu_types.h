@@ -209,6 +209,7 @@ struct Uniforms {
     uint32_t pathRegen = 1;     // see metal_poc_types.metal
     uint32_t fogChromatic = 0;  // see metal_poc_types.metal
     PackedFloat3 fogSigmaT3{0, 0, 0};
+    uint32_t liveWorldPos = 0;   // see metal_poc_types.metal
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single

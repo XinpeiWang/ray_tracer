@@ -1,5 +1,7 @@
 #pragma once
 
+#include <cstdlib>
+
 // Shared QSettings location and key names for every persisted UI preference
 // (theme, font, language). One definition instead of three independently
 // hardcoded copies, so a rename only needs one edit.
@@ -11,7 +13,10 @@
 // single shared function these could all route through, only the constants.
 namespace settings_keys {
 constexpr const char *kOrg = "RayTracer";
-constexpr const char *kApp = "RayTracerGUI";
+// The automated self-test (RT_GUI_SELFTEST, mainwindow_selftest.cpp) changes settings (it switches depth of field on, ...), and
+// QSettings writes to the real per-user preferences on macOS regardless of $HOME - so a self-test run used to leave its changes in
+// the user's own app settings. In self-test mode the app therefore uses a separate settings domain.
+inline const char *const kApp = std::getenv("RT_GUI_SELFTEST") ? "RayTracerGUI-selftest" : "RayTracerGUI";
 constexpr const char *kThemeKey = "ui/theme";
 constexpr const char *kFontKey = "ui/font";
 // Only meaningful when kFontKey's value is "custom" (font_switch.cpp's
