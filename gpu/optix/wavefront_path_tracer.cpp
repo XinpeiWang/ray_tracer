@@ -2843,11 +2843,11 @@ bool WavefrontPathTracer::render(
 		// -------------------------------------------------------------------------
 		// Inner bounce loop
 		// -------------------------------------------------------------------------
-		// max_depth bounces, plus room for free medium-boundary crossings (MaterialType::Interface and the medium
-		// pass-throughs): those take an iteration here but not a bounce, and each ray's own depth (checked in the
-		// intersect and material kernels) is what enforces the real budget. The queue empties as rays finish, so
-		// the extra iterations cost nothing in a scene without media.
-		for (int depth = 0; depth < max_depth + kMaxMediumBoundaryCrossings; ++depth) {
+		// max_depth bounces, one more iteration for the emission-only trace of the last continuation ray, plus room for
+		// free medium-boundary crossings (MaterialType::Interface and the medium pass-throughs): those take an iteration
+		// here but not a bounce, and each ray's own depth (checked in the intersect and material kernels) is what enforces
+		// the real budget. The queue empties as rays finish, so the extra iterations cost nothing in a scene without media.
+		for (int depth = 0; depth < max_depth + 1 + kMaxMediumBoundaryCrossings; ++depth) {
 
 			int numRays = readQueueSize(reinterpret_cast<int*>(d_rayCounter_));
 			if (numRays == 0) break;
