@@ -426,15 +426,57 @@ TEST(PbrtBackendAgreementTest, ChromaticRgbGridFurnaceStaysInvisibleInEveryChann
 
 // A fog whose scattering differs by colour but absorbs nothing is invisible under a uniform sky in every channel. A collision weight
 // that does not average to the transmittance (the balance heuristic across channels, volume_scattering.h) shows up here as a cast.
-// A measured-BSDF sphere under a uniform white sky: its radiance is the directional albedo, averaged over the view angles the camera sees
-// (up to ~47 degrees off the normal). The measured material used to return the bare f instead of the path weight f * |cos| / pdf on the
-// CPU and both GPU backends, so a blue measured table read 7.8/8.1/3.5 here, a metallic one 12 and a white-paper one 0.34 (physically
-// 0.1/0.2/0.4, 0.72 and 1.0), identically on every backend, so a CPU-vs-GPU comparison could not see it. This scene uses the repository's own
-// synthetic-gold.bsdf, whose albedo cannot be derived independently (its sample_f and f() disagree by ~26%, being a synthetic lobe, not a
-// measurement), so the expected values are the ones the corrected weight gives on all three backends; the bare f gave 0.848/0.757/0.486 on
-// the CPU, 18% higher, and a different value from the GPU backends' own wrong one.
-TEST(PbrtBackendAgreementTest, MeasuredFurnaceReadsTheAlbedoOnEveryBackend) {
-	const double expected[3] = {0.7187, 0.6404, 0.4098};
+// A measured-BSDF sphere under a uniform white sky: each pixel's radiance is the table's directional albedo for that view angle. Two
+// defects made every backend read it wrong, identically (so a CPU-vs-GPU comparison could not see either): the material returned the bare f
+// instead of pbrt's path weight f * |cos| / pdf (a blue table read 7.8/8.1/3.5, a metallic one 12, white paper 0.34), and sample_f
+// evaluated the spectra at u_wm instead of the luminance-warped point (so its f disagreed with f() by up to 26%).
+//
+// The reference is independent of all the sampling code: the albedo at each view angle integrated from f() alone (cosine-weighted
+// directions), averaged over the pixels the camera sees (LookAt 0 0 6, fov 14, a unit sphere: the view angle runs from 0 to ~55 degrees,
+// and the few corner pixels past the silhouette see the sky, 1.0).
+TEST(PbrtBackendAgreementTest, MeasuredFurnaceReadsTheTablesOwnAlbedoOnEveryBackend) {
+	std::string loadError;
+	const auto table = measured_bxdf_io::GetMeasuredBRDFDataCached("pbrt_scenes/synthetic-gold.bsdf", loadError);
+	ASSERT_TRUE(table) << "synthetic-gold.bsdf did not load: " << loadError;
+	ASSERT_TRUE(table->isotropic) << "the reference ignores the azimuth, so it needs an isotropic table";
+	MeasuredBxDF<double> bxdf(table.get(), 612.0f, 549.0f, 465.0f);
+
+	const double kPi = 3.141592653589793;
+	const int kAngles = 91, kSamples = 20000;
+	std::vector<std::array<double, 3>> albedoAt(kAngles);
+	for (int a = 0; a < kAngles; ++a) {
+		const double theta = std::min(a, 89) * kPi / 180.0, wox = std::sin(theta), woz = std::cos(theta);
+		double sum[3] = {0.0, 0.0, 0.0};
+		for (int i = 0; i < kSamples; ++i) {
+			const double u0 = (i + 0.5) / kSamples, u1 = std::fmod((i + 0.5) * 0.6180339887498949, 1.0);   // a low-discrepancy pair
+			const double r = std::sqrt(u0), phi = 2.0 * kPi * u1;
+			double fr, fg, fb;
+			bxdf.f(wox, 0.0, woz, r * std::cos(phi), r * std::sin(phi), std::sqrt(std::max(0.0, 1.0 - u0)), fr, fg, fb);
+			sum[0] += fr; sum[1] += fg; sum[2] += fb;
+		}
+		for (int c = 0; c < 3; ++c) albedoAt[a][c] = kPi * sum[c] / kSamples;
+	}
+	double expected[3] = {0.0, 0.0, 0.0};
+	const int res = 64;   // the resolution expectChannelMeans renders at
+	const double tanHalfFov = std::tan(7.0 * kPi / 180.0), distance = 6.0;
+	for (int py = 0; py < res; ++py) {
+		for (int px = 0; px < res; ++px) {
+			const double x = (2.0 * (px + 0.5) / res - 1.0) * tanHalfFov, y = (2.0 * (py + 0.5) / res - 1.0) * tanHalfFov;
+			const double len = std::sqrt(x * x + y * y + 1.0), dx = x / len, dy = y / len, dz = -1.0 / len;
+			// ray from (0, 0, distance) against the unit sphere at the origin
+			const double b = distance * dz, disc = b * b - (distance * distance - 1.0);
+			if (disc < 0.0) { for (int c = 0; c < 3; ++c) expected[c] += 1.0; continue; }
+			const double t = -b - std::sqrt(disc);
+			const double hx = t * dx, hy = t * dy, hz = distance + t * dz;   // the hit point, which is also the unit normal
+			const double cosTheta = std::max(0.0, -(hx * dx + hy * dy + hz * dz));
+			const double deg = std::acos(std::min(1.0, cosTheta)) * 180.0 / kPi;
+			const int lo = std::min(static_cast<int>(deg), kAngles - 2);
+			const double w = std::min(1.0, deg - lo);
+			for (int c = 0; c < 3; ++c) expected[c] += albedoAt[lo][c] * (1.0 - w) + albedoAt[lo + 1][c] * w;
+		}
+	}
+	for (int c = 0; c < 3; ++c) expected[c] /= res * res;
+	std::printf("[measured-furnace] reference albedo %.4f %.4f %.4f\n", expected[0], expected[1], expected[2]);
 	expectChannelMeans("measured-furnace", 256, 4, expected, 0.03, 0.03);
 }
 

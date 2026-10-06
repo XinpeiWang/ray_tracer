@@ -374,10 +374,11 @@ struct MeasuredBxDF {
 		float wi_z = 2.0f * dot_wo_wm_s * wmz - float(woz);
 		if (wi_z <= 0.0f) return false;
 
-		// Step 5: evaluate spectral interpolant at (u_wm, phi_o, theta_o, lambda)
+		// Step 5: evaluate spectral interpolant at (ui, phi_o, theta_o, lambda), where ui is the luminance-warped point (u0, u1 here), as
+		// pbrt-v4 Sample_f does and as f() does via vndf.Invert. This used to evaluate at u_wm, which made sample_f disagree with f() by up to 26%.
 		float val[3];
 		for (int c = 0; c < 3; ++c)
-			val[c] = std::max(0.0f, data->spectra.Eval(u_wm_x, u_wm_y,
+			val[c] = std::max(0.0f, data->spectra.Eval(u0, u1,
 														phi_o, theta_o, lambda[c]));
 
 		// Step 6: BRDF normalization

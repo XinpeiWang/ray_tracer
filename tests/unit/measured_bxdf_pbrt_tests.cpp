@@ -573,3 +573,37 @@ TEST(MeasuredBxdfPbrtWiring, UnresolvableFilenameFallsBackToDiffuse) {
 		if (w.message.find("could not be found") != std::string::npos) sawWarning = true;
 	EXPECT_TRUE(sawWarning);
 }
+
+// sample_f and f()/pdf() must describe the same BRDF: E[f * cos / pdf] over sample_f's own samples is the directional albedo, and so is
+// pi * E[f()] over cosine-weighted directions. They disagreed by up to 26% on this table while sample_f evaluated the spectra at u_wm
+// instead of the luminance-warped point (pbrt-v4 Sample_f's `u`, and what f() reaches through vndf.Invert); they now agree to ~0.1%.
+TEST(MeasuredBxdfConsistency, SampleFAlbedoMatchesEvalFAlbedo) {
+	const std::string path = FindRepoFile("pbrt_scenes/synthetic-gold.bsdf");
+	if (path.empty()) GTEST_SKIP() << "pbrt_scenes/synthetic-gold.bsdf not found";
+	std::string err;
+	const auto data = measured_bxdf_io::GetMeasuredBRDFDataCached(path, err);
+	ASSERT_TRUE(data) << err;
+	MeasuredBxDF<double> bxdf(data.get(), 612.0f, 549.0f, 465.0f);
+	const double kPi = 3.141592653589793;
+	for (const double thetaDeg : {0.0, 30.0, 60.0}) {
+		const double wox = std::sin(thetaDeg * kPi / 180.0), woz = std::cos(thetaDeg * kPi / 180.0);
+		const int n = 100000;
+		double viaSample[3] = {0.0, 0.0, 0.0}, viaEval[3] = {0.0, 0.0, 0.0};
+		for (int i = 0; i < n; ++i) {
+			const double u0 = (i + 0.5) / n, u1 = std::fmod((i + 0.5) * 0.6180339887498949, 1.0);   // a low-discrepancy pair
+			double wx, wy, wz, fr, fg, fb, pd;
+			if (bxdf.sample_f(wox, 0.0, woz, static_cast<float>(u0), static_cast<float>(u1), wx, wy, wz, fr, fg, fb, pd) && pd > 0.0) {
+				viaSample[0] += fr * wz / pd; viaSample[1] += fg * wz / pd; viaSample[2] += fb * wz / pd;
+			}
+			const double r = std::sqrt(u0), phi = 2.0 * kPi * u1, cz = std::sqrt(std::max(0.0, 1.0 - u0));
+			double gr, gg, gb;
+			bxdf.f(wox, 0.0, woz, r * std::cos(phi), r * std::sin(phi), cz, gr, gg, gb);
+			viaEval[0] += gr; viaEval[1] += gg; viaEval[2] += gb;
+		}
+		for (int c = 0; c < 3; ++c) {
+			const double a = viaSample[c] / n, b = kPi * viaEval[c] / n;
+			EXPECT_GT(b, 0.05) << "theta_o " << thetaDeg << " channel " << c;
+			EXPECT_NEAR(a, b, 0.02 * b) << "theta_o " << thetaDeg << " channel " << c << ": sample_f and f() describe different BRDFs";
+		}
+	}
+}
