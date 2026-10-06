@@ -663,12 +663,12 @@ void MetalPocApp::loadPbrtScene() {
                 // Clear by default; loadPbrtSpheres() sets a real coefficient for a glass sphere
                 // that bounds a homogeneous medium.
                 if (m.roughness_u > 0.0 || m.roughness_v > 0.0) {
-                    // Rough (frosted) dielectric -> materialType 5 (GGX microfacet interface). Same alpha
-                    // convention as the conductor mapping above (the shader squares `roughness`).
+                    // Rough (frosted) dielectric -> materialType 5 (GGX microfacet interface). Same convention as the
+                    // conductor mapping above: the shader squares `roughness` into alpha, so store sqrt(alpha).
                     const double rr = std::max(m.roughness_u, m.roughness_v);
                     const float a = (float)(m.remapRoughness ? std::sqrt(rr) : rr);
                     return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/5u, /*ior=*/(float)m.ior,
-                                             PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/a};
+                                             PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/std::sqrt(a)};
                 }
                 return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/2u, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};

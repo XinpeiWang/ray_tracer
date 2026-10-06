@@ -171,10 +171,56 @@ inline bool shadeDispersiveDielectric(TriangleMaterial mat, float3 hitPoint, flo
     return true;
 }
 
+// Closed-form value and sampling density of the rough dielectric BSDF for a queried light direction - a port of the CPU's
+// RoughDielectricBxDF::f() / pdf() (src/shared/bxdfs_conductor.h), in the same "importance transport" convention the sampler below
+// uses (no eta^2 radiance factor: it cancels over a closed glass object). Local frame: z = the normal facing the ray, `view` = the
+// direction back to the ray's origin (z > 0), `light` = the queried direction (z > 0: reflection, z < 0: transmission). `eta` is
+// eta_i / eta_t (entering: 1 / ior, leaving: ior). f excludes the cosine; pdf includes the reflect/transmit branch probability.
+inline void roughDielectricFPdf(float3 view, float3 light, float eta, float alpha, thread float& f, thread float& pdf) {
+    f = 0.0;
+    pdf = 0.0;
+    if (view.z == 0.0 || light.z == 0.0) return;
+    const bool reflectLobe = light.z > 0.0;
+    float3 h = reflectLobe ? (view + light) : (eta * view + light);
+    const float hLen = length(h);
+    if (hLen < 1e-8) return;
+    h /= hLen;
+    if (h.z < 0.0) h = -h;
+    const float cosViewH = dot(view, h), cosLightH = dot(light, h);
+    if (cosViewH == 0.0 || cosLightH == 0.0) return;
+    // Back-facing microfacets are discarded, as in pbrt-v4 (the sampler never draws them).
+    if (cosViewH * view.z < 0.0 || cosLightH * light.z < 0.0) return;
+    const float D = ggxD(h, alpha, alpha);
+    const float G = ggxG(light, view, alpha, alpha);
+    const float F = frDielectric(cosViewH, 1.0 / eta);
+    // Density of the visible normals seen from `view`: G1(view) / |cos(view)| * D * |view . h|.
+    const float pdfWm = ggxG1(view, alpha, alpha) / abs(view.z) * D * abs(cosViewH);
+    if (reflectLobe) {
+        f = D * G * F / abs(4.0 * view.z * light.z);
+        pdf = pdfWm / (4.0 * abs(cosViewH)) * F;
+    } else {
+        const float denomBase = cosViewH + cosLightH / eta;
+        const float denomSq = denomBase * denomBase;
+        if (denomSq < 1e-12) return;
+        const float denom = denomSq * view.z * light.z;
+        if (abs(denom) < 1e-12) return;
+        f = D * (1.0 - F) * G * abs(cosViewH * cosLightH / denom) / (eta * eta);
+        pdf = pdfWm * (abs(cosLightH) / denomSq) * (1.0 - F) / (eta * eta);
+    }
+}
+
 inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 normal, float3 facingNormal,
                                   bool frontFace, float hitDistance,
+                                  constant Uniforms& uniforms,
+                                  device const AreaLight* lights,
+                                  texture2d<float, access::sample> pbrtAreaLightTexture,
+                                  sampler textureSampler,
+                                  intersector<instancing, triangle_data> isect,
+                                  instance_acceleration_structure accelStructure,
+                                  intersection_function_table<instancing, triangle_data> functionTable,
                                   thread float3& rayDir, thread float3& rayOrigin,
-                                  thread float3& throughput, thread bool& specularBounce, thread uint& rngState) {
+                                  thread float3& throughput, thread float3& radiance,
+                                  thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState) {
     // Rough (frosted) dielectric: the same Schlick-Fresnel reflect-vs-
     // refract decision as materialType 2, but taken about a GGX-VNDF-
     // SAMPLED microfacet normal instead of the smooth geometric one.
@@ -188,10 +234,46 @@ inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 n
     float3 woWorld = -rayDir;
     float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
     woLocal.z = max(woLocal.z, 0.0001);
+    float refractionRatio = frontFace ? (1.0 / mat.ior) : mat.ior;
+
+    // Colour absorption of the segment that just ended at this hit applies to everything leaving this vertex, so it goes first.
+    applyBeerLambertAbsorption(throughput, mat.color, frontFace, hitDistance);
+
+    // Next-event estimation to the area lights, MIS-weighted against this vertex's own BSDF sampling. Without it a small bright
+    // light seen through frosted glass is found only by chance (sparse fireflies, an under-converged mean). Glass that bounds a
+    // medium (conductorK.y > 0.5) keeps its old behaviour: the kernel carries the MIS state of a scattered path across its boundary.
+    const bool lightSampling = !(mat.conductorK.y > 0.5) && uniforms.lightCount > 0u && all(mat.emission == float3(0.0));
+    if (lightSampling) {
+        LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
+        const float3 toLight = ls.point - hitPoint;
+        const float distSq = dot(toLight, toLight);
+        const float dist = sqrt(distSq);
+        const float3 wiWorld = toLight / dist;
+        const float cosLight = dot(ls.normal, -wiWorld);
+        if (cosLight > 0.0 || (ls.twoSided != 0.0 && cosLight < 0.0)) {
+            const float3 wiLocal = float3(dot(wiWorld, tangent), dot(wiWorld, bitangent), dot(wiWorld, facingNormal));
+            float bsdfValue, bsdfDensity;
+            roughDielectricFPdf(woLocal, wiLocal, refractionRatio, alpha, bsdfValue, bsdfDensity);
+            if (bsdfValue > 0.0) {
+                ray shadowRay;
+                shadowRay.origin = hitPoint + (dot(wiWorld, normal) > 0.0 ? normal : -normal) * 0.001f;
+                shadowRay.direction = wiWorld;
+                shadowRay.min_distance = 0.001f;
+                shadowRay.max_distance = dist - 0.002f;
+                intersection_result<instancing, triangle_data> shadowResult =
+                    traceShadowAny(isect, shadowRay, accelStructure, functionTable);
+                if (shadowResult.type == intersection_type::none) {
+                    const float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
+                    const float weight = (pdfSolidAngle * pdfSolidAngle) / (pdfSolidAngle * pdfSolidAngle + bsdfDensity * bsdfDensity);
+                    radiance += throughput * bsdfValue * abs(wiLocal.z) * ls.emission / pdfSolidAngle * weight;
+                }
+            }
+        }
+    }
+
     float3 hLocal = sampleGGXVNDF(woLocal, alpha, alpha, rngState);
     float3 hWorld = normalize(hLocal.x * tangent + hLocal.y * bitangent + hLocal.z * facingNormal);
 
-    float refractionRatio = frontFace ? (1.0 / mat.ior) : mat.ior;
     float3 unitDir = normalize(rayDir);
     float cosTheta = clamp(dot(-unitDir, hWorld), 0.0, 1.0);
     float sinTheta = sqrt(max(0.0, 1.0 - cosTheta * cosTheta));
@@ -209,8 +291,15 @@ inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 n
     throughput *= roughDielectricG / max(roughDielectricG1, 1e-6);
     rayDir = newDir;
     rayOrigin = hitPoint + (dot(newDir, normal) > 0.0 ? normal : -normal) * 0.001f;
-    applyBeerLambertAbsorption(throughput, mat.color, frontFace, hitDistance);
-    specularBounce = true;
+    if (lightSampling) {
+        // The sampled direction's density, so an emitter it lands on is MIS-weighted against the light sampling above.
+        float sampledValue, sampledDensity;
+        roughDielectricFPdf(woLocal, newDirLocal, refractionRatio, alpha, sampledValue, sampledDensity);
+        bsdfPdf = sampledDensity;
+        specularBounce = false;
+    } else {
+        specularBounce = true;
+    }
     return true;
 }
 
