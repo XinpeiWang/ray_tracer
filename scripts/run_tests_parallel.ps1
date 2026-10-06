@@ -342,8 +342,10 @@ foreach ($job in $jobs) {
 	$failedMatch = [regex]::Match($content, '\[\s*FAILED\s*\]\s*(\d+)')
 	$passedCount = if ($passedMatch.Success) { [int]$passedMatch.Groups[1].Value } else { 0 }
 	# --gtest_brief=1 omits gtest's own "N FAILED TESTS" summary, so count the per-test "[  FAILED  ] Suite.Test (N ms)" lines too
-	# (without this a failing test left the shard "0 failed" and showed up only as an unexplained exit code 1).
-	$failedNames = @([regex]::Matches($content, '(?m)^\[\s*FAILED\s*\]\s+(\S+\.\S+)\s+\(\d+ ms\)') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
+	# (without this a failing test left the shard "0 failed" and showed up only as an unexplained exit code 1). A failing parameterized test prints
+# ", where GetParam() = N" before its timing, which the pattern allows for.
+	$failedNames = @([regex]::Matches($content, '(?m)^\[\s*FAILED\s*\]\s+(\S+\.\S+?)(?:, where [^
+]*?)?\s+\(\d+ ms\)') | ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)
 	$failedCount = [Math]::Max($(if ($failedMatch.Success) { [int]$failedMatch.Groups[1].Value } else { 0 }), $failedNames.Count)
 	$totalPassed += $passedCount
 	$totalFailed += $failedCount
