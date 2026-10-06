@@ -82,6 +82,12 @@ if(RT_BUILD_METAL)
     enable_language(OBJCXX)
 endif()
 
+# macOS always needs Objective-C++ for the native MP4 encoder (launcher/video_encoder_mac.mm), Metal or not.
+if(APPLE)
+    cmake_minimum_required(VERSION 3.16)
+    enable_language(OBJCXX)
+endif()
+
 set(CMAKE_CXX_STANDARD 17)
 set(CMAKE_CXX_STANDARD_REQUIRED ON)
 
@@ -127,6 +133,17 @@ add_executable(ray_tracer
 target_include_directories(ray_tracer PRIVATE ${CMAKE_SOURCE_DIR})
 target_link_libraries(ray_tracer PRIVATE cpu_renderer)
 set_target_properties(ray_tracer PROPERTIES OUTPUT_NAME "ray_tracer")
+
+# macOS: Video -> MP4 without ffmpeg. launcher/main.cpp assembles the frame sequence with AVFoundation (always present on
+# a Mac) and only falls back to an ffmpeg on PATH if that fails. A GUI app's render subprocess does not see Homebrew's PATH, so
+# relying on ffmpeg made every video fail on a Mac without it ("Video Assembly Failed", error 14).
+if(APPLE)
+    target_sources(ray_tracer PRIVATE launcher/video_encoder_mac.mm)
+    set_source_files_properties(launcher/video_encoder_mac.mm PROPERTIES COMPILE_FLAGS "-fobjc-arc")
+    target_compile_definitions(ray_tracer PRIVATE RT_HAVE_AVFOUNDATION_ENCODER)
+    target_link_libraries(ray_tracer PRIVATE "-framework AVFoundation" "-framework CoreMedia" "-framework CoreVideo"
+                          "-framework CoreGraphics" "-framework ImageIO" "-framework Foundation")
+endif()
 
 # ---------------------------------------------------------------------------
 # scene_metadata - shared library. Mirrors scene_metadata/scene_metadata.vcxproj:

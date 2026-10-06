@@ -72,6 +72,9 @@ extern char** environ;
 #include "launcher/camera_path.h"
 #include "launcher/launcher_args.h"   // Argument parsing
 #include "launcher/diagnostics.h"     // --diagnose
+#ifdef RT_HAVE_AVFOUNDATION_ENCODER
+#include "launcher/video_encoder_mac.h"   // Video -> MP4 via AVFoundation, no ffmpeg needed
+#endif
 
 // _putenv_s (MSVC CRT) has no POSIX equivalent - setenv() takes the same
 // name/value pair with an added overwrite flag, always 1 here to match
@@ -988,6 +991,22 @@ int main(int argc, char** argv) {
         std::cout << "ASSEMBLING VIDEO WITH FFMPEG" << std::endl;
         std::cout << "========================================" << std::endl;
 
+        // macOS: assemble with AVFoundation (built in, no ffmpeg needed - the GUI's render subprocess does not see a Homebrew
+        // ffmpeg anyway). The banner above is kept verbatim: the GUI keys its "Assembling video" status on it. ffmpeg stays as
+        // the fallback (and the only path on Windows/Linux).
+        bool video_done = false;
+#ifdef RT_HAVE_AVFOUNDATION_ENCODER
+        {
+            std::cout << "Encoding with AVFoundation (built into macOS, no ffmpeg needed)..." << std::endl;
+            std::string av_error;
+            if (encode_png_sequence_to_mp4_avfoundation(frames_dir.string(), converted, video_fps, video_path.string(), av_error)) {
+                video_done = true;
+            } else {
+                std::cerr << "WARNING: the built-in macOS encoder failed (" << av_error << "); trying ffmpeg instead..." << std::endl;
+            }
+        }
+#endif
+        if (!video_done) {
         // -g (one keyframe per second) and -movflags +faststart: without
         // them libx264's default ~250-frame GOP can leave a short render
         // with just its very first frame as a keyframe, and the moov atom
@@ -1026,6 +1045,7 @@ int main(int argc, char** argv) {
             std::cerr << "  " << manual_cmd << std::endl;
             return ERR_VIDEO_ASSEMBLY_FAILED;
         }
+        }   // if (!video_done): the ffmpeg fallback
 
         std::cout << "\n========================================" << std::endl;
         std::cout << "VIDEO COMPLETE!" << std::endl;

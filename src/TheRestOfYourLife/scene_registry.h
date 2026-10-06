@@ -1103,11 +1103,10 @@ inline int scene_count() {
 //     suits "linear": a straight sweep past the row keeps every item
 //     legible in turn, where an orbit-family path would pivot tightly
 //     around ONE point and cut the row's ends out of frame.
-//   - "Cornell-box-style enclosed room" keeps the global "orbit" default -
-//     a slow full rotation around a small box viewed from its open front is
-//     already the classic, iconic "beauty shot" for this exact scene shape
-//     (unlike H's large architectural interiors, which is why THOSE default
-//     to "tour" instead - a box this small has no interior to walk through).
+//   - "Cornell-box-style enclosed room" uses "tour" (see the first block of kIdOverrides below). This used to keep the
+//     global "orbit" default on the reasoning that a full rotation around a small box is a classic beauty shot, but
+//     the walls are opaque and unlit from outside, so an orbit leaves the open front for most of the video and
+//     renders solid black there (measured: 5 of 8 frames, CPU and Metal alike). "tour" stays in front of the opening.
 //   - "volumetric/fog" (nebulae, cloud media, glowing density blobs) gets
 //     its own category default, "spiral": a slow push-in orbit resolves
 //     noisy density and reveals depth better than showcase's punchier single
@@ -1124,6 +1123,20 @@ inline int scene_count() {
 // exceptions.
 inline const char* recommended_camera_path_for(const std::string& scene_id) {
     static const std::map<std::string, const char*> kIdOverrides = {
+        // Cornell-box-style ENCLOSED ROOMS (opaque walls, one open front, the light inside). An orbit/spiral/figure-8 puts
+        // the camera OUTSIDE those walls, where they are opaque and unlit, so most of such a video was solid black
+        // (measured: 5 of every 8 frames of the default A1 video, on CPU and Metal alike; this affected ~40 scenes).
+        // "tour" sways side to side in front of the opening, always looking in, and returns to its start.
+        {"A1", "tour"}, {"A8", "tour"},
+        {"B3", "tour"}, {"B5", "tour"}, {"B6", "tour"}, {"B8", "tour"}, {"B9", "tour"}, {"B12", "tour"},
+        {"B13", "tour"}, {"B15", "tour"}, {"B16", "tour"}, {"B22", "tour"}, {"B23", "tour"}, {"B24", "tour"},
+        {"C2", "tour"}, {"C3", "tour"}, {"C4", "tour"}, {"C5", "tour"}, {"C6", "tour"}, {"C9", "tour"},
+        {"C14", "tour"}, {"C15", "tour"}, {"C20", "tour"},
+        {"D5", "tour"}, {"D6", "tour"}, {"D8", "tour"}, {"D9", "tour"}, {"D10", "tour"}, {"D12", "tour"},
+        {"E1", "tour"}, {"F1", "tour"},
+        {"I1", "tour"}, {"I2", "tour"}, {"I4", "tour"}, {"I5", "tour"}, {"I6", "tour"}, {"I7", "tour"},
+        {"I8", "tour"}, {"I9", "tour"}, {"I10", "tour"},
+
         // H (Large Scenes) - see above for the pbrt-LookAt investigation.
         {"H16", "showcase"},
 
@@ -1146,12 +1159,12 @@ inline const char* recommended_camera_path_for(const std::string& scene_id) {
         // E3/E10 are a comparison row and a boundary-less camera-in-fog
         // scene respectively, neither of which has one coherent subject to
         // spiral in on.
-        {"E1", "orbit"}, {"E3", "linear"}, {"E10", "linear"},
+        {"E3", "linear"}, {"E10", "linear"},
 
         // F (Geometry, category default: showcase) - exceptions: F1 is a
         // Cornell box (orbit); F3/F14 are a spread-out multi-instance scene
         // and a comparison row, both better served by a straight sweep.
-        {"F1", "orbit"}, {"F3", "linear"}, {"F14", "linear"},
+        {"F3", "linear"}, {"F14", "linear"},
 
         // G (Models, category default: showcase) - the one comparison row.
         {"G12", "linear"},
