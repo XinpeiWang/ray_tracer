@@ -1109,7 +1109,11 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 			const QString appDir = QCoreApplication::applicationDirPath();
 			const asset_downloader::Manifest &manifest = asset_downloader::builtInManifest();
 			for (const QString &path : missing.missingPaths) {
-				if (const asset_downloader::Entry *e = manifest.find(appDir, path)) m_downloadableAssetJobs.append({*e, QDir::cleanPath(path)});
+				if (const asset_downloader::Entry *e = manifest.find(appDir, path)) {
+					// Into the per-user folder when there is one (works from a read-only disk image), else where the scene looks.
+					const QString root = asset_downloader::userAssetRoot();
+					m_downloadableAssetJobs.append({*e, root.isEmpty() ? QDir::cleanPath(path) : QDir::cleanPath(root + QLatin1Char('/') + e->relativePath)});
+				}
 			}
 			if (!m_downloadableAssetJobs.isEmpty()) {
 				qint64 bytes = 0;

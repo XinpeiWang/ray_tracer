@@ -40,6 +40,10 @@ struct Manifest {
 // Parses the manifest text. Malformed lines are skipped; a missing "base" line yields an empty manifest.
 Manifest parseManifest(const QString &text);
 
+// The per-user folder downloads are saved under (RAY_TRACER_USER_ASSETS, set by main()); "" if unset. A downloaded
+// file lives at <this>/<Entry::relativePath>, mirroring the application folder.
+QString userAssetRoot();
+
 // The manifest compiled into the application. RT_ASSET_BASE_URL in the environment replaces its base URL
 // (used by the self-test to download from a local server instead of GitHub).
 const Manifest &builtInManifest();

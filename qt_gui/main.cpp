@@ -7,6 +7,7 @@
 #include <QDir>
 #include <QCoreApplication>
 #include <QSettings>
+#include <QStandardPaths>
 #include "settings_keys.h"
 
 int main(int argc, char *argv[]) {
@@ -33,6 +34,13 @@ int main(int argc, char *argv[]) {
 	app.setApplicationName("Ray Tracer");
 	app.setApplicationVersion("2.0");
 	app.setOrganizationName("Ray Tracer Project");
+
+	// Where files the GUI downloads at run time are kept, and where the renderer looks for them after the folder next to
+	// the application (see pbrt_asset_check.h). Per-user, so it works when the app itself is read-only (a mounted disk
+	// image) or in a protected folder. Exported through the environment so the ray_tracer subprocess and the renderer
+	// libraries loaded into this process agree on it; an explicit value (tests, power users) wins.
+	if (!qEnvironmentVariableIsSet("RAY_TRACER_USER_ASSETS"))
+		qputenv("RAY_TRACER_USER_ASSETS", (QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/user_assets")).toUtf8());
 
 	// Language selection is restart-to-apply (see language_switch.cpp's own
 	// comment for why) - the translator has to be installed here, before

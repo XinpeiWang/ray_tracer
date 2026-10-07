@@ -602,3 +602,60 @@ TEST_F(TempTree, MissingMeshErrorNamesTheFileOnceNotOncePerObjGroup) {
 	EXPECT_EQ(r.error.find('#'), std::string::npos) << "the group suffix is not part of the file: " << r.error;
 	EXPECT_EQ(r.error.find("more)"), std::string::npos) << "one file, nothing to abbreviate: " << r.error;
 }
+
+// ---------------------------------------------------------------------------
+// RAY_TRACER_USER_ASSETS - the per-user folder the GUI downloads into. It stands in for the application folder, so a
+// scene that names models/x.obj (relative) is satisfied by <root>/models/x.obj when nothing is next to the app.
+// ---------------------------------------------------------------------------
+
+namespace {
+// Sets RAY_TRACER_USER_ASSETS and the working directory for one test, and restores both.
+class UserAssetEnv {
+public:
+	UserAssetEnv(const std::string &userRoot, const std::string &cwd) {
+		const char *old = std::getenv("RAY_TRACER_USER_ASSETS");
+		hadOld_ = old != nullptr;
+		if (old) old_ = old;
+		char buf[4096];
+		oldCwd_ = getcwd(buf, sizeof buf) ? buf : "";
+		setenv("RAY_TRACER_USER_ASSETS", userRoot.c_str(), 1);
+		if (chdir(cwd.c_str()) != 0) ADD_FAILURE() << "chdir failed";
+	}
+	~UserAssetEnv() {
+		if (!oldCwd_.empty() && chdir(oldCwd_.c_str()) != 0) ADD_FAILURE() << "could not restore the working directory";
+		if (hadOld_) setenv("RAY_TRACER_USER_ASSETS", old_.c_str(), 1);
+		else unsetenv("RAY_TRACER_USER_ASSETS");
+	}
+private:
+	bool hadOld_ = false;
+	std::string old_, oldCwd_;
+};
+}  // namespace
+
+#ifndef _WIN32   // setenv/chdir/getcwd as written; the behaviour itself is platform independent
+TEST_F(TempTree, MeshFoundUnderTheUserAssetRootWhenNotNextToTheApp) {
+	write("scene.pbrt", "Shape \"plymesh\" \"string filename\" [ \"models/x.obj\" ]\n");
+	std::system(("mkdir -p '" + path("userassets/models/") + "'").c_str());
+	write("userassets/models/x.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
+	UserAssetEnv env(path("userassets"), path(""));
+	const pbrt_load::LoadResult r = pbrt_load::loadFile("scene.pbrt");
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.scene.triangles.size(), 1u);
+}
+
+TEST_F(TempTree, MeshStillMissingWhenTheUserAssetRootLacksIt) {
+	write("scene.pbrt", "Shape \"plymesh\" \"string filename\" [ \"models/x.obj\" ]\n");
+	std::system(("mkdir -p '" + path("userassets/") + "'").c_str());
+	UserAssetEnv env(path("userassets"), path(""));
+	const pbrt_load::LoadResult r = pbrt_load::loadFile("scene.pbrt");
+	EXPECT_FALSE(r.ok);
+}
+
+TEST_F(TempTree, AssetCheckCountsAFileInTheUserAssetRootAsPresent) {
+	write("scene.pbrt", "Shape \"plymesh\" \"string filename\" [ \"models/x.obj\" ]\n");
+	std::system(("mkdir -p '" + path("userassets/models/") + "'").c_str());
+	write("userassets/models/x.obj", "x");
+	UserAssetEnv env(path("userassets"), path(""));
+	EXPECT_TRUE(pbrt_asset_check::check("scene.pbrt").missing.empty());
+}
+#endif

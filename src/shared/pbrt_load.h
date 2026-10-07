@@ -30,6 +30,7 @@
 
 #include "accelerator_override.h"
 #include "pbrt_flatten.h"
+#include "pbrt_asset_check.h"
 #include "pbrt_scene.h"
 #include "ply_mesh.h"
 #include "measured_bxdf_loader.h"
@@ -361,6 +362,14 @@ inline LoadResult loadFile(const std::string &path,
 			// missing-file message about a file that is plainly right there.
 			if (!m.ok) m = ply_mesh::loadFile(join(sceneDir, want) + ".gz");
 			if (!m.ok) m = ply_mesh::loadFile(want + ".gz");
+			// Last resort: the per-user folder downloaded files go to (pbrt_asset_check.h's userAssetRoot()).
+			if (!m.ok) {
+				const std::string alt = pbrt_asset_check::userAssetPath(sceneDir, want);
+				if (!alt.empty()) {
+					m = ply_mesh::loadFile(alt);
+					if (!m.ok) m = ply_mesh::loadFile(alt + ".gz");
+				}
+			}
 			if (!m.ok) return false;
 			positions = std::move(m.mesh.positions);
 			indices = std::move(m.mesh.indices);
