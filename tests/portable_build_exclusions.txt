@@ -1,0 +1,53 @@
+# Test files that are built by the MSBuild solution (tests/ray_tracer_tests.vcxproj) but deliberately NOT by the portable CMake target
+# (tests/CMakeLists.txt, which macOS and the hosted CI runners build). scripts/check_build_lists.py fails when a test file is in neither list.
+# Two reasons a file belongs here: it needs the OptiX SDK / CUDA Toolkit (the pbrt_gpu_*, wavefront_*, sppm_gpu_*, ... unit tests), or it is an
+# integration test that renders on a real GPU / needs scenes that are not in a checkout. Add a file here only with one of those reasons; a
+# pure-CPU test belongs in tests/CMakeLists.txt.
+integration/bdpt_first_render_test.cpp
+integration/cpu_gpu_comparison_tests.cpp
+integration/gallery_scenes_render_test.cpp
+integration/gpu_recursive_dispersion_test.cpp
+integration/live_preview_adaptive_sampling_test.cpp
+integration/live_preview_checkerboard_test.cpp
+integration/live_preview_geometry_skip_test.cpp
+integration/live_preview_nrc_test.cpp
+integration/live_preview_restir_firefly_test.cpp
+integration/live_preview_restir_gi_test.cpp
+integration/live_preview_restir_light_bvh_test.cpp
+integration/live_preview_svgf_test.cpp
+integration/material_cpu_gpu_parity_tests.cpp
+integration/mlt_first_render_test.cpp
+integration/optix_validation_sweep_test.cpp
+integration/pbrt_dof_override_test.cpp
+integration/pbrt_scene_render_test.cpp
+integration/render_tests.cpp
+integration/scene_loader_transform_cache_test.cpp
+integration/skip_pdf_material_brightness_tests.cpp
+integration/spectral_rgb_parity_tests.cpp
+integration/sppm_first_slice_test.cpp
+integration/sppm_gpu_first_slice_test.cpp
+unit/energy_conservation_tests.cpp
+unit/gpu_render_tests.cpp
+unit/interface_tests.cpp
+unit/pbrt_alpha_cutout_tests.cpp
+unit/pbrt_example_scenes_tests.cpp
+unit/pbrt_gpu_bilinear_light_tests.cpp
+unit/pbrt_gpu_disk_cylinder_tests.cpp
+unit/pbrt_gpu_instance_sphere_tests.cpp
+unit/pbrt_gpu_light_coverage_tests.cpp
+unit/pbrt_gpu_light_lookup_tests.cpp
+unit/pbrt_gpu_mix_material_tests.cpp
+unit/pbrt_gpu_quad_light_tests.cpp
+unit/pbrt_gpu_texture_tests.cpp
+unit/pbrt_gpu_triangle_light_tests.cpp
+unit/quad_light_estimator_bias_tests.cpp
+unit/scene_registry_tests.cpp
+unit/shadow_ray_tests.cpp
+unit/sppm_gpu_hash_grid_tests.cpp
+unit/sppm_gpu_mix_hash_tests.cpp
+unit/wavefront_nrc_math_tests.cpp
+unit/wavefront_restir_gi_tests.cpp
+unit/wavefront_restir_tests.cpp
+unit/wavefront_restir_volume_tests.cpp
+unit/wavefront_svgf_math_tests.cpp
+unit/wavefront_upscale_math_tests.cpp
