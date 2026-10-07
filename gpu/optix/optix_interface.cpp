@@ -983,6 +983,14 @@ static std::string sppm_gpu_unsupported_reason(const SceneData& scene, const Gpu
 		       "use --gpu, --gpu --wavefront, or --cpu --sppm instead if the motion blur "
 		       "matters for this render";
 	}
+	if (cameraExtra.kind == CameraKind::Realistic ||
+	    (cameraExtra.kind == CameraKind::Spherical && cameraExtra.sphericalMapping == 1)) {
+		// sppm_programs.cu's camera pass builds perspective (with thin-lens depth of field), orthographic and equirectangular spherical rays; a realistic
+		// multi-element lens or the equal-area spherical mapping would silently render as something else.
+		return "has a realistic-lens or equal-area spherical camera -- GPU SPPM's camera pass implements the "
+		       "perspective, orthographic and equirectangular spherical cameras only; use --gpu, "
+		       "--gpu --wavefront, or --cpu --sppm instead";
+	}
 	if (cameraExtra.cameraMediumSigmaT > 0.0f) {
 		// See GpuCameraParams::cameraMediumSigmaT's own comment (optix_types.h) -
 		// real on the recursive backend (optix_raygen.h's own call site) as of
@@ -1050,10 +1058,15 @@ static std::string sppm_gpu_unsupported_reason(const SceneData& scene, const Gpu
 		// and render a perfectly smooth dielectric everywhere, discarding
 		// the texture with no warning - reject loudly instead, matching
 		// every other unsupported combination in this function.
+		// A textured emitter (an AreaLightSource "filename" image, map_Ke): the camera pass reads the light's flat mat.emission, so the image would be dropped.
+		if (t == MaterialType::DiffuseLight && scene.materials[i].textureIdx >= 0) {
+			return "has a textured area light (material index " + std::to_string(i) + ") -- GPU SPPM reads a light's flat emission only; "
+			       "use the default path tracer instead if the light's image matters for this render";
+		}
 		if (t == MaterialType::RoughDielectric && scene.materials[i].textureIdx >= 0) {
 			return "uses a texture-bound \"roughness\" on a rough dielectric (material index " +
-			       std::to_string(i) + ") -- GPU SPPM's payload carries no UV data to sample "
-			       "it with; use the default path tracer instead if the texture matters for "
+			       std::to_string(i) + ") -- GPU SPPM only samples a texture for a diffuse "
+			       "colour; use the default path tracer instead if the texture matters for "
 			       "this render";
 		}
 		// Dispersive dielectric/rough_dielectric (MaterialData::dispersive_extra,
