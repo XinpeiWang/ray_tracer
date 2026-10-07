@@ -766,6 +766,25 @@ static ParaboloidShape<double> unit_paraboloid() {
 	return ParaboloidShape<double>::make(1.0, 0.0, 1.0, 2.0 * PI);
 }
 
+// area() is the exact surface of revolution of z = k r^2: the unit paraboloid (z in [0,1], full turn) is pi/6 * (5^1.5 - 1) = 5.330. It was 1.333 (and r^4/4 of the
+// true area in general); checked against a midpoint-rule integration of the surface for a radius other than 1 and a clipped z range and angle.
+TEST(ShapesParaboloid, AreaIsTheSurfaceOfRevolution) {
+	EXPECT_NEAR(unit_paraboloid().area(), PI / 6.0 * (std::pow(5.0, 1.5) - 1.0), 1e-9);
+	struct Case { double radius, zmin, zmax, phi; };
+	for (const Case& k : {Case{1.0, 0.0, 1.0, 2.0 * PI}, Case{0.8, 0.0, 2.0, 2.0 * PI}, Case{0.8, 0.5, 1.5, PI}, Case{2.0, 0.25, 3.0, 1.0}}) {
+		const auto p = ParaboloidShape<double>::make(k.radius, k.zmin, k.zmax, k.phi);
+		const double kk = k.zmax / (k.radius * k.radius);
+		const int N = 200000;
+		double numeric = 0.0;
+		const double r0 = std::sqrt(k.zmin / kk), r1 = std::sqrt(k.zmax / kk), dr = (r1 - r0) / N;
+		for (int i = 0; i < N; ++i) {
+			const double r = r0 + (i + 0.5) * dr;
+			numeric += k.phi * r * std::sqrt(1.0 + 4.0 * kk * kk * r * r) * dr;
+		}
+		EXPECT_NEAR(p.area(), numeric, 1e-6 * numeric) << "radius " << k.radius << " z [" << k.zmin << "," << k.zmax << "] phi " << k.phi;
+	}
+}
+
 TEST(ShapesParaboloid, IntersectMissesExactlyOnAxis) {
 	// A known, accepted gap (matching CylinderShape::intersect's own
 	// identical "a==0 -> no hit" simplification just above in this file,
@@ -884,6 +903,38 @@ TEST(ShapesParaboloid, PdfFromMatchesASuccessfulIntersection) {
 	SamplingContext<double> ctx{-5.0, 0.0, 0.5, 0, 0, 0};
 	const double pdf = p.pdf_from(ctx, 1.0, 0.0, 0.0);
 	EXPECT_GT(pdf, 0.0);
+}
+
+// sample_from() draws surface points and each one lies in exactly one direction from the shading point, so the solid-angle density pdf_from() reports must
+// integrate to 1 over the sphere of directions. A ray can cross a cone or a paraboloid twice (the sampler reaches the far side as readily as the near side), and
+// counting only the first crossing made the integral ~0.3: the path tracer's light sampling then read a floor next to a cone light 3.4x too bright.
+template <typename Shape>
+static double integratePdfFromOverTheSphere(const Shape& shape, double px, double py, double pz) {
+	const int nTheta = 720, nPhi = 1440;
+	double total = 0.0;
+	for (int i = 0; i < nTheta; ++i) {
+		const double theta = PI * (i + 0.5) / nTheta;
+		for (int j = 0; j < nPhi; ++j) {
+			const double phi = 2.0 * PI * (j + 0.5) / nPhi;
+			SamplingContext<double> ctx{px, py, pz, 0, 0, 0};
+			total += shape.pdf_from(ctx, std::sin(theta) * std::cos(phi), std::sin(theta) * std::sin(phi), std::cos(theta))
+			       * std::sin(theta) * (PI / nTheta) * (2.0 * PI / nPhi);
+		}
+	}
+	return total;
+}
+
+TEST(ShapesCone, PdfFromIntegratesToOneOverDirections) {
+	const auto c = ConeShape<double>::make(0.8, 2.5, 2.0 * PI);
+	// 3%: the density is singular (integrably) at the apex, so the midpoint grid is a little off there; the first-crossing-only version was near 0.3.
+	EXPECT_NEAR(integratePdfFromOverTheSphere(c, 3.0, 0.4, 1.1), 1.0, 0.03);
+	EXPECT_NEAR(integratePdfFromOverTheSphere(c, -1.5, 2.0, 0.3), 1.0, 0.03);
+}
+
+TEST(ShapesParaboloid, PdfFromIntegratesToOneOverDirections) {
+	const auto p = ParaboloidShape<double>::make(0.8, 0.0, 2.0, 2.0 * PI);
+	EXPECT_NEAR(integratePdfFromOverTheSphere(p, 3.0, 0.4, 1.1), 1.0, 0.02);
+	EXPECT_NEAR(integratePdfFromOverTheSphere(p, -1.5, 2.0, 0.3), 1.0, 0.02);
 }
 
 TEST(ShapesParaboloid, PdfFromZeroForMiss) {

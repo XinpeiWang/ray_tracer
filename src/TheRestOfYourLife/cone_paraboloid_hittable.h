@@ -108,6 +108,33 @@ class cone_hittable : public hittable {
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
 	}
 
+	// Area-UNIFORM sample of the cone's lateral surface, for light EMISSION (photon / light-subpath start points): the adapters that use this assume one constant
+	// position density per emitter (1 / area), which ConeShape::sample()'s z-uniform draw is not. The area up to height z is proportional to 1 - (1 - z/h)^2
+	// (the radius falls linearly to the apex), so z = h * (1 - sqrt(1 - u)). pdf_pos is 1 / (world area): the object-space area times the square of the
+	// transform's scale (exact for the similarity transforms the NEE sampling already assumes). The normal points outward, the side a one-sided emitter radiates from.
+	bool sample_area(double u1, double u2, AreaLightSample& out) const override {
+		if (!valid_ || !(shape_.height > 0.0) || !(shape_.radius > 0.0)) return false;
+		using namespace affine_transform;
+		const double h = shape_.height, k = shape_.radius / h;
+		const double area_obj = shape_.area();
+		if (!(area_obj > 0.0)) return false;
+		const double z = h * (1.0 - std::sqrt(1.0 - u1));
+		const double phi = u2 * shape_.phi_max;
+		const double r_local = shape_.radius - k * z;
+		const double cx = std::cos(phi), cy = std::sin(phi);
+		const double scale = apply_vector(o2w_, vec3(1, 0, 0)).length();
+		out.p = apply_point(o2w_, point3(r_local * cx, r_local * cy, z));
+		// Outward normal proportional to (x, y, k * r_local), as ConeShape::intersect().
+		vec3 n = apply_normal(w2o_, vec3(cx * r_local, cy * r_local, k * r_local));
+		if (r_local <= 1e-12) n = apply_normal(w2o_, vec3(0.0, 0.0, 1.0));   // the apex: the axis direction
+		const double len = n.length();
+		out.n = len > 0.0 ? n / len : vec3(0, 0, 1);
+		out.u = u2;
+		out.v = z / h;
+		out.pdf_pos = 1.0 / (area_obj * scale * scale);
+		return true;
+	}
+
 	// Real entry/exit interval for a MediumInterface-wrapped cone - see
 	// hittable::volume_bounds()'s own comment for why this is needed at
 	// all (the generic constant_medium two-hit() fallback is wrong for
@@ -259,6 +286,33 @@ class paraboloid_hittable : public hittable {
 		const vec3 dir_obj = apply_vector(w2o_, direction);
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
+	}
+
+	// Area-UNIFORM sample of the paraboloid's surface for light EMISSION - see cone_hittable::sample_area(). dA/dz is proportional to sqrt(k z + 1/4), so the
+	// area up to z is proportional to (k z + 1/4)^(3/2) - (k z_min + 1/4)^(3/2), inverted here for z. pdf_pos = 1 / (world area).
+	bool sample_area(double u1, double u2, AreaLightSample& out) const override {
+		if (!valid_ || !(shape_.radius > 0.0) || !(shape_.z_max > shape_.z_min)) return false;
+		using namespace affine_transform;
+		const double k = shape_.z_max / (shape_.radius * shape_.radius);
+		const double area_obj = shape_.area();
+		if (!(area_obj > 0.0) || !(k > 0.0)) return false;
+		const double lo = std::max(0.0, k * shape_.z_min + 0.25), hi = std::max(0.0, k * shape_.z_max + 0.25);
+		const double lo15 = std::pow(lo, 1.5), hi15 = std::pow(hi, 1.5);
+		const double s = std::pow(lo15 + u1 * (hi15 - lo15), 2.0 / 3.0);
+		const double z = std::min(shape_.z_max, std::max(shape_.z_min, (s - 0.25) / k));
+		const double phi = u2 * shape_.phi_max;
+		const double r = std::sqrt(std::max(0.0, z / k));
+		const double cx = std::cos(phi), cy = std::sin(phi);
+		const double scale = apply_vector(o2w_, vec3(1, 0, 0)).length();
+		out.p = apply_point(o2w_, point3(r * cx, r * cy, z));
+		// Outward normal proportional to (x, y, -1/(2k)), as ParaboloidShape::intersect().
+		vec3 n = apply_normal(w2o_, vec3(r * cx, r * cy, -1.0 / (2.0 * k)));
+		const double len = n.length();
+		out.n = len > 0.0 ? n / len : vec3(0, 0, -1);
+		out.u = u2;
+		out.v = (z - shape_.z_min) / (shape_.z_max - shape_.z_min);
+		out.pdf_pos = 1.0 / (area_obj * scale * scale);
+		return true;
 	}
 
 	// Real entry/exit interval for a MediumInterface-wrapped paraboloid -

@@ -1057,12 +1057,25 @@ struct ConeShape {
 		                   T(1e-4),std::numeric_limits<T>::max());
 		if(!hit) return T(0);
 		const T k = radius / height;
-		T z = hit->v * height;
-		T r_local = radius - k*z;
-		T dAdz = phi_max * r_local * std::sqrt(T(1) + k*k);
-		T pdfAreaAtHit = (dAdz > T(0)) ? (T(1) / height) / dAdz : T(0);
-		return solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
-		                                 wix, wiy, wiz, hit->t, pdfAreaAtHit);
+		// The area density sample() draws a point at height z with (see there), evaluated at a hit.
+		const auto pdfAreaAt = [&](const ShapeHit<T>& h) {
+			T z = h.v * height;
+			T r_local = radius - k*z;
+			T dAdz = phi_max * r_local * std::sqrt(T(1) + k*k);
+			return (dAdz > T(0)) ? (T(1) / height) / dAdz : T(0);
+		};
+		T pdf = solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
+		                                  wix, wiy, wiz, hit->t, pdfAreaAt(*hit));
+		// A ray can cross the cone twice (the near and the far side of its lateral surface). An integrator that samples a DIRECTION toward the shape and credits
+		// whatever emitter the ray hits first (this renderer's NEE, via hittable::random()/pdf_value()) is unbiased only if the direction's density counts BOTH
+		// crossings, because sample() lands on the far side as readily as on the near one - see CylinderShape::pdf_from(), which already does this. With the first
+		// crossing alone a floor next to a cone light read 3.4x too bright (closed form 0.4255, path tracer 1.4549) and --sppm 3x.
+		auto hit2 = intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
+		                      hit->t + T(1e-4), std::numeric_limits<T>::max());
+		if (hit2)
+			pdf += solid_angle_pdf_from_hit(hit2->nx, hit2->ny, hit2->nz,
+			                                 wix, wiy, wiz, hit2->t, pdfAreaAt(*hit2));
+		return pdf;
 	}
 };
 
@@ -1095,10 +1108,11 @@ struct ParaboloidShape {
 		return ParaboloidShape{radius, z_min, z_max, phi_max_rad};
 	}
 
-	// pbrt-v4 Paraboloid::Area (radius2 = radius*radius, k=zmax/radius2):
-	//   Area = (radius2*radius2*phiMax/(6*k*k)) *
-	//          (pow(k*zmax+0.25, 1.5) - pow(k*zmin+0.25, 1.5))
-	// - the exact surface-area-of-revolution integral of r(z)=sqrt(z/k).
+	// Exact surface area of the paraboloid z = k r^2 (k = zmax/radius^2) between z_min and z_max, over phi_max: the surface of revolution of r(z) = sqrt(z/k),
+	//   Area = phi_max * integral sqrt(z/k + 1/(4k^2)) dz = (2 phi_max / (3 k^2)) * ((k zmax + 1/4)^(3/2) - (k zmin + 1/4)^(3/2)).
+	// This is pbrt-v4's Paraboloid::Area (its k is 4x ours: (r^4 phiMax / (12 zmax^2)) * ((k zmax + 1)^1.5 - (k zmin + 1)^1.5)). It used to use the
+	// coefficient r^4 phi_max / (6 k^2) where 2 phi_max / (3 k^2) belongs - r^4/4 of the true area (a unit paraboloid z = r^2, z in [0,1], full turn, is 5.330, not
+	// 1.333). Nothing depended on it until the paraboloid became an emitter whose emission density is 1 / area.
 	CPU_GPU T area() const {
 		if (radius == T(0)) return T(0);
 		T radius2 = radius*radius;
@@ -1106,7 +1120,7 @@ struct ParaboloidShape {
 		T lo = k*z_min + T(0.25), hi = k*z_max + T(0.25);
 		lo = (lo < T(0)) ? T(0) : lo;
 		hi = (hi < T(0)) ? T(0) : hi;
-		return (radius2*radius2*phi_max / (T(6)*k*k)) *
+		return (T(2)*phi_max / (T(3)*k*k)) *
 			   (std::pow(hi, T(1.5)) - std::pow(lo, T(1.5)));
 	}
 
@@ -1219,11 +1233,22 @@ struct ParaboloidShape {
 		                   T(1e-4),std::numeric_limits<T>::max());
 		if(!hit) return T(0);
 		const T k = z_max / (radius*radius);
-		T z = z_min + hit->v * (z_max - z_min);
-		T dAdz = (phi_max / k) * safe_sqrt(k*z + T(0.25));
-		T pdfAreaAtHit = (dAdz > T(0)) ? (T(1) / (z_max - z_min)) / dAdz : T(0);
-		return solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
-		                                 wix, wiy, wiz, hit->t, pdfAreaAtHit);
+		// The area density sample() draws a point at height z with (see there), evaluated at a hit.
+		const auto pdfAreaAt = [&](const ShapeHit<T>& h) {
+			T z = z_min + h.v * (z_max - z_min);
+			T dAdz = (phi_max / k) * safe_sqrt(k*z + T(0.25));
+			return (dAdz > T(0)) ? (T(1) / (z_max - z_min)) / dAdz : T(0);
+		};
+		T pdf = solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
+		                                  wix, wiy, wiz, hit->t, pdfAreaAt(*hit));
+		// Both crossings of a ray count, as in ConeShape::pdf_from() and CylinderShape::pdf_from() (see there): the sampler reaches the far side of the bowl as
+		// readily as the near one, so the direction's density is their sum.
+		auto hit2 = intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
+		                      hit->t + T(1e-4), std::numeric_limits<T>::max());
+		if (hit2)
+			pdf += solid_angle_pdf_from_hit(hit2->nx, hit2->ny, hit2->nz,
+			                                 wix, wiy, wiz, hit2->t, pdfAreaAt(*hit2));
+		return pdf;
 	}
 };
 

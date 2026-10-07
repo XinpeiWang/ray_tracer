@@ -295,25 +295,7 @@ loader and no longer match the code:
   pbrt-v3's own exact closed-form inverse-CDF, still statistically unbiased)
   and real `MediumInterface` support (wrapped in a `constant_medium` via the
   same shape-agnostic `addMediumIfPresent()` helper Sphere/Disk/Cylinder
-  already use). **AreaLightSource reach, precisely**: `random()`/
-  `pdf_value()` are enough for the default CPU path tracer's own NEE (and
-  CPU SPPM's direct-lighting pass), but neither shape overrides
-  `hittable::sample_area()` - so an emissive cone/paraboloid is invisible to
-  BDPT/MLT's own light-sampling (`bdpt_adapter.h` builds its light
-  distribution strictly from `sample_area()`, with no NEE-only fallback)
-  and to SPPM's photon-emission pass (`sppm_adapter.h`'s identical filter) -
-  a --bdpt/--mlt render of such a scene shows zero contribution from that
-  light, and SPPM gets direct lighting from it but no caustic/photon
-  contribution. `disk_hittable`/`cylinder_hittable` had the identical gap
-  until they gained `sample_area()` (area-uniform over the annulus/arc and
-  the lateral surface, `pdf_pos` = 1 / world area) and both adapters learned
-  to read their material (`hittable_material()`): a scene lit by them rendered
-  with no light at all under `--bdpt`/`--mlt`/`--sppm` (0.001 of the path
-  tracer on the lit surfaces) and now agrees with it (`disk-cylinder-light.pbrt`,
-  BDPT/MLT/SPPM/`--simplepath` within ~1%). Cone and paraboloid emitters
-  remain invisible there. `--lightpath` reads -3% on the lit surfaces and +12%
-  on the directly visible cylinder (its direct-visibility formula, pbrt's own,
-  converts through the shape's `pdf_value()`; not investigated). **GPU (both backends) does not support either shape at all** - a scene
+  already use). **AreaLightSource reach, precisely**: both shapes now override `hittable::sample_area()` (area-UNIFORM, by the inverse CDF of each shape's area-by-height: the cone's `z = h (1 - sqrt(1 - u))`, the paraboloid's from `(k z + 1/4)^(3/2)`; `pdf_pos` = 1 / world area), and both BDPT/MLT/SPPM adapters read their material (`hittable_material()`), so an emissive cone/paraboloid lights the scene under `--bdpt`, `--mlt`, `--sppm`, `--simplepath` and `--lightpath` as well as the default path tracer. They were invisible to all of those (a scene lit only by them rendered with no light), the same gap `disk_hittable`/`cylinder_hittable` had until they gained `sample_area()` (`disk-cylinder-light.pbrt`, within ~1%). Two defects surfaced once they could be compared: `ParaboloidShape::area()` used the wrong coefficient (r^4/4 of the true area: a unit paraboloid z = r^2 is 5.330, it returned 1.333; nothing had used it), and - older, and affecting the default path tracer and CPU SPPM - `ConeShape::pdf_from()`/`ParaboloidShape::pdf_from()` counted only the FIRST crossing of a ray with the shape, though `sample()` reaches the far side as readily as the near one, so the density of a direction was too low and a floor next to a cone light read 3.4x too bright (closed form 0.4255 at a probe point, path tracer 1.4549, BDPT 0.4255) and 3x under SPPM; `CylinderShape::pdf_from()` already summed both crossings. Now the path tracer, BDPT, MLT and SPPM agree to 0.2% on `cone-paraboloid-lights.pbrt`, and `--lightpath` reads 100.0-100.1% on a directly visible cone and paraboloid (`lightpath-visible-*-light.pbrt`). **GPU (both backends) does not support either shape at all** - a scene
   using one warns at load time and the shape is silently absent from the
   GPU render (`scene_builder.cpp`), matching how this loader already handles
   every other CPU-only shape gap. One ray direction exactly on the

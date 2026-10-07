@@ -138,6 +138,7 @@
 #include "onb.h"
 #include "quad.h"
 #include "disk_cylinder_hittable.h"
+#include "cone_paraboloid_hittable.h"
 #include "sphere.h"
 #include "sphere_clipped_hittable.h"
 #include "camera.h"
@@ -1474,6 +1475,8 @@ class BDPTSceneAdapter {
 		if (auto t = std::dynamic_pointer_cast<triangle>(h)) return t->get_material();
 		if (auto d = std::dynamic_pointer_cast<disk_hittable>(h)) return d->get_material();
 		if (auto c = std::dynamic_pointer_cast<cylinder_hittable>(h)) return c->get_material();
+		if (auto cn = std::dynamic_pointer_cast<cone_hittable>(h)) return cn->get_material();
+		if (auto pb = std::dynamic_pointer_cast<paraboloid_hittable>(h)) return pb->get_material();
 		return nullptr;
 	}
 
