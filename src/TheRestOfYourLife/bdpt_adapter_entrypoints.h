@@ -190,12 +190,13 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 				// ever landing outside the crop rect either).
 				const bool inCrop = in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1);
 				double sum[3] = { 0.0, 0.0, 0.0 };
+				double weightSum = 0.0;
 				for (int s = 0; s < spp; ++s) {
-					double px = (ix + random_double()) / width;
-					double py = (iy + random_double()) / height;
-
-					double cam_p[3], cam_n[3], ray_d[3];
-					if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) continue;
+					// The camera ray's film position is importance-sampled through the scene's reconstruction filter (pbrt-v4 BDPT's own
+					// GetCameraSample): the camera-path estimate of a pixel is sum(w L) / sum(w). BDPT used to shoot every ray through a uniform box
+					// pixel, so its image was sharper than the path tracer's wherever the scene asks for a wider filter (the default Gaussian).
+					double cam_p[3], cam_n[3], ray_d[3], w = 1.0;
+					if (!scene.PixelToRayFiltered(ix, iy, random_double(), random_double(), cam_p, ray_d, cam_n, w)) continue;
 
 					double L[3];
 					BDPTLi<double>(cam_p, cam_n, ray_d, maxDepth, scene,
@@ -205,14 +206,16 @@ inline void bdpt_render_with_adapter(const BDPTSceneAdapter& scene, int width, i
 					for (int c = 0; c < 3; ++c) {
 						double v = L[c];
 						if (!std::isfinite(v) || v < 0.0) v = 0.0;   // firefly/NaN guard, matches cpu_interface's path tracer
-						sum[c] += v;
+						sum[c] += w * v;
 					}
+					weightSum += w;
 				}
 				if (!inCrop) continue;
 				int idx = (iy * width + ix) * 3;
-				out_rgb[idx + 0] = sum[0] / spp;
-				out_rgb[idx + 1] = sum[1] / spp;
-				out_rgb[idx + 2] = sum[2] / spp;
+				const double norm = weightSum > 0.0 ? 1.0 / weightSum : 0.0;
+				out_rgb[idx + 0] = sum[0] * norm;
+				out_rgb[idx + 1] = sum[1] * norm;
+				out_rgb[idx + 2] = sum[2] * norm;
 			}
 		}
 	};
@@ -571,21 +574,25 @@ inline void parallel_render_tile_loop(int width, int height, int spp, std::vecto
 			for (int ix = 0; ix < width; ++ix) {
 				if (!in_crop_rect(ix, iy, cropX0, cropX1, cropY0, cropY1)) continue;
 				double sum[3] = {0.0, 0.0, 0.0};
+				double weightSum = 0.0;
 				for (int s = 0; s < spp; ++s) {
-					double px = (ix + random_double()) / width;
-					double py = (iy + random_double()) / height;
+					// perSampleLi shoots a camera ray whose film position is importance-sampled through the scene's reconstruction filter (u0, u1)
+					// and reports that sample's filter weight; the pixel is sum(w L) / sum(w), as in the path tracer and pbrt-v4.
 					double L[3] = {0.0, 0.0, 0.0};
-					if (!perSampleLi(px, py, L)) continue;
+					double w = 1.0;
+					if (!perSampleLi(ix, iy, random_double(), random_double(), L, w)) continue;
 					for (int c = 0; c < 3; ++c) {
 						double v = L[c];
 						if (!std::isfinite(v) || v < 0.0) v = 0.0;
-						sum[c] += v;
+						sum[c] += w * v;
 					}
+					weightSum += w;
 				}
 				int idx = (iy * width + ix) * 3;
-				out_rgb[idx + 0] = sum[0] / spp;
-				out_rgb[idx + 1] = sum[1] / spp;
-				out_rgb[idx + 2] = sum[2] / spp;
+				const double norm = weightSum > 0.0 ? 1.0 / weightSum : 0.0;
+				out_rgb[idx + 0] = sum[0] * norm;
+				out_rgb[idx + 1] = sum[1] * norm;
+				out_rgb[idx + 2] = sum[2] * norm;
 			}
 		}
 	};
@@ -654,9 +661,9 @@ inline void randomwalk_render_with_adapter(const BDPTSceneAdapter& scene, int wi
                                             int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	auto rand2d = []() { return std::pair<double, double>(random_double(), random_double()); };
 	parallel_render_tile_loop(width, height, spp, out_rgb, cropX0, cropX1, cropY0, cropY1,
-		[&](double px, double py, double L[3]) {
+		[&](int ix, int iy, double u0, double u1, double L[3], double& w) {
 			double cam_p[3], cam_n[3], ray_d[3];
-			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) return false;
+			if (!scene.PixelToRayFiltered(ix, iy, u0, u1, cam_p, ray_d, cam_n, w)) return false;
 			RandomWalkLi<double>(cam_p, ray_d, BDPTCosineBsdfView(scene), maxDepth, rand2d, L);
 			return true;
 		});
@@ -668,9 +675,9 @@ inline void ao_render_with_adapter(const BDPTSceneAdapter& scene, int width, int
                                     int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	auto rand2d = []() { return std::pair<double, double>(random_double(), random_double()); };
 	parallel_render_tile_loop(width, height, spp, out_rgb, cropX0, cropX1, cropY0, cropY1,
-		[&](double px, double py, double L[3]) {
+		[&](int ix, int iy, double u0, double u1, double L[3], double& w) {
 			double cam_p[3], cam_n[3], ray_d[3];
-			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) return false;
+			if (!scene.PixelToRayFiltered(ix, iy, u0, u1, cam_p, ray_d, cam_n, w)) return false;
 			AOLi<double>(cam_p, ray_d, scene, maxDist, cosSample, illumScale, illumRgb, rand2d, L);
 			return true;
 		});
@@ -683,9 +690,9 @@ inline void simplepath_render_with_adapter(const BDPTSceneAdapter& scene, int wi
 	auto rand2d = []() { return std::pair<double, double>(random_double(), random_double()); };
 	auto rand1d = []() { return random_double(); };
 	parallel_render_tile_loop(width, height, spp, out_rgb, cropX0, cropX1, cropY0, cropY1,
-		[&](double px, double py, double L[3]) {
+		[&](int ix, int iy, double u0, double u1, double L[3], double& w) {
 			double cam_p[3], cam_n[3], ray_d[3];
-			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) return false;
+			if (!scene.PixelToRayFiltered(ix, iy, u0, u1, cam_p, ray_d, cam_n, w)) return false;
 			SimplePathLi<double>(cam_p, ray_d, BDPTCosineBsdfView(scene), maxDepth, sampleLights, sampleBsdf, rand2d, rand1d, L);
 			return true;
 		});
@@ -695,9 +702,9 @@ inline void simplevolpath_render_with_adapter(const BDPTSceneAdapter& scene, int
                                                int maxDepth, std::vector<double>& out_rgb,
                                                int cropX0 = 0, int cropX1 = -1, int cropY0 = 0, int cropY1 = -1) {
 	parallel_render_tile_loop(width, height, spp, out_rgb, cropX0, cropX1, cropY0, cropY1,
-		[&](double px, double py, double L[3]) {
+		[&](int ix, int iy, double u0, double u1, double L[3], double& w) {
 			double cam_p[3], cam_n[3], ray_d[3];
-			if (!scene.PixelToRay(px, py, cam_p, ray_d, cam_n)) return false;
+			if (!scene.PixelToRayFiltered(ix, iy, u0, u1, cam_p, ray_d, cam_n, w)) return false;
 			SimpleVolPathLi<double>(cam_p, ray_d, scene, maxDepth, L);
 			return true;
 		});
