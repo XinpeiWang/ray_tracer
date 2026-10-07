@@ -1,5 +1,8 @@
-models/*.obj filter=lfs diff=lfs merge=lfs -text
-models/**/*.png filter=lfs diff=lfs merge=lfs -text
+# models/ is NOT stored in Git LFS any more: the files under models/ at HEAD are ordinary blobs (the large scene
+# assets - Sponza, Bistro and the rest - are not in the repository, see README "Mesh & Texture Credits"). The two
+# `filter=lfs` rules that used to be here (models/*.obj, models/**/*.png) matched those plain blobs, so every fresh
+# clone said "Encountered 22 files that should have been pointers, but weren't" and showed all 22 models as modified
+# in `git status` straight away. Commits from before the move still contain LFS pointers for some models.
 
 # Shell scripts must stay LF-only regardless of a contributor's global
 # core.autocrlf - a CRLF shebang/body breaks bash execution outright on
