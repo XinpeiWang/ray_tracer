@@ -72,6 +72,7 @@ namespace SceneMetadataClient { struct SceneMetadata; }
 // header don't need realtime_preview_session.h's QThread/DLL-loading
 // machinery dragged in just to see the member declaration.
 class RealtimePreviewSession;
+class SceneBuilderWidget;
 
 
 // ============================================================================
@@ -349,6 +350,7 @@ private:
 	// hand-duplicating the same condition at each call site.
 	void updateRenderOptionsEnabled();
 	void createPreviewTab();
+	void createSceneBuilderTab();
 	void createProgressTab();
 	void createLogTab();
 	void createDiagnosticsTab();
@@ -1682,6 +1684,7 @@ private:
 	// scrolls in its own bounded area instead of growing the whole
 	// sidebar and pushing the Open Folder/Viewer buttons out of view.
 	QScrollArea *m_previewTechniqueScroll = nullptr;
+	SceneBuilderWidget *m_sceneBuilder = nullptr;  // the Scene Builder tab (scene_builder_widget.h)
 	int m_previewTabIndex = -1;         // Index of the Preview tab within m_tabWidget
 	// Counts repeat sub-tab titles ("Cornell Box" -> "Cornell Box (2)") so
 	// re-rendering the same scene/preset in one session doesn't produce

@@ -350,6 +350,9 @@ struct LaunchArgs {
 	int    samples_per_pixel = kDefaultSamplesPerPixel;
 	int    max_ray_depth     = kDefaultMaxDepth;
 	std::string scene_id     = kDefaultSceneId;
+	// A .pbrt file named in the scene_id position instead of an id (a scene made in the GUI's Scene Builder, or any pbrt-v4 file). main.cpp registers it
+	// with cpu_register_scene_file() and sets scene_id to the id it gets; empty when the scene was named by id.
+	std::string scene_file;
 	double cam_x             = kDefaultCameraX;
 	double cam_y             = kDefaultCameraY;
 	double cam_z             = kDefaultCameraZ;
@@ -403,6 +406,7 @@ struct LaunchArgs {
 inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 							   bool* help_requested = nullptr) {
 	std::set<int> consumed_args;
+	int explicit_height = 0;  // --height N: a non-square image (default: square, as high as the width is wide)
 
 	for (int i = 1; i < argc; ++i) {
 		const std::string arg = argv[i];
@@ -757,6 +761,16 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 		} else if (arg == "--lightpath") {
 			out.use_lightpath = true;
 			consumed_args.insert(i);
+		} else if (arg == "--height" && i + 1 < argc) {
+			try {
+				const int h = std::stoi(argv[i + 1]);
+				if (h > 0) explicit_height = h;
+				consumed_args.insert(i);
+				consumed_args.insert(i + 1);
+				++i;
+			} catch (const std::exception&) {
+				std::cerr << "Invalid --height, using the width\n";
+			}
 		} else if (arg == render_flags::kVideo) {
 			out.video_mode = true;
 			consumed_args.insert(i);
@@ -1034,11 +1048,13 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 					  << "               V6/sponza-flythrough. Any of those five flags placed AFTER\n"
 					  << "               --video-preset on the command line overrides just that one field.\n"
 					  << "  --help,-h  : Show this help message\n"
-					  << "  width      : Image width (default " << kDefaultWidth << ", square aspect)\n"
+					  << "  width      : Image width (default " << kDefaultWidth << ", square unless --height is given)\n"
+					  << "  --height N : Image height, for a non-square image (default: the width)\n"
 					  << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n"
 					  << "  max_depth  : Max ray depth (default " << kDefaultMaxDepth << ")\n"
 					  << "  scene_id   : Scene selector, category letter + number (e.g. \"A1\"=Cornell Box,\n"
-					  << "               default " << kDefaultSceneId << " - see src/TheRestOfYourLife/scene_registry.h)\n"
+					  << "               default " << kDefaultSceneId << " - see src/TheRestOfYourLife/scene_registry.h),\n"
+					  << "               or the path of a .pbrt file (e.g. one saved by the GUI's Scene Builder)\n"
 					  << "  cam_x/y/z  : Camera position - if omitted, uses the selected scene's own\n"
 					  << "               recommended camera (see src/TheRestOfYourLife/scene_registry.h),\n"
 					  << "               not a single fixed default across every scene\n";
@@ -1085,7 +1101,7 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 	};
 
 	if (positional_args.size() >= 1) parse_positive_int(positional_args[0], out.image_width);
-	out.image_height = out.image_width;
+	out.image_height = explicit_height > 0 ? explicit_height : out.image_width;
 	if (positional_args.size() >= 2) parse_positive_int(positional_args[1], out.samples_per_pixel);
 	if (positional_args.size() >= 3) parse_positive_int(positional_args[2], out.max_ray_depth);
 
@@ -1095,7 +1111,12 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 		const bool valid = id.size() >= 2 && id[0] >= 'A' && id[0] <= 'Z' &&
 			std::all_of(id.begin() + 1, id.end(),
 				[](unsigned char c) { return std::isdigit(c) != 0; });
-		if (valid) {
+		// Or the path of a .pbrt file.
+		std::string ext = id.size() >= 5 ? id.substr(id.size() - 5) : std::string();
+		std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+		if (!valid && ext == ".pbrt") {
+			out.scene_file = id;
+		} else if (valid) {
 			out.scene_id = id;
 		} else {
 			std::cerr << "Invalid scene_id \"" << id

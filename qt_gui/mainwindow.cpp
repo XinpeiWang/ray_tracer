@@ -1104,6 +1104,7 @@ void MainWindow::setupUI() {
 	m_tabWidget = new ExpandingTabWidget(this);
 	createSettingsTab();
 	createRenderOptionsTab();
+	createSceneBuilderTab();
 	createPreviewTab();
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	initLivePreviewSession();

@@ -47,6 +47,12 @@ build/ray_tracer          --cpu --output cornell.png 400 128 8 A1      # macOS a
 
 That renders the Cornell box (A1) at 400 px with 128 samples per pixel and depth 8: about 5 seconds on a 16-core desktop CPU (the build took under a minute). The arguments are `[width] [samples] [max depth] [scene id]`; `--gpu` on a build without GPU support falls back to the CPU with a warning. Add `-DRT_BUILD_GPU=ON` (Windows with CUDA and OptiX) or `-DRT_BUILD_METAL=ON` (macOS) to the first `cmake` line for the GPU backends, or use the portable release below.
 
+## 🧱 Build your own scene
+
+The GUI has a **Scene Builder** tab: add spheres, boxes, quads, cylinders, cones, meshes and lights, pick materials (matte, metal, glass, glossy paint, translucent) and colours, drag things around in a top, front or side view, press Preview, and save the result as an ordinary `.pbrt` file that the renderer and any pbrt-compatible tool can read. See [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
+
+![The Scene Builder tab](docs/gallery/scene-builder.jpg)
+
 ## 📦 Download & Use (No Build Required!)
 
 **Want to try it without building?** Download the portable release:

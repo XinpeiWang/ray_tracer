@@ -14,6 +14,8 @@
 #include <cmath>
 
 #include <QTabBar>
+#include <QStatusBar>
+#include "scene_builder_widget.h"
 #include "scene_metadata_client.h"
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 #include "realtime_preview_session.h"
@@ -1287,6 +1289,13 @@ void MainWindow::createRenderOptionsTab() {
 	scrollArea->setVerticalScrollBarPolicy(Qt::ScrollBarAsNeeded);
 
 	m_tabWidget->addTab(scrollArea, tr("Render Options"));
+}
+
+// The Scene Builder tab: build a scene from shapes and lights, preview it, save it as a .pbrt file (scene_builder_widget.h).
+void MainWindow::createSceneBuilderTab() {
+	m_sceneBuilder = new SceneBuilderWidget(this);
+	connect(m_sceneBuilder, &SceneBuilderWidget::statusMessage, this, [this](const QString &text) { statusBar()->showMessage(text, 5000); });
+	m_tabWidget->addTab(m_sceneBuilder, tr("Scene Builder"));
 }
 
 // Single source of truth for m_samplerCombo/m_lightSamplerCombo/

@@ -870,7 +870,11 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     // before it on that machine. A downloaded collection's own ids are
     // still free to shift when collections are added/removed - expected,
     // since those genuinely aren't the same fixed set on every machine.
+    // Files the user named directly (pbrt_discover::extraSceneFiles()) come last of all.
     std::stable_partition(found.begin(), found.end(),
+        [](const pbrt_discover::Discovered& d) { return !d.userFile; });
+    std::stable_partition(found.begin(), found.begin() + std::count_if(found.begin(), found.end(),
+        [](const pbrt_discover::Discovered& d) { return !d.userFile; }),
         [](const pbrt_discover::Discovered& d) { return !d.nested; });
 
     // SceneDescriptor holds `const char*`, so the strings have to outlive the
