@@ -993,6 +993,28 @@ static int run_video_render(const LaunchArgs &args, const RenderSetup &s) {
     return SUCCESS;
 }
 
+// What every render entry point does with its return value: logs it, then the output path on success or the failure banner. `failure_note`, when
+// given, replaces the error description in the banner (Metal prints its own explanation). Returns true on success.
+static bool report_render_result(int render_result, const char *entry_point, const char *rendered_with, const char *failed_label,
+                                 const std::string &out_path, const char *failure_note = nullptr) {
+    std::cout << entry_point << " returned: " << render_result << std::endl;
+    if (render_result == SUCCESS) {
+        std::cout << "Rendered with " << rendered_with << " renderer, output: " << out_path << std::endl;
+        return true;
+    }
+    std::cerr << "\n" << std::string(60, '=') << std::endl;
+    std::cerr << failed_label << " RENDER FAILED" << std::endl;
+    std::cerr << std::string(60, '=') << std::endl;
+    if (failure_note) {
+        std::cerr << failure_note;
+    } else {
+        ErrorInfo err(render_result);
+        std::cerr << err.to_string() << std::endl;
+    }
+    std::cerr << std::string(60, '=') << "\n" << std::endl;
+    return false;
+}
+
 // The default mode: one image from the chosen integrator and backend, then the timing, the --stats block and the PNG conversion.
 static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
 	const bool use_gpu = s.use_gpu;
@@ -1088,18 +1110,8 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
         render_result = cpu_render_main_bdpt(image_width, image_height, samples_per_pixel,
                                               args.bdpt_max_depth, out_path.c_str(),
                                               scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
-        std::cout << "cpu_render_main_bdpt returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with BDPT renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "BDPT RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_bdpt", "BDPT", "BDPT", out_path))
             return render_result;
-        }
     } else if (use_mlt) {
         // MLT Renderer, CPU path (Metropolis Light Transport). Implemented
         // in cpu_renderer/cpu_interface_bdpt.cpp - same priority reasoning
@@ -1108,105 +1120,45 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
         render_result = cpu_render_main_mlt(image_width, image_height, args.mlt_bootstrap,
                                              args.mlt_mutations, args.mlt_max_depth, out_path.c_str(),
                                              scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
-        std::cout << "cpu_render_main_mlt returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with MLT renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "MLT RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_mlt", "MLT", "MLT", out_path))
             return render_result;
-        }
     } else if (use_randomwalk) {
         std::cout << "Calling cpu_render_main_randomwalk(...) in-process..." << std::endl;
         render_result = cpu_render_main_randomwalk(image_width, image_height, samples_per_pixel,
                                                      max_ray_depth, out_path.c_str(),
                                                      scene_id.c_str(), cam_x, cam_y, cam_z, 1);
-        std::cout << "cpu_render_main_randomwalk returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with RandomWalk renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "RANDOMWALK RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_randomwalk", "RandomWalk", "RANDOMWALK", out_path))
             return render_result;
-        }
     } else if (use_ao) {
         std::cout << "Calling cpu_render_main_ao(...) in-process..." << std::endl;
         render_result = cpu_render_main_ao(image_width, image_height, samples_per_pixel,
                                             args.ao_max_dist, args.ao_cosine ? 1 : 0, args.ao_illum_scale,
                                             args.ao_illum_r, args.ao_illum_g, args.ao_illum_b,
                                             out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1);
-        std::cout << "cpu_render_main_ao returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with AO renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "AO RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_ao", "AO", "AO", out_path))
             return render_result;
-        }
     } else if (use_simplepath) {
         std::cout << "Calling cpu_render_main_simplepath(...) in-process..." << std::endl;
         render_result = cpu_render_main_simplepath(image_width, image_height, samples_per_pixel,
                                                      max_ray_depth, args.simplepath_sample_lights ? 1 : 0,
                                                      args.simplepath_sample_bsdf ? 1 : 0, out_path.c_str(),
                                                      scene_id.c_str(), cam_x, cam_y, cam_z, 1);
-        std::cout << "cpu_render_main_simplepath returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with SimplePath renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "SIMPLEPATH RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_simplepath", "SimplePath", "SIMPLEPATH", out_path))
             return render_result;
-        }
     } else if (use_simplevolpath) {
         std::cout << "Calling cpu_render_main_simplevolpath(...) in-process..." << std::endl;
         render_result = cpu_render_main_simplevolpath(image_width, image_height, samples_per_pixel,
                                                         max_ray_depth, out_path.c_str(),
                                                         scene_id.c_str(), cam_x, cam_y, cam_z, 1);
-        std::cout << "cpu_render_main_simplevolpath returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with SimpleVolPath renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "SIMPLEVOLPATH RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_simplevolpath", "SimpleVolPath", "SIMPLEVOLPATH", out_path))
             return render_result;
-        }
     } else if (use_lightpath) {
         std::cout << "Calling cpu_render_main_lightpath(...) in-process..." << std::endl;
         render_result = cpu_render_main_lightpath(image_width, image_height, samples_per_pixel,
                                                     max_ray_depth, out_path.c_str(),
                                                     scene_id.c_str(), cam_x, cam_y, cam_z, 1);
-        std::cout << "cpu_render_main_lightpath returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with LightPath renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "LIGHTPATH RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_lightpath", "LightPath", "LIGHTPATH", out_path))
             return render_result;
-        }
     } else if (use_sppm && use_gpu) {
         // SPPM Renderer, GPU/OptiX path. Scope (which scenes are actually
         // supported) is determined dynamically from the built scene's real
@@ -1224,18 +1176,8 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
         render_result = optix_render_main_sppm(image_width, image_height, args.sppm_iterations,
                                                 args.sppm_photons, max_ray_depth, out_path.c_str(),
                                                 scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
-        std::cout << "optix_render_main_sppm returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with GPU SPPM renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "GPU SPPM RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "optix_render_main_sppm", "GPU SPPM", "GPU SPPM", out_path))
             return render_result;
-        }
     } else if (use_sppm) {
         // SPPM Renderer, CPU path (Stochastic Progressive Photon Mapping).
         // Implemented in cpu_renderer/cpu_interface.cpp - takes priority
@@ -1245,18 +1187,8 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
         render_result = cpu_render_main_sppm(image_width, image_height, args.sppm_iterations,
                                               args.sppm_photons, max_ray_depth, out_path.c_str(),
                                               scene_id.c_str(), cam_x, cam_y, cam_z, 1);  // force_camera_override
-        std::cout << "cpu_render_main_sppm returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with SPPM renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "SPPM RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main_sppm", "SPPM", "SPPM", out_path))
             return render_result;
-        }
     } else if (use_gpu) {
 #ifdef RT_HAVE_METAL
         // GPU Renderer (Metal, macOS) - see docs/METAL_GPU_FEASIBILITY.md's
@@ -1288,17 +1220,8 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
                 // scene_id, which has no pbrt camera to override at all.
             render_opts
         );
-        std::cout << "metal_render_main returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with Metal renderer, output: " << out_path << std::endl;
-        } else {
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "METAL RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << "See metal_render_main()'s own stderr message above for why.\n";
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "metal_render_main", "Metal", "METAL", out_path, "See metal_render_main()'s own stderr message above for why.\n"))
             return render_result;
-        }
 #else
         // GPU Renderer (OptiX)
         if (optix_is_available()) {
@@ -1318,18 +1241,8 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
                 1,  // force_camera_override - see the comment above this section
                 render_opts
             );
-            std::cout << "optix_render_main returned: " << render_result << std::endl;
-            if (render_result == SUCCESS) {
-                std::cout << "Rendered with OptiX renderer, output: " << out_path << std::endl;
-            } else {
-                ErrorInfo err(render_result);
-                std::cerr << "\n" << std::string(60, '=') << std::endl;
-                std::cerr << "OptiX RENDER FAILED" << std::endl;
-                std::cerr << std::string(60, '=') << std::endl;
-                std::cerr << err.to_string() << std::endl;
-                std::cerr << std::string(60, '=') << "\n" << std::endl;
+            if (!report_render_result(render_result, "optix_render_main", "OptiX", "OptiX", out_path))
                 return render_result;
-            }
         } else {
             std::cerr << "ERROR: OptiX is not available!" << std::endl;
             return ERR_GPU_NO_DEVICE;
@@ -1340,18 +1253,8 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
         // Implemented in cpu_renderer/cpu_interface.cpp
         std::cout << "Calling cpu_render_main(...) in-process..." << std::endl;
         render_result = cpu_render_main(image_width, image_height, samples_per_pixel, max_ray_depth, out_path.c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1, render_opts);  // force_camera_override
-        std::cout << "cpu_render_main returned: " << render_result << std::endl;
-        if (render_result == SUCCESS) {
-            std::cout << "Rendered with in-process CPU renderer, output: " << out_path << std::endl;
-        } else {
-            ErrorInfo err(render_result);
-            std::cerr << "\n" << std::string(60, '=') << std::endl;
-            std::cerr << "CPU RENDER FAILED" << std::endl;
-            std::cerr << std::string(60, '=') << std::endl;
-            std::cerr << err.to_string() << std::endl;
-            std::cerr << std::string(60, '=') << "\n" << std::endl;
+        if (!report_render_result(render_result, "cpu_render_main", "in-process CPU", "CPU", out_path))
             return render_result;
-        }
     }
 
     // ========================================================================
