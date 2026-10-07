@@ -5,7 +5,7 @@
 // split out of metal_poc.mm once that one file's own "Stage 2.5" block
 // grew past a third of it (a pure code-motion refactor, no behaviour
 // change - see metal_poc_scenes_a.mm's own header comment for the
-// identical precedent this follows, and docs/METAL_GPU_FEASIBILITY.md).
+// identical precedent this follows, and docs/history/METAL_GPU_FEASIBILITY.md).
 // buildScene() (the hardcoded room), buildHandAuthoredScene() (the
 // scene_id dispatcher), and everything GPU-resource/dispatch-related
 // stay in metal_poc.mm itself - this file is only "read a .pbrt file

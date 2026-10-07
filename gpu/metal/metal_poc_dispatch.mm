@@ -122,7 +122,7 @@ bool MetalPocApp::dsLoadShaderLibrary(DispatchState& s) {
     //    (a plain `cmake --build` dev loop, never distributed).
     // 3. A __FILE__-relative lookup, for the ad-hoc `clang++
     //    metal_poc.mm ...` invocation this POC started as
-    //    (docs/METAL_GPU_FEASIBILITY.md section 7/8/9).
+    //    (docs/history/METAL_GPU_FEASIBILITY.md section 7/8/9).
     NSString* shaderDir = nil;
     {
         char exePathBuf[4096];
@@ -720,7 +720,7 @@ bool MetalPocApp::dsFillUniforms(DispatchState& s, int argc, const char** argv) 
     // means most miss rays are secondary/GI bounces (a mirror/glass
     // surface reflecting/refracting outward), not primary camera rays,
     // so this mostly shows up subtly rather than as an obvious visible
-    // backdrop - see docs/METAL_GPU_FEASIBILITY.md's own note on
+    // backdrop - see docs/history/METAL_GPU_FEASIBILITY.md's own note on
     // verifying this with a dedicated wide-FOV test render.
     uniforms.useEnvironmentMap = 1u;
     // Moderate forward scattering (real fog/haze skews strongly

@@ -229,7 +229,7 @@ kernel void primaryRayKernel(
         // without it every sample would retrace the exact same primary
         // ray. Replaces the old uniform-in-[0,1)-pixel jitter, which was
         // exactly a hardcoded 0.5-pixel-radius box filter - see section
-        // 207, docs/METAL_GPU_FEASIBILITY.md.
+        // 207, docs/history/METAL_GPU_FEASIBILITY.md.
         filterSample = sampleFilterPosition(uniforms, randFloat(rngState), randFloat(rngState));
         float2 pixelNDC = (float2(tid) + 0.5 + float2(filterSample.px, filterSample.py)) / float2(uniforms.width, uniforms.height);
         float2 screen = pixelNDC * 2.0 - 1.0;

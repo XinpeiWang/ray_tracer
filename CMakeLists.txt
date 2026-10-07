@@ -27,7 +27,7 @@
 # RT_BUILD_METAL block below) and is runtime-probed by the Qt GUI
 # (m_metalGpuAvailable, qt_gui/mainwindow.h) - it stopped being a standalone-
 # only proof of concept partway through its own development; see
-# docs/METAL_GPU_FEASIBILITY.md for the full history and what feature-parity
+# docs/history/METAL_GPU_FEASIBILITY.md for the full history and what feature-parity
 # gaps remain.
 #
 # tests/CMakeLists.txt is separate and unaffected by this file - it already
@@ -361,7 +361,7 @@ endif()
 
 # =============================================================================
 # metal_poc - standalone Metal ray tracing proof of concept, only when
-# -DRT_BUILD_METAL=ON. See docs/METAL_GPU_FEASIBILITY.md for what this is
+# -DRT_BUILD_METAL=ON. See docs/history/METAL_GPU_FEASIBILITY.md for what this is
 # and is not (not part of ray_tracer/scene_metadata, no CPU/GPU-OptiX
 # feature parity, a design-and-feasibility spike, not the start of the real
 # GPU-on-macOS backend). Entirely independent of RT_BUILD_GPU/optix_renderer
@@ -465,7 +465,7 @@ if(RT_BUILD_METAL)
     # ray_tracer links metal_renderer and gains RT_HAVE_METAL, same shape
     # as RT_BUILD_GPU's own RT_HAVE_OPTIX block further up. launcher/
     # main.cpp's --gpu dispatch now branches on RT_HAVE_METAL (phase 3b of
-    # real GPU integration, see docs/METAL_GPU_FEASIBILITY.md) - this link
+    # real GPU integration, see docs/history/METAL_GPU_FEASIBILITY.md) - this link
     # step is what makes metal_render_main() resolve there. ray_tracer's
     # own pre-existing src/external/image_writer.cpp (added further up,
     # long before RT_BUILD_METAL existed) already provides
@@ -476,7 +476,7 @@ if(RT_BUILD_METAL)
     target_link_libraries(ray_tracer PRIVATE metal_renderer)
 
     # --- Smoke test: does metal_poc still run and produce a real image? -
-    # Seventeen incremental features (docs/METAL_GPU_FEASIBILITY.md
+    # Seventeen incremental features (docs/history/METAL_GPU_FEASIBILITY.md
     # sections 8-26) accumulated in this POC with zero automated
     # regression coverage - every one was verified by rendering and
     # looking at the image by hand, which catches real bugs but leaves
@@ -520,7 +520,7 @@ if(RT_BUILD_METAL)
     # gpu/metal/metal_poc_host_math.h and gpu/metal/metal_poc_math_tests.cpp's
     # own comments for the full "why" (closing the gap the smoke test
     # above deliberately doesn't: every material/light/tonemap correctness
-    # fix documented in docs/METAL_GPU_FEASIBILITY.md - Fresnel, the
+    # fix documented in docs/history/METAL_GPU_FEASIBILITY.md - Fresnel, the
     # power-light-sampler alias table, the PR #43 chromatic-aberration
     # bug, the sRGB OETF - was verified once by hand and never re-checked
     # automatically again). No Metal/Foundation link dependency at all
@@ -570,7 +570,7 @@ if(RT_BUILD_METAL)
     add_test(NAME metal_poc_smoke_render
         COMMAND metal_poc 128 128 "${METAL_POC_SMOKE_OUTPUT}" 16 4)
     # A real coverage check, not just a crash check: compileShaderAndDispatch()
-    # (row-band progress reporting, docs/METAL_GPU_FEASIBILITY.md section
+    # (row-band progress reporting, docs/history/METAL_GPU_FEASIBILITY.md section
     # 198) prints "Scanlines remaining: N\r" between bands on stderr, which
     # this smoke test's own 128x128 render already exercises across 20 bands
     # (numBands = min(20, height)) - this just asserts that output is really
@@ -584,7 +584,7 @@ if(RT_BUILD_METAL)
         COMMAND metal_poc_validate "${METAL_POC_SMOKE_OUTPUT}" 128 128)
     set_tests_properties(metal_poc_smoke_validate PROPERTIES DEPENDS metal_poc_smoke_render)
 
-    # Coverage for --isolate-pbrt-lighting (docs/METAL_GPU_FEASIBILITY.md
+    # Coverage for --isolate-pbrt-lighting (docs/history/METAL_GPU_FEASIBILITY.md
     # section 199) - genuinely untestable via the metal_poc smoke test above,
     # since that standalone CLI binary takes no RenderOptions at all (see
     # metal_poc_main.mm's own comment) and so has no way to reach this flag;

@@ -1137,7 +1137,7 @@ void MainWindow::setupUI() {
 				// (Cornell Box, not pbrt-backed) then switched to GPU mode
 				// afterward and got a real render failure instead of the
 				// silent auto-switch every other invalid combination
-				// already gets - see docs/METAL_GPU_FEASIBILITY.md's
+				// already gets - see docs/history/METAL_GPU_FEASIBILITY.md's
 				// section 115. setCurrentIndex(1) below re-enters this same
 				// lambda once more, harmlessly - the second pass sees GPU
 				// mode already false and skips straight past this check,

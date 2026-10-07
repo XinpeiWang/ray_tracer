@@ -1,6 +1,6 @@
 // metal_poc.metal
 // Metal ray tracing proof-of-concept, step 2 - see
-// docs/METAL_GPU_FEASIBILITY.md section 8. Step 1 (committed in PR #2) was
+// docs/history/METAL_GPU_FEASIBILITY.md section 8. Step 1 (committed in PR #2) was
 // a single-bounce raycast preview with no shadow rays. This step turns it
 // into an actual minimal Monte Carlo path tracer: shadow-ray occlusion, a
 // real multi-bounce GI loop with Russian roulette, a second material

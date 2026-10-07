@@ -13,7 +13,7 @@ name: Unit tests
 # strictly worse than having this subset.
 #
 # The metal-poc job below closes the equivalent gap for gpu/metal/ (see
-# docs/METAL_GPU_FEASIBILITY.md) - every one of that series' PRs was
+# docs/history/METAL_GPU_FEASIBILITY.md) - every one of that series' PRs was
 # "verified" by hand-running a full clean rebuild + ctest locally, with
 # nothing checking automatically that a later change didn't silently
 # break it. Unlike the CUDA/OptiX renderer, this backend's build itself
@@ -139,7 +139,7 @@ jobs:
     # (windows-latest silently moving to a VS version whose CMake
     # generator string changed, see its own "Configure (CMake)" step
     # comment); macos-14 is Apple silicon (M1-class), matching
-    # docs/METAL_GPU_FEASIBILITY.md's own target platform.
+    # docs/history/METAL_GPU_FEASIBILITY.md's own target platform.
     runs-on: macos-14
     steps:
       - uses: actions/checkout@v4
@@ -206,7 +206,7 @@ jobs:
           set -e
           if [ $rc -ne 0 ]; then
             if grep -rqi "does not support hardware raytracing\|No Metal device available" Testing/Temporary/LastTest.log 2>/dev/null; then
-              echo "::warning::This runner's Metal device doesn't support hardware raytracing (or none was exposed) - device-dependent Metal tests skipped, not a code regression. See this workflow's own top-of-file comment and docs/METAL_GPU_FEASIBILITY.md."
+              echo "::warning::This runner's Metal device doesn't support hardware raytracing (or none was exposed) - device-dependent Metal tests skipped, not a code regression. See this workflow's own top-of-file comment and docs/history/METAL_GPU_FEASIBILITY.md."
               exit 0
             fi
             exit $rc

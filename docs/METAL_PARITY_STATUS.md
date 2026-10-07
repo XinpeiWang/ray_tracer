@@ -1,7 +1,7 @@
 # Metal backend: CPU parity status
 
 How closely the macOS Metal renderer (`gpu/metal/`) matches the CPU renderer, how that is
-measured, and what is still different. Complements `docs/METAL_GPU_FEASIBILITY.md` (design
+measured, and what is still different. Start with `docs/METAL_BACKEND.md` (how the backend works and how to change it). Complements `docs/history/METAL_GPU_FEASIBILITY.md` (design
 history) and `docs/PBRT_SUPPORT.md` (which pbrt features each backend supports).
 
 ## How it is measured

@@ -1,7 +1,7 @@
 // ---------------------------------------------------------------------------
 // Device-side unit-test kernels - see gpu/metal/metal_poc_shader_tests.mm's
 // own comment for the full "why" (closing the device-side half of the
-// testing gap docs/METAL_GPU_FEASIBILITY.md section 59 left open: every
+// testing gap docs/history/METAL_GPU_FEASIBILITY.md section 59 left open: every
 // pure GPU-independent host function got a real CTest case there, but
 // everything that only ever runs on the GPU - frDielectric(), the GGX
 // microfacet math, checkerColor(), spotLightFalloff(),
@@ -189,7 +189,7 @@ kernel void test_normalizedFresnelF(
 // considered and deliberately NOT attempted here (real risk of CI
 // flakiness with an unknown/untuned sample count, an unbounded-variance
 // connection term, and Russian roulette past depth 3 - see
-// docs/METAL_GPU_FEASIBILITY.md's own writeup for this PR for the full
+// docs/history/METAL_GPU_FEASIBILITY.md's own writeup for this PR for the full
 // reasoning). What CAN be checked without a reference: every one of
 // these three deterministic-per-call INVARIANTS a real BRDF/pdf must
 // satisfy regardless of which specific stochastic estimate came back -
@@ -508,7 +508,7 @@ kernel void test_projectionLightRadiance(
 // (metal_poc_host_math.h) - metal_poc_shader_tests.mm checks that the
 // REAL device-side alias-table lookup this kernel calls empirically
 // reproduces each light's own `pmf`, closing the exact gap
-// docs/METAL_GPU_FEASIBILITY.md section 59 called out by name ("only
+// docs/history/METAL_GPU_FEASIBILITY.md section 59 called out by name ("only
 // this PR's own host-side test MIRROR of the alias-table lookup is
 // directly regression-tested, not the actual device-side one it's
 // mirroring").
@@ -539,7 +539,7 @@ kernel void test_equalAreaSphereToSquare(
 }
 
 // HairBxDF numeric cross-check kernels (B11 re-attempt, section 183 -
-// see docs/METAL_GPU_FEASIBILITY.md) - each dispatches exactly one
+// see docs/history/METAL_GPU_FEASIBILITY.md) - each dispatches exactly one
 // function from metal_poc_materials_hair.metal against a fixed input
 // buffer, so metal_poc_shader_tests.mm can diff the result against the
 // SAME src/shared/bxdfs_hair.h/bxdfs_principled.h template (T=double)

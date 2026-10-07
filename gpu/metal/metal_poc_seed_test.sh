@@ -1,7 +1,7 @@
 #!/bin/sh
 # CTest driver for metal_poc_seed_reproducible (see CMakeLists.txt): renders
 # scene A1 through the real `ray_tracer --gpu` path and checks the three
-# properties --seed must have under Metal (docs/METAL_GPU_FEASIBILITY.md
+# properties --seed must have under Metal (docs/history/METAL_GPU_FEASIBILITY.md
 # section 204): the same seed reproduces the image exactly, a different seed
 # gives a different image, and an explicit seed differs from passing none.
 # Prints SEED_TEST_OK only if all three hold (the test's

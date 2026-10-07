@@ -9,7 +9,7 @@
 // standalone shadeXxx() per material" convention metal_poc_materials_
 // specular/diffuse/layered/extra.metal already use for every SURFACE
 // material). See each function's own header comment (and sections 176/
-// 178/179, docs/METAL_GPU_FEASIBILITY.md) for what the algorithm itself
+// 178/179, docs/history/METAL_GPU_FEASIBILITY.md) for what the algorithm itself
 // does - this split changes none of it.
 //
 // `entryDistance` is the hit sphere's own `result.distance` from the

@@ -1,5 +1,5 @@
 // metal_poc_crop_check.cpp - host-only checker for the metal_poc_crop_window
-// CTest (see CMakeLists.txt / metal_poc_crop_test.sh, docs/METAL_GPU_FEASIBILITY.md
+// CTest (see CMakeLists.txt / metal_poc_crop_test.sh, docs/history/METAL_GPU_FEASIBILITY.md
 // section 205). Compares an uncropped Metal render against a --crop render of
 // the same scene/settings and checks the two properties that define a correct
 // crop window:

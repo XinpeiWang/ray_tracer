@@ -924,7 +924,7 @@ inline float3 checkerColor(float2 uv, float scale, float3 colorA, float3 colorB)
 // category-G's own mesh gallery ground uses a flat quad instead of a
 // checker sphere, section 117) - this closes that gap for scenes that
 // only ever needed the REAL 3D book-checker in the first place, section
-// 121, docs/METAL_GPU_FEASIBILITY.md.
+// 121, docs/history/METAL_GPU_FEASIBILITY.md.
 inline float3 checker3DColor(float3 p, float scale, float3 colorA, float3 colorB) {
     float3 cell = floor(p / scale);
     float parity = fmod(abs(cell.x) + abs(cell.y) + abs(cell.z), 2.0);

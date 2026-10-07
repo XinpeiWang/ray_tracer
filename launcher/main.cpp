@@ -1059,7 +1059,7 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
 
     // --exposure only reaches cpu_render_main()/optix_render_main()/
     // metal_render_main() (the plain path-tracer entry points, now all
-    // three backends per section 148, docs/METAL_GPU_FEASIBILITY.md) -
+    // three backends per section 148, docs/history/METAL_GPU_FEASIBILITY.md) -
     // BDPT/MLT/SPPM (CPU and GPU) have no exposure parameter at all, so
     // the flag would otherwise be silently swallowed with zero indication
     // why. Same warn-instead-of-silently-drop pattern this codebase uses
@@ -1191,7 +1191,7 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
             return render_result;
     } else if (use_gpu) {
 #ifdef RT_HAVE_METAL
-        // GPU Renderer (Metal, macOS) - see docs/METAL_GPU_FEASIBILITY.md's
+        // GPU Renderer (Metal, macOS) - see docs/history/METAL_GPU_FEASIBILITY.md's
         // own "phase 3b" section for the full story. metal_render_main()
         // itself (gpu/metal/metal_poc.mm) renders a scene_id that is EITHER
         // pbrt-file-backed (loadPbrtScene()) - Metal no longer has hand-authored

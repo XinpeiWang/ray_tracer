@@ -11,7 +11,7 @@
 // suite above does doesn't apply on Metal: Metal has exactly ONE GPU
 // render path (a single Metal ray-tracing-pipeline kernel per dispatch,
 // architecturally closest to OptiX's "recursive" mode - confirmed by an
-// explicit audit comparing the two, see docs/METAL_GPU_FEASIBILITY.md's
+// explicit audit comparing the two, see docs/history/METAL_GPU_FEASIBILITY.md's
 // own section on it) - there is no Metal wavefront variant to compare
 // against. This is a 2-way sweep: CPU vs Metal.
 //
