@@ -128,6 +128,7 @@ signals:
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
+	bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
 	void onListSelectionChanged();

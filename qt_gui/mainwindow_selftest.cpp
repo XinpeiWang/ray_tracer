@@ -106,7 +106,9 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		QString err;
 		sb->newScene();
 		check(sb->openFile(pbrt, &err) && scene_doc::toJson(sb->document()) == before, "re-opened the saved file unchanged " + err);
-		sb->selectObject(1);
+		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
+		sb->newScene();
+		sb->selectObject(2);
 		QTimer::singleShot(600, this, [this, shot, log, sb, ok]() mutable {
 			shot("builder_edit");
 			log("starting a preview render");

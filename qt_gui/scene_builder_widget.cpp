@@ -674,11 +674,8 @@ void SceneBuilderWidget::buildUi() {
 	connect(delList, &QShortcut::activated, this, [this]() { deleteSelected(); });
 
 	// ---- centre: layout view above the preview
-	auto *centre = new QWidget(split);
-	auto *centreLayout = new QVBoxLayout(centre);
-	centreLayout->setContentsMargins(0, 0, 0, 0);
+	auto *centre = new QSplitter(Qt::Vertical, split);
 	auto *layoutBox = new QWidget(centre);
-	centreLayout->addWidget(layoutBox, 1);
 	auto *layoutLayout = new QVBoxLayout(layoutBox);
 	layoutLayout->setContentsMargins(0, 0, 0, 0);
 	auto *planeRow = new QHBoxLayout;
@@ -747,10 +744,11 @@ void SceneBuilderWidget::buildUi() {
 	previewLayout->setContentsMargins(0, 0, 0, 0);
 	auto *renderRow = new QHBoxLayout;
 	m_qualityCombo = new QComboBox(previewBox);
-	m_qualityCombo->addItem(tr("Draft (small, fast)"), 0);
+	m_qualityCombo->addItem(tr("Draft"), 0);
 	m_qualityCombo->addItem(tr("Good"), 1);
-	m_qualityCombo->addItem(tr("Best (slow)"), 2);
+	m_qualityCombo->addItem(tr("Best"), 2);
 	m_qualityCombo->setCurrentIndex(0);
+	m_qualityCombo->setToolTip(tr("Draft: 320 pixels wide, 16 samples. Good: 480 wide, 64 samples. Best: 640 wide, 256 samples."));
 	m_gpuCheck = new QCheckBox(tr("Use the GPU"), previewBox);
 	m_gpuCheck->setToolTip(tr("Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU."));
 	m_previewButton = new QPushButton(tr("Preview"), previewBox);
@@ -759,22 +757,21 @@ void SceneBuilderWidget::buildUi() {
 	m_finalButton->setAutoDefault(false);
 	m_finalButton->setToolTip(tr("Render at the image size and sample count set under Camera, and save the picture as a PNG"));
 	m_previewStatus = new QLabel(previewBox);
-	renderRow->addWidget(new QLabel(tr("Preview quality:"), previewBox));
-	renderRow->addWidget(m_qualityCombo, 1);
+	renderRow->addWidget(new QLabel(tr("Quality:"), previewBox));
+	renderRow->addWidget(m_qualityCombo);
 	renderRow->addWidget(m_gpuCheck);
-	auto *buttonRow = new QHBoxLayout;
-	buttonRow->addWidget(m_previewButton, 1);
-	buttonRow->addWidget(m_finalButton, 1);
+	renderRow->addWidget(m_previewButton, 1);
+	renderRow->addWidget(m_finalButton, 1);
 	m_previewStatus->setWordWrap(true);
 	previewLayout->addLayout(renderRow);
-	previewLayout->addLayout(buttonRow);
-	previewLayout->addWidget(m_previewStatus);
 	m_previewLabel = new QLabel(previewBox);
 	m_previewLabel->setAlignment(Qt::AlignCenter);
-	m_previewLabel->setMinimumHeight(180);
+	m_previewLabel->setMinimumHeight(120);
+	m_previewLabel->installEventFilter(this);  // rescale the picture when the pane is resized
 	m_previewLabel->setText(tr("Press Preview to see the scene."));
 	m_previewLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
 	previewLayout->addWidget(m_previewLabel, 1);
+	previewLayout->addWidget(m_previewStatus);
 	connect(m_previewButton, &QPushButton::clicked, this, [this]() {
 		if (m_process) {
 			m_cancelRequested = true;
@@ -786,8 +783,8 @@ void SceneBuilderWidget::buildUi() {
 	connect(m_finalButton, &QPushButton::clicked, this, &SceneBuilderWidget::onRenderFinalClicked);
 
 	// ---- right: inspector
-	auto *right = new QSplitter(Qt::Vertical, split);
-	auto *inspectorPane = new QWidget(right);
+	auto *right = new QWidget(split);
+	auto *inspectorPane = right;
 	auto *rightLayout = new QVBoxLayout(inspectorPane);
 	rightLayout->setContentsMargins(0, 0, 0, 0);
 	m_inspectorScroll = new QScrollArea(inspectorPane);
@@ -798,12 +795,11 @@ void SceneBuilderWidget::buildUi() {
 	m_problemsLabel->setWordWrap(true);
 	m_problemsLabel->setTextFormat(Qt::RichText);
 	rightLayout->addWidget(m_problemsLabel);
-	right->addWidget(inspectorPane);
-	right->addWidget(previewBox);
-	right->setStretchFactor(0, 3);
-	right->setStretchFactor(1, 2);
-	right->setSizes({620, 300});
-	right->setMinimumWidth(400);
+	right->setMinimumWidth(390);
+	centre->addWidget(previewBox);
+	centre->setStretchFactor(0, 3);
+	centre->setStretchFactor(1, 2);
+	centre->setSizes({500, 280});
 
 	split->addWidget(left);
 	split->addWidget(centre);
@@ -811,7 +807,7 @@ void SceneBuilderWidget::buildUi() {
 	split->setStretchFactor(0, 0);
 	split->setStretchFactor(1, 1);
 	split->setStretchFactor(2, 0);
-	split->setSizes({310, 560, 440});
+	split->setSizes({310, 600, 420});
 }
 
 // ---- document state -------------------------------------------------------------------------------------------------------------
@@ -1717,6 +1713,11 @@ void SceneBuilderWidget::onPreviewFinished(int exitCode) {
 void SceneBuilderWidget::updatePreviewPixmap() {
 	if (m_previewPixmap.isNull()) return;
 	m_previewLabel->setPixmap(m_previewPixmap.scaled(m_previewLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
+}
+
+bool SceneBuilderWidget::eventFilter(QObject *watched, QEvent *event) {
+	if (watched == m_previewLabel && event->type() == QEvent::Resize) updatePreviewPixmap();
+	return QWidget::eventFilter(watched, event);
 }
 
 void SceneBuilderWidget::resizeEvent(QResizeEvent *e) {
