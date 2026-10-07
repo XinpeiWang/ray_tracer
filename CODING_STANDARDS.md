@@ -162,6 +162,10 @@ const float viewport_height = 2.0f * h;
 const float viewport_height = 2.0f * h;
 ```
 
+## Function and File Size
+
+Keep functions under about 300 lines and files under about 2,000. A function that long is almost always several stages that share locals: name the stages and pass what they hand to each other in a small struct (see `MetalPocApp::compileShaderAndDispatch` and its `DispatchState`). `scripts/check_code_size.py` (a CI job) enforces a ratchet: no new offender, and no known one growing past `scripts/code_size_baseline.list`. After you split something, run `python3 scripts/check_code_size.py --update` and commit the lowered baseline. A refactor must not change behaviour: for the renderers, compare rendered pictures byte for byte against a build of the previous `main` before merging.
+
 ## Error Handling
 
 ### Return Codes

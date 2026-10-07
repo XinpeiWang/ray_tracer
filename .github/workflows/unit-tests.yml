@@ -287,3 +287,12 @@ jobs:
       - uses: actions/checkout@v4
       - name: Check the test build lists agree
         run: python3 scripts/check_build_lists.py
+
+  code-size:
+    # A size ratchet (scripts/check_code_size.py): no NEW function over 300 lines or file over 2000 lines, and no known one growing past its
+    # recorded size (scripts/code_size_baseline.list). The Metal dispatcher had grown back to a 1,080-line function after being split once.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check function and file sizes
+        run: python3 scripts/check_code_size.py
