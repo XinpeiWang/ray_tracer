@@ -1,4 +1,7 @@
 # @rt-category Test Scenes
+# @rt-description A glowing paraboloid seen from the side, lit by nothing else. --lightpath, --bdpt and the path tracer must read the same.
+# @rt-gpu no
+# @rt-performance Fast
 # lightpath-visible-paraboloid-light.pbrt -- a paraboloid (seen from the side) that is itself the picture, lit by nothing else: --lightpath, --bdpt and the path tracer must read the same.
 # See lightpath-visible-sphere-light.pbrt.
 #

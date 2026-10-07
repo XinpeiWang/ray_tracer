@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A glowing unit sphere, lit by nothing else. --lightpath, --bdpt and the path tracer must read the same.
+# @rt-performance Fast
 # lightpath-visible-sphere-light.pbrt -- a unit sphere that is itself the picture, lit by nothing else: --lightpath, --bdpt and the path tracer must read the same.
 #
 # The only light is the emitter the camera looks at, so the frame mean is L times the area it covers - the path tracer sees it directly, --lightpath only through its

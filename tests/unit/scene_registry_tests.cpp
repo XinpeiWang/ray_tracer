@@ -15,6 +15,7 @@
 #include <filesystem>
 #include <string>
 #include <map>
+#include <regex>
 #include <set>
 
 // C++ registry (available to the test project via TheRestOfYourLife include path)
@@ -1017,14 +1018,16 @@ TEST(SceneNameTest, DescribeReadsTheTitleOfASceneBuilderFile) {
 TEST(SceneHeaderTagsTest, ReadsCategoryDescriptionAndPerformance) {
 	const std::string text =
 		"# @rt-category Test Scenes\n# plain comment\n# @rt-description A furnace:\r\n# @rt-description every pixel reads 1.\n"
-		"# @rt-performance Fast\n# @rt-unknown ignored\n# @rt-builder-doc {}\nLookAt 0 0 5 0 0 0 0 1 0\nCamera \"perspective\"\nWorldBegin\n"
+		"# @rt-performance Fast\n# @rt-gpu no\n# @rt-unknown ignored\n# @rt-builder-doc {}\nLookAt 0 0 5 0 0 0 0 1 0\nCamera \"perspective\"\nWorldBegin\n"
 		"# @rt-category After WorldBegin is not read\n";
 	const auto tags = pbrt_discover::detail::readHeaderTags(text);
 	EXPECT_EQ(tags.category, "Test Scenes");
 	EXPECT_EQ(tags.description, "A furnace: every pixel reads 1.");
 	EXPECT_EQ(tags.performance, "Fast");
+	EXPECT_FALSE(tags.gpuCompatible);
 	const auto none = pbrt_discover::detail::readHeaderTags("LookAt 0 0 5 0 0 0 0 1 0\nWorldBegin\n");
 	EXPECT_TRUE(none.category.empty() && none.description.empty() && none.performance.empty());
+	EXPECT_TRUE(none.gpuCompatible) << "a scene is assumed to render on the GPU unless it says otherwise";
 }
 
 TEST(SceneHeaderTagsTest, DescribeCarriesTheTags) {
@@ -1043,4 +1046,53 @@ TEST(SceneHeaderTagsTest, BundledFixturesAreTestScenesAndUntaggedFilesAreCustom)
 	for (const SceneDescriptor& s : get_scene_registry())
 		if (s.category == std::string(SceneCategories::CustomScenes))
 			EXPECT_FALSE(std::string(s.description).empty()) << s.id;
+}
+
+// ===========================================================================
+// Scene info: what a person reads
+// ===========================================================================
+
+// A description says what the scene shows. It does not cite another scene by id or by an old flat number (both move), and it does not tell the
+// history of the code ("now real on both backends", "previously rendered black").
+TEST(SceneInfoTest, DescriptionsDoNotCiteIdsOrDevelopmentHistory) {
+	const std::regex idLike("\\b[A-L][0-9]{1,3}\\b");
+	const std::regex flatNumber("\\bscenes? [0-9]+", std::regex::icase);
+	const std::regex history("now real|used to |previously|wired into|no longer|silently", std::regex::icase);
+	for (const auto& s : get_builtin_scene_registry()) {
+		const std::string d = s.description;
+		EXPECT_GE(d.size(), 40u) << s.id << ": too short to say what the scene shows: " << d;
+		// (Glass Presets names real glass types, F5, F10 and F11, that look like ids.)
+		if (s.id != "B25") EXPECT_FALSE(std::regex_search(d, idLike)) << s.id << " cites a scene id: " << d;
+		EXPECT_FALSE(std::regex_search(d, flatNumber)) << s.id << " cites a scene number: " << d;
+		EXPECT_FALSE(std::regex_search(d, history)) << s.id << " tells the history of the code: " << d;
+	}
+}
+
+TEST(SceneInfoTest, EveryPerformanceIsOneOfTheDefinedWords) {
+	const std::set<std::string> words = {"Fast", "Medium", "Slow", "Very Slow", "Unknown"};
+	for (const auto& s : get_scene_registry()) EXPECT_TRUE(words.count(s.performance)) << s.id << ": '" << s.performance << "'";
+	for (const auto& s : get_builtin_scene_registry())
+		EXPECT_NE(std::string(s.performance), "Unknown") << s.id << " (" << s.name << ") has not been given a measured performance";
+}
+
+// The bundled test scenes say what they check.
+TEST(SceneInfoTest, EveryBundledTestSceneHasItsOwnDescription) {
+	int tests = 0;
+	for (const auto& s : get_scene_registry()) {
+		if (s.category != std::string(SceneCategories::Tests)) continue;
+		++tests;
+		const std::string d = s.description;
+		EXPECT_EQ(d.find("A pbrt-v4 scene file"), std::string::npos) << s.id << " (" << s.name << ") still has the generic description";
+		EXPECT_GE(d.size(), 40u) << s.id;
+	}
+	if (tests == 0) GTEST_SKIP() << "pbrt_scenes/ was not discovered - run from the repository root";
+}
+
+// A scene that uses cone or paraboloid shapes (which the GPU backends do not have) says so, and is not offered a GPU render.
+TEST(SceneHeaderTagsTest, ASceneCanSayItIsCpuOnly) {
+	const SceneDescriptor* cone = find_scene_by_file_stem("lightpath-visible-cone-light");
+	const SceneDescriptor* disk = find_scene_by_file_stem("lightpath-visible-disk-light");
+	if (!cone || !disk) GTEST_SKIP() << "pbrt_scenes/ was not discovered - run from the repository root";
+	EXPECT_FALSE(cone->gpu_compatible);
+	EXPECT_TRUE(disk->gpu_compatible);
 }

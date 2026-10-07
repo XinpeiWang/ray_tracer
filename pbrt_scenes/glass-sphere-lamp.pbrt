@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A smooth glass sphere filling the frame, lit by a lamp above and behind it. Every light path is a mirror-like chain through the glass.
+# @rt-performance Fast
 # glass-sphere-lamp.pbrt -- a smooth glass sphere filling the frame, lit by a lamp above and behind it, so the picture is the
 # lamp's reflection and its refracted / internally reflected images: every path through the glass is a specular chain with no
 # light sampling.

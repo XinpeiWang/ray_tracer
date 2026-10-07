@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A closed white box with a smooth glass sphere, lit by a ceiling plate. BDPT and the path tracer must agree on how light refracts in and out of the glass.
+# @rt-performance Fast
 # bdpt-box-room-glass.pbrt -- the closed box of bdpt-box-room.pbrt (light facing up) with a smooth glass sphere in it; BDPT and the path tracer must agree.
 #
 # BDPT rebuilt every hit with front_face = true, so a ray LEAVING the glass was shaded as if it were entering: wrong refraction ratio and Fresnel at every

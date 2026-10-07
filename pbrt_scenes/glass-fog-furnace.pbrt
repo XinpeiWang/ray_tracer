@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A non-absorbing fog ball inside a real glass shell under a white sky. It must be invisible: fog inside glass loses no light.
+# @rt-performance Fast
 # glass-fog-furnace.pbrt -- a non-absorbing fog sphere inside a real glass shell (eta 1.5), under a uniform sky.
 #
 # pbrt-v4 makes every surface that has a material opaque to NEE shadow rays (VolPathIntegrator::SampleLd), glass

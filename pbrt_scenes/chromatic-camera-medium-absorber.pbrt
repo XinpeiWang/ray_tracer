@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description The camera inside an absorbing medium that is thicker for blue than for red, looking at a bright emitter 2 units away. Each channel must follow exp(-sigma x 2).
+# @rt-performance Fast
 # chromatic-camera-medium-absorber.pbrt -- the camera sits inside a pure absorber that is thicker in blue than in red.
 #
 # The pbrt-v4 "camera medium": a MediumInterface declared before the Camera directive fills all of space around the camera. A

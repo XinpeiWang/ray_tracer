@@ -24,13 +24,13 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A1", 169, SceneNames::CornellBox, SceneCategories::Basics,
             "Classic Cornell box with glass sphere and aluminum box",
-            "Medium", "cornell-box-native.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled),
         // A2's grid layout is a deterministic std::mt19937(42) sequence (see pbrt_scenes/bouncing-spheres.pbrt's
         // header for why); the per-sphere motion blur comes from ActiveTransform on each sphere.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A2", 1, SceneNames::BouncingSpheres, SceneCategories::Basics,
             "Random spheres with checker ground (In One Weekend final)",
-            "Slow", "bouncing-spheres.pbrt"),
+            "Fast", "bouncing-spheres.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A3", 185, SceneNames::CheckeredSpheres, SceneCategories::Basics,
             "Two spheres with procedural checker texture",
@@ -46,7 +46,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "perlin-spheres.pbrt", CameraMode::Fixed),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A6", 168, SceneNames::ColoredQuads, SceneCategories::Basics,
-            "Five colored quad primitives",
+            "Five flat coloured panels at different angles, lit by one glowing panel: a check that every orientation catches light correctly.",
             "Fast", "colored-quads.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A7", 6, SceneNames::SimpleLight, SceneCategories::Basics,
@@ -54,18 +54,18 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "simple-light.pbrt", CameraMode::Fixed),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A8", 191, SceneNames::CornellSmoke, SceneCategories::Basics,
-            "Cornell box with volumetric fog",
-            "Slow", "cornell-smoke.pbrt", CameraMode::UserControlled),
+            "The Cornell room with two boxes of coloured fog instead of solid boxes: fog confined to a shape scatters light rather than blocking it.",
+            "Medium", "cornell-smoke.pbrt", CameraMode::UserControlled),
         // A9's noise-textured sphere uses pbrt's "fbm" texture in place of the book's sin+turbulence formula
         // (see pbrt_scenes/final-scene.pbrt's header).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "A9", 8, SceneNames::FinalScene, SceneCategories::Basics,
-            "Complex scene from The Next Week",
-            "Very Slow", "final-scene.pbrt"),
+            "The cover scene of Ray Tracing: The Next Week: rolling box terrain, glass, metal, a fog-filled glass ball, an Earth-textured sphere, a marble sphere and a cluster of small white spheres.",
+            "Slow", "final-scene.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B1", 9, SceneNames::RoughMetalSpheres, SceneCategories::Materials,
             "Five GGX spheres roughness 0.05 to 0.8 -- showcases microfacet BRDF",
-            "Medium", "rough-metal-spheres.pbrt", CameraMode::Fixed),
+            "Fast", "rough-metal-spheres.pbrt", CameraMode::Fixed),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B2", 10, SceneNames::CornellRoughMetal, SceneCategories::Materials,
             "Cornell box with rough aluminum box and rough gold sphere",
@@ -75,21 +75,21 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B3", 171, SceneNames::CornellRoughGlass, SceneCategories::Materials,
             "Cornell box with a GGX rough-dielectric sphere (pbrt-v4 RoughDielectricBxDF)",
-            "Medium", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
         // CameraMode::UserControlled is passed explicitly: the Cornell-box camera is user-controlled, and the default
         // (Fixed) would silently disable --cam_x/y/z and the GUI's camera controls for this scene.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B4", 170, SceneNames::CornellConductor, SceneCategories::Materials,
             "Cornell box with polished gold sphere and aluminium box using GGX VNDF + complex Fresnel (pbrt-v4 ConductorBxDF)",
-            "Medium", "cornell-conductor.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-conductor.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B5", 172, SceneNames::CornellCoatedDiffuse, SceneCategories::Materials,
             "Cornell box with blue coated-diffuse sphere and red coated-diffuse box (pbrt-v4 CoatedDiffuseBxDF)",
-            "Medium", "cornell-coated-diffuse.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-coated-diffuse.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B6", 173, SceneNames::CornellThinGlass, SceneCategories::Materials,
             "Cornell box with a vertical thin-glass panel, analytic multi-bounce Fresnel (pbrt-v4 ThinDielectricBxDF)",
-            "Medium", "cornell-thin-glass.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-thin-glass.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B7", 174, SceneNames::CornellCoatedConductor, SceneCategories::Materials,
             "Cornell box with lacquered-gold sphere and lacquered-copper box (pbrt-v4 CoatedConductorBxDF)",
@@ -97,60 +97,60 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B8", 175, SceneNames::CornellWaxSlab, SceneCategories::Materials,
             "Cornell box with a wax sphere that diffusely reflects and transmits light (pbrt-v4 DiffuseTransmissionBxDF)",
-            "Medium", "cornell-wax-slab.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-wax-slab.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B9", 17, SceneNames::CornellCrystal, SceneCategories::Materials,
             "Cornell box with a crystal sphere using Fresnel-weighted diffuse reflection (pbrt-v4 NormalizedFresnelBxDF)",
-            "Medium", "cornell-crystal.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-crystal.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B10", 18, SceneNames::PrincipledShowcase, SceneCategories::Materials,
             "Row of spheres from matte plastic to metallic with clearcoat (pbrt-v4 PrincipledBxDF)",
-            "Medium", "principled-showcase.pbrt"),
+            "Fast", "principled-showcase.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B11", 192, SceneNames::HairFibers, SceneCategories::Materials,
             "Sphere cluster with hair/fur fiber scattering (pbrt-v4 HairBxDF)",
-            "Medium", "hair-fibers-scene.pbrt"),
+            "Fast", "hair-fibers-scene.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B12", 20, SceneNames::NormalMappedCornell, SceneCategories::Materials,
             "Cornell box with procedural bump-mapped back wall and normal-mapped sphere (pbrt-v4 NormalMap/BumpMap)",
-            "Medium", "normal-mapped-cornell.pbrt", CameraMode::UserControlled),
+            "Fast", "normal-mapped-cornell.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B13", 193, SceneNames::SubsurfaceSlab, SceneCategories::Materials,
             "Cornell box with translucent wax slab and jade sphere using subsurface-like scattering",
-            "Slow", "subsurface-slab.pbrt", CameraMode::UserControlled),
+            "Medium", "subsurface-slab.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D1", 22, SceneNames::DepthOfField, SceneCategories::Cameras,
             "Row of spheres with defocus blur showing depth-of-field from the thin-lens camera model",
-            "Medium", "depth-of-field-spheres.pbrt"),
+            "Fast", "depth-of-field-spheres.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F1", 200, SceneNames::BilinearPatchScene, SceneCategories::Geometry,
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
-            "Medium", "bilinear-patch-scene.pbrt", CameraMode::UserControlled),
+            "Fast", "bilinear-patch-scene.pbrt", CameraMode::UserControlled),
         // ---- pbrt-v4 light / camera / medium showcase ----
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C1", 203, SceneNames::HdriSky, SceneCategories::Lights,
-            "Open scene lit by a real pbrt-v4 image infinite light (the same procedural gradient native always used, now a real baked .exr on both backends)",
-            "Medium", "hdri-sky-gradient.pbrt"),
+            "Open scene lit by an image-based sky: a smooth sky gradient stored as a real .exr environment map.",
+            "Fast", "hdri-sky-gradient.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C2", 176, SceneNames::SpotlightCornell, SceneCategories::Lights,
             "Cornell box lit by a spotlight with smooth penumbra (pbrt-v4 SpotLight)",
-            "Medium", "cornell-spotlight.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-spotlight.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C3", 177, SceneNames::DistantLightCornell, SceneCategories::Lights,
             "Cornell box lit by a parallel sun-like distant light (pbrt-v4 DistantLight)",
-            "Medium", "cornell-distant-light.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-distant-light.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C4", 178, SceneNames::PointLightCornell, SceneCategories::Lights,
             "Cornell box lit by a single overhead point light with 1/r^2 falloff (pbrt-v4 PointLight)",
-            "Medium", "cornell-point-light.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-point-light.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C5", 179, SceneNames::GoniometricLight, SceneCategories::Lights,
             "Cornell box lit by a goniometric (IES-profile) point light (pbrt-v4 GoniometricLight)",
-            "Medium", "cornell-goniometric.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-goniometric.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C6", 180, SceneNames::ProjectionLight, SceneCategories::Lights,
             "Cornell box with a slide-projector beam casting a checkerboard pattern (pbrt-v4 ProjectionLight)",
-            "Medium", "cornell-projection.pbrt", CameraMode::UserControlled),
+            "Fast", "cornell-projection.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E1", 197, SceneNames::HomogeneousMedium, SceneCategories::Volumes,
             "Cornell box filled with a homogeneous scattering fog (pbrt-v4 HomogeneousMedium / HenyeyGreenstein)",
@@ -158,15 +158,15 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E2", 198, SceneNames::CloudMedium, SceneCategories::Volumes,
             "Open scene with a procedural Perlin-noise cloud volume (pbrt-v4 CloudMedium)",
-            "Slow", "cloud-medium-scene.pbrt"),
+            "Medium", "cloud-medium-scene.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E3", 199, SceneNames::DielectricMediumShowcase, SceneCategories::Volumes,
             "Three glass spheres containing colored internal fog at varying density - dielectric surface + participating medium combined (pbrt-v4 style)",
-            "Medium", "dielectric-medium-showcase.pbrt"),
+            "Fast", "dielectric-medium-showcase.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E4", 70, SceneNames::RgbGridMedium, SceneCategories::Volumes,
             "Heterogeneous nebula with an independent per-voxel R/G/B scattering grid (pbrt-v4 RGBGridMedium)",
-            "Slow", "rgb-grid-nebula.pbrt"),
+            "Fast", "rgb-grid-nebula.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D2", 186, SceneNames::OrthographicCamera, SceneCategories::Cameras,
             "Geometric showcase rendered with an orthographic (parallel-projection) camera (pbrt-v4 OrthographicCamera)",
@@ -174,28 +174,28 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D3", 195, SceneNames::SphericalCamera, SceneCategories::Cameras,
             "360-degree equirectangular panorama from a spherical camera (pbrt-v4 SphericalCamera)",
-            "Medium", "spherical-camera-scene.pbrt"),
+            "Fast", "spherical-camera-scene.pbrt"),
         // B14's synthetic-gold.bsdf is a synthetic glossy lobe, not a measurement (see the .pbrt file's header).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B14", 205, SceneNames::MeasuredBrdf, SceneCategories::Materials,
             "Sphere cluster with a real, importance-sampled measured BRDF (pbrt-v4 MeasuredBxDF) loaded from a synthetic .bsdf tensor file",
-            "Medium", "measured-brdf-showroom.pbrt"),
+            "Fast", "measured-brdf-showroom.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B23", 131, SceneNames::GlassPrismDispersion, SceneCategories::Materials,
             "A real glass prism splitting a parallel white light into a visible chromatic fan (CPU --spectral, GPU --wavefront: real continuous spectral integration; GPU-recursive (--gpu, no --wavefront): a simplified 3-representative-wavelength RGB-channel approximation, same qualitative fan, see shade_material()'s inout_rgb_channel comment, optix_device_helpers.h - see dielectric's dispersive constructor, material_simple.h)",
-            "Medium", "prism-dispersion.pbrt", CameraMode::UserControlled),
+            "Fast", "prism-dispersion.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B24", 136, SceneNames::FrostedPrismDispersion, SceneCategories::Materials,
-            "The same glass prism as B23, frosted (rough_dielectric) instead of smooth - same chromatic fan, blurred by the roughness (CPU --spectral, GPU --wavefront with real continuous-wavelength dispersion, and GPU-recursive with the same 3-representative-wavelength approximation as B23)",
-            "Medium", "frosted-prism-dispersion.pbrt", CameraMode::UserControlled),
+            "The same glass prism as Glass Prism Dispersion, frosted (rough) instead of smooth: the same colour fan, blurred by the roughness. Needs --spectral on the CPU, or the wavefront GPU renderer; the recursive GPU renderer approximates dispersion with three wavelengths.",
+            "Fast", "frosted-prism-dispersion.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C7", 194, SceneNames::PortalInfiniteLight, SceneCategories::Lights,
             "Room scene with a sky visible through a windowed wall aperture (a flat sky_light behind a geometric hole, NOT the real pbrt-v4 PortalImageInfiniteLight class - see pbrt_scenes/portal-light.pbrt for that)",
-            "Slow", "portal-window-room.pbrt", CameraMode::UserControlled),
+            "Fast", "portal-window-room.pbrt", CameraMode::UserControlled),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D4", 187, SceneNames::RealisticCamera, SceneCategories::Cameras,
             "Spheres rendered through a thin-lens with realistic lens-element bokeh (pbrt-v4 RealisticCamera)",
-            "Medium", "realistic-camera-scene.pbrt"),
+            "Fast", "realistic-camera-scene.pbrt"),
         // D5-D8: the exact same classic Cornell box as A1 (build_cornell_box /
         // build_cornell_box_lights, backed by src/shared/cornell_box_data.h),
         // rendered by each of D1-D4's camera models in turn. Keeping the scene
@@ -206,20 +206,20 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // unchanged - these are additive, not replacements.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D5", 181, SceneNames::DepthOfFieldCornellBox, SceneCategories::Cameras,
-            "The classic Cornell box (same scene as A1/D6-D8) with defocus blur from the thin-lens perspective camera",
-            "Medium", "cornell-dof.pbrt"),
+            "The classic Cornell box (the same room as Cornell Box and the other Cornell Box camera scenes) with defocus blur from a thin-lens perspective camera.",
+            "Fast", "cornell-dof.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D6", 182, SceneNames::OrthographicCameraCornellBox, SceneCategories::Cameras,
-            "The classic Cornell box (same scene as A1/D5/D7/D8) rendered with a parallel-projection orthographic camera",
-            "Medium", "cornell-orthographic.pbrt"),
+            "The classic Cornell box (the same room as Cornell Box and the other Cornell Box camera scenes) rendered with a parallel-projection orthographic camera.",
+            "Fast", "cornell-orthographic.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D7", 183, SceneNames::SphericalCameraCornellBox, SceneCategories::Cameras,
-            "The classic Cornell box (same scene as A1/D5/D6/D8), toured from its center as a 360-degree equirectangular panorama",
-            "Medium", "cornell-spherical.pbrt"),
+            "The classic Cornell box (the same room as Cornell Box and the other Cornell Box camera scenes), seen from its centre as a 360-degree equirectangular panorama.",
+            "Fast", "cornell-spherical.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D8", 184, SceneNames::RealisticCameraCornellBox, SceneCategories::Cameras,
-            "The classic Cornell box (same scene as A1/D5-D7), rendered through a multi-element lens for realistic bokeh (pbrt-v4 RealisticCamera)",
-            "Medium", "cornell-realistic.pbrt"),
+            "The classic Cornell box (the same room as Cornell Box and the other Cornell Box camera scenes) rendered through a multi-element lens for realistic bokeh (pbrt-v4's realistic camera).",
+            "Fast", "cornell-realistic.pbrt"),
         // Same Cornell box world as A1/D5-D8 - only the camera differs
         // (keyframed across the exposure instead of static). closes the
         // "no motion blur anywhere" gap from docs/FEATURE_INVENTORY.md -
@@ -228,8 +228,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // GpuCameraParams::animated, gpu/optix/optix_types.h).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D13", 196, SceneNames::CameraMotionBlur, SceneCategories::Cameras,
-            "The classic Cornell box (same scene as A1/D5-D8), camera trucking sideways (lookat stays fixed, so this is really a small combined translate+rotate) across the exposure for real AnimatedTransform-based motion blur - CPU and GPU (both recursive and wavefront) all interpolate the same two keyframes",
-            "Medium", "cornell-camera-motion-blur.pbrt"),
+            "The classic Cornell box (the same room as Cornell Box and the other Cornell Box camera scenes) with the camera trucking sideways during the exposure, for real camera motion blur. The CPU and both GPU renderers interpolate the same two keyframes.",
+            "Fast", "cornell-camera-motion-blur.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F2", 188, SceneNames::TriangleMesh, SceneCategories::Geometry,
             "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
@@ -237,36 +237,36 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         build_instanced_spheres_descriptor(),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F4", 189, SceneNames::CurveFibers, SceneCategories::Geometry,
-            "A windswept tuft of real Bezier curve strands (CurveShape, tapered Cylinder cross-section) - genuine ray-curve intersection on CPU, not the sphere+HairBxDF trick scene B11 uses. GPU renders the same 70 strands tessellated into tapered tubes of bilinear patches (matches pbrt-v4's own GPU curve strategy) rather than an exact curve intersection, so the tube surface reads slightly faceted up close.",
+            "A windswept tuft of real Bezier curve strands. The CPU intersects the true curves; the GPU renders the same 70 strands as tapered tubes, so the tubes can look slightly faceted up close.",
             "Fast", "curve-fibers-scene.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G1", 38, SceneNames::StanfordBunny, SceneCategories::Models,
             "Classic Stanford bunny scan (69,451 triangles) in polished bronze, loaded from an external .obj file (requires models/stanford-bunny.obj)",
-            "Very Slow", "mesh-stanford-bunny.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-stanford-bunny.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G2", 39, SceneNames::StanfordArmadillo, SceneCategories::Models,
             "Stanford armadillo scan (99,976 triangles) in gunmetal, loaded from an external .obj file (requires models/armadillo.obj)",
-            "Very Slow", "mesh-stanford-armadillo.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-stanford-armadillo.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G3", 40, SceneNames::StanfordHappyBuddha, SceneCategories::Models,
             "Stanford happy buddha scan (98,601 triangles) in polished gold, loaded from an external .obj file (requires models/happy-buddha.obj)",
-            "Very Slow", "mesh-stanford-happy-buddha.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-stanford-happy-buddha.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G4", 41, SceneNames::StanfordLucy, SceneCategories::Models,
             "Stanford Lucy angel figure (99,970 triangles) in bright silver, loaded from an external .obj file (requires models/lucy.obj)",
-            "Very Slow", "mesh-stanford-lucy.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-stanford-lucy.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G5", 42, SceneNames::StanfordDragon, SceneCategories::Models,
-            "Stanford XYZRGB Dragon (249,882 triangles) in bright silver, loaded from an external .obj file (requires models/xyzrgb_dragon.obj). Camera pulled back/up further than the other mesh scenes' default (0,3,7): the dragon's lunging pose is much wider than tall (~5.4 units wide vs ~3 tall after normalization, similar to scene 43's teapot), and the default statue framing cropped the head and tail.",
-            "Very Slow", "mesh-stanford-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "The Stanford XYZRGB Dragon (249,882 triangles) in bright silver, from an external .obj file (needs models/xyzrgb_dragon.obj). The camera is pulled back further than for the other meshes because the dragon's lunging pose is much wider than tall.",
+            "Fast", "mesh-stanford-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G6", 43, SceneNames::UtahTeapot, SceneCategories::Models,
             "The classic Utah Teapot (6,320 triangles) in bright silver, loaded from an external .obj file (requires models/teapot.obj)",
-            "Medium", "mesh-utah-teapot.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-utah-teapot.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G7", 44, SceneNames::SpotCow, SceneCategories::Models,
             "Keenan Crane's Spot the Cow (5,856 triangles) in bright silver, loaded from an external .obj file (requires models/spot.obj)",
-            "Slow", "mesh-spot-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-spot-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G8", 45, SceneNames::Suzanne, SceneCategories::Models,
             "Blender's Suzanne monkey-head mascot (968 triangles after fan-triangulating its mostly-quad faces) in bright silver, loaded from an external .obj file (requires models/suzanne.obj). Unlike every other mesh scene, Suzanne is a disembodied head with no neck/shoulders/pedestal, so grounding its chin at y=0 (the shared statue convention) puts its face well above the generic eye-level camera - the camera below is raised and pulled in closer to look at roughly the model's own eye height instead.",
@@ -274,107 +274,107 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G9", 46, SceneNames::NefertitiBust, SceneCategories::Models,
             "Scanned bust of Nefertiti (99,938 triangles) in bright silver, loaded from an external .obj file (requires models/nefertiti.obj)",
-            "Very Slow", "mesh-nefertiti-bust.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-nefertiti-bust.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G10", 47, SceneNames::Horse, SceneCategories::Models,
             "Classic geometry-processing test horse head/neck bust (96,966 triangles) in bright silver, loaded from an external .obj file (requires models/horse.obj)",
-            "Very Slow", "mesh-horse.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-horse.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G11", 48, SceneNames::Cheburashka, SceneCategories::Models,
             "Beloved cartoon-character bust from Keenan Crane's geometry-processing course (13,334 triangles) in bright silver, loaded from an external .obj file (requires models/cheburashka.obj)",
-            "Very Slow", "mesh-cheburashka.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-cheburashka.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G12", 49, SceneNames::TrophyRoom, SceneCategories::Models,
-            "Four already-loaded meshes (bunny, teapot, Suzanne, Spot the Cow) lined up in bronze/chrome/gold/gunmetal, the first scene to combine multiple external .obj meshes in one composition (requires models/stanford-bunny.obj, teapot.obj, suzanne.obj, spot.obj)",
-            "Very Slow", "mesh-trophy-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Four meshes (Stanford Bunny, Utah Teapot, Suzanne and Spot the Cow) lined up in bronze, chrome, gold and gunmetal. Needs models/stanford-bunny.obj, teapot.obj, suzanne.obj and spot.obj.",
+            "Fast", "mesh-trophy-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G13", 50, SceneNames::GlassDragon, SceneCategories::Models,
-            "Stanford XYZRGB Dragon (249,882 triangles) in clear glass (dielectric, IOR 1.5), loaded from an external .obj file (requires models/xyzrgb_dragon.obj). The dragon's own surface renders persistently noisy at any sample count under EITHER the regular path tracer OR --sppm -- refraction through this deeply concave mesh is a hard case for any unidirectional camera-side estimator (SPPM's photon-density gather only ever helps non-delta/diffuse surfaces, and the dragon is 100% delta-BSDF glass), not a bug. --sppm's real benefit here is a genuine floor caustic from the dragon (CPU only -- GPU SPPM currently supports scene 11 only) that the regular path tracer's NEE can't resolve; a fully clean render of the glass surface itself would need bidirectional path tracing or MLT.",
-            "Very Slow", "mesh-glass-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "The Stanford XYZRGB Dragon (249,882 triangles) in clear glass (index of refraction 1.5), from an external .obj file (needs models/xyzrgb_dragon.obj). Its glass surface stays noisy at any sample count: refraction through a deeply concave mesh is hard for camera-side sampling, and SPPM only helps diffuse surfaces. SPPM on the CPU does resolve the dragon's caustic on the floor; a clean glass surface would need BDPT or MLT.",
+            "Fast", "mesh-glass-dragon.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G14", 51, SceneNames::Beast, SceneCategories::Models,
             "Fantasy creature bust (common-3d-test-models) in bronze, loaded from an external .obj file (requires models/beast.obj)",
-            "Very Slow", "mesh-beast.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-beast.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G15", 52, SceneNames::VWBeetle, SceneCategories::Models,
-            "Classic CAD-style Volkswagen Beetle in bright chrome, loaded from an external .obj file (requires models/beetle.obj). Elongated along Z after normalization, so the camera is pulled back further than the other mesh scenes, same reasoning as scene 43's Utah Teapot.",
-            "Medium", "mesh-vw-beetle.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "A classic CAD-style Volkswagen Beetle in bright chrome, from an external .obj file (needs models/beetle.obj). The camera is pulled back further than for the other meshes because the car is long.",
+            "Fast", "mesh-vw-beetle.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G17", 54, SceneNames::Bimba, SceneCategories::Models,
             "Smooth abstract bust/statue (AIM@SHAPE repository test model) in gold, loaded from an external .obj file (requires models/bimba.obj)",
-            "Very Slow", "mesh-bimba.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-bimba.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G18", 55, SceneNames::Cow, SceneCategories::Models,
-            "Classic Viewpoint/Alias Cow test model (distinct from scene 44's Spot the Cow) in brass, loaded from an external .obj file (requires models/cow.obj)",
-            "Medium", "mesh-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "The classic Viewpoint/Alias cow test model (not Spot the Cow) in brass, from an external .obj file (needs models/cow.obj).",
+            "Fast", "mesh-cow.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G19", 56, SceneNames::Fandisk, SceneCategories::Models,
             "Classic CAD mechanical-engineering test model with sharp creases, in gunmetal, loaded from an external .obj file (requires models/fandisk.obj). Camera moved to a three-quarter elevated angle rather than the usual eye-level statue framing - this mesh's proportions are shallow along the default view axis, and a face-on shot showed only a smooth, featureless wedge with none of the sharp creases the model is known for.",
-            "Medium", "mesh-fandisk.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-fandisk.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G20", 57, SceneNames::Homer, SceneCategories::Models,
             "Homer Simpson bust in gold, loaded from an external .obj file (requires models/homer.obj)",
-            "Medium", "mesh-homer.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-homer.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G21", 58, SceneNames::Igea, SceneCategories::Models,
             "Classical Italian bust (Igea, Roman goddess of health) in bright silver, loaded from an external .obj file (requires models/igea.obj). An earlier camera here (raised and looking steeply down) was meant to compensate for this scan's upward-tilted face, but actually framed the shiny crown of the skull instead of the face - lowered/pulled back closer to the other mesh scenes' eye-level convention, which shows the face (eyes, nose, tilted-up chin) correctly.",
-            "Very Slow", "mesh-igea.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-igea.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G22", 59, SceneNames::MaxPlanck, SceneCategories::Models,
             "Scanned bust of physicist Max Planck in aged bronze, loaded from an external .obj file (requires models/max-planck.obj). This scan's face points toward -Z, so the camera sits on that side (unlike the other mesh scenes' +Z default) to actually see the face instead of the back of the head.",
-            "Very Slow", "mesh-max-planck.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-max-planck.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G23", 60, SceneNames::Ogre, SceneCategories::Models,
             "Fantasy ogre head in dark olive metal, loaded from an external .obj file (requires models/ogre.obj)",
-            "Very Slow", "mesh-ogre.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "mesh-ogre.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G24", 61, SceneNames::RockerArm, SceneCategories::Models,
-            "Mechanical engine-part test model in gunmetal, loaded from an external .obj file (requires models/rocker-arm.obj). Elongated along Z after normalization like the Beetle scene (G15), but much smaller overall and taller than that comparison suggested - the camera is pulled back/up further than originally set, which cropped the two boss/lobe cylinders at the top of the part. Now visible, those bosses' flat tops catch a strong mirror-like specular highlight from the overhead light - a legitimate result of a flat, low-roughness surface facing a point-ish light, confirmed by testing (repositioning/brightening the light didn't change it), not a bug.",
-            "Slow", "mesh-rocker-arm.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "A mechanical engine part (a rocker arm) in gunmetal, from an external .obj file (needs models/rocker-arm.obj). The flat tops of its two bosses catch a strong mirror-like highlight from the overhead light, as a flat low-roughness surface should.",
+            "Fast", "mesh-rocker-arm.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H1", 62, SceneNames::CrytekSponza, SceneCategories::LargeScene,
             "Crytek Sponza (262K triangles) - the classic architectural global-illumination benchmark scene, with real per-face .mtl materials and image textures (curtains, columns, floor) loaded from models/sponza_textures/, lit by an open sky, loaded from an external .obj file (requires models/sponza.obj). First 'whole environment' mesh scene here rather than a single statue -- see build_sponza()'s own comment for the full design rationale.",
-            "Very Slow", "environment-sponza.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Medium", "environment-sponza.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H2", 63, SceneNames::AmazonBistro, SceneCategories::LargeScene,
-            "Amazon Lumberyard Bistro, Exterior (2.84M triangles) - a full outdoor street block (multiple buildings + plaza), with real per-face .mtl materials and image textures (windows, doors, foliage) loaded from models/bistro_textures/, lit by an open sky, loaded from an external .obj file (requires models/bistro_exterior.obj). Second 'whole environment' mesh scene, same design rationale as scene 62 (Crytek Sponza) -- see build_bistro_exterior()'s own comment. Camera nudged 300 units in Z from the original verified-clear-sightline position: a decorative streetlamp post sat directly in the foreground as a fully-black silhouette blocking most of the frame; the shift turns it into a pleasant framing element instead (visible tree/building behind it) rather than eliminating it.",
-            "Very Slow", "environment-bistro-exterior.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Amazon Lumberyard Bistro, exterior (2.84M triangles): a full outdoor street block with several buildings and a plaza, per-face materials and image textures (windows, doors, foliage) from models/bistro_textures/, lit by an open sky. From an external .obj file (needs models/bistro_exterior.obj).",
+            "Slow", "environment-bistro-exterior.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H3", 64, SceneNames::Rungholt, SceneCategories::LargeScene,
-            "Rungholt (6.7M triangles) - a giant blocky Minecraft-style town, with real per-face .mtl material colors (no image textures for this one, unlike scenes 62/63's Sponza/Bistro), loaded from an external .obj file (requires models/rungholt.obj). Third 'whole environment' mesh scene, same design rationale as scenes 62-63 -- see build_rungholt()'s own comment (including a real OBJ-loader bug this mesh exposed and fixed: negative/relative face indices).",
-            "Very Slow", "environment-rungholt.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Rungholt (6.7M triangles): a giant blocky Minecraft-style town with per-face material colours and no image textures, from an external .obj file (needs models/rungholt.obj).",
+            "Slow", "environment-rungholt.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H4", 73, SceneNames::FireplaceRoom, SceneCategories::LargeScene,
-            "Fireplace Room - a small, human-scale furnished living room (fireplace, wood floor, framed pictures, a potted plant), with real per-face .mtl materials and image textures loaded from models/fireplace_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/fireplace_room.obj). Fourth 'whole environment' mesh scene, same design rationale as scenes 62-64 -- see build_fireplace_room()'s own comment. A furnished interior rather than a building/street/town-scale environment.",
-            "Slow", "environment-fireplace-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fireplace Room: a small furnished living room (fireplace, wood floor, framed pictures, a potted plant) with materials and image textures from models/fireplace_room_textures/, lit by an open sky through its windows. From an external .obj file (needs models/fireplace_room.obj).",
+            "Medium", "environment-fireplace-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H5", 74, SceneNames::SanMiguel, SceneCategories::LargeScene,
-            "San Miguel (9.9M triangles) - a dense Mexican hacienda courtyard/villa, the classic 'hero' benchmark scene with real per-face .mtl materials and image textures (tile, wood, fabric, foliage) loaded from models/san_miguel_textures/, lit by an open sky, loaded from an external .obj file (requires models/san_miguel.obj). Fifth 'whole environment' mesh scene, same design rationale as scenes 62-64/73 -- see build_san_miguel()'s own comment.",
+            "San Miguel (9.9M triangles): a dense Mexican hacienda courtyard, the classic benchmark scene, with tile, wood, fabric and foliage textures from models/san_miguel_textures/, lit by an open sky. From an external .obj file (needs models/san_miguel.obj).",
             "Very Slow", "environment-san-miguel.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H6", 75, SceneNames::SibenikCathedral, SceneCategories::LargeScene,
-            "Sibenik Cathedral - a Gothic cathedral interior (vaulted nave, stone columns, a rose window, colored stained glass), with real per-face .mtl materials, image textures, and real bump maps loaded from models/sibenik_cathedral_textures/, lit through its open doorway/arches, loaded from an external .obj file (requires models/sibenik_cathedral.obj). Sixth 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74 -- see build_sibenik_cathedral()'s own comment.",
-            "Very Slow", "environment-sibenik-cathedral.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Sibenik Cathedral: a Gothic cathedral interior (vaulted nave, stone columns, a rose window, coloured stained glass) with image textures and bump maps from models/sibenik_cathedral_textures/, lit through its doorway and arches. From an external .obj file (needs models/sibenik_cathedral.obj).",
+            "Slow", "environment-sibenik-cathedral.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H7", 76, SceneNames::BreakfastRoom, SceneCategories::LargeScene,
-            "Breakfast Room - a cozy furnished dining interior with glassware, table settings, and marble/tile textures, with real per-face .mtl materials and image textures loaded from models/breakfast_room_textures/, lit by an open sky through its windows, loaded from an external .obj file (requires models/breakfast_room.obj). Seventh 'whole environment' mesh scene, same design rationale as scenes 62-64/73/74/75 -- see build_breakfast_room()'s own comment.",
-            "Very Slow", "environment-breakfast-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Breakfast Room: a cosy dining interior with glassware, table settings and marble and tile textures from models/breakfast_room_textures/, lit by an open sky through its windows. From an external .obj file (needs models/breakfast_room.obj).",
+            "Slow", "environment-breakfast-room.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H8", 77, SceneNames::SalleDeBain, SceneCategories::LargeScene,
-            "Salle de Bain - a tiled bathroom interior with a mirror, tub, and a real ceiling light fixture (genuine Ke emission -- exercises the NEE-light path a second time, after Fireplace Room), with real per-face .mtl materials and image textures loaded from models/salle_de_bain_textures/, loaded from an external .obj file (requires models/salle_de_bain.obj). Eighth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-75 -- see build_salle_de_bain()'s own comment.",
-            "Slow", "environment-salle-de-bain.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Salle de Bain: a tiled bathroom with a mirror, a tub and a real ceiling light fixture that emits light, with image textures from models/salle_de_bain_textures/. From an external .obj file (needs models/salle_de_bain.obj).",
+            "Medium", "environment-salle-de-bain.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H9", 78, SceneNames::Gallery, SceneCategories::LargeScene,
-            "Gallery - the Hallwyl Museum picture gallery in Stockholm, an ornate room of framed paintings, chandeliers, and a parquet floor, with a real per-face .mtl material and an image texture loaded from models/gallery_textures/, lit by an open sky, loaded from an external .obj file (requires models/gallery.obj). Ninth 'whole environment' mesh scene, same design rationale as scenes 62-64/73-76 -- see build_gallery()'s own comment.",
-            "Very Slow", "environment-gallery.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Gallery: the Hallwyl Museum picture gallery in Stockholm, an ornate room of framed paintings, chandeliers and a parquet floor, with a texture from models/gallery_textures/, lit by an open sky. From an external .obj file (needs models/gallery.obj).",
+            "Medium", "environment-gallery.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H10", 79, SceneNames::LostEmpire, SceneCategories::LargeScene,
             "Lost Empire - a large half-buried ancient city exported from a Minecraft world, with temple platforms, staircases, and a lava chamber, with real per-face .mtl materials and an image texture loaded from models/lost_empire_textures/, lit by an open sky, loaded from an external .obj file (requires models/lost_empire.obj). Tenth 'whole environment' mesh scene, and the first at a scale (165 units deep) that suits a long video flythrough -- see build_lost_empire()'s own comment.",
-            "Slow", "environment-lost-empire.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Very Slow", "environment-lost-empire.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H11", 80, SceneNames::VokseliaSpawn, SceneCategories::LargeScene,
             "Vokselia Spawn - a small floating voxel island, exported from the same Minecraft world as Lost Empire from its spawn point, with a real per-face .mtl material and an image texture loaded from models/vokselia_spawn_textures/, lit by an open sky, loaded from an external .obj file (requires models/vokselia_spawn.obj). Eleventh 'whole environment' mesh scene -- see build_vokselia_spawn()'s own comment.",
-            "Medium", "environment-vokselia-spawn.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+            "Fast", "environment-vokselia-spawn.pbrt", CameraMode::Fixed, /*requires_files=*/true),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "H12", 81, SceneNames::PowerPlant, SceneCategories::LargeScene,
             "Power Plant - a complete model of an actual coal-fired power plant (12.76M triangles, 5.98M vertices), the largest scene in this collection by triangle count, with flat per-face .mtl colors (no image textures), lit by an open sky, loaded from an external .obj file (requires models/powerplant.obj). Twelfth 'whole environment' mesh scene, and the first needing a real coordinate rescale rather than raw OBJ units -- see build_power_plant()'s own comment.",
@@ -402,12 +402,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // contains.
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H13", 159, SceneNames::ContemporaryBathroomPbrtExample, SceneCategories::LargeScene,
-            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a fully furnished bathroom interior with real-world material variety (tile, wood, chrome, glass, fabric) and a blackbody-temperature light fixture, one of the two scenes this project's own pbrt-v4 parser was verified against most heavily during development.",
+            "A furnished bathroom interior from the pbrt-v4-scenes collection (not bundled with this repo; see pbrt_scenes/README.md): tile, wood, chrome, glass and fabric, with a blackbody-temperature light fixture.",
             "Very Slow", "contemporary-bathroom/contemporary-bathroom.pbrt", 15.0),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H14", 160, SceneNames::BarcelonaPavilionPbrtExample, SceneCategories::LargeScene,
-            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a reconstruction of Mies van der Rohe's Barcelona Pavilion, glass-and-marble architecture surrounded by dense foliage - the other major scene this project's own pbrt-v4 parser was verified against during development (its foliage is what motivated real diffusetransmission texture-binding support). Renders the daytime lighting variant.",
-            "Very Slow", "barcelona-pavilion/pavilion-day.pbrt", 15.0),
+            "Mies van der Rohe's Barcelona Pavilion from the pbrt-v4-scenes collection (not bundled with this repo; see pbrt_scenes/README.md): glass and marble architecture among dense foliage, in its daytime lighting.",
+            "Slow", "barcelona-pavilion/pavilion-day.pbrt", 15.0),
         // H15-H17: three more real pbrt-v4-scenes bundles, same
         // build_curated_external_pbrt_scene_descriptor() mechanism as H13/H14
         // above - already sitting locally as parser-verification fixtures,
@@ -421,12 +421,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Very Slow", "sssdragon/dragon_50.pbrt"),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H16", 162, SceneNames::GaneshaPbrtExample, SceneCategories::LargeScene,
-            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a detailed statue of Ganesha in a marble-like subsurface scattering material, lit by an HDR environment map - a second, independent subsurface-scattering showcase alongside H15's dragon, on a completely different mesh/material combination.",
-            "Very Slow", "ganesha/ganesha.pbrt"),
+            "A detailed statue of Ganesha in a marble-like subsurface scattering material, lit by an HDR environment map, from the pbrt-v4-scenes collection (not bundled with this repo; see pbrt_scenes/README.md). A second subsurface showcase beside the Subsurface Dragon.",
+            "Slow", "ganesha/ganesha.pbrt"),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H17", 163, SceneNames::SportsCarPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a studio-lit sports car with real-world car-paint (layered coated conductor), glass, chrome, and rubber materials under an HDR sky. Renders the daytime sky-lit variant (sportscar-sky.pbrt); a separate area-lit studio variant also ships in the same directory.",
-            "Very Slow", "sportscar/sportscar-sky.pbrt"),
+            "Slow", "sportscar/sportscar-sky.pbrt"),
         // H18: a genuinely NEW download (not a pre-existing local fixture
         // like H13-H17 were) - github.com/mmp/pbrt-v4-scenes' "zero-day"
         // scene, a detailed game-level-style interior (~422MB). It's an
@@ -468,16 +468,16 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // without necessarily matching pbrt-v4's own reference render.
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H19", 165, SceneNames::CrownPbrtExample, SceneCategories::LargeScene,
-            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a jeweled crown rendered with real glass/gem dispersion and refraction - a classic pbrt showcase scene, and a different material story than any other curated Large Scene here (none of H13-H18 focus on dispersion).",
-            "Very Slow", "crown/crown.pbrt", 30.0),
+            "A jewelled crown rendered with glass and gem dispersion and refraction, from the pbrt-v4-scenes collection (not bundled with this repo; see pbrt_scenes/README.md): a classic pbrt showcase scene.",
+            "Slow", "crown/crown.pbrt", 30.0),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H20", 166, SceneNames::VillaPbrtExample, SceneCategories::LargeScene,
-            "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): a furnished villa interior/exterior, in the same 'full building environment' vein as H13's bathroom and H14's pavilion. Renders the daylight lighting variant (villa-daylight.pbrt); a lights-on night variant also ships in the same directory.",
+            "A furnished villa, inside and out, from the pbrt-v4-scenes collection (not bundled with this repo; see pbrt_scenes/README.md), in its daylight lighting (villa-daylight.pbrt). A lights-on night variant ships in the same folder.",
             "Very Slow", "villa/villa-daylight.pbrt", 15.0),
         pbrt_scene_registry::build_curated_external_pbrt_scene_descriptor(
             "H21", 167, SceneNames::TransparentMachinesPbrtExample, SceneCategories::LargeScene,
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): detailed mechanical objects (gears, casings) rendered in transparent glass-like materials, shot as an animated camera fly-through. Five frames ship in the bundle (frame542/675/812/888/1266.pbrt); this entry renders a representative middle one (frame812).",
-            "Very Slow", "transparent-machines/frame812.pbrt"),
+            "Medium", "transparent-machines/frame812.pbrt"),
 
         // ---------------------------------------------------------------
         // Education (I1-I6): curated demos of the Render Options tab's own
@@ -529,8 +529,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I2", 133, SceneNames::SpectralDispersionEducation, SceneCategories::Education,
-                "Same glass prism as B23: white light only fans into a visible spectrum with Spectral rendering (Render Options tab) switched on - off, every wavelength refracts by the same fixed amount.",
-                "Medium", "prism-dispersion.pbrt", CameraMode::UserControlled);
+                "The same glass prism as Glass Prism Dispersion: white light fans into a visible spectrum only with Spectral rendering (Render Options tab) switched on. Off, every wavelength refracts by the same fixed amount.",
+                "Fast", "prism-dispersion.pbrt", CameraMode::UserControlled);
             s.recommended_spp = 200;
             s.gpu_compatible = false;
             return s;
@@ -538,8 +538,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // I3 shares C1's pbrt file (same world and sky, a curated row for the Education category).
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "I3", 204, SceneNames::ExposureToneMapping, SceneCategories::Education,
-            "Same HDR sky gradient as C1: try raising/lowering Exposure, then compare ACES/Reinhard/None Tone mapping (both on the Render Options tab) against this scene's bright sky vs. shadowed sphere.",
-            "Medium", "hdri-sky-gradient.pbrt"),
+            "The same HDR sky gradient as HDRI Sky: try raising and lowering Exposure, then compare ACES, Reinhard and None tone mapping (both on the Render Options tab) against this scene's bright sky and shadowed sphere.",
+            "Fast", "hdri-sky-gradient.pbrt"),
         [] {
             // Same world/lights as A1 (Cornell Box) - migrated to
             // pbrt-backed alongside A1 (reuses cornell-box-native.pbrt
@@ -576,8 +576,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // RoughDielectric independent of this registry entry, so
             // --sppm --gpu keeps working here too, not just plain --sppm.
             "I5", 139, SceneNames::SppmCausticsEducation, SceneCategories::Education,
-            "Same Cornell box as B3, with a rough-dielectric (frosted glass) sphere: render once with the default Path Tracer, once with SPPM (Integrator dropdown, Render Options tab), and compare how much faster the floor caustic cleans up - SPPM's photon mapping is built for exactly this case.",
-            "Medium", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
+            "The Cornell Rough Glass room (a frosted-glass sphere): render once with the default Path Tracer and once with SPPM (Integrator dropdown, Render Options tab) and compare how much faster the floor caustic cleans up. SPPM's photon mapping is built for exactly this case.",
+            "Fast", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
         [] {
             // Same world/lights as A1 (Cornell Box) - migrated to
             // pbrt-backed alongside A1 (reuses cornell-box-native.pbrt
@@ -593,8 +593,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // warning under either flag) - unaffected by this migration.
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I6", 140, SceneNames::BdptMltEducation, SceneCategories::Education,
-                "Same Cornell box as A1: try BDPT or MLT (Integrator dropdown, Render Options tab) instead of the default Path Tracer - both trace light paths from the camera AND the light source and connect them, which can converge differently than the default on scenes with indirect lighting like this one.",
-                "Medium", "cornell-box-native.pbrt", CameraMode::UserControlled);
+                "The same Cornell box as Cornell Box: try BDPT or MLT (Integrator dropdown, Render Options tab) instead of the default Path Tracer. Both trace light paths from the camera and from the light and connect them, which can converge differently on scenes with indirect lighting like this one.",
+                "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled);
             s.recommended_spp = 100;
             return s;
         }(),
@@ -619,7 +619,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I7", 155, SceneNames::LightTransportStrategies, SceneCategories::Education,
-                "Same Cornell box as A1: pick RandomWalk, SimplePath (then try its NEE/BSDF sub-checkboxes), or leave the default Path Tracer (Integrator dropdown, Render Options tab) and compare noise at the same low sample count - each includes a different subset of next-event estimation and BSDF importance sampling, and MIS (the default) is what combines both well.",
+                "The same Cornell box as Cornell Box: pick RandomWalk, SimplePath (then try its NEE and BSDF checkboxes) or the default Path Tracer (Integrator dropdown, Render Options tab) and compare noise at the same low sample count. Each uses a different mix of next-event estimation and BSDF sampling; MIS, the default, combines both well.",
                 "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled);
             s.recommended_spp = 32;
             s.gpu_compatible = false;
@@ -659,7 +659,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         [] {
             auto s = pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
                 "I9", 157, SceneNames::AmbientOcclusionEducation, SceneCategories::Education,
-                "Same Cornell box as A1: switch to Ambient Occlusion (Integrator dropdown, Render Options tab) - a debug/visualization mode with no material color or indirect light at all, just a grayscale occlusion term from nearby geometry, and compare against the default Path Tracer's full lit render of the identical scene.",
+                "The same Cornell box as Cornell Box: switch to Ambient Occlusion (Integrator dropdown, Render Options tab), a debug mode with no material colour or indirect light, only a grey occlusion term from nearby geometry, and compare it with the default Path Tracer's full render of the same room.",
                 "Fast", "cornell-box-native.pbrt", CameraMode::UserControlled);
             s.recommended_spp = 64;
             s.gpu_compatible = false;
@@ -686,8 +686,8 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             // (recursive exact, wavefront approximate for the clamp - see
             // each flag's own help text), unaffected by this migration.
             "I10", 158, SceneNames::FireflySuppression, SceneCategories::Education,
-            "Same rough-glass Cornell box as B3 (and I5's own SPPM demo): render once plain, once with Regularize checked, once with Firefly clamp (--maxcomponentvalue) checked instead (both on the Render Options tab) - the hard caustic through the frosted sphere is exactly the case each is built to tame, via two different mechanisms (blurring the BSDF vs. clamping the sample directly).",
-            "Medium", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
+            "The same rough-glass Cornell box as Cornell Rough Glass: render once plain, once with Regularize checked and once with Firefly clamp (--maxcomponentvalue) checked (both on the Render Options tab). The hard caustic through the frosted sphere is what each is built to tame, one by blurring the BSDF and the other by clamping the sample.",
+            "Fast", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
 
         // ---------------------------------------------------------------
         // Curated pbrt_scenes/*.pbrt example scenes, under their real topic
@@ -714,7 +714,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "conductor-rgb-eta-k.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B20", 105, SceneNames::HairMaterialPbrtExample, SceneCategories::Materials,
-            "pbrt's Material \"hair\" (Marschner/Chiang fiber scattering) applied to ordinary spheres, matching this project's own native Hair Fibers demo for a fair comparison.",
+            "pbrt's hair material (Marschner/Chiang fibre scattering) on ordinary spheres, laid out like the native Hair Fibers demo for comparison.",
             "Fast", "hair-material.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B22", 107, SceneNames::NamedMaterialAndTexturePbrtExample, SceneCategories::Materials,
@@ -722,7 +722,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "named-material-and-texture.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "B25", 146, SceneNames::GlassPresetsPbrtExample, SceneCategories::Materials,
-            "All seven of Material \"dielectric\"'s named glass IOR presets (BK7, BAF10, FK51A, LASF9, F5, F10, F11) as separate spheres, resolved via FindGlassPreset() -- previously exercised only by unit tests, never rendered.",
+            "All seven of the dielectric material's named glass presets (BK7, BAF10, FK51A, LASF9, F5, F10, F11) as separate spheres.",
             "Fast", "glass-presets.pbrt"),
 
         // -- Textures --
@@ -736,7 +736,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // changes rather than preserving a now-inconsistent one.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "J1", 102, SceneNames::CoatedDiffuseTexturePbrtExample, SceneCategories::Textures,
-            "Real texture-bound reflectance for pbrt's CoatedDiffuse material, which previously silently dropped to a flat color on both backends.",
+            "A texture driving the reflectance of pbrt's coated-diffuse material.",
             "Fast", "coateddiffuse-texture.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "J2", 104, SceneNames::DiffuseTransmissionTexturePbrtExample, SceneCategories::Textures,
@@ -752,7 +752,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "texture-encoding-wrap-invert.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "J5", 148, SceneNames::ProceduralTextureGalleryPbrtExample, SceneCategories::Textures,
-            "Four pbrt-v4 procedural texture classes wired into the CPU builder but never used by any other bundled scene: windy turbulence, wrinkled (Perlin-octave) turbulence, dots, and bilerp corner-blend.",
+            "Four of pbrt's procedural texture types in one scene: windy turbulence, wrinkled (Perlin-octave) turbulence, dots, and bilerp corner blending.",
             "Fast", "procedural-textures-windy-wrinkled-dots-bilerp.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "J6", 149, SceneNames::NestedTexture2LevelPbrtExample, SceneCategories::Textures,
@@ -766,11 +766,11 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "punctual-lights.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C9", 109, SceneNames::GoniometricProjectionPbrtExample, SceneCategories::Lights,
-            "Real image decoding for pbrt's goniometric and projection lights, which previously silently ignored their own filename and fell back to a uniform beam.",
+            "Goniometric and projection lights that read their own image files: a goniometric light's measured intensity pattern and a projection light's slide.",
             "Fast", "goniometric-projection.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C10", 110, SceneNames::BlackbodyLightPbrtExample, SceneCategories::Lights,
-            "pbrt's \"blackbody L\" colour-temperature area lights -- two identical panels at 2500K and 9000K, so a regression back to flat-white emission would be immediately visible.",
+            "Colour-temperature (blackbody) area lights: two identical panels at 2500 K and 9000 K, one warm and one cool.",
             "Fast", "blackbody-light.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C11", 111, SceneNames::TexturedTwoSidedLightsPbrtExample, SceneCategories::Lights,
@@ -786,7 +786,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "disk-cylinder-light.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C14", 114, SceneNames::TwoSphereLightsPbrtExample, SceneCategories::Lights,
-            "Two sphere area lights in one scene, pinning a GPU light-type-table width bug where every light after the first silently misread its own type.",
+            "Two sphere area lights in one scene, to check that every light is sampled correctly and not only the first.",
             "Fast", "two-sphere-lights.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C15", 115, SceneNames::TriangleFanLightPbrtExample, SceneCategories::Lights,
@@ -798,7 +798,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "colorspace-blackbody.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C17", 142, SceneNames::PortalLightPbrtExample, SceneCategories::Lights,
-            "The real pbrt-v4 PortalImageInfiniteLight -- an equal-area environment map restricted to a single window quad, so only that opening shows real sky detail. The native \"Portal Infinite Light\" scene (C7) only cuts a geometric hole in a wall behind a flat sky_light; this is the class it doesn't actually build.",
+            "pbrt-v4's portal infinite light: an equal-area environment map restricted to a single window, so only that opening shows real sky detail. The Portal Infinite Light scene only cuts a hole in a wall behind a flat sky; this is the real thing.",
             "Fast", "portal-light.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C18", 143, SceneNames::LightPowerParameterPbrtExample, SceneCategories::Lights,
@@ -810,7 +810,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "projection-light-nonsquare.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C20", 145, SceneNames::SpectralGamutSaturationPbrtExample, SceneCategories::Lights,
-            "Three saturated, close-range colored lights on a plain diffuse surface under --spectral rendering, chosen so their overlap sits right at the sRGB gamut boundary -- exactly the condition a per-sample XYZ->RGB gamut-clamp bug used to darken and desaturate incorrectly.",
+            "Three saturated, close-range coloured lights on a plain diffuse surface under --spectral rendering, chosen so their overlap sits at the sRGB gamut boundary, where a gamut-clamping error would darken and desaturate the colours.",
             "Fast", "spectral-gamut-saturation.pbrt"),
 
         // -- Cameras --
@@ -838,15 +838,15 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "cloud-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E6", 121, SceneNames::CylinderMediumPbrtExample, SceneCategories::Volumes,
-            "A homogeneous fog medium on pbrt's Shape \"cylinder\", now real on both GPU backends instead of silently rendering as ordinary empty geometry.",
+            "A homogeneous fog medium inside pbrt's cylinder shape.",
             "Fast", "cylinder-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E11", 201, SceneNames::ThinDielectricMediumPbrtExample, SceneCategories::Volumes,
-            "Material \"thindielectric\" fused with MediumInterface, now real on both GPU backends via the same DielectricMedium material the smooth-dielectric fusion case uses.",
+            "A thin dielectric (a zero-thickness pane of glass) fused with a participating medium.",
             "Fast", "thin-dielectric-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E12", 202, SceneNames::RoughDielectricMediumPbrtExample, SceneCategories::Volumes,
-            "A frosted (rough) Material \"dielectric\" fused with MediumInterface, now real on both GPU backends via a GGX microfacet DielectricMedium surface with real glossy NEE.",
+            "A frosted (rough) dielectric fused with a participating medium: glossy refraction with fog inside.",
             "Fast", "rough-dielectric-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E7", 122, SceneNames::RgbGridMediumPbrtExample, SceneCategories::Volumes,
@@ -858,7 +858,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "uniformgrid-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E9", 141, SceneNames::NanoVdbMediumPbrtExample, SceneCategories::Volumes,
-            "pbrt's MakeNamedMedium \"nanovdb\" (a real NanoVDB-format sparse density grid read from an external .nvdb file) rendering as a soft fog-volume sphere - CPU only, GPU falls back to flat homogeneous fog.",
+            "pbrt's NanoVDB medium (a sparse density grid read from an external .nvdb file) shown as a soft fog-volume sphere. CPU only: the GPU renders flat homogeneous fog instead.",
             "Fast", "nanovdb-medium.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "E10", 154, SceneNames::CameraMediumPbrtExample, SceneCategories::Volumes,
@@ -868,7 +868,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
         // -- Geometry --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F5", 124, SceneNames::PlymeshUvPbrtExample, SceneCategories::Geometry,
-            "pbrt's Shape \"plymesh\" real per-vertex UV data, threaded through both backends -- previously GPU-recursive rendered this exact scene solid black.",
+            "A mesh with per-vertex UV coordinates read from a .ply file, textured through them.",
             "Fast", "plymesh-uv.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F6", 125, SceneNames::PlymeshGeometryPbrtExample, SceneCategories::Geometry,
@@ -876,7 +876,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "plymesh-geometry.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F7", 126, SceneNames::CurveTuftPbrtExample, SceneCategories::Geometry,
-            "pbrt's Shape \"curve\" (real cubic-Bezier fiber geometry, tessellated for GPU) compared against this project's own native curve-tuft demo.",
+            "A tuft of cubic Bezier curve strands (pbrt's curve shape), laid out like the native Curve Fibers demo for comparison.",
             "Fast", "curve-tuft.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F8", 127, SceneNames::CurveHairTuftPbrtExample, SceneCategories::Geometry,
@@ -884,7 +884,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "curve-hair-tuft.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F9", 128, SceneNames::TrianglemeshUvPbrtExample, SceneCategories::Geometry,
-            "pbrt's Shape \"trianglemesh\" \"point2 uv\" parameter threaded through both backends -- previously GPU-recursive rendered this exact scene solid black.",
+            "A triangle mesh whose texture coordinates come from its own point2 uv parameter.",
             "Fast", "trianglemesh-uv.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F10", 129, SceneNames::PixelFilterBoxPbrtExample, SceneCategories::Geometry,
@@ -896,7 +896,7 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "object-motion-blur.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F12", 151, SceneNames::DiskCylinderMotionBlurPbrtExample, SceneCategories::Geometry,
-            "Shape \"disk\"/\"cylinder\" object motion blur via ActiveTransform -- CPU only, both GPU backends render these shapes frozen at their start pose and warn instead of blurring.",
+            "Disks and cylinders with object motion blur. CPU only: the GPU renders them frozen at their start pose, with a warning.",
             "Fast", "disk-cylinder-motion-blur.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F13", 152, SceneNames::ReverseOrientationPbrtExample, SceneCategories::Geometry,
@@ -904,14 +904,14 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Fast", "reverseorientation.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F14", 153, SceneNames::ConeParaboloidGalleryPbrtExample, SceneCategories::Geometry,
-            "Shape \"cone\"/\"paraboloid\" (this project's own pbrt-v3-compatibility extension) as plain diffuse shapes, an area-light emitter, and a medium boundary in one gallery -- CPU only, GPU drops cone/paraboloid shapes entirely.",
+            "Cones and paraboloids (an extension of this renderer's pbrt-v3-compatible shapes) as diffuse shapes, an area-light emitter and a medium boundary in one gallery. CPU only: the GPU drops these shapes.",
             "Fast", "cone-paraboloid-gallery.pbrt"),
 
         // -- Models --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "G25", 130, SceneNames::KillerooSimplePbrtExample, SceneCategories::Models,
             "The classic pbrt-v4 \"killeroo\" statue example scene, loaded end-to-end from its own .pbrt file rather than a compiled-in scene.",
-            "Medium", "killeroo-simple.pbrt"),
+            "Fast", "killeroo-simple.pbrt"),
     };
     return registry;
 }

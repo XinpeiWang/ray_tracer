@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A lit room seen from inside coloured fog whose extinction differs by channel. Checks scattering, shadows and direct light through fog around the camera.
+# @rt-performance Fast
 # chromatic-camera-medium.pbrt -- a lit room seen from inside a camera medium whose extinction differs by colour.
 #
 # sigma_a = (0.02, 0.06, 0.15), sigma_s = (0.05, 0.12, 0.30) around the camera, a diffuse floor and back wall, an area lamp and a

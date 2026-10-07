@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A diffuse plane whose surface is bumped by a height image (marble), lit from the side by a tall area light. Checks bump mapping on the GPU.
+# @rt-performance Fast
 # bump-mapped-plane.pbrt -- regression scene for GPU bump mapping (a grayscale "texture displacement").
 #
 # A diffuse plane whose shading normal is perturbed by a height image (images/bump-marble.png, scaled by a

@@ -1112,7 +1112,14 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 #endif
 
 	QString infoText = tr("<b>Description:</b> %1<br>").arg(meta->description);
-	infoText += tr("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::displayPerformance(meta->performance));
+	// What the word means: one 400 x 400 picture at the recommended samples on a 16-core CPU (docs/SCENE_SELECTION.md).
+	QString performanceRange;
+	if (meta->performance == "Fast") performanceRange = tr("under 10 s");
+	else if (meta->performance == "Medium") performanceRange = tr("10 to 30 s");
+	else if (meta->performance == "Slow") performanceRange = tr("30 s to 2 min");
+	else if (meta->performance == "Very Slow") performanceRange = tr("over 2 min");
+	else performanceRange = tr("not measured");
+	infoText += tr("<b>Performance:</b> %1 (%2)<br>").arg(SceneMetadataClient::displayPerformance(meta->performance), performanceRange);
 	infoText += tr("<b>Recommended SPP:</b> %1<br>").arg(meta->recommendedSpp);
 	infoText += tr("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? tr("Yes") : tr("CPU only"));
 	// These two warnings are the only coloured text in the label, so they take

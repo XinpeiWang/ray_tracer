@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A room lit by a large area light. Checks that the GPU wavefront renderer weights BSDF-sampled hits against light sampling (multiple importance sampling).
+# @rt-performance Fast
 # large-area-light-room.pbrt -- regression scene for the GPU wavefront backend's missing BSDF-hit MIS.
 #
 # A closed 5-unit room of bright (0.8) diffuse walls lit by one 4.6x4.6 ceiling light that covers most of the

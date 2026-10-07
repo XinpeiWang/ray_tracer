@@ -108,6 +108,7 @@ struct Discovered {
 	std::string category;
 	std::string description;
 	std::string performance;
+	bool gpuCompatible = true;   // false when the file says "# @rt-gpu no"
 	// The title the Scene Builder saved in the file (scene_document.h's "# @rt-builder-doc" line); empty for any other file.
 	std::string title;
 	// True for a file the user named explicitly (ray_tracer.exe ... path/to/scene.pbrt, the GUI's Scene Builder) rather than one found by scanning a
@@ -139,11 +140,12 @@ inline std::string headerOf(const std::string &text) {
 	return text.substr(0, at) + "WorldBegin\n";
 }
 
-// "# @rt-category Test Scenes", "# @rt-description ...", "# @rt-performance Fast": scene metadata kept in the scene's own header, so a file carries it
+// "# @rt-category Test Scenes", "# @rt-description ...", "# @rt-performance Fast", "# @rt-gpu no": scene metadata kept in the scene's own header, so a file carries it
 // wherever it is copied. Only comment lines before WorldBegin are read; a description given on several lines is joined with spaces; the Scene
 // Builder's own "# @rt-builder-doc" line is not one of these. Unknown keys are ignored.
 struct HeaderTags {
 	std::string category, description, performance;
+	bool gpuCompatible = true;   // "# @rt-gpu no": the scene uses something the GPU backends do not support, so it renders on the CPU only
 };
 inline HeaderTags readHeaderTags(const std::string &text) {
 	HeaderTags tags;
@@ -161,6 +163,7 @@ inline HeaderTags readHeaderTags(const std::string &text) {
 		if (value.empty()) continue;
 		if (key == "category") tags.category = value;
 		else if (key == "performance") tags.performance = value;
+		else if (key == "gpu") tags.gpuCompatible = value != "no";
 		else if (key == "description") tags.description += (tags.description.empty() ? "" : " ") + value;
 	}
 	return tags;
@@ -255,6 +258,7 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 		d.category = tags.category;
 		d.description = tags.description;
 		d.performance = tags.performance;
+		d.gpuCompatible = tags.gpuCompatible;
 	}
 	{
 		scene_doc::Document builderDoc;

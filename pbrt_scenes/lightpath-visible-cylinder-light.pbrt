@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A glowing cylinder with its axis across the view, lit by nothing else. --lightpath, --bdpt and the path tracer must read the same.
+# @rt-performance Fast
 # lightpath-visible-cylinder-light.pbrt -- a cylinder (axis across the view) that is itself the picture, lit by nothing else: --lightpath, --bdpt and the path tracer must read the same.
 #
 # The only light is the emitter the camera looks at, so the frame mean is L times the area it covers - the path tracer sees it directly, --lightpath only through its

@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A translucent plate lit by a point light behind it, seen from the front. Checks light passing through a diffuse-transmission surface.
+# @rt-performance Fast
 # diffuse-transmission-point-light.pbrt -- a diffuse-transmission plate lit by one point light behind it, seen from the front, and (second half of the
 # test) with the light in front. The answer is a closed form at the centre of the plate.
 #

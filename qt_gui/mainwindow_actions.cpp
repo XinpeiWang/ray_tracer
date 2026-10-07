@@ -371,7 +371,7 @@ void MainWindow::showAboutDialog() {
 		// Keep this in sync by hand whenever scene_registry_tests.cpp's own
 		// builtin_scene_count()/kGuiSceneCount assertions change, or a file
 		// is added to or removed from pbrt_scenes/.
-		"<p>151 built-in scenes plus over 170 bundled pbrt example scenes, a wide "
+		"<p>151 built-in scenes and 58 test scenes, a wide "
 		"BxDF library, multiple light and camera types, "
 		"triangle-mesh and texture support, BVH acceleration, volumetrics, and "
 		"a choice of integrators alongside standard path tracing - SPPM photon "
