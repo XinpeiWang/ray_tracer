@@ -46,7 +46,7 @@ inline void addQuad(std::vector<PackedFloat3>& verts,
                      std::vector<PackedFloat2>& uvs,
                      std::vector<TriangleMaterial>& materials,
                      float3 a, float3 b, float3 c, float3 d,
-                     float3 color, uint32_t materialType = 0,
+                     float3 color, uint32_t materialType = METAL_MAT_LAMBERTIAN,
                      float3 emission = simd::make_float3(0, 0, 0),
                      int32_t lightId = -1, float roughness = 0.0f,
                      // Defaults to 1.0 (every quad before materialType 11's
@@ -99,7 +99,7 @@ inline void addQuad(std::vector<PackedFloat3>& verts,
     // (that function's own comment). This makes the invariant
     // impossible to violate by omission at any FUTURE conductor-quad
     // call site, rather than relying on every caller to remember it.
-    const float effectiveIor = (materialType == 4u) ? roughness : ior;
+    const float effectiveIor = (materialType == METAL_MAT_ROUGH_CONDUCTOR) ? roughness : ior;
     TriangleMaterial mat{packedColor, materialType, effectiveIor, packedEmission, lightId, roughness};
     mat.conductorEta = PackedFloat3{conductorEta.x, conductorEta.y, conductorEta.z};
     mat.conductorK = PackedFloat3{conductorK.x, conductorK.y, conductorK.z};
@@ -174,7 +174,7 @@ inline bool loadObjMesh(const std::string& path,
                          std::vector<PackedFloat2>& uvs,
                          std::vector<TriangleMaterial>& materials,
                          float3 color, float3 center, float targetSize,
-                         uint32_t materialType = 0,
+                         uint32_t materialType = METAL_MAT_LAMBERTIAN,
                          // materialType==4 only - see this function's own
                          // TriangleMaterial-construction comment below for
                          // why these three exist. meshConductorEta defaults
@@ -390,12 +390,12 @@ inline bool loadObjMesh(const std::string& path,
     // `mat.roughness` would silently make alphaX=1.0 (maximally rough) and
     // alphaY=meshRoughness - a real, easy-to-miss anisotropy bug caught
     // here before it ever rendered, not after.
-    if (materialType == 4u) {
+    if (materialType == METAL_MAT_ROUGH_CONDUCTOR) {
         mat.ior = meshRoughness;
         mat.roughness = meshRoughness;
         mat.conductorEta = PackedFloat3{meshConductorEta.x, meshConductorEta.y, meshConductorEta.z};
         mat.conductorK = PackedFloat3{meshConductorK.x, meshConductorK.y, meshConductorK.z};
-    } else if (materialType == 2u) {
+    } else if (materialType == METAL_MAT_DIELECTRIC) {
         // Smooth dielectric (materialType 2, e.g. Glass Dragon - section
         // 119) - `ior` here is a real refraction index (glass~1.5), not
         // the alphaX reuse materialType 4 gives it above.
@@ -536,7 +536,7 @@ inline void addBilinearPatch(std::vector<PackedFloat3>& verts,
         return simd::normalize(simd::cross(dPdu, dPdv));
     };
     const float3 k = reflectanceToConductorK(color);
-    TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/4u,
+    TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/METAL_MAT_ROUGH_CONDUCTOR,
         /*ior(alphaX)=*/roughness, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/roughness};
     mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
     mat.conductorK = PackedFloat3{k.x, k.y, k.z};
@@ -613,7 +613,7 @@ inline void addTaperedTube(std::vector<PackedFloat3>& verts,
         return simd::normalize(d);
     };
 
-    TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/0u,
+    TriangleMaterial mat{PackedFloat3{color.x, color.y, color.z}, /*materialType=*/METAL_MAT_LAMBERTIAN,
         1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, 0.0f};
 
     // Ring 0's own initial frame: an arbitrary reference vector not

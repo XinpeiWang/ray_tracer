@@ -679,7 +679,7 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             float bestRadius = 0.0f;
             for (size_t si = 0; si < spheres.size() && si < sphereMaterials.size(); ++si) {
                 const TriangleMaterial& sm = sphereMaterials[si];
-                const bool glassMedium = (sm.materialType == 2u || sm.materialType == 5u || sm.materialType == 11u) && sm.conductorK.y > 0.5f;
+                const bool glassMedium = (sm.materialType == METAL_MAT_DIELECTRIC || sm.materialType == METAL_MAT_ROUGH_DIELECTRIC || sm.materialType == METAL_MAT_THIN_DIELECTRIC) && sm.conductorK.y > 0.5f;
                 if (!glassMedium) continue;
                 const float dx = pbrtCameraPos.x - spheres[si].center.x, dy = pbrtCameraPos.y - spheres[si].center.y, dz = pbrtCameraPos.z - spheres[si].center.z;
                 if (dx * dx + dy * dy + dz * dz < spheres[si].radius * spheres[si].radius && spheres[si].radius > bestRadius) {

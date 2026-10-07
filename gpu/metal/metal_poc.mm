@@ -182,14 +182,14 @@ void MetalPocApp::buildScene() {
     // of a sampler call). addQuad()'s own planar 0-1 UVs across the
     // whole floor, combined with checkerColor()'s own 8-tiles-per-UV-
     // unit scale, give 8x8 tiles across the room's own floor.
-    addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white, /*materialType=*/6);
+    addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{1,-1,-1}, float3{1,-1,1}, float3{-1,-1,1}, white, /*materialType=*/METAL_MAT_CHECKER_LAMBERTIAN);
     // Ceiling (y = 1)
     addQuad(verts, normals, uvs, materials, float3{-1,1,1}, float3{1,1,1}, float3{1,1,-1}, float3{-1,1,-1}, white);
     // Back wall (z = -1) - textured (materialType 3): the one surface
     // in the scene that samples earthTexture, chosen because it's the
     // large flat backdrop the camera looks straight at, showing the
     // whole 0-1 UV mapping unobstructed.
-    addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white, /*materialType=*/3);
+    addQuad(verts, normals, uvs, materials, float3{-1,-1,-1}, float3{-1,1,-1}, float3{1,1,-1}, float3{1,-1,-1}, white, /*materialType=*/METAL_MAT_TEXTURED_LAMBERTIAN);
     // Left wall (x = -1), red
     addQuad(verts, normals, uvs, materials, float3{-1,-1,1}, float3{-1,1,1}, float3{-1,1,-1}, float3{-1,-1,-1}, red);
     // Right wall (x = 1), green
@@ -217,7 +217,7 @@ void MetalPocApp::buildScene() {
     addQuad(verts, normals, uvs, materials,
             float3{0.15f, -0.3f, -0.99f}, float3{0.15f, 0.3f, -0.99f},
             float3{0.75f, 0.3f, -0.99f}, float3{0.75f, -0.3f, -0.99f},
-            float3{0.55f, 0.5f, 0.45f}, /*materialType=*/7,
+            float3{0.55f, 0.5f, 0.45f}, /*materialType=*/METAL_MAT_BUMP_LAMBERTIAN,
             /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
             /*roughness(bump strength)=*/0.6f);
     // A thin dielectric "glass pane" (materialType 11) - see
@@ -236,7 +236,7 @@ void MetalPocApp::buildScene() {
     addQuad(verts, normals, uvs, materials,
             float3{-0.25f, 0.05f, 0.0f}, float3{0.25f, 0.05f, 0.0f},
             float3{0.25f, 0.55f, 0.0f}, float3{-0.25f, 0.55f, 0.0f},
-            white, /*materialType=*/11,
+            white, /*materialType=*/METAL_MAT_THIN_DIELECTRIC,
             /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
             /*roughness=*/0.0f, /*ior=*/1.5f);
     // A translucent "leaf" panel (materialType 12, diffuse transmission) -
@@ -257,7 +257,7 @@ void MetalPocApp::buildScene() {
     addQuad(verts, normals, uvs, materials,
             float3{-0.22f, 0.08f, 0.35f}, float3{0.22f, 0.08f, 0.35f},
             float3{0.22f, 0.5f, 0.35f}, float3{-0.22f, 0.5f, 0.35f},
-            /*color(reflectance)=*/float3{0.25f, 0.45f, 0.12f}, /*materialType=*/12,
+            /*color(reflectance)=*/float3{0.25f, 0.45f, 0.12f}, /*materialType=*/METAL_MAT_DIFFUSE_TRANSMISSION,
             /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
             /*roughness=*/0.0f, /*ior=*/1.0f,
             /*transmitColor=*/float3{0.18f, 0.6f, 0.1f});
@@ -322,7 +322,7 @@ void MetalPocApp::buildScene() {
     NSString* spotPath = [modelsDir stringByAppendingPathComponent:@"spot.obj"];
     if (!skipDemoRoom && !loadObjMesh(spotPath.UTF8String, verts, normals, uvs, materials, white,
                       /*center=*/float3{0.78f, -0.75f, 0.6f}, /*targetSize=*/0.42f,
-                      /*materialType=*/3)) {
+                      /*materialType=*/METAL_MAT_TEXTURED_LAMBERTIAN)) {
         fprintf(stderr, "Continuing without Spot - check RT_MODELS_DIR / models/spot.obj.\n");
     }
 
@@ -539,7 +539,7 @@ void MetalPocApp::buildScene() {
     // parallel array's own indices aligned with it (loadPbrtScene()'s own
     // sphereMaterials.push_back() calls, if any, already ran earlier).
     sphereMaterials.insert(sphereMaterials.begin(), {
-        TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.35f}, /*materialType=*/2, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
+        TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.35f}, /*materialType=*/METAL_MAT_DIELECTRIC, /*ior=*/1.5f, PackedFloat3{0, 0, 0}},
         // Genuinely ANISOTROPIC now (alphaX from `ior`, alphaY from
         // `roughness` - see TriangleMaterial's own comment): a tight
         // 0.08 in one tangent direction and a much broader 0.45 in
@@ -557,11 +557,11 @@ void MetalPocApp::buildScene() {
         // comment in metal_poc.metal - but left in place unchanged so
         // every other reader of `color` on this material, if any existed,
         // stays unaffected).
-        TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/4, /*alphaX=*/0.08f, PackedFloat3{0, 0, 0},
+        TriangleMaterial{PackedFloat3{1.0f, 0.86f, 0.57f}, /*materialType=*/METAL_MAT_ROUGH_CONDUCTOR, /*alphaX=*/0.08f, PackedFloat3{0, 0, 0},
                          /*lightId=*/-1, /*alphaY=*/0.45f,
                          /*conductorEta=*/PackedFloat3{0.184f, 0.457f, 1.354f},
                          /*conductorK=*/PackedFloat3{3.070f, 2.408f, 1.818f}},
-        TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/5, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
+        TriangleMaterial{PackedFloat3{0.12f, 0.08f, 0.02f}, /*materialType=*/METAL_MAT_ROUGH_DIELECTRIC, /*ior=*/1.5f, PackedFloat3{0, 0, 0},
                          /*lightId=*/-1, /*roughness=*/0.35f},
         // materialType 9: `ior` is the SMOOTH patch's own perceptual
         // roughness, `roughness` the ROUGH patch's - both squared
@@ -571,7 +571,7 @@ void MetalPocApp::buildScene() {
         // conductorEta/conductorK: real copper (Cu) complex IOR (same
         // source/sampling as the gold sphere above's own comment),
         // matching this sphere's own approximate copper tint.
-        TriangleMaterial{PackedFloat3{0.8f, 0.45f, 0.2f}, /*materialType=*/9, /*ior(smooth)=*/0.05f, PackedFloat3{0, 0, 0},
+        TriangleMaterial{PackedFloat3{0.8f, 0.45f, 0.2f}, /*materialType=*/METAL_MAT_CHECKER_ROUGH_CONDUCTOR, /*ior(smooth)=*/0.05f, PackedFloat3{0, 0, 0},
                          /*lightId=*/-1, /*roughness(rough)=*/0.6f,
                          /*conductorEta=*/PackedFloat3{0.246f, 1.072f, 1.155f},
                          /*conductorK=*/PackedFloat3{3.378f, 2.591f, 2.469f}},
@@ -579,7 +579,7 @@ void MetalPocApp::buildScene() {
         // the coat (materialType 0's own convention) - a deep,
         // fairly saturated red, since the coat's own reflection
         // stays colourless regardless.
-        TriangleMaterial{PackedFloat3{0.55f, 0.05f, 0.06f}, /*materialType=*/8, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
+        TriangleMaterial{PackedFloat3{0.55f, 0.05f, 0.06f}, /*materialType=*/METAL_MAT_CLEARCOAT, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
         // materialType 13: Oren-Nayar rough diffuse - `roughness` is this
         // material's own sigma parameter (see TriangleMaterial's own
         // comment), 0.9 deliberately high so the grazing-angle
@@ -587,7 +587,7 @@ void MetalPocApp::buildScene() {
         // plain Lambertian reads clearly, not subtly. A warm terracotta/
         // clay tint - the real-world material family this BxDF was
         // originally designed to model.
-        TriangleMaterial{PackedFloat3{0.75f, 0.55f, 0.4f}, /*materialType=*/13, /*ior=*/0.0f, PackedFloat3{0, 0, 0},
+        TriangleMaterial{PackedFloat3{0.75f, 0.55f, 0.4f}, /*materialType=*/METAL_MAT_OREN_NAYAR, /*ior=*/0.0f, PackedFloat3{0, 0, 0},
                          /*lightId=*/-1, /*roughness(sigma)=*/0.9f},
         // materialType 14: Ashikhmin velvet - `ior` is this material's
         // own sigma (spread) parameter (see TriangleMaterial's own
@@ -595,7 +595,7 @@ void MetalPocApp::buildScene() {
         // verification reference program used. A deep red "velvet
         // cloth" tint - the real-world material family this BxDF was
         // originally designed to model.
-        TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.15f}, /*materialType=*/14, /*ior(sigma)=*/0.3f, PackedFloat3{0, 0, 0}},
+        TriangleMaterial{PackedFloat3{0.5f, 0.05f, 0.15f}, /*materialType=*/METAL_MAT_VELVET, /*ior(sigma)=*/0.3f, PackedFloat3{0, 0, 0}},
     });
     if (skipDemoRoom) {
         // Demo entries sit at the front (see the insert-at-front comments above); drop them so the pbrt
@@ -626,7 +626,7 @@ void MetalPocApp::buildScene() {
         DiskData{PackedFloat3{0.97f, 0.3f, -0.3f}, PackedFloat3{-1.0f, 0.0f, 0.0f}, 0.22f},
     });
     diskMaterials.insert(diskMaterials.begin(), {
-        TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/1, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
+        TriangleMaterial{PackedFloat3{0.9f, 0.9f, 0.9f}, /*materialType=*/METAL_MAT_MIRROR, /*ior=*/1.0f, PackedFloat3{0, 0, 0}},
     });
     if (skipDemoRoom) {
         // The demo entries sit at the front; erase exactly what was just inserted.

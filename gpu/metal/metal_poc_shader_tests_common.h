@@ -309,6 +309,7 @@ void testSampleGGXEnergyTableDevice(id<MTLDevice> device, id<MTLLibrary> library
 void testOrenNayarF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testVelvetF(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testAtan2Zero(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
+int testStructLayouts(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);   // metal_poc_shader_tests_layout.mm; returns its failure count
 void testShadeDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testShadeThinDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 

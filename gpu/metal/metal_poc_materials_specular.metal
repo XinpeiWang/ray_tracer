@@ -452,7 +452,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
     // applies switches across the surface via a UV-space checker
     // pattern.
     float alphaX, alphaY;
-    if (mat.materialType == 9u) {
+    if (mat.materialType == METAL_MAT_CHECKER_ROUGH_CONDUCTOR) {
         float2 roughnessUV = equirectangularUV(normal);
         float alphaSmooth = max(mat.ior * mat.ior, 0.0009);
         float alphaRough = max(mat.roughness * mat.roughness, 0.0009);

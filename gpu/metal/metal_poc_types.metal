@@ -1465,7 +1465,7 @@ CylinderIntersectionResult cylinderIntersectionFunction(
     // bounding the SOLID cylinder, not an opaque surface. A primary/continuation ray hits the solid's entry (or, from inside, its
     // exit). A shadow ray is blocked with probability 1 - exp(-sigma_t * chord), the same stochastic attenuation
     // sphereIntersectionFunction applies to a medium sphere.
-    if (cylinderMaterials[primitiveIndex].materialType == 28u) {
+    if (cylinderMaterials[primitiveIndex].materialType == METAL_MAT_MEDIUM_HOMOGENEOUS) {
         float s0, s1;
         if (!cylinderSolidInterval(origin, direction, cyl, s0, s1) || s1 <= minDistance) return result;
         if (!payload.isShadowRay) {

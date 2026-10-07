@@ -440,7 +440,7 @@ void MetalPocApp::loadPbrtScene() {
                 //   outside (flat colours only). bilerp: color = v00, transmitColor = v01, conductorEta = v10,
                 //   v11 = (conductorK.x, roughness, conductorK.z).
                 if (m.hasWindyReflectance || m.hasWrinkledReflectance || m.hasFbmReflectance) {
-                    TriangleMaterial mat{PackedFloat3{0.5f, 0.5f, 0.5f}, /*materialType=*/25u, /*ior=*/1.0f,
+                    TriangleMaterial mat{PackedFloat3{0.5f, 0.5f, 0.5f}, /*materialType=*/METAL_MAT_TEXTURE_FAMILY, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                     mat.conductorK = PackedFloat3{1.0f / sceneScale, m.hasFbmReflectance ? 3.0f : (m.hasWindyReflectance ? 4.0f : 5.0f), 0.0f};
                     mat.conductorEta = PackedFloat3{bboxCenter.x - sceneOffset.x / sceneScale,
@@ -454,14 +454,14 @@ void MetalPocApp::loadPbrtScene() {
                 }
                 if (m.hasDotsReflectance && m.dotsInsideTexFilename.empty() && m.dotsOutsideTexFilename.empty()) {
                     TriangleMaterial mat{PackedFloat3{(float)m.dotsInsideColor[0], (float)m.dotsInsideColor[1], (float)m.dotsInsideColor[2]},
-                                         /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                                         /*materialType=*/METAL_MAT_TEXTURE_FAMILY, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                     mat.transmitColor = PackedFloat3{(float)m.dotsOutsideColor[0], (float)m.dotsOutsideColor[1], (float)m.dotsOutsideColor[2]};
                     mat.conductorK = PackedFloat3{0.0f, 6.0f, 0.0f};
                     return mat;
                 }
                 if (m.hasBilerpReflectance) {
                     TriangleMaterial mat{PackedFloat3{(float)m.bilerpV00[0], (float)m.bilerpV00[1], (float)m.bilerpV00[2]},
-                                         /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1,
+                                         /*materialType=*/METAL_MAT_TEXTURE_FAMILY, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1,
                                          /*roughness=*/(float)m.bilerpV11[1]};
                     mat.transmitColor = PackedFloat3{(float)m.bilerpV01[0], (float)m.bilerpV01[1], (float)m.bilerpV01[2]};
                     mat.conductorEta = PackedFloat3{(float)m.bilerpV10[0], (float)m.bilerpV10[1], (float)m.bilerpV10[2]};
@@ -477,7 +477,7 @@ void MetalPocApp::loadPbrtScene() {
                 // transmitColor = (octaves, omega, variation).
                 if (m.hasMarbleReflectance) {
                     const float s = (float)m.marbleScale;
-                    TriangleMaterial mat{PackedFloat3{0.5f, 0.5f, 0.5f}, /*materialType=*/25u, /*ior=*/1.0f,
+                    TriangleMaterial mat{PackedFloat3{0.5f, 0.5f, 0.5f}, /*materialType=*/METAL_MAT_TEXTURE_FAMILY, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                     mat.transmitColor = PackedFloat3{(float)m.marbleOctaves, (float)m.marbleRoughness, (float)m.marbleVariation};
                     mat.conductorK = PackedFloat3{s / sceneScale, 2.0f, 0.0f};
@@ -529,7 +529,7 @@ void MetalPocApp::loadPbrtScene() {
                         if (havePbrtDiffuseImage) {
                             TriangleMaterial mat{
                                 PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]},
-                                /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                                /*materialType=*/METAL_MAT_TEXTURE_FAMILY, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                             mat.transmitColor = PackedFloat3{(float)nTex2[0], (float)nTex2[1], (float)nTex2[2]};
                             mat.conductorEta = PackedFloat3{(float)m.checkerUScale, (float)m.checkerVScale, nestedLevel ? 1.0f : 0.0f};
                             mat.conductorK = PackedFloat3{(float)nU, 8.0f, (float)nV};
@@ -549,7 +549,7 @@ void MetalPocApp::loadPbrtScene() {
                         const float s = (float)w2t[0];
                         TriangleMaterial mat{
                             PackedFloat3{(float)m.checkerColor1[0], (float)m.checkerColor1[1], (float)m.checkerColor1[2]},
-                            /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                            /*materialType=*/METAL_MAT_TEXTURE_FAMILY, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                         mat.transmitColor = PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]};
                         const float k = s / sceneScale;
                         mat.conductorK = PackedFloat3{k, 1.0f, 0.0f};
@@ -563,7 +563,7 @@ void MetalPocApp::loadPbrtScene() {
                     m.checkerTex1Filename.empty() && m.checkerTex2Filename.empty()) {
                     TriangleMaterial mat{
                         PackedFloat3{(float)m.checkerColor1[0], (float)m.checkerColor1[1], (float)m.checkerColor1[2]},
-                        /*materialType=*/25u, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
+                        /*materialType=*/METAL_MAT_TEXTURE_FAMILY, /*ior=*/1.0f, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                     mat.transmitColor = PackedFloat3{(float)m.checkerColor2[0], (float)m.checkerColor2[1], (float)m.checkerColor2[2]};
                     mat.conductorEta = PackedFloat3{(float)m.checkerUScale, (float)m.checkerVScale, 0.0f};
                     return mat;
@@ -620,11 +620,11 @@ void MetalPocApp::loadPbrtScene() {
                         // true for F5/F9, the scenes this materialType
                         // was originally built for, so this change is a
                         // no-op for them.
-                        return TriangleMaterial{color, /*materialType=*/26u, /*ior=*/1.0f,
+                        return TriangleMaterial{color, /*materialType=*/METAL_MAT_IMAGE_LAMBERTIAN, /*ior=*/1.0f,
                                                  PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.textureScale};
                     }
                 }
-                return TriangleMaterial{color, /*materialType=*/0u, /*ior=*/1.0f,
+                return TriangleMaterial{color, /*materialType=*/METAL_MAT_LAMBERTIAN, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
             }
             case pbrt_flatten::MaterialKind::Conductor: {
@@ -637,7 +637,7 @@ void MetalPocApp::loadPbrtScene() {
                 // scenes are authored that way), so it is handed sqrt(alpha): storing alpha itself made every pbrt conductor render with
                 // alpha^2 - roughness 0.04 (alpha 0.2) got alpha 0.04, a far sharper highlight than the CPU and pbrt give.
                 const float alphaStored = std::sqrt(alpha);
-                TriangleMaterial mat{color, /*materialType=*/4u, /*ior(alphaX)=*/alphaStored,
+                TriangleMaterial mat{color, /*materialType=*/METAL_MAT_ROUGH_CONDUCTOR, /*ior(alphaX)=*/alphaStored,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness(alphaY)=*/alphaStored};
                 setConductorOptics(mat, m);
                 return mat;
@@ -659,7 +659,7 @@ void MetalPocApp::loadPbrtScene() {
                 // established for exactly this "nothing given" case.
                 const float alpha = (float)(m.remapRoughness ? std::sqrt(m.roughness_u) : m.roughness_u);
                 // pbrt-v4 LayeredBxDF coated conductor (materialType 20): `ior` = coat IOR, `roughness` = alpha.
-                TriangleMaterial mat{color, /*materialType=*/20u, /*ior=*/(float)m.ior,
+                TriangleMaterial mat{color, /*materialType=*/METAL_MAT_COATED_CONDUCTOR, /*ior=*/(float)m.ior,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/alpha};
                 // The conductor has its own roughness (pbrt conductor.roughness; negative = none given, the coat's applies to both) and the coat
                 // its thickness: transmitColor = (conductor alpha, thickness, 0), read by shadeCoatedConductor().
@@ -675,14 +675,14 @@ void MetalPocApp::loadPbrtScene() {
                 const float eta = (float)m.ior;
                 float nfC = 1.0f - 2.0f * fresnelMoment1(1.0f / eta);
                 if (nfC <= 0.0f) nfC = 1e-6f;
-                return TriangleMaterial{color, /*materialType=*/18u, /*ior=*/eta,
+                return TriangleMaterial{color, /*materialType=*/METAL_MAT_NORMALIZED_FRESNEL, /*ior=*/eta,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/nfC};
             }
             case pbrt_flatten::MaterialKind::Principled: {
                 // materialType 24 (this project's own non-pbrt "principled"): color = base colour,
                 // ior, roughness = perceptual roughness, conductorEta = (metallic, clearcoat,
                 // clearcoat roughness).
-                TriangleMaterial mat{color, /*materialType=*/24u, /*ior=*/(float)m.ior,
+                TriangleMaterial mat{color, /*materialType=*/METAL_MAT_PRINCIPLED, /*ior=*/(float)m.ior,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.roughness};
                 mat.conductorEta = PackedFloat3{(float)m.metallic, (float)m.clearcoat, (float)m.clearcoatRoughness};
                 return mat;
@@ -709,7 +709,7 @@ void MetalPocApp::loadPbrtScene() {
                     }
                 }
                 if (tableIndex >= 0) {
-                    TriangleMaterial mat{PackedFloat3{1, 1, 1}, /*materialType=*/32u, /*ior=*/1.0f,
+                    TriangleMaterial mat{PackedFloat3{1, 1, 1}, /*materialType=*/METAL_MAT_MEASURED, /*ior=*/1.0f,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                     mat.conductorEta = PackedFloat3{(float)tableIndex, 0.0f, 0.0f};
                     return mat;
@@ -724,7 +724,7 @@ void MetalPocApp::loadPbrtScene() {
                 // tangent for tessellated curves (set in loadPbrtRemainingTriangles); zero means
                 // "use the shading normal as the tangent", CPU's default for non-curve shapes.
                 TriangleMaterial mat{PackedFloat3{(float)m.sigma_a[0], (float)m.sigma_a[1], (float)m.sigma_a[2]},
-                                     /*materialType=*/31u, /*ior=*/(float)m.ior,
+                                     /*materialType=*/METAL_MAT_HAIR, /*ior=*/(float)m.ior,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.betaM};
                 mat.conductorEta = PackedFloat3{(float)m.betaN, (float)m.alphaDeg, 0.0f};
                 return mat;
@@ -741,16 +741,16 @@ void MetalPocApp::loadPbrtScene() {
                     // conductor mapping above: the shader squares `roughness` into alpha, so store sqrt(alpha).
                     const double rr = std::max(m.roughness_u, m.roughness_v);
                     const float a = (float)(m.remapRoughness ? std::sqrt(rr) : rr);
-                    return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/5u, /*ior=*/(float)m.ior,
+                    return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/METAL_MAT_ROUGH_DIELECTRIC, /*ior=*/(float)m.ior,
                                              PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/std::sqrt(a)};
                 }
-                return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/2u, /*ior=*/(float)m.ior,
+                return TriangleMaterial{PackedFloat3{0, 0, 0}, /*materialType=*/METAL_MAT_DIELECTRIC, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
             case pbrt_flatten::MaterialKind::ThinDielectric:
                 // materialType 11 - `color` is unused by this material
                 // (metal_poc.mm's own hardcoded-room construction site
                 // comment), only `ior` matters.
-                return TriangleMaterial{color, /*materialType=*/11u, /*ior=*/(float)m.ior,
+                return TriangleMaterial{color, /*materialType=*/METAL_MAT_THIN_DIELECTRIC, /*ior=*/(float)m.ior,
                                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
             case pbrt_flatten::MaterialKind::DiffuseTransmission: {
                 // materialType 12 - `color` is this material's own
@@ -760,7 +760,7 @@ void MetalPocApp::loadPbrtScene() {
                 // panel default of 0.25 each way when the scene names
                 // neither parameter, not a mirror-symmetric 0.5/0.5 split
                 // of `color`).
-                TriangleMaterial mat{color, /*materialType=*/12u, /*ior=*/1.0f,
+                TriangleMaterial mat{color, /*materialType=*/METAL_MAT_DIFFUSE_TRANSMISSION, /*ior=*/1.0f,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/0.0f};
                 mat.transmitColor = PackedFloat3{(float)m.transmittance[0], (float)m.transmittance[1],
                                                   (float)m.transmittance[2]};
@@ -839,7 +839,7 @@ void MetalPocApp::loadPbrtScene() {
                         }
                     }
                     if (havePbrtDiffuseImage) {
-                        return TriangleMaterial{color, /*materialType=*/27u, /*ior=*/1.0f,
+                        return TriangleMaterial{color, /*materialType=*/METAL_MAT_IMAGE_CLEARCOAT, /*ior=*/1.0f,
                                                  PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/(float)m.textureScale};
                     }
                 }
@@ -847,7 +847,7 @@ void MetalPocApp::loadPbrtScene() {
                 {
                     const double coatRough = m.roughness_u;
                     const float coatAlpha = (float)(m.remapRoughness ? std::sqrt(coatRough) : coatRough);
-                    return TriangleMaterial{color, /*materialType=*/19u, /*ior=*/(float)m.ior,
+                    return TriangleMaterial{color, /*materialType=*/METAL_MAT_COATED_DIFFUSE, /*ior=*/(float)m.ior,
                                              PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/coatAlpha};
                 }
             }
@@ -1229,7 +1229,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
         }
         TriangleMaterial mat = materialFor(t.material);
         if (t.material >= 0 && t.material < (int)scene.materials.size()) applyImageBump(mat, scene.materials[t.material]);
-        if (mat.materialType == 31u) {
+        if (mat.materialType == METAL_MAT_HAIR) {
             auto tanIt = pbrtTriangleFiberTangent.find(i);
             if (tanIt != pbrtTriangleFiberTangent.end()) mat.conductorK = tanIt->second;   // real fibre tangent (curves)
         }
@@ -1258,7 +1258,7 @@ static TriangleMaterial homogeneousMediumMaterial(const pbrt_flatten::Medium& m,
     PackedFloat3 albedo{0, 0, 0};
     float* a = &albedo.x;
     for (int c = 0; c < 3; ++c) a[c] = sigmaT[c] > 1e-9 ? (float)(m.sigma_s[c] / sigmaT[c]) : 0.0f;
-    TriangleMaterial mat{albedo, /*materialType=*/28u, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
+    TriangleMaterial mat{albedo, /*materialType=*/METAL_MAT_MEDIUM_HOMOGENEOUS, /*ior (sigma_t)=*/(float)(meanSigmaT / sceneScale),
                          PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/(float)m.g};
     if (m.sigma_s[0] == 0.0 && m.sigma_s[1] == 0.0 && m.sigma_s[2] == 0.0 && meanSigmaT > 0.0) {
         mat.ior = 0.0f;
@@ -1386,7 +1386,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             const int gridIdx = (int)rgbGridMediums.size();
             rgbGridMediums.push_back(grid);
             mat = TriangleMaterial{};
-            mat.materialType = 30u;
+            mat.materialType = METAL_MAT_MEDIUM_RGB_GRID;
             mat.lightId = -1;
             mat.conductorEta = PackedFloat3{(float)gridIdx, 0.0f, 0.0f};
         } else if (interfaceSphere) {
@@ -1395,7 +1395,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             // would make it an OPAQUE ball; the boundary itself has no BSDF, so make it
             // transparent instead: a zero-density medium sphere. The volume's own
             // scattering is missing, but the surrounding scene is no longer blocked.
-            mat = TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/28u, /*ior (sigma_t)=*/0.0f,
+            mat = TriangleMaterial{PackedFloat3{1, 1, 1}, /*materialType=*/METAL_MAT_MEDIUM_HOMOGENEOUS, /*ior (sigma_t)=*/0.0f,
                                    PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness (g)=*/0.0f};
         }
         // A glass sphere (dielectric / thin / rough) that also bounds a homogeneous medium (E3/E11/E12/
@@ -1406,7 +1406,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
         // single-scattering albedo; sigma_t is the RGB mean divided by sceneScale (like the camera fog).
         // `color` (the exit-time Beer-Lambert absorption of a plain dielectric) is zeroed - absorption is now
         // part of the medium (albedo < 1), and applying both would double count.
-        if ((mat.materialType == 2u || mat.materialType == 5u || mat.materialType == 11u) &&
+        if ((mat.materialType == METAL_MAT_DIELECTRIC || mat.materialType == METAL_MAT_ROUGH_DIELECTRIC || mat.materialType == METAL_MAT_THIN_DIELECTRIC) &&
             s.medium >= 0 && s.medium < (int)scene.media.size() &&
             scene.media[s.medium].type == "homogeneous") {
             const pbrt_flatten::Medium& gm = scene.media[s.medium];
@@ -1561,7 +1561,7 @@ void MetalPocApp::loadPbrtDisks(const pbrt_flatten::FlatScene& scene, const Pbrt
             float3 objectX{1, 0, 0};
             if (texturedLight) {
                 mat.emission = PackedFloat3{(float)em.scale, (float)em.scale, (float)em.scale};
-                mat.materialType = 15u;
+                mat.materialType = METAL_MAT_IMAGE_EMISSIVE;
                 objectX = simd::normalize(float3{(float)worldAxisX[0], (float)worldAxisX[1], (float)worldAxisX[2]} - wOrigin);
             }
             // Register as a real disk light (AreaLightData kind 2, uniform-area sampling),
@@ -1660,7 +1660,7 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
             float3 objectX = axis;
             if (texturedLight) {
                 mat.emission = PackedFloat3{(float)em.scale, (float)em.scale, (float)em.scale};
-                mat.materialType = 15u;
+                mat.materialType = METAL_MAT_IMAGE_EMISSIVE;
                 objectX = simd::normalize(float3{(float)worldAxisX[0], (float)worldAxisX[1], (float)worldAxisX[2]} - wOrigin);
             }
             // Register as a real cylinder light (AreaLightData kind 3, lateral surface only,

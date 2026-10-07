@@ -731,3 +731,28 @@ kernel void test_shadeThinDielectric(
     outputs[tid].throughput = throughput;
     outputs[tid].specularBounce = specularBounce ? 1u : 0u;
 }
+
+// Struct layouts as THIS side sees them, for testStructLayouts() (metal_poc_shader_tests_layout.mm): the host's metal_poc_gpu_types.h mirrors
+// these structs by hand, and a field added on one side only (or in a different order) silently shifts every later field. Writes, in order,
+// (sizeof, alignof) of each mirrored struct and then the byte offset of each probed Uniforms field. The host test lists the same structs and
+// fields in the same order; keep both lists in step.
+kernel void test_structLayouts(
+    device uint* out [[buffer(0)]],
+    constant Uniforms& u [[buffer(1)]],
+    uint tid [[thread_position_in_grid]])
+{
+    if (tid != 0) return;
+    uint n = 0;
+#define LAYOUT_PROBE(T) out[n++] = (uint)sizeof(T); out[n++] = (uint)alignof(T);
+    LAYOUT_PROBE(Uniforms) LAYOUT_PROBE(TriangleMaterial) LAYOUT_PROBE(GpuCloudMedium) LAYOUT_PROBE(GpuRgbGridMedium)
+    LAYOUT_PROBE(SphereData) LAYOUT_PROBE(InstanceTransform) LAYOUT_PROBE(DiskData) LAYOUT_PROBE(CylinderData)
+    LAYOUT_PROBE(PointLight) LAYOUT_PROBE(DirectionalLight) LAYOUT_PROBE(ProjectionLight) LAYOUT_PROBE(GoniometricLight)
+    LAYOUT_PROBE(LensElement) LAYOUT_PROBE(ExitPupilBounds)
+#undef LAYOUT_PROBE
+#define FIELD_OFFSET(f) out[n++] = (uint)((constant char*)&u.f - (constant char*)&u);
+    FIELD_OFFSET(fireflyClamp) FIELD_OFFSET(debugCensus) FIELD_OFFSET(pathRegen) FIELD_OFFSET(fogChromatic) FIELD_OFFSET(fogSigmaT3)
+    FIELD_OFFSET(liveWorldPos) FIELD_OFFSET(adaptiveThreshold) FIELD_OFFSET(cameraGlassPrim) FIELD_OFFSET(pbrtHasPortalLight)
+    FIELD_OFFSET(pbrtPortalWidth) FIELD_OFFSET(pbrtPortalHeight) FIELD_OFFSET(pbrtPortalScale) FIELD_OFFSET(portalFrameX)
+    FIELD_OFFSET(portalFrameY) FIELD_OFFSET(portalFrameZ) FIELD_OFFSET(portalP0) FIELD_OFFSET(portalP2)
+#undef FIELD_OFFSET
+}
