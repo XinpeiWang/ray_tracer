@@ -24,7 +24,13 @@ static id<MTLBuffer> sharedBufferOrPlaceholder(id<MTLDevice> device, const std::
 }
 
 // --- Stage 3: upload GPU buffers + build acceleration structures --------
-bool MetalPocApp::buildGPUResources() {
+// Everything the stages below hand to each other (see the MetalPocApp stages' comments).
+struct MetalPocApp::GpuBuildState {
+    uint32_t suzanneTriangleCount;
+};
+
+// Uploads the scene's vertex/material/light/media/lens/texture data to GPU buffers (empty vectors get a placeholder so every slot is bound).
+bool MetalPocApp::uploadSceneBuffers(GpuBuildState& s) {
     vertexBuffer = sharedBufferOrPlaceholder(device, verts);
     normalBuffer = sharedBufferOrPlaceholder(device, normals);
     uvBuffer = sharedBufferOrPlaceholder(device, uvs);
@@ -181,6 +187,12 @@ bool MetalPocApp::buildGPUResources() {
         return false;
     }
 
+    s.suzanneTriangleCount = suzanneTriangleCount;
+    return true;
+}
+
+// The primitive acceleration structure over the triangle mesh.
+bool MetalPocApp::buildTriangleAS(GpuBuildState& s) {
     // --- Primitive acceleration structure (the mesh's own BVH) ------
     MTLAccelerationStructureTriangleGeometryDescriptor* geomDesc =
         [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
@@ -220,6 +232,11 @@ bool MetalPocApp::buildGPUResources() {
         return false;
     }
 
+    return true;
+}
+
+// The bounding-box acceleration structures for the custom shapes: spheres, disks and cylinders.
+bool MetalPocApp::buildAnalyticAS(GpuBuildState& s) {
     // --- Second primitive acceleration structure: the spheres' own --
     // bounding-box geometry (a custom/non-triangle primitive has no
     // vertex data at all as far as the acceleration structure is
@@ -347,6 +364,12 @@ bool MetalPocApp::buildGPUResources() {
         return false;
     }
 
+    return true;
+}
+
+// The acceleration structure of the instanced mesh (Suzanne).
+bool MetalPocApp::buildInstancedMeshAS(GpuBuildState& s) {
+    auto& suzanneTriangleCount = s.suzanneTriangleCount;
     // --- Third primitive acceleration structure: Suzanne's own ------
     // geometry, built once, referenced by TWO different instances
     // below with two different transforms - unlike primAS/sphereAS
@@ -385,6 +408,11 @@ bool MetalPocApp::buildGPUResources() {
         return false;
     }
 
+    return true;
+}
+
+// The instance acceleration structure over all of the above, and the instance transform buffer.
+bool MetalPocApp::buildInstanceAS(GpuBuildState& s) {
     // --- Instance acceleration structure: four instances over three -
     // primitive ASes (primAS/sphereAS each instanced once at
     // identity, suzanneAS instanced TWICE with different transforms -
@@ -479,5 +507,15 @@ bool MetalPocApp::buildGPUResources() {
         fprintf(stderr, "Instance AS build failed: %s\n", buildCmd2.error.localizedDescription.UTF8String);
         return false;
     }
+    return true;
+}
+
+bool MetalPocApp::buildGPUResources() {
+    GpuBuildState s;
+    if (!uploadSceneBuffers(s)) return false;
+    if (!buildTriangleAS(s)) return false;
+    if (!buildAnalyticAS(s)) return false;
+    if (!buildInstancedMeshAS(s)) return false;
+    if (!buildInstanceAS(s)) return false;
     return true;
 }
