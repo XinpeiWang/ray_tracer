@@ -3,6 +3,7 @@
 #include <QTimer>
 #include <QFontDatabase>
 #include <QTranslator>
+#include <QLibraryInfo>
 #include <QDir>
 #include <QCoreApplication>
 #include <QSettings>
@@ -45,6 +46,14 @@ int main(int argc, char *argv[]) {
 	// time - and staying installed for the app's whole lifetime is exactly
 	// what a restart-to-apply language choice needs.
 	QTranslator translator;
+	// Qt's own strings - the OK/Cancel/Save buttons, QFileDialog, QFontDialog (the
+	// "Choose Font" dialog), the right-click Cut/Copy/Paste menu of every text
+	// field - live in Qt's qtbase_<code>.qm, not in ours, so without this second
+	// translator they stay English next to an otherwise translated UI. Looked
+	// for where each platform's deploy tool puts it (windeployqt: translations/
+	// beside the exe; macdeployqt: Contents/Resources/translations) and then in
+	// the Qt install itself; none found is fine, those strings just stay English.
+	QTranslator qtBaseTranslator;
 	const QString languageCode = MainWindow::loadSavedLanguageCode();
 	if (languageCode != QLatin1String("en")) {
 		// "i18n", not "translations" - qmake's CONFIG+=embed_translations
@@ -57,6 +66,16 @@ int main(int argc, char *argv[]) {
 		// A missing/unreadable .qm silently falls back to English rather than
 		// failing to start - the same "fails soft, not loud" choice this
 		// codebase's theme loader (palette_file.cpp) makes for a bad .theme file.
+		const QString appDir = QCoreApplication::applicationDirPath();
+		const QStringList qtTranslationDirs = {appDir + QStringLiteral("/translations"),
+			appDir + QStringLiteral("/../Resources/translations"),
+			QLibraryInfo::path(QLibraryInfo::TranslationsPath)};
+		for (const QString &dir : qtTranslationDirs) {
+			if (qtBaseTranslator.load(QStringLiteral("qtbase_%1").arg(languageCode), dir)) {
+				app.installTranslator(&qtBaseTranslator);
+				break;
+			}
+		}
 	}
 
 	MainWindow window(nullptr, languageCode);

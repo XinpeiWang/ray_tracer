@@ -1,9 +1,9 @@
 # Ray Tracer
 
-A physically-based renderer with parallel **CPU** and **GPU (OptiX)** implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 151 built-in scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
+A physically-based renderer with parallel **CPU**, **GPU (OptiX)** (Windows + NVIDIA) and **GPU (Metal)** (macOS) implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 151 built-in scenes plus 177 bundled pbrt example scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
-![Platform](https://img.shields.io/badge/platform-Windows-lightgrey.svg)
+![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)
 ![OptiX](https://img.shields.io/badge/OptiX-9.1%2B-green.svg)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 
@@ -25,6 +25,8 @@ The portable version includes:
 
 See [INSTALL.md](INSTALL.md) for detailed usage instructions.
 
+**macOS:** a `RayTracerGUI.dmg` (Metal GPU rendering and Live Preview included; the current build is x86_64 and runs on Apple Silicon under Rosetta) is built by `scripts/build_and_deploy_macos.sh` — see [macOS](#macos). It is not code-signed, so on first launch right-click the app → **Open**.
+
 ## 🔨 Building from Source
 
 **Quick build:**
@@ -40,10 +42,11 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 ### Core Rendering
 - ✅ **Path tracing** with next-event estimation and multiple importance sampling (power heuristic)
 - ✅ **BVH acceleration** on both CPU and GPU (SAH-based CPU BVH; OptiX's native BVH/GAS on GPU) — not a linear scan
-- ✅ **151 built-in scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
+- ✅ **151 built-in scenes plus 177 bundled pbrt example scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`, `K42`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
 - ✅ **Real triangle meshes**: OBJ loading with BVH, per-face `.mtl` materials, and real `map_Kd` image-texture sampling (not just flat colors) on both CPU and GPU
 - ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — CPU-verified broadly, GPU-verified on one reference scene (see [Known Limitations](#-known-limitations))
 - ✅ **Bidirectional Path Tracing (BDPT) and Metropolis Light Transport (MLT)**, additional alternative integrators (CPU-only, `--bdpt`/`--mlt`) for scenes with difficult light transport
+- ✅ **Adaptive sampling** (`--adaptive`): stops sampling pixels that have already converged (CPU; opt-in on Metal)
 - ✅ **Volumetric media**: homogeneous participating media, procedural (Perlin-noise) cloud/fog, and heterogeneous NanoVDB grid media (CPU-only)
 - ✅ **Anti-aliasing** through multi-sampling, **ACES filmic tone mapping** + sRGB output
 
@@ -66,9 +69,10 @@ Pinhole, depth-of-field (thin-lens), orthographic, spherical/equirectangular 360
 ### Dual Rendering Modes
 - **CPU Renderer**: Multi-threaded, importance-sampled, the most feature-complete and battle-tested path
 - **GPU Renderer**: OptiX-accelerated, dramatically faster for complex scenes — has near-complete feature parity with CPU (see [Known Limitations](#-known-limitations) for the remaining gaps), plus an alternate queue-based **wavefront** path tracer (opt-in via `--wavefront`)
+- **Metal GPU Renderer** (macOS): a Metal path tracer (`gpu/metal/`, `--gpu` on a `-DRT_BUILD_METAL=ON` build) checked against the CPU renderer scene by scene — see [`docs/METAL_PARITY_STATUS.md`](docs/METAL_PARITY_STATUS.md) for exactly what matches and what doesn't
 
 ### Qt GUI
-Scene picker with live metadata (description, GPU compatibility, perf hint), camera presets, quality/resolution presets, GPU/CPU toggle, image vs. video mode with camera-path selection, and one-click render.
+Scene picker with live metadata (description, GPU compatibility, perf hint), camera presets, quality/resolution presets, GPU/CPU toggle, image vs. video mode with camera-path selection, a render queue, and one-click render. On macOS, **Live Preview** renders continuously on the Metal GPU so you can drag to orbit the camera (see [`docs/MAC_LIVE_PREVIEW.md`](docs/MAC_LIVE_PREVIEW.md)). The interface is translated into English, Spanish, French, Japanese and Simplified Chinese (Language menu, applied on restart) and has selectable themes and fonts.
 
 ## 📊 Performance
 
@@ -109,7 +113,7 @@ Download the portable package and run it directly - see the [📦 Download secti
 - **CUDA Toolkit 13.2+** ([download](https://developer.nvidia.com/cuda-downloads))
 - **Updated NVIDIA drivers**
 
-**macOS**: the CPU renderer, CLI, and Qt GUI build via the root `CMakeLists.txt` and `qt_gui/RayTracerGUI.pro` — see [macOS (CPU-only)](#macos-cpu-only) below. GPU rendering (`gpu/optix/`, `optix_renderer/`) is CUDA/OptiX and has no macOS equivalent — Apple dropped NVIDIA GPU support and Apple Silicon has no CUDA at all, so that specific backend isn't a "not ported yet" gap. macOS instead has its own real Metal/MetalRT GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON` — see [macOS (CPU-only)](#macos-cpu-only) below and `docs/METAL_GPU_FEASIBILITY.md` for its own status/coverage), including a real `--gpu` dispatch path in `ray_tracer`/`RayTracerGUI` and macOS CI coverage (`.github/workflows/unit-tests.yml`'s own `metal-poc` job) — build-verified on real Apple Silicon hardware, not just theorized.
+**macOS**: the CPU renderer, CLI, and Qt GUI build via the root `CMakeLists.txt` and `qt_gui/RayTracerGUI.pro` — see [macOS](#macos) below. GPU rendering (`gpu/optix/`, `optix_renderer/`) is CUDA/OptiX and has no macOS equivalent — Apple dropped NVIDIA GPU support and Apple Silicon has no CUDA at all, so that specific backend isn't a "not ported yet" gap. macOS instead has its own real Metal GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON` for a plain CMake build; always on in the `.app`/`.dmg` script — see [macOS](#macos) below, `docs/METAL_PARITY_STATUS.md` for how closely it matches the CPU renderer and `docs/METAL_GPU_FEASIBILITY.md` for its history), including a real `--gpu` dispatch path in `ray_tracer`/`RayTracerGUI`, an interactive Live Preview, and macOS CI coverage (`.github/workflows/unit-tests.yml`'s own `metal-poc` job) — built and run on real Apple Silicon hardware, not just theorized.
 
 **Optional (for video generation):**
 - **ffmpeg** on `PATH` — video rendering assembles frames into MP4 via an `ffmpeg` subprocess; without it, frames are still rendered to disk but not muxed into a video.
@@ -187,14 +191,13 @@ msbuild ray_tracer.sln /p:Configuration=Release /p:Platform=x64
 
 See [BUILD.md](BUILD.md) for full details, advanced options, and troubleshooting common issues (missing MSBuild, OptiX/CUDA errors, Qt not found).
 
-### macOS (CPU-only)
+### macOS
 
 No CUDA/OptiX support (see the note above) — this builds the CPU path
 tracer, the `ray_tracer` CLI, and (optionally) the Qt GUI, purely additive
-alongside the Windows MSBuild solution. "CPU-only" describes this
-*default* build's own scope, not macOS as a platform — see
-[Metal GPU (opt-in)](#metal-gpu-opt-in) just below for the real,
-separate Metal/MetalRT GPU backend.
+alongside the Windows MSBuild solution. A plain `cmake` build is CPU-only;
+see [Metal GPU (opt-in)](#metal-gpu-opt-in) just below for the Metal GPU
+backend (always enabled in the one-command `.app`/`.dmg` build).
 
 **CLI + CPU renderer**, via the root `CMakeLists.txt`:
 ```bash
@@ -215,8 +218,9 @@ Produces `RayTracerGUI.app`. Copy the `ray_tracer` binary and
 (that exact path — it's where `QCoreApplication::applicationDirPath()`
 resolves for a bundled Mac app, which is what both the GUI's subprocess
 working directory and `scene_metadata_client.cpp`'s `dlopen()` call use to
-find them). The GUI's Renderer dropdown only offers CPU on this build;
-there's no GPU option to hide manually.
+find them). On a build without `RT_BUILD_METAL` the GUI's Renderer
+dropdown only offers CPU and Live Preview is greyed out; with it, the
+dropdown also offers **GPU (Metal)**.
 
 **One-command build + `.app` + `.dmg`**, via `scripts/build_and_deploy_macos.sh`
 (does all of the above, then runs `macdeployqt` to bundle Qt's frameworks and
@@ -234,7 +238,8 @@ Plant) carry non-commercial-only licenses that make redistributing them in
 an installer questionable regardless of size. Every scene that doesn't
 require external files (Basics/Materials/Lights/Cameras/Volumes/Geometry/Textures —
 most of the registry, all procedurally generated) works from the installed
-app with no extra setup. To also render the external-asset scenes after
+app with no extra setup, as do the bundled `pbrt_scenes/` examples (category
+K) that don't reference a missing mesh/texture. To also render the external-asset scenes after
 installing, copy this repo's `models/` directory into the installed app:
 ```bash
 cp -R /path/to/ray_tracer/models "/Applications/RayTracerGUI.app/Contents/MacOS/models"
@@ -249,18 +254,24 @@ Mac app.
 
 ### Metal GPU (opt-in)
 
-A real Metal/MetalRT GPU backend (`gpu/metal/`), separate from the
+A real Metal GPU backend (`gpu/metal/`), separate from the
 CPU-only build above - opt in with `-DRT_BUILD_METAL=ON`:
 ```bash
 cmake -B build -DRT_BUILD_METAL=ON && cmake --build build
 ./build/ray_tracer 800 100 50 A1 --gpu   # real macOS GPU path, not a fallback warning
 ```
-Also builds a standalone `metal_poc` CLI and (via `ctest`, once
-configured this way) nine regression tests covering both host-side math
-and real on-device shader kernels. Nowhere near OptiX's own feature
-parity yet - see `docs/METAL_GPU_FEASIBILITY.md` for exactly what's
-covered, what isn't, and the full incremental history (200+ numbered
-sections). CI builds and runs this on every push (`.github/workflows/
+Also builds a standalone `metal_poc` CLI, the `realtime_renderer.dylib`
+that backs the GUI's Live Preview, and (via `ctest`, once configured this
+way) twelve regression tests: host-side math, real on-device shader
+kernels, and a CPU-vs-Metal parity harness that renders every scene on
+both and compares them
+(`METAL_PARITY_STRICT=1 ctest`; `scripts/update_metal_golden.sh` refreshes the
+golden snapshot in `gpu/metal/parity_golden.txt` after an intentional
+change). Metal renders the great majority of scenes to within noise of the
+CPU renderer; `docs/METAL_PARITY_STATUS.md` lists exactly which scenes and
+features still differ, and `docs/METAL_GPU_FEASIBILITY.md` has the full
+incremental history. Live Preview (interactive drag-to-orbit at a small
+fixed size) is described in `docs/MAC_LIVE_PREVIEW.md`. CI builds and runs this on every push (`.github/workflows/
 unit-tests.yml`'s own `metal-poc` job, `macos-14`) - the device-
 dependent tests gracefully skip there (GitHub's own hosted runners don't
 currently expose hardware-raytracing-capable Metal), so full local
@@ -269,7 +280,7 @@ check.
 
 ### Running Tests
 
-The test suite uses **Google Test** and covers a large, growing number of tests (4,292 across 570 test suites as of this writing - run with `--gtest_list_tests` for the live count).
+The test suite uses **Google Test** and covers a large, growing number of tests (over 4,300 as of this writing - run with `--gtest_list_tests` for the live count; the macOS Metal/parity tests are separate, run via `ctest`, see [Metal GPU](#metal-gpu-opt-in)).
 
 #### Option A: Automated script (builds + runs in one step)
 ```powershell
@@ -406,17 +417,21 @@ Both formats are generated after each render completes.
 
 ## 🖼️ Scenes
 
-151 built-in scenes, identified by a category letter + number (e.g. `A1`,
-`B10`, `G25`) rather than a flat integer, selected via the CLI's scene-id
-argument or the GUI's scene dropdown. Categories: **A** Basics (the book
-progression), **B** Materials, **C** Lights, **D** Cameras, **E** Volumes,
-**F** Geometry, **G** Models (real-world statue/object meshes - Stanford
-Bunny, Armadillo, Sponza, Bistro, San Miguel, and dozens more), **H** Large
-Scenes ("movie-level" fully textured environments), **I** Education
-(curated demos of specific render-option controls), **J** Custom Scenes
-(loaded live from `.pbrt` files on disk, no code changes needed). Every
-scene renders on the CPU renderer and both GPU backends with real
-NEE+MIS - see [`docs/SCENE_SELECTION.md`](docs/SCENE_SELECTION.md) for the
+151 built-in scenes plus 177 bundled pbrt example scenes, identified by a
+category letter + number (e.g. `A1`, `B10`, `G25`, `K42`) rather than a flat
+integer, selected via the CLI's scene-id argument or the GUI's scene
+dropdown. Categories: **A** Basics (the book progression), **B** Materials,
+**C** Lights, **D** Cameras, **E** Volumes, **F** Geometry, **G** Models
+(real-world statue/object meshes - Stanford Bunny, Armadillo, Sponza, Bistro,
+San Miguel, and dozens more), **H** Large Scenes ("movie-level" fully
+textured environments), **I** Education (curated demos of specific
+render-option controls), **J** Textures (texture-system demos), **K** Custom
+Scenes (loaded live from the `.pbrt` files in `pbrt_scenes/` - the 177
+bundled examples, plus anything you drop in, no code changes or rebuild
+needed; see [`pbrt_scenes/README.md`](pbrt_scenes/README.md)). Every scene
+renders on the CPU renderer; the GUI's scene info shows which ones the GPU
+backends also support - see
+[`docs/SCENE_SELECTION.md`](docs/SCENE_SELECTION.md) for the
 full id scheme, GUI usage, and how to add a new scene, and
 [`src/TheRestOfYourLife/scene_registry.h`](src/TheRestOfYourLife/scene_registry.h)
 for the authoritative per-scene table (description, performance hint,
@@ -534,6 +549,13 @@ ray_tracer/
 ├── optix_renderer/                # OptiX GPU renderer (static library, thin VS-project wrapper -
 │   └── optix_renderer.vcxproj    #   the real GPU implementation lives in gpu/optix/ below)
 │
+├── gpu/metal/                     # Metal GPU backend (macOS): runtime-compiled .metal shaders, the pbrt
+│                                  #   loader, Live Preview, and the CPU-vs-Metal parity harness
+│                                  #   (metal_cpu_gpu_parity_check.cpp + parity_golden.txt)
+│
+├── realtime_renderer/             # realtime_renderer.dll/.dylib - what the GUI's Live Preview talks to
+├── scene_metadata/                # scene_metadata.dll/.dylib - the scene registry the GUI loads at runtime
+│
 ├── gpu/optix/                     # OptiX GPU implementation - all three GPU backends share this one
 │   │                              #   flat directory (a single OptiX pipeline/PTX build), distinguished
 │   │                              #   by filename prefix rather than subdirectory:
@@ -553,11 +575,15 @@ ray_tracer/
 │   ├── mainwindow_tabs.cpp       # Tab-page construction (Basic/Advanced/Render/Preview/Video/...)
 │   ├── mainwindow_slots.cpp      # Signal/slot handlers
 │   ├── mainwindow_style.cpp      # Theme/QSS application
+│   ├── translations/             # raytracer_{es,fr,ja,zh_CN}.ts - UI translations (lupdate/lrelease)
 │   └── (Qt build output)         # Builds to RayTracer_Package/
 │
 ├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
+├── images/                        # Texture images used by the built-in scenes (earth map, normal/bump maps)
+├── pbrt_scenes/                   # The 177 bundled .pbrt example scenes (category K) - add your own here
+├── resources/                     # Application icon and Windows resource files
 │
-├── tests/                         # Google Test suite (4,292+ tests, growing)
+├── tests/                         # Google Test suite (4,300+ tests, growing)
 │   ├── unit/                     # Unit tests
 │   └── integration/              # Integration tests
 │
@@ -623,6 +649,22 @@ ray_tracer.exe --cpu
 **Usage:**
 ```cmd
 ray_tracer.exe --gpu
+```
+
+### GPU Renderer (Metal, macOS)
+
+**Pros:**
+- Runs on any Mac with a Metal GPU, no CUDA/NVIDIA hardware needed
+- Matches the CPU renderer on nearly every scene (checked scene by scene by a parity harness — see [`docs/METAL_PARITY_STATUS.md`](docs/METAL_PARITY_STATUS.md))
+- Also drives the GUI's interactive **Live Preview**
+
+**Cons:**
+- Needs a `-DRT_BUILD_METAL=ON` build (the `.app`/`.dmg` script already does this)
+- A few features aren't implemented yet (listed in the parity status doc); BDPT/MLT stay CPU-only
+
+**Usage:**
+```bash
+./build/ray_tracer 800 100 50 A1 --gpu
 ```
 
 ## 🔧 Configuration
@@ -729,28 +771,29 @@ External mesh/texture assets (`models/`) come from the Stanford 3D Scanning Repo
 Being upfront about what's incomplete rather than overselling:
 
 - **GPU SPPM is scene-limited**: the GPU photon-mapping backend has only been verified end-to-end on one reference scene (Cornell Rough Glass). CPU SPPM works across a much broader set of materials/lights, though it too is primarily verified on lambertian + delta-BSDF scenes.
-- **BDPT and MLT are CPU-only and narrow in scope**: selectable via `--bdpt`/`--mlt`, but there's no GPU/OptiX implementation (`--gpu` is ignored with a warning), only area lights are supported for NEE (no punctual/sky-light sampling yet), and both are verified end-to-end on scene A1 (Cornell Box) only — other scenes are unverified.
+- **BDPT and MLT are CPU-only and narrow in scope**: selectable via `--bdpt`/`--mlt`, but there's no GPU (OptiX or Metal) implementation (`--gpu` is ignored with a warning), and both are verified end-to-end on scene A1 (Cornell Box) only — other scenes are unverified. (Area, punctual and sky lights are all handled through the light adapter.)
 - **Hair/fur has two different fidelity levels**: scene F4 (Curve Fibers) uses real Bezier curve/strand geometry (`CurveShape`, exact ray-curve intersection on CPU, tessellated bilinear-patch tubes on GPU); the older scene B11 instead applies the Marschner/Chiang BxDF math via a shading-normal proxy on sphere primitives, not actual fiber geometry.
 - **GPU wavefront path tracer is opt-in and less exercised**: enabled via the `--wavefront` flag; the default recursive GPU backend is the primary, best-tested GPU path.
-- **GPU/OptiX rendering is Windows+NVIDIA only, with no fallback**: CUDA/OptiX isn't available on macOS at all (Apple dropped NVIDIA GPU support; Apple Silicon has no CUDA), so that specific backend can't be ported there. macOS instead has its own separate Metal/MetalRT GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON`) alongside the CPU renderer/CLI/Qt GUI (see [macOS (CPU-only)](#macos-cpu-only)) — nowhere near OptiX's own feature parity yet (see `docs/METAL_GPU_FEASIBILITY.md` for exactly what's covered), but a real, build-and-CI-verified renderer on real Apple Silicon hardware, not a stub.
-- **No adaptive sampling**: fixed samples-per-pixel for standard path tracing (SPPM itself is progressive by design).
+- **GPU/OptiX rendering is Windows+NVIDIA only, with no fallback**: CUDA/OptiX isn't available on macOS at all (Apple dropped NVIDIA GPU support; Apple Silicon has no CUDA), so that specific backend can't be ported there. macOS instead has its own separate Metal GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON`) alongside the CPU renderer/CLI/Qt GUI (see [macOS](#macos)). It matches the CPU renderer on nearly every scene but is not at full parity — `docs/METAL_PARITY_STATUS.md` lists the remaining differences (for example the `portal-light` example, whose environment map isn't bundled, and a few texture-filtering and integrator-option gaps).
+- **Scenes with missing assets can report success while rendering nothing**: a scene that needs external meshes/textures (the GUI's "Requires External Files" tab) renders an empty or partial image when those files aren't present, and the renderer still exits with success. Check the Log tab for "could not be read; skipped" lines.
 
 ### Planned / possible future work
 
-- [ ] GPU/OptiX implementation of BDPT/MLT, plus punctual/sky-light NEE support
+- [ ] GPU implementation of BDPT/MLT
 - [ ] Broader GPU SPPM scene support
 - [ ] Real curve/strand geometry for scene B11's hair fibers (matching scene F4's approach)
-- [ ] Adaptive sampling based on variance
+- [ ] Failing loudly (and warning in the GUI) when a scene's assets are missing
+- [ ] Native Apple Silicon (arm64) GUI build — the current `.app`/`.dmg` is x86_64 and runs under Rosetta
 - [ ] Linux support (likely a small extension of the same CMake/POSIX groundwork the macOS port added)
 
 ## 🤝 Contributing
 
 Contributions are welcome! Areas for improvement:
 
-1. **Integrators**: porting BDPT/MLT to GPU, broadening their light-sampling and scene coverage, broadening GPU SPPM scene support
+1. **Integrators**: porting BDPT/MLT to GPU, broadening their scene coverage, broadening GPU SPPM scene support
 2. **Geometry**: real curve/hair geometry for scene B11 (scene F4 already has it), more mesh formats
 3. **Scenes**: more example scenes, a scene file format (JSON/XML) instead of hardcoded registry entries
-4. **Portability**: build-verifying the new macOS CPU/CLI/GUI path on real hardware, Linux support
+4. **Portability**: a native arm64 macOS build, Linux support
 5. **Documentation**: tutorials, code comments
 
 ## 📝 License
@@ -777,7 +820,7 @@ See individual source files for specific attributions, and the [Mesh & Texture C
 
 ---
 
-**Last Updated:** October 1, 2026
-**Version:** 2.2.0 (pbrt-v4 scene migration, rough/thin dielectric+medium fusion, real measured-BRDF support)
+**Last Updated:** October 6, 2026
+**Version:** 2.2.0 (pbrt-v4 scene migration, rough/thin dielectric+medium fusion, real measured-BRDF support; since then: Metal GPU backend with CPU parity checks, macOS Live Preview and `.dmg`, GUI translations)
 
 View the [OptiX GPU documentation](gpu/optix/README.md) for detailed OptiX build instructions.

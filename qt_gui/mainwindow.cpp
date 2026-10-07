@@ -546,7 +546,7 @@ void RenderController::onProcessErrorOccurred(QProcess::ProcessError error) {
 	// Only FailedToStart is terminal on its own - every other error is
 	// followed by finished(), which does the reporting.
 	if (error != QProcess::FailedToStart || m_finished) return;
-	finish(false, QString("Failed to start renderer: %1").arg(m_renderProcess->errorString()), QString());
+	finish(false, tr("Failed to start renderer: %1").arg(m_renderProcess->errorString()), QString());
 }
 
 void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
@@ -627,7 +627,7 @@ void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exit
 							 "render_output_parser.h's own comment).");
 		}
 		emit progressUpdate(100);
-		finish(true, "Render completed successfully!", actualOutputPath);
+		finish(true, tr("Render completed successfully!"), actualOutputPath);
 	} else {
 		// Render failed with specific error code
 		emit logMessage(QString("Result: FAILED (exit code %1)").arg(exitCode));
@@ -657,18 +657,18 @@ void RenderController::onProcessFinished(int exitCode, QProcess::ExitStatus exit
 		emit logMessage(QString("Category: %1").arg(category));
 		emit logMessage(QString("Error: %1").arg(errorTitle));
 		emit logMessage(QString("Message: %1").arg(errorMessage));
-		if (!hint.isEmpty() && hint != "Check the Log Output tab for detailed error information.") {
+		if (!hint.isEmpty() && hint != ErrorHandler::genericHint()) {
 			emit logMessage(QString("Troubleshooting:\n%1").arg(hint));
 		}
 
 		// Build comprehensive error message for user
 		QString fullErrorMsg = QString("<b>%1</b><br><br>%2").arg(errorTitle, errorMessage);
-		if (!hint.isEmpty() && hint != "Check the Log Output tab for detailed error information.") {
-			fullErrorMsg += QString("<br><br><b>Troubleshooting:</b><br>%1").arg(hint.replace("\n", "<br>"));
+		if (!hint.isEmpty() && hint != ErrorHandler::genericHint()) {
+			fullErrorMsg += tr("<br><br><b>Troubleshooting:</b><br>%1").arg(hint.replace("\n", "<br>"));
 		}
-		fullErrorMsg += QString("<br><br><small>Error Code: %1 | Category: %2</small>").arg(exitCode).arg(category);
+		fullErrorMsg += tr("<br><br><small>Error Code: %1 | Category: %2</small>").arg(exitCode).arg(category);
 		if (!finalOutput.isEmpty()) {
-			fullErrorMsg += "\n\nOutput:\n" + finalOutput;
+			fullErrorMsg += tr("\n\nOutput:\n%1").arg(finalOutput);
 		}
 		finish(false, fullErrorMsg, QString());
 	}
@@ -729,7 +729,7 @@ void DiagnosticsRunner::onProcessErrorOccurred(QProcess::ProcessError error) {
 	// RenderController::onProcessErrorOccurred's own reasoning above).
 	if (error != QProcess::FailedToStart || m_finished) return;
 	m_finished = true;
-	emit reportFailed(QString("Failed to start ray_tracer.exe: %1").arg(m_process->errorString()));
+	emit reportFailed(tr("Failed to start ray_tracer.exe: %1").arg(m_process->errorString()));
 }
 
 void DiagnosticsRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exitStatus) {
@@ -739,9 +739,9 @@ void DiagnosticsRunner::onProcessFinished(int exitCode, QProcess::ExitStatus exi
 	QString output = QString::fromUtf8(m_process->readAllStandardOutput());
 
 	if (exitStatus == QProcess::CrashExit) {
-		emit reportFailed(QString("Diagnostics process crashed (exit code %1)").arg(exitCode));
+		emit reportFailed(tr("Diagnostics process crashed (exit code %1)").arg(exitCode));
 	} else if (exitCode != 0) {
-		emit reportFailed(QString("Diagnostics process exited with code %1:\n%2").arg(exitCode).arg(output));
+		emit reportFailed(tr("Diagnostics process exited with code %1:\n%2").arg(exitCode).arg(output));
 	} else {
 		emit reportReady(output);
 	}

@@ -159,6 +159,20 @@ MACDEPLOYQT="$QT_BIN_DIR/macdeployqt"
 # once every asset this app needs is actually in place.
 "$MACDEPLOYQT" "$APP_BUNDLE"
 
+# Qt's own strings (standard dialog buttons, QFontDialog, the Cut/Copy/Paste
+# context menu) are translated by Qt's qtbase_<lang>.qm, which main.cpp loads
+# for the languages this app ships. macdeployqt is not relied on to copy them -
+# whether it does depends on the Qt build - so put them where main.cpp looks.
+QT_TRANSLATIONS_DIR="$(qmake -query QT_INSTALL_TRANSLATIONS)"
+mkdir -p "$APP_BUNDLE/Contents/Resources/translations"
+for lang in es fr ja zh_CN; do
+	if [[ -f "$QT_TRANSLATIONS_DIR/qtbase_$lang.qm" ]]; then
+		cp "$QT_TRANSLATIONS_DIR/qtbase_$lang.qm" "$APP_BUNDLE/Contents/Resources/translations/"
+	else
+		echo "WARNING: qtbase_$lang.qm not found in $QT_TRANSLATIONS_DIR - Qt's own dialogs stay English in that language" >&2
+	fi
+done
+
 # metal_poc.mm compiles its own Metal shader from SOURCE at runtime (it has
 # no offline .metallib step) - only when RT_BUILD_METAL=ON above actually
 # defined RT_HAVE_METAL. Its own RT_METAL_SHADER_DIR fallback is a compile-

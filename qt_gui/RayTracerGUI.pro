@@ -72,6 +72,7 @@ HEADERS += \
 	scene_metadata_client.h \
 	realtime_preview_session.h \
 	cross_abi_library.h \
+	error_handler.h \
 	scene_technique_notes.h \
 	theme.h \
 	win_taskbar.h

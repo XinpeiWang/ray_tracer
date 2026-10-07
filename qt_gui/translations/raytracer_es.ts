@@ -2,34 +2,552 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="es_ES">
 <context>
+    <name>DiagnosticsRunner</name>
+    <message>
+        <location filename="../mainwindow.cpp" line="732"/>
+        <source>Failed to start ray_tracer.exe: %1</source>
+        <translation>No se pudo iniciar ray_tracer.exe: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="742"/>
+        <source>Diagnostics process crashed (exit code %1)</source>
+        <translation>El proceso de diagnóstico se bloqueó (código de salida %1)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="744"/>
+        <source>Diagnostics process exited with code %1:
+%2</source>
+        <translation>El proceso de diagnóstico terminó con el código %1:
+%2</translation>
+    </message>
+</context>
+<context>
+    <name>ErrorHandler</name>
+    <message>
+        <location filename="../error_handler.h" line="95"/>
+        <location filename="../error_handler.h" line="321"/>
+        <source>Success</source>
+        <translation>Correcto</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="98"/>
+        <source>Unknown Error</source>
+        <translation>Error desconocido</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="99"/>
+        <source>Invalid Arguments</source>
+        <translation>Argumentos no válidos</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="100"/>
+        <source>File Not Found</source>
+        <translation>Archivo no encontrado</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="101"/>
+        <source>File Read Failed</source>
+        <translation>Error al leer el archivo</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="102"/>
+        <source>File Write Failed</source>
+        <translation>Error al escribir el archivo</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="110"/>
+        <source>File Copy Failed</source>
+        <translation>Error al copiar el archivo</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="111"/>
+        <source>Directory Creation Failed</source>
+        <translation>Error al crear el directorio</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="112"/>
+        <source>Invalid Image Dimensions</source>
+        <translation>Dimensiones de imagen no válidas</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="113"/>
+        <source>Invalid Sample Count</source>
+        <translation>Número de muestras no válido</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="114"/>
+        <source>Invalid Ray Depth</source>
+        <translation>Profundidad de rayo no válida</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="115"/>
+        <source>Invalid Scene ID</source>
+        <translation>ID de escena no válido</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="116"/>
+        <source>Invalid Camera Position</source>
+        <translation>Posición de cámara no válida</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="117"/>
+        <source>Invalid Output Path</source>
+        <translation>Ruta de salida no válida</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="118"/>
+        <source>Video Assembly Failed</source>
+        <translation>Error al ensamblar el vídeo</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="121"/>
+        <source>Scene Build Failed (CPU)</source>
+        <translation>Error al construir la escena (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="122"/>
+        <source>Scene is Empty (CPU)</source>
+        <translation>La escena está vacía (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="123"/>
+        <source>Camera Initialization Failed (CPU)</source>
+        <translation>Error al inicializar la cámara (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="124"/>
+        <source>Rendering Failed (CPU)</source>
+        <translation>Error de renderizado (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="125"/>
+        <source>Thread Error (CPU)</source>
+        <translation>Error de hilo (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="126"/>
+        <source>Out of Memory (CPU)</source>
+        <translation>Memoria insuficiente (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="127"/>
+        <source>BVH Build Failed (CPU)</source>
+        <translation>Error al construir el BVH (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="128"/>
+        <source>Texture Load Failed (CPU)</source>
+        <translation>Error al cargar la textura (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="129"/>
+        <source>No Lights in Scene (CPU)</source>
+        <translation>No hay luces en la escena (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="130"/>
+        <source>Invalid Material (CPU)</source>
+        <translation>Material no válido (CPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="133"/>
+        <source>No GPU Found</source>
+        <translation>No se encontró ninguna GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="134"/>
+        <source>GPU Initialization Failed</source>
+        <translation>Error al inicializar la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="135"/>
+        <location filename="../error_handler.h" line="141"/>
+        <source>GPU Out of Memory</source>
+        <translation>Memoria de GPU insuficiente</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="136"/>
+        <source>GPU Memory Copy Failed</source>
+        <translation>Error al copiar memoria de la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="137"/>
+        <source>GPU Kernel Launch Failed</source>
+        <translation>Error al lanzar el kernel de la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="138"/>
+        <source>GPU Kernel Execution Failed</source>
+        <translation>Error al ejecutar el kernel de la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="139"/>
+        <source>GPU Scene Serialization Failed</source>
+        <translation>Error al serializar la escena para la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="140"/>
+        <source>GPU Synchronization Failed</source>
+        <translation>Error de sincronización de la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="142"/>
+        <source>Invalid GPU Configuration</source>
+        <translation>Configuración de GPU no válida</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="143"/>
+        <source>GPU Texture Binding Failed</source>
+        <translation>Error al enlazar la textura en la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="144"/>
+        <source>Scene Not Supported on GPU</source>
+        <translation>Escena no compatible con la GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="145"/>
+        <source>Scene Build Failed (GPU)</source>
+        <translation>Error al construir la escena (GPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="146"/>
+        <source>Rendering Failed (GPU)</source>
+        <translation>Error de renderizado (GPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="147"/>
+        <source>Exception During Rendering (GPU)</source>
+        <translation>Excepción durante el renderizado (GPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="148"/>
+        <source>Unknown Error (GPU)</source>
+        <translation>Error desconocido (GPU)</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="151"/>
+        <source>Cancelled by User</source>
+        <translation>Cancelado por el usuario</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="157"/>
+        <source>Error Code %1</source>
+        <translation>Código de error %1</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="169"/>
+        <source>Scene ID must be a valid scene identifier (e.g. &quot;A1&quot;). Check the scene selector.</source>
+        <translation>El ID de escena debe ser un identificador de escena válido (p. ej., &quot;A1&quot;). Revisa el selector de escena.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="171"/>
+        <source>No usable Metal GPU was found on this Mac.</source>
+        <translation>No se encontró ninguna GPU Metal utilizable en este Mac.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="172"/>
+        <source>No CUDA-capable GPU was detected.</source>
+        <translation>No se detectó ninguna GPU compatible con CUDA.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="176"/>
+        <source>Render completed successfully.</source>
+        <translation>Renderizado completado correctamente.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="177"/>
+        <source>An unknown error occurred during rendering.</source>
+        <translation>Se produjo un error desconocido durante el renderizado.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="178"/>
+        <source>Invalid command-line arguments were provided to the renderer.</source>
+        <translation>Se pasaron al renderizador argumentos de línea de comandos no válidos.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="179"/>
+        <source>A required file could not be found.</source>
+        <translation>No se pudo encontrar un archivo necesario.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="180"/>
+        <source>Failed to write the output image file.</source>
+        <translation>No se pudo escribir el archivo de imagen de salida.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="181"/>
+        <source>Image dimensions must be positive integers (recommended: 400-1920).</source>
+        <translation>Las dimensiones de la imagen deben ser enteros positivos (recomendado: 400-1920).</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="182"/>
+        <source>Samples per pixel must be greater than 0 (recommended: 10-500).</source>
+        <translation>Las muestras por píxel deben ser mayores que 0 (recomendado: 10-500).</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="183"/>
+        <source>Maximum ray depth must be greater than 0 (recommended: 10-100).</source>
+        <translation>La profundidad máxima de rayo debe ser mayor que 0 (recomendado: 10-100).</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="184"/>
+        <source>Frames rendered successfully, but assembling them into a video with ffmpeg failed.</source>
+        <translation>Los fotogramas se renderizaron correctamente, pero falló su ensamblaje en un vídeo con ffmpeg.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="185"/>
+        <source>Failed to construct the scene geometry.</source>
+        <translation>No se pudo construir la geometría de la escena.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="186"/>
+        <source>The scene contains no objects to render.</source>
+        <translation>La escena no contiene objetos que renderizar.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="187"/>
+        <source>An error occurred while rendering the image.</source>
+        <translation>Se produjo un error al renderizar la imagen.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="188"/>
+        <source>The system ran out of memory during rendering.</source>
+        <translation>El sistema se quedó sin memoria durante el renderizado.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="189"/>
+        <source>Failed to load texture file (e.g., earthmap.jpg for Earth scene).</source>
+        <translation>No se pudo cargar el archivo de textura (p. ej., earthmap.jpg para la escena de la Tierra).</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="193"/>
+        <source>The GPU ran out of memory.</source>
+        <translation>La GPU se quedó sin memoria.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="194"/>
+        <source>Failed to launch GPU rendering kernel.</source>
+        <translation>No se pudo lanzar el kernel de renderizado de la GPU.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="195"/>
+        <source>GPU memory allocation failed.</source>
+        <translation>Falló la asignación de memoria de la GPU.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="196"/>
+        <source>This scene is not supported on GPU. Please use CPU mode.</source>
+        <translation>Esta escena no es compatible con la GPU. Usa el modo CPU.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="197"/>
+        <source>Failed to construct the scene geometry on GPU.</source>
+        <translation>No se pudo construir la geometría de la escena en la GPU.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="198"/>
+        <source>An error occurred while rendering the image on GPU.</source>
+        <translation>Se produjo un error al renderizar la imagen en la GPU.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="199"/>
+        <source>An exception was thrown while rendering on GPU.</source>
+        <translation>Se lanzó una excepción al renderizar en la GPU.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="200"/>
+        <source>An unknown error occurred while rendering on GPU.</source>
+        <translation>Se produjo un error desconocido al renderizar en la GPU.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="201"/>
+        <source>The render was cancelled by the user.</source>
+        <translation>El usuario canceló el renderizado.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="215"/>
+        <source>An error occurred with code %1.</source>
+        <translation>Se produjo un error con el código %1.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="223"/>
+        <source>Check the Log Output tab for detailed error information.</source>
+        <translation>Consulta la pestaña Salida de registro para ver información detallada del error.</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="236"/>
+        <source>• Check the Scene dropdown in the Settings tab for a valid scene id
+• Use CPU renderer for scenes that are not GPU-supported</source>
+        <translation>• Comprueba en el desplegable Escena de la pestaña Ajustes que el ID de escena sea válido
+• Usa el renderizador de CPU para las escenas que la GPU no admite</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="240"/>
+        <source>• GPU supports scenes: %1
+• Switch to CPU mode for all other scenes
+• CPU mode supports all %2 scenes</source>
+        <translation>• La GPU admite las escenas: %1
+• Cambia al modo CPU para todas las demás escenas
+• El modo CPU admite las %2 escenas</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="247"/>
+        <source>• No usable Metal GPU found on this Mac
+• Switch to CPU mode in the renderer settings
+• CPU mode works on all systems</source>
+        <translation>• No se encontró ninguna GPU Metal utilizable en este Mac
+• Cambia al modo CPU en los ajustes del renderizador
+• El modo CPU funciona en todos los sistemas</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="250"/>
+        <source>• No CUDA-capable GPU found
+• Switch to CPU mode in the renderer settings
+• CPU mode works on all systems</source>
+        <translation>• No se encontró ninguna GPU compatible con CUDA
+• Cambia al modo CPU en los ajustes del renderizador
+• El modo CPU funciona en todos los sistemas</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="256"/>
+        <source>• Check that the output directory exists and is writable
+• Make sure you have enough disk space
+• Try closing any programs that might be using the output file</source>
+        <translation>• Comprueba que el directorio de salida exista y tenga permiso de escritura
+• Asegúrate de tener suficiente espacio en disco
+• Intenta cerrar los programas que puedan estar usando el archivo de salida</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="264"/>
+        <source>
+• Windows Security&apos;s &quot;Controlled folder access&quot; blocks apps it doesn&apos;t recognize from writing to protected folders (Pictures, Documents, Desktop). Either choose a different Output Path, or allow RayTracerGUI.exe and ray_tracer.exe under Virus &amp; threat protection &gt; Ransomware protection &gt; Controlled folder access &gt; Allow an app through</source>
+        <translation>
+• El «Acceso controlado a carpetas» de Seguridad de Windows impide que las aplicaciones que no reconoce escriban en carpetas protegidas (Imágenes, Documentos, Escritorio). Elige otra Ruta de salida o permite RayTracerGUI.exe y ray_tracer.exe en Protección antivirus y contra amenazas &gt; Protección contra ransomware &gt; Acceso controlado a carpetas &gt; Permitir una aplicación a través de</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="274"/>
+        <source>• Install ffmpeg from https://ffmpeg.org/download.html and add it to your PATH
+• Check the render log above for the exact ffmpeg command and error output
+• Rendered frames are kept in output/frames/ - you can assemble the video manually</source>
+        <translation>• Instala ffmpeg desde https://ffmpeg.org/download.html y añádelo a tu PATH
+• Consulta el registro de renderizado de arriba para ver el comando de ffmpeg exacto y su salida de error
+• Los fotogramas renderizados se conservan en output/frames/: puedes ensamblar el vídeo manualmente</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="278"/>
+        <source>• Try common resolutions: 800×800, 1920×1080
+• Width and height must be positive numbers</source>
+        <translation>• Prueba resoluciones habituales: 800×800, 1920×1080
+• El ancho y el alto deben ser números positivos</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="281"/>
+        <source>• For quick previews, use 10-50 samples
+• For final renders, use 100-500 samples
+• More samples = better quality but slower</source>
+        <translation>• Para vistas previas rápidas, usa de 10 a 50 muestras
+• Para renderizados finales, usa de 100 a 500 muestras
+• Más muestras = mejor calidad, pero más lento</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="285"/>
+        <source>• Some scenes require texture files (e.g., earthmap.jpg)
+• Make sure all required files are in the correct location</source>
+        <translation>• Algunas escenas requieren archivos de textura (p. ej., earthmap.jpg)
+• Asegúrate de que todos los archivos necesarios estén en la ubicación correcta</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="288"/>
+        <source>• Try reducing image resolution (e.g., 800×800 instead of 1920×1080)
+• Try reducing samples per pixel (e.g., 50 instead of 500)
+• Close other memory-intensive applications</source>
+        <translation>• Prueba a reducir la resolución de la imagen (p. ej., 800×800 en lugar de 1920×1080)
+• Prueba a reducir las muestras por píxel (p. ej., 50 en lugar de 500)
+• Cierra otras aplicaciones que consuman mucha memoria</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="292"/>
+        <source>• For the Earth scene, make sure earthmap.jpg is in the correct folder
+• Check that texture files are not corrupted</source>
+        <translation>• En la escena de la Tierra, asegúrate de que earthmap.jpg esté en la carpeta correcta
+• Comprueba que los archivos de textura no estén dañados</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="299"/>
+        <source>• Try reducing image resolution
+• Try reducing samples per pixel
+• Switch to CPU mode if GPU memory is limited</source>
+        <translation>• Prueba a reducir la resolución de la imagen
+• Prueba a reducir las muestras por píxel
+• Cambia al modo CPU si la memoria de la GPU es limitada</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="303"/>
+        <source>• GPU ran out of memory
+• Try smaller resolution (e.g., 800×800)
+• Try fewer samples (e.g., 50)
+• Switch to CPU mode for large scenes</source>
+        <translation>• La GPU se quedó sin memoria
+• Prueba con una resolución menor (p. ej., 800×800)
+• Prueba con menos muestras (p. ej., 50)
+• Cambia al modo CPU para escenas grandes</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="322"/>
+        <source>General</source>
+        <translation>General</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="323"/>
+        <source>CPU Renderer</source>
+        <translation>Renderizador de CPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="324"/>
+        <source>GPU Renderer</source>
+        <translation>Renderizador de GPU</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="325"/>
+        <source>User Action</source>
+        <translation>Acción del usuario</translation>
+    </message>
+    <message>
+        <location filename="../error_handler.h" line="326"/>
+        <source>Unknown</source>
+        <translation>Desconocido</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
+        <location filename="../mainwindow_actions.cpp" line="179"/>
         <source>Increase Log Font Size</source>
         <translation>Aumentar tamaño de fuente del registro</translation>
     </message>
     <message>
+        <location filename="../mainwindow_actions.cpp" line="183"/>
         <source>Decrease Log Font Size</source>
         <translation>Reducir tamaño de fuente del registro</translation>
     </message>
     <message>
+        <location filename="../mainwindow_actions.cpp" line="187"/>
         <source>Reset Log Font Size</source>
         <translation>Restablecer tamaño de fuente del registro</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_output.cpp" line="186"/>
         <source>Log font size: %1 pt</source>
         <translation>Tamaño de fuente del registro: %1 pt</translation>
     </message>
     <message>
-        <source>Language set to %1 - restart to apply.</source>
-        <translation type="vanished">Idioma establecido en %1; reinicia la aplicación para aplicarlo.</translation>
-    </message>
-    <message>
-        <location filename="../language_switch.cpp" line="106"/>
+        <location filename="../language_switch.cpp" line="110"/>
         <source>stop the current render</source>
         <translation>detener el renderizado en curso</translation>
     </message>
     <message numerus="yes">
-        <location filename="../language_switch.cpp" line="108"/>
+        <location filename="../language_switch.cpp" line="112"/>
         <source>discard %n queued job(s)</source>
         <translation>
             <numerusform>descartar %n trabajo en cola</numerusform>
@@ -37,90 +555,90 @@
         </translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="109"/>
+        <location filename="../language_switch.cpp" line="113"/>
         <source>Switch Language</source>
         <translation>Cambiar idioma</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="110"/>
+        <location filename="../language_switch.cpp" line="114"/>
         <source>Switching languages restarts the app now, which will %1. Continue?</source>
         <translation>Cambiar de idioma reinicia la aplicación ahora, lo que hará lo siguiente: %1. ¿Continuar?</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="111"/>
+        <location filename="../language_switch.cpp" line="115"/>
         <source> and </source>
         <translation> y </translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="126"/>
+        <location filename="../language_switch.cpp" line="130"/>
         <source>Language set to %1 - restarting...</source>
         <translation>Idioma configurado en %1 - reiniciando...</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="142"/>
+        <location filename="../language_switch.cpp" line="146"/>
         <source>Could not restart automatically - please close and reopen the app to finish switching languages.</source>
         <translation>No se pudo reiniciar automáticamente - cierre y vuelva a abrir la aplicación para completar el cambio de idioma.</translation>
     </message>
     <message>
-        <location filename="../language_switch.cpp" line="154"/>
+        <location filename="../language_switch.cpp" line="158"/>
         <source>&amp;Language</source>
         <translation>&amp;Idioma</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="876"/>
+        <location filename="../mainwindow.cpp" line="922"/>
         <source>Ray Tracer - Path Tracing Renderer</source>
         <translation>Ray Tracer - Renderizador de Path Tracing</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="986"/>
+        <location filename="../mainwindow.cpp" line="1034"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1172"/>
-        <location filename="../mainwindow_slots.cpp" line="1935"/>
+        <location filename="../mainwindow.cpp" line="1224"/>
+        <location filename="../mainwindow_slots.cpp" line="1944"/>
         <source>START &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1182"/>
+        <location filename="../mainwindow.cpp" line="1234"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>Renderiza la escena seleccionada con la configuración actual
 (se pondrá en cola si ya hay un renderizado en curso)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1193"/>
+        <location filename="../mainwindow.cpp" line="1245"/>
         <source>S&amp;TOP RENDER</source>
         <translation>DE&amp;TENER RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1200"/>
+        <location filename="../mainwindow.cpp" line="1252"/>
         <location filename="../mainwindow_actions.cpp" line="69"/>
         <source>Stop the running render and discard its output</source>
         <translation>Detiene el renderizado en curso y descarta su resultado</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1213"/>
+        <location filename="../mainwindow.cpp" line="1265"/>
         <location filename="../mainwindow_slots.cpp" line="422"/>
         <location filename="../mainwindow_slots.cpp" line="889"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>&amp;PAUSAR RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1219"/>
+        <location filename="../mainwindow.cpp" line="1271"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="891"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>Pausa el renderizado en curso tal cual está - Reanudar continúa desde exactamente los mismos píxeles</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1228"/>
+        <location filename="../mainwindow.cpp" line="1280"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>DESCARTAR Y SIGUIE&amp;NTE</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1235"/>
+        <location filename="../mainwindow.cpp" line="1287"/>
         <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>Descarta la salida del renderizado en curso e inicia inmediatamente el siguiente trabajo en cola</translation>
@@ -164,7 +682,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1471"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1518"/>
         <source>Open Output &amp;Folder</source>
         <translation>Abrir &amp;carpeta de salida</translation>
     </message>
@@ -175,7 +693,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="96"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1483"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1530"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Abrir en el &amp;visor predeterminado</translation>
     </message>
@@ -196,7 +714,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="111"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="167"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="233"/>
         <source>&amp;Save Log…</source>
         <translation>&amp;Guardar registro…</translation>
     </message>
@@ -207,7 +725,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="122"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="172"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="238"/>
         <source>C&amp;lear Log</source>
         <translation>&amp;Borrar registro</translation>
     </message>
@@ -257,88 +775,81 @@
         <translation>&amp;Ver</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="182"/>
+        <location filename="../mainwindow_actions.cpp" line="199"/>
         <source>&amp;Help</source>
         <translation>A&amp;yuda</translation>
     </message>
     <message>
-        <source>GPU (OptiX, wavefront)</source>
-        <translation type="vanished">GPU (OptiX, wavefront)</translation>
+        <location filename="../mainwindow_actions.cpp" line="358"/>
+        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;151 built-in scenes plus 177 bundled pbrt example scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
+        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un trazador de rayos de base física con motores paralelos de CPU y GPU, desarrollado a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta llegar a un conjunto de funciones al estilo pbrt-v4.&lt;/p&gt;&lt;p&gt;151 escenas integradas más 177 escenas de ejemplo pbrt incluidas, una amplia biblioteca de BxDF, varios tipos de luces y cámaras, compatibilidad con mallas de triángulos y texturas, aceleración BVH, volumetría y una selección de integradores además del trazado de caminos estándar: fotones SPPM, trazado de caminos bidireccional (BDPT), Metropolis Light Transport y varios integradores de referencia/depuración (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Esta ventana controla &lt;code&gt;%1&lt;/code&gt; como un subproceso.&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="209"/>
+        <location filename="../mainwindow_actions.cpp" line="235"/>
         <source>GPU (OptiX)</source>
         <translation>GPU (OptiX)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="209"/>
+        <location filename="../mainwindow_actions.cpp" line="238"/>
         <location filename="../mainwindow_slots.cpp" line="484"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="209"/>
+        <location filename="../mainwindow_actions.cpp" line="235"/>
         <source>GPU (OptiX, Wavefront)</source>
         <translation>GPU (OptiX, Wavefront)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="221"/>
+        <location filename="../mainwindow_actions.cpp" line="236"/>
+        <source>GPU (Metal)</source>
+        <translation>GPU (Metal)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_actions.cpp" line="251"/>
         <source>%1x%2  ·  %3 spp</source>
         <translation>%1x%2  ·  %3 spp</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="262"/>
+        <location filename="../mainwindow_actions.cpp" line="292"/>
         <source>Save Log</source>
         <translation>Guardar registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="264"/>
-        <location filename="../mainwindow_actions.cpp" line="307"/>
+        <location filename="../mainwindow_actions.cpp" line="294"/>
+        <location filename="../mainwindow_actions.cpp" line="337"/>
         <source>Text Files (*.txt);;All Files (*.*)</source>
         <translation>Archivos de texto (*.txt);;Todos los archivos (*.*)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="271"/>
+        <location filename="../mainwindow_actions.cpp" line="301"/>
         <source>[ERROR] Could not write log to %1: %2</source>
         <translation>[ERROR] No se pudo escribir el registro en %1: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="278"/>
+        <location filename="../mainwindow_actions.cpp" line="308"/>
         <source>[INFO] Log saved to %1</source>
         <translation>[INFO] Registro guardado en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="305"/>
+        <location filename="../mainwindow_actions.cpp" line="335"/>
         <source>Save Diagnostics Report</source>
         <translation>Guardar informe de diagnóstico</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="312"/>
+        <location filename="../mainwindow_actions.cpp" line="342"/>
         <source>Save Failed</source>
         <translation>Error al guardar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="313"/>
+        <location filename="../mainwindow_actions.cpp" line="343"/>
         <source>Could not write diagnostics report to %1: %2</source>
         <translation>No se pudo escribir el informe de diagnóstico en %1: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="327"/>
+        <location filename="../mainwindow_actions.cpp" line="357"/>
         <source>About Ray Tracer</source>
         <translation>Acerca de Ray Tracer</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_actions.cpp" line="328"/>
-        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;149 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un trazador de rayos basado en física con backends paralelos de CPU y GPU (OptiX), construido a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta convertirse en un conjunto de funciones al estilo de pbrt-v4.&lt;/p&gt;&lt;p&gt;149 escenas, una amplia biblioteca de BxDF, múltiples tipos de luz y cámara, soporte de mallas triangulares y texturas, aceleración BVH, efectos volumétricos, y una selección de integradores además del trazado de rayos estándar - fotón mapping SPPM, trazado bidireccional de rayos (BDPT), Metropolis Light Transport, y varios integradores de referencia/depuración (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Esta ventana ejecuta &lt;code&gt;%1&lt;/code&gt; como subproceso.&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;123 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation type="vanished">&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un trazador de rayos basado en física con backends paralelos de CPU y GPU (OptiX), construido a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta convertirse en un conjunto de funciones al estilo de pbrt-v4.&lt;/p&gt;&lt;p&gt;123 escenas, una amplia biblioteca de BxDF, múltiples tipos de luz y cámara, soporte de mallas triangulares y texturas, aceleración BVH, efectos volumétricos, y una selección de integradores además del trazado de rayos estándar - fotón mapping SPPM, trazado bidireccional de rayos (BDPT), Metropolis Light Transport, y varios integradores de referencia/depuración (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Esta ventana ejecuta &lt;code&gt;%1&lt;/code&gt; como subproceso.&lt;/p&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU (OptiX) backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;113 scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and an SPPM photon-mapping integrator alongside standard path tracing.&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation type="vanished">&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un path tracer físicamente basado con backends paralelos de CPU y GPU (OptiX), construido a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta alcanzar un conjunto de funciones al estilo de pbrt-v4.&lt;/p&gt;&lt;p&gt;113 escenas, una amplia biblioteca de BxDF, múltiples tipos de luces y cámaras, soporte para mallas de triángulos y texturas, aceleración mediante BVH, volumétricos y un integrador de mapeo de fotones SPPM junto con el path tracing estándar.&lt;/p&gt;&lt;p&gt;Esta ventana ejecuta &lt;code&gt;%1&lt;/code&gt; como subproceso.&lt;/p&gt;</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="433"/>
@@ -411,10 +922,6 @@
         <translation> · Vídeo (%1f)</translation>
     </message>
     <message>
-        <source>%1 — %2×%3 · %4spp · %5%6</source>
-        <translation type="vanished">%1 — %2×%3 · %4spp · %5%6</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_slots.cpp" line="508"/>
         <source>Render Queue (%1)</source>
         <translation>Cola de renderizado (%1)</translation>
@@ -423,10 +930,6 @@
         <location filename="../mainwindow_slots.cpp" line="526"/>
         <source>Clear Render Queue</source>
         <translation>Vaciar cola de renderizado</translation>
-    </message>
-    <message>
-        <source>Remove all %1 queued render%2? This can&apos;t be undone.</source>
-        <translation type="vanished">¿Eliminar los %1 renderizado%2 en cola? Esta acción no se puede deshacer.</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="495"/>
@@ -466,225 +969,227 @@
         <translation>Deteniendo renderizado…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1083"/>
+        <location filename="../mainwindow_slots.cpp" line="1087"/>
         <source>&lt;b&gt;Description:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Descripción:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1084"/>
+        <location filename="../mainwindow_slots.cpp" line="1088"/>
         <source>&lt;b&gt;Performance:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Rendimiento:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1085"/>
+        <location filename="../mainwindow_slots.cpp" line="1089"/>
         <source>&lt;b&gt;Recommended SPP:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;SPP recomendado:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1086"/>
+        <location filename="../mainwindow_slots.cpp" line="1090"/>
         <source>&lt;b&gt;GPU Support:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Compatibilidad con GPU:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1086"/>
+        <location filename="../mainwindow_slots.cpp" line="1090"/>
         <source>Yes</source>
         <translation>Sí</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1086"/>
+        <location filename="../mainwindow_slots.cpp" line="1090"/>
         <source>CPU only</source>
         <translation>Solo CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1094"/>
+        <location filename="../mainwindow_slots.cpp" line="1098"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requires external files&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requiere archivos externos&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1097"/>
+        <location filename="../mainwindow_slots.cpp" line="1101"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; CPU renderer only&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Solo renderizador CPU&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1134"/>
+        <location filename="../mainwindow_slots.cpp" line="1138"/>
         <source>Integrator &quot;%1&quot;</source>
         <translation>Integrador &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1139"/>
+        <location filename="../mainwindow_slots.cpp" line="1143"/>
         <source>Sampler &quot;%1&quot;</source>
         <translation>Muestreador &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1144"/>
+        <location filename="../mainwindow_slots.cpp" line="1148"/>
         <source>Light Sampler &quot;%1&quot;</source>
         <translation>Muestreador de luces &quot;%1&quot;</translation>
     </message>
     <message>
-        <source>⚠ This scene&apos;s file recommends %1, but the Render Options tab is currently set to the default(s) instead - not applied automatically, change it there if you want to match the scene&apos;s own settings.</source>
-        <translation type="vanished">⚠ El archivo de esta escena recomienda %1, pero la pestaña Opciones de renderizado está actualmente configurada con los valores predeterminados en su lugar - no se aplica automáticamente, cámbialo allí si quieres coincidir con la configuración propia de la escena.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_slots.cpp" line="1157"/>
+        <location filename="../mainwindow_slots.cpp" line="1161"/>
         <source>, </source>
         <translation>, </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1244"/>
+        <location filename="../mainwindow_slots.cpp" line="1248"/>
         <source>No scenes in this category.</source>
         <translation>No hay escenas en esta categoría.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1245"/>
+        <location filename="../mainwindow_slots.cpp" line="1249"/>
         <source>No scenes match &quot;%1&quot; in this category.</source>
         <translation>Ninguna escena coincide con &quot;%1&quot; en esta categoría.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1409"/>
+        <location filename="../mainwindow_slots.cpp" line="1413"/>
         <source>Rendering... %1%</source>
         <translation>Renderizando… %1%</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1455"/>
+        <location filename="../mainwindow_slots.cpp" line="1464"/>
         <source>✅ %1 - Total time: %2 seconds</source>
         <translation>✅ %1 - Tiempo total: %2 segundos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1458"/>
+        <location filename="../mainwindow_slots.cpp" line="1467"/>
         <source>Video frames rendered successfully. Starting video assembly...</source>
         <translation>Los fotogramas de vídeo se renderizaron correctamente. Iniciando el ensamblado del vídeo…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1459"/>
+        <location filename="../mainwindow_slots.cpp" line="1468"/>
         <source>⚙️ Assembling video from frames...</source>
         <translation>⚙️ Ensamblando el vídeo a partir de los fotogramas…</translation>
     </message>
     <message>
-        <source>%1  •  %2×%3  •  %4 KB  •  %5s</source>
-        <translation type="vanished">%1  •  %2×%3  •  %4 KB  •  %5s</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_slots.cpp" line="1154"/>
+        <location filename="../mainwindow_slots.cpp" line="1158"/>
         <source>⚠ This scene&apos;s file recommends %1, but the Render Options tab is currently set to the default(s) instead - click Apply, or change it there yourself, to match the scene&apos;s own settings.</source>
         <translation>⚠ El archivo de esta escena recomienda %1, pero la pestaña Opciones de renderizado está actualmente configurada con los valores predeterminados en su lugar - haz clic en Aplicar, o cámbialo allí tú mismo, para coincidir con la configuración propia de la escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1490"/>
+        <location filename="../mainwindow_slots.cpp" line="1499"/>
         <source>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</source>
         <translation>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1505"/>
-        <location filename="../mainwindow_slots.cpp" line="1520"/>
+        <location filename="../mainwindow_slots.cpp" line="1514"/>
+        <location filename="../mainwindow_slots.cpp" line="1529"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ Renderizado completo (%1s)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1506"/>
+        <location filename="../mainwindow_slots.cpp" line="1515"/>
         <source>Warning: preview image failed to load at %1</source>
         <translation>Advertencia: no se pudo cargar la imagen de vista previa en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1521"/>
+        <location filename="../mainwindow_slots.cpp" line="1530"/>
         <source>Warning: output file not found at %1</source>
         <translation>Advertencia: no se encontró el archivo de salida en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1536"/>
+        <location filename="../mainwindow_slots.cpp" line="1545"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1541"/>
-        <location filename="../mainwindow_slots.cpp" line="2118"/>
+        <location filename="../mainwindow_slots.cpp" line="1550"/>
+        <location filename="../mainwindow_slots.cpp" line="2140"/>
         <source>Render Failed</source>
         <translation>Error de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1561"/>
+        <location filename="../mainwindow_slots.cpp" line="1570"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>Detenido - %1 más en cola (haz clic en Iniciar renderizado para continuar)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1687"/>
+        <location filename="../mainwindow_slots.cpp" line="1696"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>Renderizando  ·  %1%  ·  transcurrido %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1697"/>
+        <location filename="../mainwindow_slots.cpp" line="1706"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1705"/>
+        <location filename="../mainwindow_slots.cpp" line="1714"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  ETA %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1708"/>
+        <location filename="../mainwindow_slots.cpp" line="1717"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  ETA --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1731"/>
+        <location filename="../mainwindow_slots.cpp" line="1740"/>
         <source>Render complete</source>
         <translation>Renderizado completo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1732"/>
+        <location filename="../mainwindow_slots.cpp" line="1741"/>
         <source>Render stopped</source>
         <translation>Renderizado detenido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1732"/>
+        <location filename="../mainwindow_slots.cpp" line="1741"/>
         <source>Render failed</source>
         <translation>Renderizado fallido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1734"/>
+        <location filename="../mainwindow_slots.cpp" line="1743"/>
         <source>Finished in %1 seconds</source>
         <translation>Finalizado en %1 segundos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1749"/>
+        <location filename="../mainwindow_slots.cpp" line="1758"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1758"/>
+        <location filename="../mainwindow_slots.cpp" line="1767"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[DEBUG] No hay bandeja del sistema disponible; se omite la notificación de finalización</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1762"/>
+        <location filename="../mainwindow_slots.cpp" line="1771"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[DEBUG] La bandeja del sistema no admite mensajes; se omite la notificación</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1916"/>
+        <location filename="../mainwindow_slots.cpp" line="1925"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO DE VÍDEO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1921"/>
+        <location filename="../mainwindow_slots.cpp" line="1930"/>
         <source>Ready to render video frames</source>
         <translation>Listo para renderizar fotogramas de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1940"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="69"/>
+        <location filename="../mainwindow_slots.cpp" line="1949"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="74"/>
         <source>Ready to render</source>
         <translation>Listo para renderizar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1954"/>
+        <location filename="../mainwindow_slots.cpp" line="1963"/>
         <source>Mode changed to: %1</source>
         <translation>Modo cambiado a: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1950"/>
+        <location filename="../mainwindow_slots.cpp" line="1959"/>
         <source>Video Generation</source>
         <translation>Generación de vídeo</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="124"/>
+        <source>Can&apos;t start a render - no scene is selected (try clearing the search box).</source>
+        <translation>No se puede iniciar un renderizado: no hay ninguna escena seleccionada (prueba a vaciar el cuadro de búsqueda).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="636"/>
+        <source>Can&apos;t generate thumbnails while a render is in progress or queued.</source>
+        <translation>No se pueden generar miniaturas mientras hay un renderizado en curso o en cola.</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="645"/>
@@ -747,74 +1252,84 @@ Use los controles de pausa/detener si una categoría resulta tardar demasiado.</
         <translation>⏸ Pausado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1919"/>
+        <location filename="../mainwindow_slots.cpp" line="1451"/>
+        <source>Render stopped by user</source>
+        <translation>Renderizado detenido por el usuario</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="1452"/>
+        <source>Render abandoned by user</source>
+        <translation>Renderizado abandonado por el usuario</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="1928"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
         <translation>Renderiza la trayectoria de cámara fotograma a fotograma y ensambla un vídeo. En su lugar, se pone en cola si ya hay un renderizado en curso.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1925"/>
+        <location filename="../mainwindow_slots.cpp" line="1934"/>
         <source>START LIVE &amp;PREVIEW</source>
         <translation>INICIAR &amp;VISTA PREVIA EN VIVO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1928"/>
+        <location filename="../mainwindow_slots.cpp" line="1937"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
         <translation>Inicia una vista previa interactiva por GPU que puedes orbitar/hacer zoom con el ratón. Desactivada mientras haya un renderizado por lotes en curso.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1930"/>
+        <location filename="../mainwindow_slots.cpp" line="1939"/>
         <source>Ready to start live preview</source>
         <translation>Listo para iniciar la vista previa en vivo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1938"/>
+        <location filename="../mainwindow_slots.cpp" line="1947"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
         <translation>Renderiza la escena seleccionada con la configuración actual. En su lugar, se pone en cola si ya hay un renderizado en curso.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1949"/>
+        <location filename="../mainwindow_slots.cpp" line="1958"/>
         <source>Single Image</source>
         <translation>Imagen única</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1952"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1616"/>
+        <location filename="../mainwindow_slots.cpp" line="1961"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1663"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="42"/>
         <source>Live Preview</source>
         <translation>Vista previa en vivo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2051"/>
+        <location filename="../mainwindow_slots.cpp" line="2073"/>
         <source>Integrator changed to: %1</source>
         <translation>Integrador cambiado a: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2099"/>
+        <location filename="../mainwindow_slots.cpp" line="2121"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ No se encontró el archivo de vídeo; buscando fotogramas…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2100"/>
+        <location filename="../mainwindow_slots.cpp" line="2122"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>ADVERTENCIA: no se encontró el archivo de vídeo en ninguna de las ubicaciones esperadas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2109"/>
+        <location filename="../mainwindow_slots.cpp" line="2131"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ Se encontraron %1 fotogramas pero ningún archivo de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2110"/>
+        <location filename="../mainwindow_slots.cpp" line="2132"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>Los fotogramas se renderizaron (%1 archivos), pero es posible que el ensamblado del vídeo haya fallado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2111"/>
+        <location filename="../mainwindow_slots.cpp" line="2133"/>
         <source>Video Not Created</source>
         <translation>Vídeo no creado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2112"/>
+        <location filename="../mainwindow_slots.cpp" line="2134"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -827,17 +1342,17 @@ Vídeo esperado en: %2
 Revisa el registro de renderizado para ver errores de ffmpeg.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2116"/>
+        <location filename="../mainwindow_slots.cpp" line="2138"/>
         <source>❌ No frames or video found</source>
         <translation>❌ No se encontraron fotogramas ni vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2117"/>
+        <location filename="../mainwindow_slots.cpp" line="2139"/>
         <source>ERROR: No frames or video file found</source>
         <translation>ERROR: no se encontraron fotogramas ni archivo de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2119"/>
+        <location filename="../mainwindow_slots.cpp" line="2141"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -846,22 +1361,22 @@ Please check the render log for errors.</source>
 Revisa el registro de renderizado para ver los errores.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2122"/>
+        <location filename="../mainwindow_slots.cpp" line="2144"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ No se encontró el directorio de fotogramas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2123"/>
+        <location filename="../mainwindow_slots.cpp" line="2145"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>ERROR: no se encontró el directorio de fotogramas: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2124"/>
+        <location filename="../mainwindow_slots.cpp" line="2146"/>
         <source>Directory Not Found</source>
         <translation>Directorio no encontrado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2125"/>
+        <location filename="../mainwindow_slots.cpp" line="2147"/>
         <source>Frames directory not found:
 %1
 
@@ -872,86 +1387,66 @@ The render may have failed to create output.</source>
 Es posible que el renderizado no haya podido generar la salida.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2131"/>
+        <location filename="../mainwindow_slots.cpp" line="2153"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ ¡Vídeo creado correctamente!</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2132"/>
+        <location filename="../mainwindow_slots.cpp" line="2154"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ Vídeo ensamblado correctamente: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2133"/>
+        <location filename="../mainwindow_slots.cpp" line="2155"/>
         <source>Video size: %1 MB</source>
         <translation>Tamaño del vídeo: %1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2154"/>
+        <location filename="../mainwindow_slots.cpp" line="2176"/>
         <source>%1 (Video)</source>
         <translation>%1 (Vídeo)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2156"/>
+        <location filename="../mainwindow_slots.cpp" line="2178"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3 fotogramas  •  %4spp · %5%6</translation>
     </message>
     <message>
-        <source>%1  •  %2 MB  •  %3 frames</source>
-        <translation type="vanished">%1  •  %2 MB  •  %3 fotogramas</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_slots.cpp" line="2168"/>
+        <location filename="../mainwindow_slots.cpp" line="2190"/>
         <source>Playing video inline: %1</source>
         <translation>Reproduciendo vídeo insertado: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="312"/>
-        <location filename="../mainwindow_tabs.cpp" line="316"/>
+        <location filename="../mainwindow_tabs.cpp" line="363"/>
+        <location filename="../mainwindow_tabs.cpp" line="367"/>
         <source>Scene Metadata Unavailable</source>
         <translation>Metadatos de escena no disponibles</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="313"/>
+        <location filename="../mainwindow_tabs.cpp" line="364"/>
         <source>Could not load scene_metadata.dll, so the scene list is empty. Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.</source>
         <translation>No se pudo cargar scene_metadata.dll, por lo que la lista de escenas está vacía. Asegúrate de que scene_metadata.dll esté presente junto a RayTracerGUI.exe.</translation>
     </message>
     <message>
-        <source>Could not load scene_metadata.dylib/.so, so the scene list is empty. Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI.</source>
-        <translation type="vanished">No se pudo cargar scene_metadata.dylib/.so, por lo que la lista de escenas está vacía. Asegúrate de que scene_metadata.dylib/.so esté presente junto a RayTracerGUI.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="344"/>
+        <location filename="../mainwindow_tabs.cpp" line="395"/>
         <source>Self-Contained</source>
         <translation>Autocontenidas</translation>
     </message>
     <message>
-        <source>%1 scene%2 - no extra downloads needed</source>
-        <translation type="vanished">%1 escena%2: no se necesitan descargas adicionales</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="347"/>
+        <location filename="../mainwindow_tabs.cpp" line="398"/>
         <source>Requires External Files</source>
         <translation>Requiere archivos externos</translation>
     </message>
-    <message>
-        <source>%1 scene%2 - needs assets not included in a fresh checkout</source>
-        <translation type="vanished">%1 escena%2: necesita recursos no incluidos en una copia recién descargada</translation>
-    </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="267"/>
+        <location filename="../mainwindow_tabs.cpp" line="318"/>
         <source>%n scene(s)</source>
         <translation>
             <numerusform>%n escena</numerusform>
             <numerusform>%n escenas</numerusform>
         </translation>
     </message>
-    <message>
-        <source>Pick which scene to render. Scenes are grouped by category and searchable; switch to the grid view for thumbnail previews. Selecting a scene here also seeds its recommended camera/settings hint below, if it has one.</source>
-        <translation type="vanished">Elige la escena a renderizar. Las escenas están agrupadas por categoría y son buscables; cambia a la vista de cuadrícula para ver miniaturas. Seleccionar una escena aquí también muestra abajo su sugerencia de cámara/ajustes recomendada, si la tiene.</translation>
-    </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="346"/>
+        <location filename="../mainwindow_tabs.cpp" line="397"/>
         <source>%n scene(s) - no extra downloads needed</source>
         <translation>
             <numerusform>%n escena - no necesita descargas adicionales</numerusform>
@@ -959,7 +1454,7 @@ Es posible que el renderizado no haya podido generar la salida.</translation>
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="349"/>
+        <location filename="../mainwindow_tabs.cpp" line="400"/>
         <source>%n scene(s) - needs assets not included in a fresh checkout</source>
         <translation>
             <numerusform>%n escena - necesita recursos no incluidos en una copia nueva</numerusform>
@@ -967,377 +1462,219 @@ Es posible que el renderizado no haya podido generar la salida.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="389"/>
+        <location filename="../mainwindow_tabs.cpp" line="440"/>
         <source>Search scenes by name or id...</source>
         <translation>Buscar escenas por nombre o id…</translation>
     </message>
     <message>
-        <source>Narrows the scene list/grid below by substring match against each scene&apos;s name, id, or description - on top of, not instead of, the availability and category tabs above.
-
-Clear it (the small &quot;x&quot; inside the field) to see every scene in the current category again.</source>
-        <translation type="vanished">Filtra la lista o cuadrícula de escenas de abajo por coincidencia de subcadena con el nombre, el id o la descripción de cada escena - además de las pestañas de disponibilidad y categoría de arriba, no en su lugar.
-
-Bórralo (la pequeña &quot;x&quot; dentro del campo) para volver a ver todas las escenas de la categoría actual.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="401"/>
+        <location filename="../mainwindow_tabs.cpp" line="452"/>
         <source>Grid</source>
         <translation>Cuadrícula</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="402"/>
+        <location filename="../mainwindow_tabs.cpp" line="453"/>
         <source>Switch between the dropdown list and a thumbnail gallery grid</source>
         <translation>Alterna entre la lista desplegable y una cuadrícula de miniaturas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="413"/>
+        <location filename="../mainwindow_tabs.cpp" line="464"/>
         <source>Scene:</source>
         <translation>Escena:</translation>
     </message>
     <message>
-        <source>Every render starts from a scene - a description of what&apos;s in the world: the geometry (shapes and meshes), materials (what surfaces are made of), lights, and a camera.
-
-This app ships with dozens of built-in scenes covering the basics (a simple Cornell box) up through complex conductor/dielectric materials, volumetric fog, and real photogrammetry-scale models - pick one to render, or browse by category using the tabs above.</source>
-        <translation type="vanished">Todo renderizado parte de una escena: una descripción de lo que hay en el mundo: la geometría (formas y mallas), los materiales (de qué están hechas las superficies), las luces y una cámara.
-
-Esta aplicación incluye decenas de escenas integradas que van desde lo básico (una simple caja de Cornell) hasta materiales conductores/dieléctricos complejos, niebla volumétrica y modelos reales a escala de fotogrametría. Elige una para renderizar o explora por categoría con las pestañas de arriba.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="443"/>
+        <location filename="../mainwindow_tabs.cpp" line="494"/>
         <source>Generate Thumbnails</source>
         <translation>Generar miniaturas</translation>
     </message>
     <message>
-        <source>Renders a small preview image for each self-contained Basics/Materials/Textures/Cameras
-scene not already cached. CPU-only, low resolution - takes a while the first time.</source>
-        <translation type="vanished">Renderiza una pequeña imagen de vista previa para cada escena autocontenida de Básicos/Materiales/Texturas/Cámaras
-que aún no esté en caché. Solo CPU, baja resolución: la primera vez tarda un rato.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="570"/>
+        <location filename="../mainwindow_tabs.cpp" line="621"/>
         <source>Rendering Technique:</source>
         <translation>Técnica de renderizado:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="571"/>
+        <location filename="../mainwindow_tabs.cpp" line="622"/>
         <source>Select a scene to see the rendering technique it demonstrates.</source>
         <translation>Selecciona una escena para ver la técnica de renderizado que demuestra.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="597"/>
+        <location filename="../mainwindow_tabs.cpp" line="648"/>
         <source>Apply</source>
         <translation>Aplicar</translation>
     </message>
     <message>
-        <source>Set Sampler/Integrator/Light Sampler (Render Options tab) to this scene&apos;s own recommended values.</source>
-        <translation type="vanished">Configura el Sampler/Integrador/Sampler de luces (pestaña Opciones de renderizado) con los valores propios recomendados de esta escena.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="616"/>
+        <location filename="../mainwindow_tabs.cpp" line="667"/>
         <source>Render Settings</source>
         <translation>Configuración de renderizado</translation>
     </message>
     <message>
-        <source>Choose Output Mode (Single Image, Video, or Live Preview) and the renderer (GPU or CPU) here, plus a Quality/Resolution preset or a manual override further down. Video- and Live-Preview-only fields stay visible and editable even in Image mode, dimmed with a note - so you can pre-configure them before switching modes.</source>
-        <translation type="vanished">Elige aquí el modo de salida (Imagen única, Vídeo o Vista previa en vivo) y el renderizador (GPU o CPU), además de un preset de Calidad/Resolución o una anulación manual más abajo. Los campos exclusivos de Vídeo y Vista previa en vivo siguen visibles y editables incluso en modo Imagen, atenuados con una nota - así puedes preconfigurarlos antes de cambiar de modo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="631"/>
+        <location filename="../mainwindow_tabs.cpp" line="682"/>
         <source>Render Single Image</source>
         <translation>Renderizar imagen única</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="633"/>
+        <location filename="../mainwindow_tabs.cpp" line="684"/>
         <source>Generate Video</source>
         <translation>Generar vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="641"/>
+        <location filename="../mainwindow_tabs.cpp" line="692"/>
         <source>Live Preview (interactive)</source>
         <translation>Vista previa en vivo (interactiva)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="651"/>
+        <location filename="../mainwindow_tabs.cpp" line="705"/>
         <source>realtime_renderer.dll wasn&apos;t found next to the application.</source>
         <translation>No se encontró realtime_renderer.dll junto a la aplicación.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="658"/>
+        <location filename="../mainwindow_tabs.cpp" line="713"/>
         <source>Output Mode:</source>
         <translation>Modo de salida:</translation>
     </message>
     <message>
-        <source>Whether this render produces a single still frame, or a sequence of frames stitched into a video.
-
-Single Image renders the scene once, from the camera set on this tab (or Advanced Settings). Generate Video instead moves the camera along a path (Video Settings, on the Render Options tab) and renders one frame per step, then assembles them into an MP4 - taking roughly Frame Count times as long as a single image.
-
-Generate Video cannot be combined with an alternate Integrator - see the warning below if that combination is picked.</source>
-        <translation type="vanished">Si este renderizado produce un único fotograma fijo o una secuencia de fotogramas ensamblada en un vídeo.
-
-Imagen única renderiza la escena una sola vez, desde la cámara configurada en esta pestaña (o en Configuración avanzada). Generar vídeo, en cambio, mueve la cámara a lo largo de una trayectoria (Configuración de vídeo, en la pestaña Opciones de renderizado) y renderiza un fotograma por paso, para luego ensamblarlos en un MP4 - lo que tarda aproximadamente Número de Fotogramas veces lo que tarda una imagen única.
-
-Generar vídeo no puede combinarse con un integrador alternativo - consulta la advertencia de abajo si se elige esa combinación.</translation>
-    </message>
-    <message>
-        <source>Single Image renders one frame.
-Generate Video renders a camera path frame by frame and assembles an MP4.</source>
-        <translation type="vanished">Imagen única renderiza un solo fotograma.
-Generar vídeo renderiza la trayectoria de la cámara fotograma a fotograma y ensambla un MP4.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="731"/>
+        <location filename="../mainwindow_tabs.cpp" line="792"/>
         <source>GPU (CUDA) - Fast</source>
         <translation>GPU (CUDA) - Rápido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="761"/>
+        <location filename="../mainwindow_tabs.cpp" line="822"/>
         <source>CPU - High Quality</source>
         <translation>CPU - Alta calidad</translation>
     </message>
     <message>
-        <source>GPU: OptiX hardware ray tracing — typically orders of magnitude faster.
-CPU: importance-sampled path tracer — supports every scene and material,
-including the handful the GPU backend does not implement.</source>
-        <translation type="vanished">GPU: ray tracing por hardware con OptiX; normalmente varios órdenes de magnitud más rápido.
-CPU: path tracer con muestreo por importancia; admite todas las escenas y materiales,
-incluidos los pocos que el backend de GPU no implementa.</translation>
-    </message>
-    <message>
-        <source>Importance-sampled CPU path tracer — supports every scene and material.
-GPU rendering is not available in this build.</source>
-        <translation type="vanished">Path tracer de CPU con muestreo por importancia: admite todas las escenas y materiales.
-El renderizado por GPU no está disponible en esta compilación.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="793"/>
+        <location filename="../mainwindow_tabs.cpp" line="854"/>
         <source>Renderer:</source>
         <translation>Renderizador:</translation>
     </message>
     <message>
-        <source>Both trace the exact same rays and produce the same image - the difference is speed and hardware, not physics.
-
-GPU (OptiX) uses NVIDIA&apos;s dedicated ray-tracing cores to trace thousands of rays in parallel, typically far faster. CPU uses ordinary processor cores instead: much slower, but works on any machine and supports every material this app implements, including a couple the GPU path hasn&apos;t caught up to yet.</source>
-        <translation type="vanished">Ambos trazan exactamente los mismos rayos y producen la misma imagen: la diferencia está en la velocidad y el hardware, no en la física.
-
-GPU (OptiX) usa los núcleos dedicados de ray tracing de NVIDIA para trazar miles de rayos en paralelo, normalmente mucho más rápido. CPU, en cambio, usa núcleos de procesador comunes: mucho más lento, pero funciona en cualquier máquina y admite todos los materiales que implementa esta aplicación, incluidos un par que la ruta de GPU aún no ha alcanzado.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="812"/>
+        <location filename="../mainwindow_tabs.cpp" line="873"/>
         <source>Recursive (Default)</source>
         <translation>Recursivo (predeterminado)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="818"/>
+        <location filename="../mainwindow_tabs.cpp" line="879"/>
         <source>Wavefront (Experimental)</source>
         <translation>Wavefront (experimental)</translation>
     </message>
     <message>
-        <source>Recursive: one thread per pixel, the default GPU path tracer — broad, battle-tested coverage.
-Wavefront: splits each bounce into separate queue-passed kernel launches — better GPU
-utilization on complex/divergent scenes, but a newer, less exercised code path.
-Only applies when Renderer is set to GPU.</source>
-        <translation type="vanished">Recursivo: un hilo por píxel, el path tracer de GPU predeterminado; cobertura amplia y probada en la práctica.
-Wavefront: divide cada rebote en lanzamientos de kernel independientes pasados por cola; mejor
-aprovechamiento de la GPU en escenas complejas o divergentes, pero es una ruta de código más nueva y menos probada.
-Solo se aplica cuando el renderizador está configurado en GPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="868"/>
+        <location filename="../mainwindow_tabs.cpp" line="929"/>
         <source>GPU Backend:</source>
         <translation>Backend de GPU:</translation>
     </message>
     <message>
-        <source>Two different ways of organizing the SAME ray-tracing work on the GPU.
-
-Recursive traces one ray per thread from start to finish, bouncing recursively - simple and battle-tested. Wavefront instead groups all rays currently doing the same kind of work (e.g. &quot;just hit glass&quot;) into a batch and processes them together - better use of the GPU&apos;s parallel hardware on complex scenes with lots of different materials, at the cost of being a newer, less-tested code path.</source>
-        <translation type="vanished">Dos formas distintas de organizar el MISMO trabajo de ray tracing en la GPU.
-
-Recursivo traza un rayo por hilo de principio a fin, rebotando de forma recursiva: simple y probado en la práctica. Wavefront, en cambio, agrupa todos los rayos que en un momento dado están haciendo el mismo tipo de trabajo (por ejemplo, «acaba de golpear vidrio») en un lote y los procesa juntos: mejor aprovechamiento del hardware paralelo de la GPU en escenas complejas con muchos materiales distintos, a costa de ser una ruta de código más nueva y menos probada.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="101"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="107"/>
         <source>Integrator</source>
         <translation>Integrador</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="104"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="110"/>
         <source>Choose which rendering method to use - the default path tracer, or one of several alternate methods (with names like SPPM, BDPT, MLT, or AO) that each have their own extra options shown below once picked. These alternates only run on the CPU and can&apos;t be used together with Video mode.</source>
         <translation>Elige qué método de renderizado usar: el Trazador de rayos predeterminado, u otro de los métodos alternativos (con nombres como SPPM, BDPT, MLT o AO) que muestran sus propias opciones adicionales más abajo al seleccionarlos. Estas alternativas solo funcionan en la CPU y no se pueden combinar con el modo Vídeo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="139"/>
         <source>Path Tracer (default)</source>
         <translation>Trazador de rayos (predeterminado)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="139"/>
         <source>SPPM (Photon Mapping)</source>
         <translation>SPPM (mapeo de fotones)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="139"/>
         <source>BDPT (Bidirectional)</source>
         <translation>BDPT (bidireccional)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="134"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="140"/>
         <source>MLT (Metropolis Light Transport)</source>
         <translation>MLT (Metropolis Light Transport)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="134"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="140"/>
         <source>RandomWalk (reference, unbiased)</source>
         <translation>RandomWalk (referencia, sin sesgo)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="135"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="141"/>
         <source>Ambient Occlusion (debug)</source>
         <translation>Oclusión ambiental (depuración)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="135"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="141"/>
         <source>SimplePath (reference)</source>
         <translation>SimplePath (referencia)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="136"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="142"/>
         <source>SimpleVolPath (reference, volumetric)</source>
         <translation>SimpleVolPath (referencia, volumétrico)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="136"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="142"/>
         <source>LightPath (light tracer)</source>
         <translation>LightPath (trazador de luz)</translation>
     </message>
     <message>
-        <source>Which rendering algorithm to use. Path Tracer (the default) is the
-well-tested, general-purpose choice - the alternates below trade
-generality for a specific technique (photon mapping, bidirectional/
-Metropolis light transport, or a handful of unbiased reference and
-debug integrators). All alternates are CPU-only except SPPM, and none
-can be combined with Generate Video mode.
-
-Sampler/Spectral/Exposure/Tonemap/Stats above only affect the
-default Path Tracer - see each control&apos;s own tooltip.</source>
-        <translation type="vanished">Qué algoritmo de renderizado usar. El Trazador de rayos (el predeterminado) es la opción de propósito general, bien probada - las alternativas de abajo cambian esa generalidad por una técnica específica (mapeo de fotones, transporte de luz bidireccional/Metropolis, o un puñado de integradores de referencia y depuración sin sesgo). Todas las alternativas son solo CPU excepto SPPM, y ninguna puede combinarse con el modo Generar Video.
-
-Muestreador/Espectral/Exposición/Mapeo tonal/Estadísticas de arriba solo afectan al Trazador de rayos predeterminado - consulta la información de cada control.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="170"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="176"/>
         <source>Integrator:</source>
         <translation>Integrador:</translation>
     </message>
     <message>
-        <source>The rendering algorithm itself, not just how fast it runs. Path Tracer (the default) is the general-purpose, well-tested choice used everywhere else in this app.
-
-SPPM (Stochastic Progressive Photon Mapping) handles hard caustics/glass scenes path tracing struggles with. BDPT and MLT (built on BDPT) trace light paths from both the camera and the light source and connect them - better for some difficult lighting, area lights only. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, and LightPath are reference/debug integrators - simpler, often noisier or narrower in scope (e.g. Ambient Occlusion isn&apos;t a lit render at all), useful for isolating what a specific technique contributes.
-
-Hover any item in the dropdown for details on that specific integrator.</source>
-        <translation type="vanished">El propio algoritmo de renderizado, no solo su velocidad. El Trazador de rayos (el predeterminado) es la opción de propósito general y bien probada que se usa en el resto de esta aplicación.
-
-SPPM (Stochastic Progressive Photon Mapping) resuelve cáusticas difíciles/escenas de vidrio con las que el trazado de rayos normal tiene problemas. BDPT y MLT (construido sobre BDPT) trazan caminos de luz tanto desde la cámara como desde la fuente de luz y los conectan - mejor para algunas iluminaciones difíciles, solo luces de área. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath y LightPath son integradores de referencia/depuración - más simples, a menudo más ruidosos o de alcance más limitado (por ejemplo, Ambient Occlusion ni siquiera es un renderizado iluminado), útiles para aislar qué aporta una técnica concreta.
-
-Pasa el cursor sobre cualquier elemento del desplegable para ver los detalles de ese integrador específico.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="679"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="190"/>
+        <location filename="../mainwindow_tabs.cpp" line="734"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="196"/>
         <source>⚠ Generate Video cannot be combined with an alternate integrator - switch back to Path Tracer, or to Single Image output.</source>
         <translation>⚠ Generar Video no puede combinarse con un integrador alternativo - vuelve al Trazador de rayos, o a la salida de Imagen única.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="691"/>
+        <location filename="../mainwindow_tabs.cpp" line="751"/>
         <source>⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path don&apos;t apply. Scene and Camera Position do.</source>
         <translation>⚠ La vista previa en vivo renderiza a una resolución fija y pequeña en la GPU y no escribe ningún archivo de salida - Resolución, Muestras por píxel, Profundidad máxima de rayo y Ruta de salida no se aplican. Escena y Posición de cámara sí.</translation>
     </message>
     <message>
-        <source>Single Image renders one frame.
-Generate Video renders a camera path frame by frame and assembles an MP4.
-Live Preview renders continuously with an orbitable camera - GPU only.</source>
-        <translation type="vanished">Imagen única renderiza un fotograma.
-Generar vídeo renderiza una trayectoria de cámara fotograma a fotograma y la ensambla en un MP4.
-Vista previa en vivo renderiza continuamente con una cámara orbitable - solo GPU.</translation>
-    </message>
-    <message>
-        <source>NVIDIA OptiX hardware ray tracing. Typically orders of magnitude faster than CPU, but needs a CUDA-capable NVIDIA GPU and doesn&apos;t yet implement every material the CPU path does.</source>
-        <translation type="vanished">Ray tracing por hardware con NVIDIA OptiX. Normalmente varios órdenes de magnitud más rápido que la CPU, pero necesita una GPU NVIDIA compatible con CUDA y todavía no implementa todos los materiales que sí implementa la ruta de CPU.</translation>
-    </message>
-    <message>
-        <source>The full importance-sampled path tracer. Runs on any machine and supports every scene and material this app implements, including the handful the GPU backend hasn&apos;t caught up to yet - at the cost of being much slower.</source>
-        <translation type="vanished">El path tracer completo con muestreo por importancia. Funciona en cualquier máquina y admite todas las escenas y materiales que implementa esta aplicación, incluidos los pocos que el backend de GPU aún no ha alcanzado - a costa de ser mucho más lento.</translation>
-    </message>
-    <message>
-        <source>One thread per pixel, tracing each ray recursively bounce by bounce. The default GPU path tracer - broad, battle-tested coverage of scenes and materials.</source>
-        <translation type="vanished">Un hilo por píxel, trazando cada rayo de forma recursiva, rebote a rebote. El path tracer de GPU predeterminado - cobertura amplia y probada en la práctica de escenas y materiales.</translation>
-    </message>
-    <message>
-        <source>Splits each bounce into separate queue-passed kernel launches, batching rays doing the same kind of work together. Better GPU utilization on complex, divergent scenes - but a newer, less exercised code path.</source>
-        <translation type="vanished">Divide cada rebote en lanzamientos de kernel independientes pasados por cola, agrupando los rayos que realizan el mismo tipo de trabajo. Mejor aprovechamiento de la GPU en escenas complejas y divergentes - pero es una ruta de código más nueva y menos probada.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="888"/>
+        <location filename="../mainwindow_tabs.cpp" line="949"/>
         <source>Draft (Very Fast)</source>
         <translation>Borrador (muy rápido)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="889"/>
+        <location filename="../mainwindow_tabs.cpp" line="950"/>
         <source>Preview (Fast)</source>
         <translation>Vista previa (rápido)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="890"/>
+        <location filename="../mainwindow_tabs.cpp" line="951"/>
         <source>Good (Balanced)</source>
         <translation>Bueno (equilibrado)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="891"/>
+        <location filename="../mainwindow_tabs.cpp" line="952"/>
         <source>High (Slow)</source>
         <translation>Alto (lento)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="892"/>
+        <location filename="../mainwindow_tabs.cpp" line="953"/>
         <source>Ultra (Very Slow)</source>
         <translation>Ultra (muy lento)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="893"/>
+        <location filename="../mainwindow_tabs.cpp" line="954"/>
         <source>Maximum (Extreme)</source>
         <translation>Máximo (extremo)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="894"/>
-        <location filename="../mainwindow_tabs.cpp" line="1460"/>
+        <location filename="../mainwindow_tabs.cpp" line="955"/>
+        <location filename="../mainwindow_tabs.cpp" line="1521"/>
         <source>Custom</source>
         <translation>Personalizado</translation>
     </message>
     <message>
-        <source>Samples per pixel / max ray depth:
-  Draft    25 spp,  depth 10
-  Preview  50 spp,  depth 20
-  Good    100 spp,  depth 50
-  High    500 spp,  depth 50
-  Ultra  1000 spp,  depth 100
-  Maximum 5000 spp, depth 100
-Custom leaves the Advanced tab values untouched.
-Render time scales roughly linearly with samples per pixel.</source>
-        <translation type="vanished">Muestras por píxel / profundidad máxima de rayo:
-  Borrador    25 spp,  profundidad 10
-  Vista previa  50 spp,  profundidad 20
-  Bueno    100 spp,  profundidad 50
-  Alto    500 spp,  profundidad 50
-  Ultra  1000 spp,  profundidad 100
-  Máximo 5000 spp, profundidad 100
-Personalizado deja intactos los valores de la pestaña Avanzado.
-El tiempo de renderizado escala de forma aproximadamente lineal con las muestras por píxel.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="285"/>
+        <location filename="../mainwindow_tabs.cpp" line="336"/>
         <source>Pick which scene to render. Scenes are grouped by category and searchable; switch to the grid view for thumbnail previews. Selecting a scene here also fills in a suggested camera position and settings hint below, if one exists for it.</source>
         <translation>Elige qué escena renderizar. Las escenas están agrupadas por categoría y se pueden buscar; cambia a la vista de cuadrícula para ver miniaturas. Al seleccionar una escena aquí también se rellenan, si existen, una posición de cámara sugerida y una pista de configuración más abajo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="310"/>
+        <location filename="../mainwindow_tabs.cpp" line="361"/>
         <source>
 
 Reason: %1</source>
@@ -1346,12 +1683,12 @@ Reason: %1</source>
 Motivo: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="317"/>
+        <location filename="../mainwindow_tabs.cpp" line="368"/>
         <source>Could not load scene_metadata.dylib/.so, so the scene list is empty. Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI. If it IS present, this is often macOS blocking an unsigned library downloaded from the internet - try running xattr -cr on the .app in Terminal.</source>
         <translation>No se pudo cargar scene_metadata.dylib/.so, por lo que la lista de escenas está vacía. Asegúrese de que scene_metadata.dylib/.so esté presente junto a RayTracerGUI. Si SÍ está presente, esto suele deberse a que macOS bloquea una biblioteca sin firmar descargada de Internet - intente ejecutar xattr -cr en el .app desde la Terminal.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="393"/>
+        <location filename="../mainwindow_tabs.cpp" line="444"/>
         <source>Narrows the scene list/grid below to scenes whose name, id, or description contains what you type - on top of, not instead of, the availability and category tabs above.
 
 Clear it (the small &quot;x&quot; inside the field) to see every scene in the current category again.</source>
@@ -1360,7 +1697,7 @@ Clear it (the small &quot;x&quot; inside the field) to see every scene in the cu
 Bórralo (la pequeña &quot;x&quot; dentro del campo) para volver a ver todas las escenas de la categoría actual.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="415"/>
+        <location filename="../mainwindow_tabs.cpp" line="466"/>
         <source>Every render starts from a scene - a description of what&apos;s in the virtual world: the shapes and objects, what their surfaces are made of, the lights, and a camera.
 
 This app ships with dozens of built-in scenes, ranging from simple starter setups (a plain box-shaped room) up through scenes with realistic metal and glass, fog and smoke effects, and highly detailed 3D-scanned models - pick one to render, or browse by category using the tabs above.</source>
@@ -1369,25 +1706,17 @@ This app ships with dozens of built-in scenes, ranging from simple starter setup
 Esta aplicación incluye docenas de escenas predefinidas, desde montajes sencillos para empezar (una simple habitación con forma de caja) hasta escenas con metal y vidrio realistas, efectos de niebla y humo, y modelos 3D escaneados con gran detalle. Elige una para renderizar, o explóralas por categoría con las pestañas de arriba.</translation>
     </message>
     <message>
-        <source>Creates a small preview image for each ready-to-render Basics/Materials/Textures/Cameras
-scene that doesn&apos;t already have one saved. Runs on the CPU only, at low resolution - it can
-take a while the first time you do this.</source>
-        <translation type="vanished">Crea una pequeña imagen de vista previa para cada escena lista para renderizar de Básicos/Materiales/Texturas/Cámaras
-que todavía no tenga una guardada. Se ejecuta solo en la CPU, a baja resolución; la primera vez
-puede tardar un rato.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="599"/>
+        <location filename="../mainwindow_tabs.cpp" line="650"/>
         <source>Sets the rendering method options (Sampler, Integrator, Light Sampler - on the Render Options tab) to the values this scene recommends.</source>
         <translation>Ajusta las opciones del método de renderizado (Muestreador, Integrador, Muestreador de luces, en la pestaña Opciones de renderizado) a los valores que recomienda esta escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="619"/>
+        <location filename="../mainwindow_tabs.cpp" line="670"/>
         <source>Choose Output Mode (Single Image, Video, or Live Preview) and which hardware renders it (GPU or CPU) here, plus a Quality/Resolution preset or your own manual settings further down. Fields that only matter for Video or Live Preview stay visible and editable even while in Image mode, just dimmed with a note - so you can set them up ahead of time before switching modes.</source>
         <translation>Elige aquí el Modo de salida (Imagen única, Vídeo o Vista previa en vivo) y con qué hardware se renderiza (GPU o CPU), además de un preajuste de Calidad/Resolución o tu propia configuración manual más abajo. Los campos que solo importan para Vídeo o Vista previa en vivo siguen visibles y editables incluso en modo Imagen, solo que atenuados con una nota, para que puedas configurarlos con antelación antes de cambiar de modo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="659"/>
+        <location filename="../mainwindow_tabs.cpp" line="714"/>
         <source>Whether this render produces a single still picture, a sequence of pictures stitched into a video, or a live, interactive preview on the GPU.
 
 Single Image renders the scene once, from the camera set on this tab. Generate Video instead moves the camera along a path (Video Generation Settings, further down this tab) and renders one picture per step, then stitches them into an MP4 video - taking roughly Frame Count times as long as a single image. Live Preview instead renders continuously at a fixed, small resolution so you can click-drag/scroll to orbit the camera and watch the image get clearer in real time - it never writes an output file.
@@ -1400,7 +1729,7 @@ Imagen única renderiza la escena una vez, desde la cámara configurada en esta 
 Generar vídeo no se puede combinar con un método de renderizado alternativo (Integrador); consulta la advertencia de abajo si se elige esa combinación.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="698"/>
+        <location filename="../mainwindow_tabs.cpp" line="759"/>
         <source>Single Image renders one picture.
 Generate Video renders a moving camera path frame by frame and assembles an MP4.
 Live Preview renders continuously with a camera you can freely orbit - GPU only.</source>
@@ -1409,17 +1738,17 @@ Generar vídeo renderiza fotograma a fotograma una trayectoria de cámara en mov
 Vista previa en vivo renderiza de forma continua con una cámara que puedes orbitar libremente; solo GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="742"/>
+        <location filename="../mainwindow_tabs.cpp" line="803"/>
         <source>Uses your NVIDIA graphics card&apos;s dedicated ray-tracing hardware to render. Usually dramatically faster than using the CPU, but requires a compatible NVIDIA graphics card, and can&apos;t yet handle every type of material the CPU option supports.</source>
         <translation>Usa el hardware de trazado de rayos dedicado de tu tarjeta gráfica NVIDIA para renderizar. Suele ser muchísimo más rápido que usar la CPU, pero requiere una tarjeta gráfica NVIDIA compatible y todavía no puede procesar todos los tipos de material que admite la opción de CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="763"/>
+        <location filename="../mainwindow_tabs.cpp" line="824"/>
         <source>The renderer&apos;s complete, most capable rendering method. Runs on any machine and supports every scene and material this app implements, including the handful the GPU option can&apos;t handle yet - at the cost of being much slower.</source>
         <translation>El método de renderizado más completo y capaz del renderizador. Funciona en cualquier equipo y admite todas las escenas y materiales que implementa esta aplicación, incluidos los pocos que la opción de GPU todavía no puede manejar, a costa de ser mucho más lento.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="777"/>
+        <location filename="../mainwindow_tabs.cpp" line="838"/>
         <source>GPU: uses your graphics card&apos;s ray-tracing hardware — typically much faster.
 CPU: the full-featured rendering method — supports every scene and material,
 including the handful the GPU option does not implement.</source>
@@ -1428,38 +1757,47 @@ CPU: el método de renderizado completo; admite todas las escenas y materiales,
 incluidos los pocos que la opción de GPU no implementa.</translation>
     </message>
     <message>
-        <source>The full-featured CPU rendering method — supports every scene and material.
-GPU rendering is not available in this build.</source>
-        <translation type="vanished">El método de renderizado completo por CPU: admite todas las escenas y materiales.
-El renderizado por GPU no está disponible en esta compilación.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="460"/>
+        <location filename="../mainwindow_tabs.cpp" line="511"/>
         <source>Stop</source>
         <translation>Detener</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="729"/>
+        <location filename="../mainwindow_tabs.cpp" line="333"/>
+        <source>Scene</source>
+        <translation>Escena</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="703"/>
+        <source>realtime_renderer.dylib wasn&apos;t found next to the application.</source>
+        <translation>realtime_renderer.dylib no se encontró junto a la aplicación.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="747"/>
+        <source>⚠ Live Preview renders a small, fast preview on the GPU and writes no output file - Resolution only sets its aspect ratio (so the starting view matches the image render); Samples per Pixel, Max Ray Depth, and Output Path don&apos;t apply. Scene and Camera Position do.</source>
+        <translation>⚠ La vista previa en vivo renderiza una imagen pequeña y rápida en la GPU y no escribe ningún archivo de salida: la Resolución solo fija su relación de aspecto (para que la vista inicial coincida con el renderizado de imagen); Muestras por píxel, Profundidad máxima de rayo y Ruta de salida no se aplican. La Escena y la Posición de la cámara sí.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs.cpp" line="790"/>
         <source>GPU (Metal) - Fast</source>
         <translation>GPU (Metal) - Rápido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="736"/>
+        <location filename="../mainwindow_tabs.cpp" line="797"/>
         <source>Uses your Mac&apos;s GPU (via Metal) to render. Usually dramatically faster than using the CPU, but can&apos;t yet handle every type of scene or material the CPU option supports (see the Ray Tracer Feasibility doc&apos;s own list of what&apos;s not wired up yet).</source>
         <translation>Usa la GPU de su Mac (a través de Metal) para renderizar. Normalmente mucho más rápido que usar la CPU, pero todavía no puede manejar todos los tipos de escena o material que admite la opción de CPU (consulte la propia lista del documento Ray Tracer Feasibility sobre lo que aún no está implementado).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="751"/>
+        <location filename="../mainwindow_tabs.cpp" line="812"/>
         <source>Not available right now - no usable Metal GPU was found on this Mac (or this build&apos;s own ray_tracer wasn&apos;t built with Metal support at all).</source>
         <translation>No disponible por ahora - no se encontró ninguna GPU Metal utilizable en este Mac (o el propio ray_tracer de esta compilación no se compiló con soporte para Metal).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="756"/>
+        <location filename="../mainwindow_tabs.cpp" line="817"/>
         <source>Not available in this build - GPU rendering needs Windows plus a compatible NVIDIA graphics card. This platform&apos;s build has no GPU renderer at all (see launcher/optix_stub.h).</source>
         <translation>No disponible en esta compilación - el renderizado por GPU necesita Windows además de una tarjeta gráfica NVIDIA compatible. La compilación para esta plataforma no tiene ningún renderizador GPU (consulte launcher/optix_stub.h).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="783"/>
+        <location filename="../mainwindow_tabs.cpp" line="844"/>
         <source>The full-featured CPU rendering method — supports every scene and material.
 GPU rendering is not available right now (grayed out above) - no usable Metal
 GPU was found on this Mac.</source>
@@ -1468,7 +1806,7 @@ El renderizado por GPU no está disponible por ahora (en gris arriba) - no se en
 ninguna GPU Metal utilizable en este Mac.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="788"/>
+        <location filename="../mainwindow_tabs.cpp" line="849"/>
         <source>The full-featured CPU rendering method — supports every scene and material.
 GPU rendering is not available in this build (grayed out above) - it needs
 Windows plus a compatible NVIDIA graphics card.</source>
@@ -1477,7 +1815,7 @@ El renderizado por GPU no está disponible en esta compilación (en gris arriba)
 Windows además de una tarjeta gráfica NVIDIA compatible.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="794"/>
+        <location filename="../mainwindow_tabs.cpp" line="855"/>
         <source>Both options do the exact same calculations and produce the same image - the only difference is speed and which hardware does the work, not the physics.
 
 GPU uses your NVIDIA graphics card&apos;s dedicated ray-tracing hardware to process thousands of light rays at once, so it&apos;s typically far faster. CPU uses your computer&apos;s regular processor instead: much slower, but works on any machine and supports every material this app implements, including a couple the GPU option hasn&apos;t caught up to yet.</source>
@@ -1486,22 +1824,22 @@ GPU uses your NVIDIA graphics card&apos;s dedicated ray-tracing hardware to proc
 GPU usa el hardware de trazado de rayos dedicado de tu tarjeta gráfica NVIDIA para procesar miles de rayos de luz a la vez, por lo que suele ser mucho más rápida. CPU usa en cambio el procesador normal de tu equipo: mucho más lenta, pero funciona en cualquier máquina y admite todos los materiales que implementa esta aplicación, incluidos un par que la opción de GPU todavía no ha alcanzado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="814"/>
+        <location filename="../mainwindow_tabs.cpp" line="875"/>
         <source>Processes each pixel on its own, following a light ray through all of its bounces before moving to the next pixel. The default GPU rendering method - broadly tested and works with the widest range of scenes and materials.</source>
         <translation>Procesa cada píxel por separado, siguiendo un rayo de luz a través de todos sus rebotes antes de pasar al siguiente píxel. Es el método de renderizado por GPU predeterminado: ampliamente probado y compatible con la mayor variedad de escenas y materiales.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="820"/>
+        <location filename="../mainwindow_tabs.cpp" line="881"/>
         <source>Groups light rays that are currently doing the same kind of work together and processes each bounce for the whole group at once, instead of pixel by pixel. This can make better use of the graphics card on complex scenes with lots of different materials - but it&apos;s a newer option that&apos;s been tested less than Recursive.</source>
         <translation>Agrupa los rayos de luz que están haciendo el mismo tipo de trabajo en un momento dado y procesa cada rebote para todo el grupo a la vez, en lugar de píxel por píxel. Esto puede aprovechar mejor la tarjeta gráfica en escenas complejas con muchos materiales distintos, pero es una opción más nueva y menos probada que Recursivo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="837"/>
+        <location filename="../mainwindow_tabs.cpp" line="898"/>
         <source>Not available - the wavefront path tracer is only implemented for the CUDA/OptiX GPU backend (Windows), not Metal.</source>
         <translation>No disponible - el trazador de rutas wavefront solo está implementado para el backend de GPU CUDA/OptiX (Windows), no para Metal.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="844"/>
+        <location filename="../mainwindow_tabs.cpp" line="905"/>
         <source>Recursive: the default GPU rendering method — broadly tested, works with the widest range of scenes.
 Wavefront: groups similar rays together for better use of the graphics card on complex scenes,
 but it&apos;s newer and less tested than Recursive.
@@ -1512,14 +1850,14 @@ pero es más nuevo y está menos probado que Recursivo.
 Solo se aplica cuando Renderizador está configurado en GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="851"/>
+        <location filename="../mainwindow_tabs.cpp" line="912"/>
         <source>Not available right now - no usable Metal GPU was found on this Mac,
 so Renderer above can only ever be CPU.</source>
         <translation>No disponible por ahora - no se encontró ninguna GPU Metal utilizable en este Mac,
 por lo que el Renderizador de arriba solo puede ser la CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="855"/>
+        <location filename="../mainwindow_tabs.cpp" line="916"/>
         <source>Not available in this build - GPU rendering needs Windows plus a
 compatible NVIDIA graphics card. This platform&apos;s build has no GPU
 renderer at all, so Renderer above can only ever be CPU.</source>
@@ -1528,7 +1866,7 @@ de una tarjeta gráfica NVIDIA compatible. La compilación para esta plataforma 
 tiene ningún renderizador GPU, por lo que el Renderizador de arriba solo puede ser la CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="869"/>
+        <location filename="../mainwindow_tabs.cpp" line="930"/>
         <source>Two different ways of organizing the SAME rendering work on your graphics card - they produce the same image, just computed differently.
 
 Recursive follows each light ray from start to finish, one ray at a time - simple and thoroughly tested. Wavefront instead groups together all the rays currently doing the same kind of work (e.g. &quot;just hit a glass surface&quot;) and processes them as a batch - this can make better use of the graphics card on complex scenes with lots of different materials, at the cost of being a newer, less-tested option.</source>
@@ -1537,7 +1875,7 @@ Recursive follows each light ray from start to finish, one ray at a time - simpl
 Recursivo sigue cada rayo de luz de principio a fin, uno a la vez: sencillo y muy probado. Wavefront, en cambio, agrupa todos los rayos que en ese momento están haciendo el mismo tipo de trabajo (por ejemplo, &quot;acaba de golpear una superficie de vidrio&quot;) y los procesa como un lote; esto puede aprovechar mejor la tarjeta gráfica en escenas complejas con muchos materiales distintos, a costa de ser una opción más nueva y menos probada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="903"/>
+        <location filename="../mainwindow_tabs.cpp" line="964"/>
         <source>Samples per pixel (image cleanliness) / max ray depth (light bounces allowed):
   Draft    25 spp,  depth 10
   Preview  50 spp,  depth 20
@@ -1560,12 +1898,12 @@ El tiempo de renderizado crece aproximadamente en proporción a las muestras por
 el doble de muestras tarda aproximadamente el doble.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="913"/>
+        <location filename="../mainwindow_tabs.cpp" line="974"/>
         <source>Quality:</source>
         <translation>Calidad:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="914"/>
+        <location filename="../mainwindow_tabs.cpp" line="975"/>
         <source>A shortcut that sets both Samples per Pixel and Max Ray Depth together, since they&apos;re the two dials that trade render time for image quality.
 
 Each step up roughly doubles the render time in exchange for a cleaner, less noisy image - Draft is for quickly checking a scene looks right, Ultra/Maximum are for a final image you&apos;d actually want to look at closely.</source>
@@ -1574,87 +1912,87 @@ Each step up roughly doubles the render time in exchange for a cleaner, less noi
 Cada nivel superior duplica aproximadamente el tiempo de renderizado a cambio de una imagen más limpia y con menos ruido. Borrador sirve para comprobar rápidamente que una escena se ve bien, mientras que Ultra/Máximo son para una imagen final que realmente quieras mirar de cerca.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="925"/>
+        <location filename="../mainwindow_tabs.cpp" line="986"/>
         <source>100 x 100 (Tiny)</source>
         <translation>100 x 100 (diminuto)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="926"/>
+        <location filename="../mainwindow_tabs.cpp" line="987"/>
         <source>200 x 200</source>
         <translation>200 x 200</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="927"/>
+        <location filename="../mainwindow_tabs.cpp" line="988"/>
         <source>400 x 400</source>
         <translation>400 x 400</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="928"/>
+        <location filename="../mainwindow_tabs.cpp" line="989"/>
         <source>512 x 512</source>
         <translation>512 x 512</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="929"/>
+        <location filename="../mainwindow_tabs.cpp" line="990"/>
         <source>600 x 600</source>
         <translation>600 x 600</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="930"/>
+        <location filename="../mainwindow_tabs.cpp" line="991"/>
         <source>800 x 800</source>
         <translation>800 x 800</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="931"/>
+        <location filename="../mainwindow_tabs.cpp" line="992"/>
         <source>1024 x 1024 (1K)</source>
         <translation>1024 x 1024 (1K)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="932"/>
+        <location filename="../mainwindow_tabs.cpp" line="993"/>
         <source>1080 x 1080 (Full HD)</source>
         <translation>1080 x 1080 (Full HD)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="933"/>
+        <location filename="../mainwindow_tabs.cpp" line="994"/>
         <source>1200 x 1200</source>
         <translation>1200 x 1200</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="934"/>
+        <location filename="../mainwindow_tabs.cpp" line="995"/>
         <source>1440 x 1440</source>
         <translation>1440 x 1440</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="935"/>
+        <location filename="../mainwindow_tabs.cpp" line="996"/>
         <source>1920 x 1920</source>
         <translation>1920 x 1920</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="936"/>
+        <location filename="../mainwindow_tabs.cpp" line="997"/>
         <source>2048 x 2048 (2K)</source>
         <translation>2048 x 2048 (2K)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="937"/>
+        <location filename="../mainwindow_tabs.cpp" line="998"/>
         <source>2560 x 2560</source>
         <translation>2560 x 2560</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="938"/>
+        <location filename="../mainwindow_tabs.cpp" line="999"/>
         <source>3840 x 3840 (4K)</source>
         <translation>3840 x 3840 (4K)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="939"/>
+        <location filename="../mainwindow_tabs.cpp" line="1000"/>
         <source>4096 x 4096</source>
         <translation>4096 x 4096</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="942"/>
+        <location filename="../mainwindow_tabs.cpp" line="1003"/>
         <source>Resolution:</source>
         <translation>Resolución:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="943"/>
+        <location filename="../mainwindow_tabs.cpp" line="1004"/>
         <source>How many pixels wide and tall the final image is.
 
 Higher resolution means more individual pixels to trace - each one independently sampled - so render time scales up roughly in proportion to the pixel count (double the width AND height and you&apos;re tracing about 4x as many pixels), independent of the Samples per Pixel or Max Ray Depth settings.</source>
@@ -1663,12 +2001,12 @@ Higher resolution means more individual pixels to trace - each one independently
 Una resolución mayor implica más píxeles individuales que trazar (cada uno muestreado de forma independiente), así que el tiempo de renderizado escala aproximadamente en proporción a la cantidad de píxeles (si duplicas el ancho Y el alto, estás trazando unos 4 veces más píxeles), independientemente de la configuración de Muestras por píxel o Profundidad máxima de rayo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="981"/>
+        <location filename="../mainwindow_tabs.cpp" line="1042"/>
         <source>⚠ These settings only take effect when Output Mode above is set to &quot;Generate Video&quot;.</source>
         <translation>⚠ Estos ajustes solo tienen efecto cuando el Modo de salida de arriba está configurado como &quot;Generar vídeo&quot;.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="997"/>
+        <location filename="../mainwindow_tabs.cpp" line="1058"/>
         <source>Famous ray-tracing reference scenes and motions, pre-tuned so you don&apos;t
 have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the Scene above too. Choosing any of the
@@ -1681,7 +2019,7 @@ otro control de esta pestaña después está bien - simplemente dejan de coincid
 con el preset, igual que si hubieras creado a mano esos mismos ajustes.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1006"/>
+        <location filename="../mainwindow_tabs.cpp" line="1067"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the Scene above) - you can still change anything afterward, it just stops matching the preset once you do.</source>
@@ -1690,17 +2028,17 @@ Picking one fills in every field below (and the Scene above) - you can still cha
 Elegir uno rellena todos los campos de abajo (y la Escena de arriba) - aun así puedes cambiar cualquier cosa después, simplemente deja de coincidir con el preset en cuanto lo hagas.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1020"/>
+        <location filename="../mainwindow_tabs.cpp" line="1081"/>
         <source>Tour (Room walkthrough)</source>
         <translation>Recorrido (paseo por una sala)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1021"/>
+        <location filename="../mainwindow_tabs.cpp" line="1082"/>
         <source>Showcase (Product reveal)</source>
         <translation>Presentación (revelado de producto)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1023"/>
+        <location filename="../mainwindow_tabs.cpp" line="1084"/>
         <source>How the camera moves over the frame sequence:
   Orbit     — full circle around the scene, always looking at its centre
   Linear    — straight sweep past the scene
@@ -1719,7 +2057,7 @@ Every path starts from the camera position set below.</source>
 Toda trayectoria empieza desde la posición de cámara configurada más abajo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1034"/>
+        <location filename="../mainwindow_tabs.cpp" line="1095"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a figure-eight loop, crossing back through the middle. Spiral orbits while steadily moving closer. Tour sways side to side and glides forward while its look-at point drifts too, like an actual visitor walking through and looking around a room. Showcase turns once around the subject with a smooth push-in and a gentle rise-and-fall, like a product advertisement&apos;s hero shot. Every path starts from wherever the camera is positioned further down this tab.</source>
@@ -1728,7 +2066,7 @@ Orbit circles fully around the scene, always facing its center - the classic &qu
 Órbita da una vuelta completa alrededor de la escena, mirando siempre a su centro: la clásica toma de &quot;plataforma giratoria&quot;. Lineal pasa junto a la escena en línea recta. Figura en 8 traza un bucle en forma de ocho, cruzando de nuevo por el centro. Espiral orbita mientras se acerca progresivamente. Recorrido se balancea de lado a lado y avanza mientras su punto de mira también se desplaza, como una persona real caminando y mirando alrededor de una habitación. Presentación gira una vez alrededor del motivo con un suave acercamiento y una leve subida y bajada, como la toma principal de un anuncio de producto. Toda trayectoria empieza desde donde esté colocada la cámara más abajo en esta pestaña.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1156"/>
+        <location filename="../mainwindow_tabs.cpp" line="1217"/>
         <source>Video Duration: %1 seconds (%2)
 
 Camera Path: %3, always completes its full sweep regardless of speed
@@ -1769,7 +2107,7 @@ Paso 4: ¡el vídeo se arma y se abre automáticamente al terminar!
 Consejos: usa el modo GPU para renderizar más rápido. Usa menos muestras por píxel (10-50) para vistas previas rápidas, y más (100-500) para calidad de producción. El tiempo de renderizado típico es de 1 a 5 minutos en GPU y de 15 a 60 minutos en CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1207"/>
+        <location filename="../mainwindow_tabs.cpp" line="1268"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.
 
 Looking for the image-quality settings (ReSTIR, Exposure, Samples per Frame, Max Bounces, Firefly Clamp)? Those now live on the Render Options tab&apos;s own Live Preview Settings group, next to the Denoiser section.</source>
@@ -1778,7 +2116,7 @@ Looking for the image-quality settings (ReSTIR, Exposure, Samples per Frame, Max
 ¿Buscas los ajustes de calidad de imagen (ReSTIR, Exposición, Muestras por fotograma, Rebotes máximos, Límite de destellos)? Ahora están en el propio grupo de Configuración de vista previa en vivo de la pestaña Opciones de renderizado, junto a la sección Eliminador de ruido.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1567"/>
+        <location filename="../mainwindow_tabs.cpp" line="1628"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.
 
 Type or Browse to a .exr path instead of .png/.ppm to get a high-dynamic-range file that stores the full range of brightness values without compressing them for a normal screen - useful if you plan to edit the image further in other software. If Denoise is also on and GPU Backend is Recursive, two extra helper files (_albedo.exr and _normal.exr, storing surface color and surface direction) are saved alongside it automatically to help with that cleanup (Wavefront doesn&apos;t produce these yet).</source>
@@ -1787,7 +2125,7 @@ Type or Browse to a .exr path instead of .png/.ppm to get a high-dynamic-range f
 Escribe o busca una ruta .exr en lugar de .png/.ppm para obtener un archivo de alto rango dinámico que guarda toda la gama de valores de brillo sin comprimirla para una pantalla normal, útil si piensas seguir editando la imagen en otro programa. Si además el Eliminador de ruido está activado y el Backend de GPU es Recursivo, se guardan automáticamente junto a él dos archivos auxiliares más (_albedo.exr y _normal.exr, con el color y la orientación de la superficie) para ayudar con esa limpieza (Wavefront todavía no genera estos archivos).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1599"/>
+        <location filename="../mainwindow_tabs.cpp" line="1660"/>
         <source>Where the rendered image is written. A .png is always saved alongside
 the raw .ppm, and it is the .png the Preview tab displays.
 
@@ -1802,7 +2140,7 @@ sin copia en PNG: la pestaña Vista previa lo abrirá en el visor de EXR de tu
 sistema en lugar de mostrarlo directamente.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1619"/>
+        <location filename="../mainwindow_tabs.cpp" line="1680"/>
         <source>Where the finished image is saved.
 
 A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.
@@ -1815,33 +2153,7 @@ Siempre se escribe un archivo .ppm original, y automáticamente se genera junto 
 Si eliges en su lugar una ruta .exr, se omiten ambos: se escribe un único archivo que guarda toda la gama de valores de brillo sin ningún ajuste para una pantalla normal, el formato que esperan las herramientas profesionales de edición de foto y vídeo, y la única forma de obtener los datos de brillo en bruto de esta aplicación en lugar de una imagen ya ajustada para verse bien en un monitor normal.</translation>
     </message>
     <message>
-        <source>How the camera moves over the frame sequence:
-  Orbit     — full circle around the scene, always looking at its centre
-  Linear    — straight sweep past the scene
-  Figure-8  — lemniscate, crossing back through the middle
-  Spiral    — orbits while moving steadily closer
-  Tour      — sways side to side and glides forward while looking around, like walking through a room
-  Showcase  — one eased turn that pushes in and arcs up-then-down, like a product ad
-Every path starts from the camera position set below.</source>
-        <translation type="vanished">Cómo se mueve la cámara a lo largo de la secuencia de fotogramas:
-  Órbita    — círculo completo alrededor de la escena, mirando siempre a su centro
-  Lineal    — barrido recto pasando junto a la escena
-  Figura-8  — traza una lemniscata, cruzando de vuelta por el medio
-  Espiral   — orbita mientras se acerca de forma constante
-  Recorrido — se balancea de lado a lado y avanza mirando alrededor, como caminar por una sala
-  Presentación — un giro suavizado que se acerca y describe un arco de subida y bajada, como un anuncio de producto
-Cada trayectoria parte de la posición de cámara fijada más abajo.</translation>
-    </message>
-    <message>
-        <source>How the camera moves across the sequence of frames.
-
-Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Tour sways side to side and glides forward while its look-at point drifts too, like an actual visitor walking through and looking around a room. Showcase turns once around the subject with an eased push-in and a gentle rise-and-fall, like a product advertisement&apos;s hero shot. Every path starts from wherever the camera is positioned further down this tab.</source>
-        <translation type="vanished">Cómo se mueve la cámara a lo largo de la secuencia de fotogramas.
-
-Órbita gira por completo alrededor de la escena, mirando siempre a su centro - el clásico plano de &quot;tornamesa&quot;. Lineal barre en línea recta. Figura-8 traza una lemniscata, cruzando de vuelta por el medio. Espiral orbita mientras se acerca de forma constante. Recorrido se balancea de lado a lado y avanza mientras su punto de mira también se desplaza, como un visitante real caminando y mirando alrededor de una sala. Presentación gira una vez alrededor del sujeto con un acercamiento suave y un ligero ascenso-descenso, como el plano principal de un anuncio de producto. Cada trayectoria parte de dondequiera que esté posicionada la cámara más abajo en esta pestaña.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1066"/>
+        <location filename="../mainwindow_tabs.cpp" line="1127"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second to determine the video&apos;s total length in seconds.</source>
@@ -1850,7 +2162,7 @@ Paired with Frames Per Second to determine the video&apos;s total length in seco
 Se combina con Fotogramas por segundo para determinar la duración total del vídeo en segundos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1081"/>
+        <location filename="../mainwindow_tabs.cpp" line="1142"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
@@ -1859,81 +2171,37 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - onl
 No cambia cuántos fotogramas se renderizan (eso lo decide Número de fotogramas) - solo la velocidad de reproducción, y por tanto cuántos segundos dura el vídeo final (Número de fotogramas dividido entre FPS).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1144"/>
+        <location filename="../mainwindow_tabs.cpp" line="1205"/>
         <source>%1 frames (base %2 x 1/%3x speed)%4</source>
         <translation>%1 fotogramas (base %2 x 1/%3x velocidad)%4</translation>
     </message>
     <message>
-        <source>Video Duration: %1 seconds (%2)
-
-Camera Path: %3, always completes its full sweep regardless of speed
-
-Output: frames will be saved to output/frames/
-
-Requires ffmpeg: video encoding uses ffmpeg (libx264), which must be installed and on your PATH - get it from ffmpeg.org if the render log reports it&apos;s missing.
-
-After rendering all frames, the video is automatically assembled and opened.
-
-Step 1: Configure Video Generation Settings above (camera path, frames, FPS) and set Output Mode to Generate Video.
-
-Step 2: Configure quality settings further down this tab.
-
-Step 3: Click START VIDEO RENDER and wait.
-
-Step 4: Video automatically assembles and opens when done!
-
-Tips: use GPU mode for faster rendering. Lower samples/pixel (10-50) for quick previews, higher (100-500) for production quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes on CPU.</source>
-        <translation type="vanished">Duración del vídeo: %1 segundos (%2)
-
-Trayectoria de cámara: %3, siempre completa todo su recorrido sin importar la velocidad
-
-Salida: los fotogramas se guardarán en output/frames/
-
-Requiere ffmpeg: la codificación de vídeo usa ffmpeg (libx264), que debe estar instalado y en tu PATH - consíguelo en ffmpeg.org si el registro de renderizado indica que falta.
-
-Después de renderizar todos los fotogramas, el vídeo se ensambla y se abre automáticamente.
-
-Paso 1: configura Ajustes de generación de vídeo arriba (trayectoria de cámara, fotogramas, FPS) y pon el Modo de salida en Generar vídeo.
-
-Paso 2: configura los ajustes de calidad más abajo en esta pestaña.
-
-Paso 3: haz clic en INICIAR RENDERIZADO DE VÍDEO y espera.
-
-Paso 4: ¡el vídeo se ensambla y se abre automáticamente al terminar!
-
-Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (10-50) para vistas previas rápidas, más (100-500) para calidad de producción. El tiempo típico de renderizado es de 1-5 minutos en GPU y 15-60 minutos en CPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1612"/>
+        <location filename="../mainwindow_tabs.cpp" line="1673"/>
         <source>PNG Image (*.png);;PPM Image (*.ppm);;EXR Image, linear HDR (*.exr)</source>
         <translation>Imagen PNG (*.png);;Imagen PPM (*.ppm);;Imagen EXR, HDR lineal (*.exr)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="345"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="350"/>
         <source>Live Preview Settings</source>
         <translation>Ajustes de vista previa en vivo</translation>
     </message>
     <message>
-        <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation type="vanished">Ajusta lo receptivos que se sienten el orbitado/zoom del ratón y el movimiento de teclado WASD/Arriba/Abajo + Izquierda/Derecha/+/- en la Vista previa en vivo. Solo tiene efecto cuando el Modo de salida de arriba es &quot;Vista previa en vivo (interactiva)&quot;, pero permanece editable en cualquier modo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1246"/>
+        <location filename="../mainwindow_tabs.cpp" line="1307"/>
         <source>Mouse Sensitivity:</source>
         <translation>Sensibilidad del ratón:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1247"/>
+        <location filename="../mainwindow_tabs.cpp" line="1308"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
         <translation>Escala la velocidad de orbitar arrastrando el ratón y de hacer zoom con la rueda en la Vista previa en vivo. 1x coincide con la sensación original; menos es más suave, más es más receptivo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1264"/>
+        <location filename="../mainwindow_tabs.cpp" line="1325"/>
         <source>Keyboard Sensitivity:</source>
         <translation>Sensibilidad del teclado:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1265"/>
+        <location filename="../mainwindow_tabs.cpp" line="1326"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
         <translation>Escala el movimiento WASD/Arriba/Abajo, el orbitado con flechas Izquierda/Derecha y el tamaño del paso de zoom con +/- en la Vista previa en vivo. 1x es un incremento moderado por pulsación; menos es más fino, más se mueve más por pulsación.</translation>
     </message>
@@ -1953,7 +2221,7 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <translation>Eliminador de ruido SVGF (experimental)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="88"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="93"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
         <translation>⚠ La vista previa en vivo usa directamente el trazador de rutas progresivo de la GPU - ninguno de los ajustes de esta pestaña se aplica a ella, salvo la propia subsección &quot;Vista previa en vivo&quot; de la sección Eliminador de ruido, más abajo.</translation>
     </message>
@@ -1961,10 +2229,6 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <location filename="../mainwindow_tabs_render_live.cpp" line="97"/>
         <source>Blend:</source>
         <translation>Mezcla:</translation>
-    </message>
-    <message>
-        <source>OptiX AI Denoiser only. Blend between the noisy input and the fully denoised output (0.0 = 100% denoised, 1.0 = original noisy image), same meaning as the Image &amp; Video subsection&apos;s own blend control.</source>
-        <translation type="vanished">Solo para el Eliminador de ruido OptiX AI. Mezcla entre la entrada con ruido y la salida totalmente eliminada de ruido (0.0 = 100% sin ruido, 1.0 = imagen original con ruido), con el mismo significado que el propio control de mezcla de la subsección Imagen y vídeo.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="128"/>
@@ -1977,17 +2241,9 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <translation>Eliminador de ruido:</translation>
     </message>
     <message>
-        <source>OptiX AI Denoiser only. Displays each denoised frame as-is instead of averaging it into a running mean with earlier frames. Trades away the extra quality accumulating more samples would eventually reach, in exchange for a view that always reflects only the most recent frame - useful while flying around with WASD, where older accumulated frames are from a camera position you&apos;ve already left.</source>
-        <translation type="vanished">Solo para el Eliminador de ruido OptiX AI. Muestra cada fotograma eliminado de ruido tal cual, en lugar de promediarlo con fotogramas anteriores en una media continua. Sacrifica la calidad extra que se alcanzaría acumulando más muestras, a cambio de una vista que siempre refleja solo el fotograma más reciente - útil al desplazarte con WASD, donde los fotogramas acumulados antiguos proceden de una posición de cámara que ya has abandonado.</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="220"/>
         <source>Temporal Alpha:</source>
         <translation>Alfa temporal:</translation>
-    </message>
-    <message>
-        <source>Floor on the temporal blend rate - lower holds onto history longer (less noise, more lag on a changing scene), higher adapts faster (more noise, less lag).</source>
-        <translation type="vanished">Límite inferior de la tasa de mezcla temporal - un valor menor conserva el historial más tiempo (menos ruido, más retraso en una escena cambiante), uno mayor se adapta más rápido (más ruido, menos retraso).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="226"/>
@@ -1995,17 +2251,9 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <translation>Longitud máxima de historial:</translation>
     </message>
     <message>
-        <source>Caps how many frames of history a converged pixel can accumulate - bounds how &quot;sticky&quot; it gets.</source>
-        <translation type="vanished">Limita cuántos fotogramas de historial puede acumular un píxel convergido - acota lo &quot;pegajoso&quot; que puede llegar a ser.</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="231"/>
         <source>Variance Bootstrap Frames:</source>
         <translation>Fotogramas de arranque de varianza:</translation>
-    </message>
-    <message>
-        <source>Below this history length, variance is spatially prefiltered from neighboring pixels instead of trusted alone - helps a fresh or disoccluded pixel&apos;s edge-stopping weights before it has enough of its own temporal history.</source>
-        <translation type="vanished">Por debajo de esta longitud de historial, la varianza se prefiltra espacialmente a partir de los píxeles vecinos en lugar de confiar solo en el propio píxel - ayuda a los pesos de preservación de bordes de un píxel nuevo o recién desocluido antes de que tenga suficiente historial temporal propio.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="239"/>
@@ -2013,17 +2261,9 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <translation>Radio de arranque de varianza:</translation>
     </message>
     <message>
-        <source>Box radius (in pixels) used for the variance prefilter above - radius 3 means a 7x7 box.</source>
-        <translation type="vanished">Radio de caja (en píxeles) usado por el prefiltro de varianza de arriba - un radio de 3 significa una caja de 7x7.</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="243"/>
         <source>Sigma Normal:</source>
         <translation>Sigma de normal:</translation>
-    </message>
-    <message>
-        <source>Edge-stopping sensitivity to shading-normal differences - higher rejects a smaller normal difference, preventing blur across curved surfaces or silhouettes.</source>
-        <translation type="vanished">Sensibilidad de preservación de bordes a las diferencias de normal de sombreado - un valor mayor rechaza una diferencia de normal más pequeña, evitando el desenfoque en superficies curvas o siluetas.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="249"/>
@@ -2031,17 +2271,9 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <translation>Sigma de profundidad:</translation>
     </message>
     <message>
-        <source>Edge-stopping sensitivity to depth differences, relative to the local depth gradient - higher tolerates more depth variation before rejecting a neighbor as a different surface.</source>
-        <translation type="vanished">Sensibilidad de preservación de bordes a las diferencias de profundidad, relativa al gradiente de profundidad local - un valor mayor tolera más variación de profundidad antes de rechazar un vecino como una superficie distinta.</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="255"/>
         <source>Sigma Luminance:</source>
         <translation>Sigma de luminancia:</translation>
-    </message>
-    <message>
-        <source>Edge-stopping sensitivity to luminance differences, relative to the pixel&apos;s own estimated noise level - higher blurs across a larger brightness difference.</source>
-        <translation type="vanished">Sensibilidad de preservación de bordes a las diferencias de luminancia, relativa al nivel de ruido estimado propio del píxel - un valor mayor difumina a través de una diferencia de brillo mayor.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="261"/>
@@ -2049,17 +2281,9 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <translation>Radio A-trous:</translation>
     </message>
     <message>
-        <source>Filter footprint radius per A-trous pass - clamped to [0,2] (radius 2 = 5x5) since the filter&apos;s own kernel weight table only has 3 entries.</source>
-        <translation type="vanished">Radio de la huella del filtro por cada pasada A-trous - limitado a [0,2] (radio 2 = 5x5), ya que la tabla de pesos del núcleo del propio filtro solo tiene 3 entradas.</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="266"/>
         <source>Min Albedo:</source>
         <translation>Albedo mínimo:</translation>
-    </message>
-    <message>
-        <source>Floor applied before dividing color by albedo (demodulation) - prevents a near-zero-albedo pixel from blowing up or round-tripping to black.</source>
-        <translation type="vanished">Límite inferior aplicado antes de dividir el color entre el albedo (demodulación) - evita que un píxel con albedo casi cero se dispare o vuelva a caer en negro.</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="273"/>
@@ -2067,74 +2291,42 @@ Consejos: usa el modo GPU para renderizar más rápido. Menos muestras/píxel (1
         <translation>Pasadas A-trous:</translation>
     </message>
     <message>
-        <source>Number of A-trous filter passes (step sizes double each pass: 1,2,4,8,...) - more passes cover a larger effective radius at proportionally higher GPU cost.</source>
-        <translation type="vanished">Número de pasadas del filtro A-trous (el tamaño de paso se duplica en cada pasada: 1, 2, 4, 8...) - más pasadas cubren un radio efectivo mayor a un coste de GPU proporcionalmente mayor.</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_live.cpp" line="280"/>
         <source>Reset to Defaults</source>
         <translation>Restablecer valores predeterminados</translation>
     </message>
     <message>
-        <source>ReSTIR DI/GI, the radiance cache, exposure, samples/max-bounces per frame, and the firefly clamp - all independent of the Advanced Parameters group below (which only applies to Image/Video) and of the Denoiser section above. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.</source>
-        <translation type="vanished">ReSTIR DI/GI, la caché de radiancia, la exposición, las muestras/rebotes máx. por fotograma y el límite de destellos - todos independientes del grupo Parámetros avanzados de abajo (que solo se aplica a Imagen/Vídeo) y de la sección Eliminador de ruido de arriba. Solo tiene efecto cuando el Modo de salida de arriba es &quot;Vista previa en vivo (interactiva)&quot;, pero permanece editable en cualquier modo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="375"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="380"/>
         <source>ReSTIR GI</source>
         <translation>ReSTIR GI</translation>
     </message>
     <message>
-        <source>Resampled one-bounce indirect lighting (ReSTIR GI) - independent of which denoiser is active above. Disabling it falls back to the classic single-sample indirect estimate, which is noisier but cheaper per frame.</source>
-        <translation type="vanished">Iluminación indirecta de un rebote reponderada por remuestreo (ReSTIR GI) - independiente de qué eliminador de ruido esté activo arriba. Desactivarla vuelve a la estimación indirecta clásica de una sola muestra, más ruidosa pero más barata por fotograma.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="391"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="396"/>
         <source>ReSTIR DI</source>
         <translation>ReSTIR DI</translation>
     </message>
     <message>
-        <source>Resampled direct-light sampling (ReSTIR DI) - independent of ReSTIR GI above (that resamples one-bounce INDIRECT lighting; this resamples the direct-light draw classic next-event estimation would otherwise make from a single global alias-table sample). Disabling it falls back to that classic single-sample draw, which is noisier in scenes with many lights but cheaper per frame.</source>
-        <translation type="vanished">Muestreo de luz directa por remuestreo (ReSTIR DI) - independiente de ReSTIR GI de arriba (esa remuestrea la iluminación INDIRECTA de un rebote; esta remuestrea el sorteo de luz directa que la estimación clásica de próximo evento haría, si no, a partir de una única muestra de la tabla de alias global). Desactivarla vuelve a ese sorteo clásico de una sola muestra, más ruidoso en escenas con muchas luces pero más barato por fotograma.</translation>
-    </message>
-    <message>
-        <source>A flat brightness multiplier applied before tone-mapping, same meaning as the Render Options tab&apos;s own Exposure control but independently set for Live Preview.</source>
-        <translation type="vanished">Un multiplicador de brillo plano aplicado antes del mapeo de tonos, con el mismo significado que el propio control de Exposición de la pestaña Opciones de renderizado, pero configurado de forma independiente para la Vista previa en vivo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="605"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="610"/>
         <source>Samples/Frame:</source>
         <translation>Muestras/fotograma:</translation>
     </message>
     <message>
-        <source>Samples per pixel rendered on each Live Preview call - Live Preview has its own independent value from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="vanished">Muestras por píxel renderizadas en cada llamada de la Vista previa en vivo - la Vista previa en vivo tiene su propio valor independiente del grupo Parámetros avanzados de abajo, que solo se aplica a Imagen/Vídeo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="618"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="623"/>
         <source>Max Bounces:</source>
         <translation>Rebotes máx.:</translation>
     </message>
     <message>
-        <source>Maximum ray depth for Live Preview - independent from the Advanced Parameters group below, which only applies to Image/Video.</source>
-        <translation type="vanished">Profundidad máxima de rayo para la Vista previa en vivo - independiente del grupo Parámetros avanzados de abajo, que solo se aplica a Imagen/Vídeo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="639"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="644"/>
         <source>Firefly Clamp:</source>
         <translation>Límite de destellos:</translation>
     </message>
     <message>
-        <source>Caps the brightest possible sample value to suppress fireflies, at the cost of clipping genuinely bright highlights. Lower values clamp more aggressively.</source>
-        <translation type="vanished">Limita el valor de muestra más brillante posible para suprimir destellos, a costa de recortar reflejos genuinamente brillantes. Valores más bajos recortan de forma más agresiva.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1285"/>
+        <location filename="../mainwindow_tabs.cpp" line="1346"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
         <translation>Anula manualmente la resolución, las muestras por píxel y la profundidad máxima de rayo en lugar de usar los presets de Calidad/Resolución de arriba. Compartido por Imagen y Vídeo (Vídeo los reutiliza como sus ajustes por fotograma) - la Vista previa en vivo siempre usa su propia resolución fija y pequeña en su lugar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1315"/>
+        <location filename="../mainwindow_tabs.cpp" line="1376"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
@@ -2143,7 +2335,7 @@ Paired with Height to set the resolution manually, overriding whatever the Quali
 Se combina con Altura para fijar la resolución manualmente, anulando lo que usaría el preset de Calidad de arriba.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1328"/>
+        <location filename="../mainwindow_tabs.cpp" line="1389"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
@@ -2152,7 +2344,7 @@ Paired with Width - together they set the resolution manually, overriding the Qu
 Se combina con Ancho - juntos fijan la resolución manualmente, anulando el preset de Calidad de arriba.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1340"/>
+        <location filename="../mainwindow_tabs.cpp" line="1401"/>
         <source>How many random light samples are averaged per pixel. This is the main
 quality/time dial: more samples make the image cleaner, but with
 diminishing returns - cutting the noise in half needs roughly 4x as many
@@ -2165,7 +2357,7 @@ rendimientos decrecientes; reducir el ruido a la mitad necesita aproximadamente
 este valor aquí pone Calidad en Personalizado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1362"/>
+        <location filename="../mainwindow_tabs.cpp" line="1423"/>
         <source>How many times a light ray is allowed to bounce off surfaces before
 the renderer stops following it. Low values darken glass and mirrors,
 which need many bounces to look right; scenes with only plain, matte
@@ -2176,107 +2368,57 @@ y los espejos, que necesitan muchos rebotes para verse bien; las escenas
 con solo superficies mate sencillas se ven igual mucho antes de llegar al máximo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1402"/>
+        <location filename="../mainwindow_tabs.cpp" line="1463"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
         <translation>Fija directamente la posición mundial de la cámara, o elige un preset con nombre. Se usa tal cual en modo Imagen, como punto de partida desde el que anima la trayectoria de cámara del Vídeo, y como posición inicial de la Vista previa en vivo antes de que la orbites/hagas zoom interactivamente.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1564"/>
+        <location filename="../mainwindow_tabs.cpp" line="1625"/>
         <source>Output</source>
         <translation>Salida</translation>
     </message>
     <message>
-        <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.</source>
-        <translation type="vanished">Dónde se guarda el archivo renderizado. El modo Vídeo añade automáticamente la extensión correcta; la Vista previa en vivo ignora esto por completo, ya que nunca escribe un archivo.</translation>
-    </message>
-    <message>
-        <source>Where the rendered image is written. A .png is always saved alongside
-the raw .ppm, and it is the .png the Preview tab displays.</source>
-        <translation type="vanished">Dónde se escribe la imagen renderizada. Siempre se guarda un .png junto
-al .ppm original, y es el .png lo que muestra la pestaña Vista previa.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1607"/>
+        <location filename="../mainwindow_tabs.cpp" line="1668"/>
         <source>&amp;Browse…</source>
         <translation>&amp;Examinar…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1608"/>
+        <location filename="../mainwindow_tabs.cpp" line="1669"/>
         <source>Choose the output file name and location</source>
         <translation>Elige el nombre y la ubicación del archivo de salida</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1610"/>
+        <location filename="../mainwindow_tabs.cpp" line="1671"/>
         <source>Save Render Output</source>
         <translation>Guardar salida del renderizado</translation>
     </message>
     <message>
-        <source>PNG Image (*.png);;PPM Image (*.ppm)</source>
-        <translation type="vanished">Imagen PNG (*.png);;Imagen PPM (*.ppm)</translation>
-    </message>
-    <message>
-        <source>Where the finished image is saved.
-
-A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.</source>
-        <translation type="vanished">Dónde se guarda la imagen terminada.
-
-Siempre se escribe un archivo .ppm original, y automáticamente se genera junto a él una copia en .png; la pestaña Vista previa siempre muestra el .png, ya que la mayoría de los visores de imágenes (y la propia vista previa de esta aplicación) no pueden abrir .ppm directamente.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1653"/>
+        <location filename="../mainwindow_tabs.cpp" line="1714"/>
         <source>Settings</source>
         <translation>Ajustes</translation>
     </message>
     <message>
-        <source>Basic Settings</source>
-        <translation type="vanished">Configuración básica</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1282"/>
+        <location filename="../mainwindow_tabs.cpp" line="1343"/>
         <source>Advanced Parameters</source>
         <translation>Parámetros avanzados</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1314"/>
+        <location filename="../mainwindow_tabs.cpp" line="1375"/>
         <source>Width:</source>
         <translation>Ancho:</translation>
     </message>
     <message>
-        <source>The image&apos;s pixel width.
-
-Paired with Height below to set the resolution manually, overriding whatever the Quality preset on the Basic tab would otherwise use.</source>
-        <translation type="vanished">El ancho en píxeles de la imagen.
-
-Junto con Alto, más abajo, permite establecer la resolución manualmente, anulando el valor que usaría el ajuste preestablecido de Calidad en la pestaña Básico.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1327"/>
+        <location filename="../mainwindow_tabs.cpp" line="1388"/>
         <source>Height:</source>
         <translation>Alto:</translation>
     </message>
     <message>
-        <source>The image&apos;s pixel height.
-
-Paired with Width above - together they set the resolution manually, overriding the Basic tab&apos;s Quality preset.</source>
-        <translation type="vanished">El alto en píxeles de la imagen.
-
-Junto con Ancho, más arriba, establecen la resolución manualmente, anulando el ajuste preestablecido de Calidad de la pestaña Básico.</translation>
-    </message>
-    <message>
-        <source>Rays traced per pixel. This is the main quality/time dial: noise falls
-as the square root of this value, so halving the noise costs about 4x
-the render time. Setting it here switches Quality to Custom.</source>
-        <translation type="vanished">Rayos trazados por píxel. Este es el control principal de calidad/tiempo: el ruido disminuye
-con la raíz cuadrada de este valor, así que reducir el ruido a la mitad cuesta unas 4 veces
-más tiempo de renderizado. Establecerlo aquí cambia Calidad a Personalizado.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1345"/>
+        <location filename="../mainwindow_tabs.cpp" line="1406"/>
         <source>Samples per Pixel:</source>
         <translation>Muestras por píxel:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1346"/>
+        <location filename="../mainwindow_tabs.cpp" line="1407"/>
         <source>Ray tracing estimates each pixel&apos;s color by firing many random rays and averaging the results, like polling a lot of people and averaging their guesses.
 
 More samples means a more accurate average, which shows up as less speckly &quot;noise&quot; in the image - but each extra sample costs render time. Doubling this value roughly halves the noise, but takes about twice as long to render.</source>
@@ -2285,20 +2427,12 @@ More samples means a more accurate average, which shows up as less speckly &quot
 Más muestras significa un promedio más preciso, lo que se traduce en menos &quot;ruido&quot; granulado en la imagen - pero cada muestra adicional cuesta tiempo de renderizado. Duplicar este valor reduce el ruido aproximadamente a la mitad, pero tarda casi el doble en renderizarse.</translation>
     </message>
     <message>
-        <source>How many times a ray may bounce before it is terminated. Low values
-darken glass and mirrors, which need many bounces to resolve; scenes
-of plain diffuse surfaces look the same well below the maximum.</source>
-        <translation type="vanished">Cuántas veces puede rebotar un rayo antes de terminarse. Los valores bajos
-oscurecen el vidrio y los espejos, que necesitan muchos rebotes para resolverse; las escenas
-con superficies difusas simples se ven igual bastante por debajo del máximo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1366"/>
+        <location filename="../mainwindow_tabs.cpp" line="1427"/>
         <source>Max Ray Depth:</source>
         <translation>Profundidad máxima de rayo:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1367"/>
+        <location filename="../mainwindow_tabs.cpp" line="1428"/>
         <source>A depth of 1 means a ray only sees what it hits directly, with no bounced light at all - like a scene with no reflections or indirect lighting.
 
 Each extra bounce lets light travel one more surface before giving up, which is what makes glass, mirrors, and soft indirect lighting look correct. Most scenes look &quot;finished&quot; well before the maximum - beyond that, extra depth mostly traces light too dim to matter.</source>
@@ -2307,90 +2441,58 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 Cada rebote adicional permite que la luz recorra una superficie más antes de detenerse, y es lo que hace que el vidrio, los espejos y la iluminación indirecta suave se vean correctos. La mayoría de las escenas se ven &quot;terminadas&quot; mucho antes de alcanzar el máximo - más allá de eso, la profundidad adicional en su mayoría traza luz demasiado tenue como para importar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1399"/>
+        <location filename="../mainwindow_tabs.cpp" line="1460"/>
         <source>Camera Position</source>
         <translation>Posición de la cámara</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1443"/>
+        <location filename="../mainwindow_tabs.cpp" line="1504"/>
         <source>Front View (Outside)</source>
         <translation>Vista frontal (exterior)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1446"/>
+        <location filename="../mainwindow_tabs.cpp" line="1507"/>
         <source>Inside Front</source>
         <translation>Interior frontal</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1447"/>
+        <location filename="../mainwindow_tabs.cpp" line="1508"/>
         <source>Inside Back</source>
         <translation>Interior trasero</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1448"/>
+        <location filename="../mainwindow_tabs.cpp" line="1509"/>
         <source>Right Wall (Green)</source>
         <translation>Pared derecha (verde)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1449"/>
+        <location filename="../mainwindow_tabs.cpp" line="1510"/>
         <source>Left Wall (Red)</source>
         <translation>Pared izquierda (roja)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1452"/>
+        <location filename="../mainwindow_tabs.cpp" line="1513"/>
         <source>Floor Corner</source>
         <translation>Esquina del suelo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1453"/>
+        <location filename="../mainwindow_tabs.cpp" line="1514"/>
         <source>Ceiling Corner</source>
         <translation>Esquina del techo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1005"/>
-        <location filename="../mainwindow_tabs.cpp" line="1463"/>
+        <location filename="../mainwindow_tabs.cpp" line="1066"/>
+        <location filename="../mainwindow_tabs.cpp" line="1524"/>
         <source>Preset:</source>
         <translation>Preajuste:</translation>
     </message>
     <message>
-        <source>Whether this render produces a single still frame, a sequence of frames stitched into a video, or an interactive GPU preview.
-
-Single Image renders the scene once, from the camera set on this tab. Generate Video instead moves the camera along a path (Video Generation Settings, further down this tab) and renders one frame per step, then assembles them into an MP4 - taking roughly Frame Count times as long as a single image. Live Preview instead renders continuously at a fixed, small resolution so you can click-drag/scroll to orbit the camera and see the result converge in real time - it never writes an output file.
-
-Generate Video cannot be combined with an alternate Integrator - see the warning below if that combination is picked.</source>
-        <translation type="vanished">Si este renderizado produce un único fotograma fijo, una secuencia de fotogramas unidos en un vídeo, o una vista previa interactiva por GPU.
-
-Imagen única renderiza la escena una sola vez, desde la cámara fijada en esta pestaña. Generar vídeo, en cambio, mueve la cámara a lo largo de una trayectoria (Ajustes de generación de vídeo, más abajo en esta pestaña) y renderiza un fotograma por paso, para luego ensamblarlos en un MP4 - tardando aproximadamente Número de fotogramas veces lo que una sola imagen. Vista previa en vivo, en cambio, renderiza continuamente a una resolución fija y pequeña para que puedas arrastrar/hacer scroll para orbitar la cámara y ver el resultado converger en tiempo real - nunca escribe un archivo de salida.
-
-Generar vídeo no se puede combinar con un Integrador alternativo - consulta la advertencia de abajo si se elige esa combinación.</translation>
-    </message>
-    <message>
-        <source>Samples per pixel / max ray depth:
-  Draft    25 spp,  depth 10
-  Preview  50 spp,  depth 20
-  Good    100 spp,  depth 50
-  High    500 spp,  depth 50
-  Ultra  1000 spp,  depth 100
-  Maximum 5000 spp, depth 100
-Custom leaves the Samples/Max Depth fields below untouched.
-Render time scales roughly linearly with samples per pixel.</source>
-        <translation type="vanished">Muestras por píxel / profundidad máxima de rayo:
-  Borrador   25 spp,  profundidad 10
-  Previa     50 spp,  profundidad 20
-  Buena     100 spp,  profundidad 50
-  Alta      500 spp,  profundidad 50
-  Ultra    1000 spp,  profundidad 100
-  Máxima   5000 spp,  profundidad 100
-Personalizado deja intactos los campos Muestras/Profundidad máxima de abajo.
-El tiempo de renderizado escala de forma aproximadamente lineal con las muestras por píxel.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1204"/>
+        <location filename="../mainwindow_tabs.cpp" line="1265"/>
         <source>Live Preview Controls</source>
         <translation>Controles de la vista previa en vivo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1464"/>
+        <location filename="../mainwindow_tabs.cpp" line="1525"/>
         <source>A handful of hand-picked camera positions for this scene, framed to show off something specific (e.g. looking in through the front, or from inside a Cornell-box-style enclosure).
 
 Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the camera anywhere you like instead.</source>
@@ -2399,12 +2501,12 @@ Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the ca
 Elegir &quot;Personalizado&quot; desbloquea los campos X/Y/Z de abajo para que puedas mover la cámara a donde quieras.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1482"/>
+        <location filename="../mainwindow_tabs.cpp" line="1543"/>
         <source>Camera X:</source>
         <translation>Cámara X:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1483"/>
+        <location filename="../mainwindow_tabs.cpp" line="1544"/>
         <source>The camera&apos;s position along the world&apos;s X axis (left/right).
 
 Only editable when the preset above is set to Custom - the camera always looks toward the scene&apos;s own fixed look-at point, so moving X/Y/Z changes the viewing angle and distance, not just a straight left-right pan.</source>
@@ -2413,12 +2515,12 @@ Only editable when the preset above is set to Custom - the camera always looks t
 Solo se puede editar cuando el preajuste de arriba está en Personalizado - la cámara siempre mira hacia el punto de mira fijo propio de la escena, así que mover X/Y/Z cambia el ángulo y la distancia de visión, no es solo un paneo horizontal.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1497"/>
+        <location filename="../mainwindow_tabs.cpp" line="1558"/>
         <source>Camera Y:</source>
         <translation>Cámara Y:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1498"/>
+        <location filename="../mainwindow_tabs.cpp" line="1559"/>
         <source>The camera&apos;s position along the world&apos;s Y axis (up/down).
 
 Same Custom-preset-only editing rule as Camera X - the camera keeps looking at the scene&apos;s fixed look-at point as you move it.</source>
@@ -2427,12 +2529,12 @@ Same Custom-preset-only editing rule as Camera X - the camera keeps looking at t
 Misma regla de edición exclusiva del preajuste Personalizado que Cámara X - la cámara sigue mirando hacia el punto de mira fijo de la escena mientras la mueves.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1511"/>
+        <location filename="../mainwindow_tabs.cpp" line="1572"/>
         <source>Camera Z:</source>
         <translation>Cámara Z:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1512"/>
+        <location filename="../mainwindow_tabs.cpp" line="1573"/>
         <source>The camera&apos;s position along the world&apos;s Z axis (forward/back, into or out of the scene).
 
 Same Custom-preset-only editing rule as Camera X/Y.</source>
@@ -2441,12 +2543,12 @@ Same Custom-preset-only editing rule as Camera X/Y.</source>
 Misma regla de edición exclusiva del preajuste Personalizado que Cámara X/Y.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1542"/>
+        <location filename="../mainwindow_tabs.cpp" line="1603"/>
         <source>Distance from Center:</source>
         <translation>Distancia desde el centro:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1543"/>
+        <location filename="../mainwindow_tabs.cpp" line="1604"/>
         <source>Moves the camera directly toward or away from the scene&apos;s look-at point along whatever direction it&apos;s currently facing, without changing which way it&apos;s pointed.
 
 The quickest way to zoom in or pull back once you&apos;ve already found an angle you like via the X/Y/Z fields or a preset.</source>
@@ -2455,370 +2557,158 @@ The quickest way to zoom in or pull back once you&apos;ve already found an angle
 La forma más rápida de acercar o alejar el zoom una vez que ya has encontrado un ángulo que te gusta mediante los campos X/Y/Z o un preajuste.</translation>
     </message>
     <message>
-        <source>Advanced Settings</source>
-        <translation type="vanished">Configuración avanzada</translation>
-    </message>
-    <message>
-        <source>Integrator Options</source>
-        <translation type="vanished">Opciones del integrador</translation>
-    </message>
-    <message>
-        <source>Choose the light-transport algorithm - the default path tracer, or an alternate like SPPM/BDPT/MLT/AO with its own sub-options shown below once picked. Alternate integrators are CPU-only and can&apos;t be combined with Video mode.</source>
-        <translation type="vanished">Elige el algoritmo de transporte de luz - el trazador de rutas predeterminado, o una alternativa como SPPM/BDPT/MLT/AO con sus propias sub-opciones mostradas abajo una vez elegida. Los integradores alternativos son solo para CPU y no se pueden combinar con el modo Vídeo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="217"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="223"/>
         <source>The default Path Tracer has no integrator-specific options here - see the Render Options above.</source>
         <translation>El Trazador de rayos predeterminado no tiene opciones específicas aquí - consulta las Opciones de renderizado de arriba.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="231"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="237"/>
         <source>Iterations:</source>
         <translation>Iteraciones:</translation>
     </message>
     <message>
-        <source>How many camera-pass + photon-pass rounds SPPM runs. More iterations converge to a cleaner result, at a roughly linear cost in render time.</source>
-        <translation type="vanished">Cuántas rondas de pase de cámara + pase de fotones ejecuta SPPM. Más iteraciones convergen a un resultado más limpio, a un coste aproximadamente lineal en tiempo de renderizado.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="241"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="247"/>
         <source>Photons per iteration:</source>
         <translation>Fotones por iteración:</translation>
     </message>
     <message>
-        <source>How many photons are shot from the lights each iteration. More photons reduce noise in indirect/caustic lighting at the cost of a slower photon pass.</source>
-        <translation type="vanished">Cuántos fotones se disparan desde las luces en cada iteración. Más fotones reducen el ruido en la iluminación indirecta/cáustica a costa de un pase de fotones más lento.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="259"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="296"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="265"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="302"/>
         <source>Max path depth:</source>
         <translation>Profundidad máxima de camino:</translation>
     </message>
     <message>
-        <source>Maximum bounces for each of the two subpaths (camera side and light side) that BDPT connects together.</source>
-        <translation type="vanished">Máximo número de rebotes para cada uno de los dos subcaminos (lado de cámara y lado de luz) que BDPT conecta entre sí.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="276"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="282"/>
         <source>Bootstrap samples:</source>
         <translation>Muestras de arranque:</translation>
     </message>
     <message>
-        <source>How many candidate light paths MLT samples up front, per depth, to seed its Markov chains - more gives a better-informed starting distribution.</source>
-        <translation type="vanished">Cuántos caminos de luz candidatos muestrea MLT de antemano, por profundidad, para sembrar sus cadenas de Markov - un valor mayor da una distribución inicial mejor informada.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="285"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="291"/>
         <source>Mutations:</source>
         <translation>Mutaciones:</translation>
     </message>
     <message>
-        <source>Total Metropolis mutations across all chains combined - the main knob for render time/quality, analogous to samples per pixel in the default path tracer.</source>
-        <translation type="vanished">Total de mutaciones de Metropolis combinadas en todas las cadenas - el control principal para el tiempo de renderizado/calidad, análogo a las muestras por píxel en el trazador de rayos predeterminado.</translation>
-    </message>
-    <message>
-        <source>Same meaning as BDPT&apos;s max path depth (MLT is built directly on BDPT&apos;s subpath machinery).</source>
-        <translation type="vanished">El mismo significado que la profundidad máxima de camino de BDPT (MLT está construido directamente sobre la maquinaria de subcaminos de BDPT).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="314"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="320"/>
         <source>Max occlusion distance:</source>
         <translation>Distancia máxima de oclusión:</translation>
     </message>
     <message>
-        <source>How far an occlusion test ray can reach before counting as unoccluded. The default (10 billion) is effectively unbounded - lower it to only count nearby geometry as occluding.</source>
-        <translation type="vanished">Hasta dónde puede llegar un rayo de prueba de oclusión antes de contarse como no ocluido. El valor predeterminado (10 mil millones) es efectivamente ilimitado - redúcelo para que solo la geometría cercana cuente como oclusora.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="320"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="326"/>
         <source>Uniform-hemisphere sampling (instead of cosine)</source>
         <translation>Muestreo de hemisferio uniforme (en vez de coseno)</translation>
     </message>
     <message>
-        <source>The default samples occlusion rays weighted toward the surface normal (cosine-hemisphere), matching how a Lambertian surface would actually be lit. Uniform-hemisphere spreads samples evenly instead - a different, unweighted estimator.</source>
-        <translation type="vanished">Por defecto, los rayos de oclusión se muestrean ponderados hacia la normal de la superficie (hemisferio coseno), igual que se iluminaría realmente una superficie lambertiana. El hemisferio uniforme reparte las muestras de forma uniforme en su lugar - un estimador distinto, sin ponderar.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="332"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="338"/>
         <source>Illumination scale:</source>
         <translation>Escala de iluminación:</translation>
     </message>
     <message>
-        <source>Flat multiplier on the occlusion color below.</source>
-        <translation type="vanished">Multiplicador uniforme sobre el color de oclusión de abajo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="350"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="356"/>
         <source>Occlusion color (R, G, B):</source>
         <translation>Color de oclusión (R, G, B):</translation>
     </message>
     <message>
-        <source>The color ambient occlusion is visualized in - not a lit render, so this is a visualization choice, not a light color. Default is white (1, 1, 1).</source>
-        <translation type="vanished">El color en el que se visualiza la oclusión ambiental - no es un renderizado iluminado, así que esto es una elección de visualización, no un color de luz. El valor predeterminado es blanco (1, 1, 1).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="364"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="370"/>
         <source>Disable next-event estimation (direct light sampling)</source>
         <translation>Desactivar estimación de eventos siguientes (muestreo directo de luz)</translation>
     </message>
     <message>
-        <source>On by default. Direct light sampling explicitly aims shadow rays at lights each bounce, sharply reducing noise on scenes with small/bright lights. Disabling it falls back to finding lights only by chance, the way a purely unbiased path tracer would.</source>
-        <translation type="vanished">Activado por defecto. El muestreo directo de luz apunta explícitamente rayos de sombra hacia las luces en cada rebote, reduciendo notablemente el ruido en escenas con luces pequeñas/brillantes. Al desactivarlo, se vuelve a encontrar luces solo por casualidad, como haría un trazador de rayos puramente sin sesgo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="372"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="378"/>
         <source>Disable BSDF importance sampling</source>
         <translation>Desactivar muestreo por importancia del BSDF</translation>
     </message>
     <message>
-        <source>On by default. Samples each bounce&apos;s new direction weighted toward where the surface&apos;s material actually reflects light. Disabling it falls back to uniform hemisphere sampling.</source>
-        <translation type="vanished">Activado por defecto. Muestrea la nueva dirección de cada rebote ponderada hacia donde el material de la superficie realmente refleja la luz. Al desactivarlo, se vuelve al muestreo uniforme por hemisferio.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="391"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="397"/>
         <source>Sampling &amp;&amp; Spectral</source>
         <translation>Muestreo y espectral</translation>
     </message>
     <message>
-        <source>Sampler algorithm, spectral rendering, adaptive sampling, and a time-limit alternative to a fixed sample count. These control HOW samples are drawn, separately from HOW MANY (Settings tab).</source>
-        <translation type="vanished">Algoritmo de muestreador, renderizado espectral, muestreo adaptativo y una alternativa de límite de tiempo a un número de muestras fijo. Estos controlan CÓMO se toman las muestras, por separado de CUÁNTAS (pestaña Ajustes).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="409"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="415"/>
         <source>Sobol (default)</source>
         <translation>Sobol (predeterminado)</translation>
     </message>
     <message>
-        <source>A low-discrepancy sequence based on Sobol sequences, scrambled per pixel. The best general-purpose default - fast convergence with no visible structure.</source>
-        <translation type="vanished">Una secuencia de baja discrepancia basada en secuencias de Sobol, mezclada aleatoriamente por píxel. La mejor opción predeterminada de propósito general - convergencia rápida sin estructura visible.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="415"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="421"/>
         <source>Z-Sobol</source>
         <translation>Z-Sobol</translation>
     </message>
     <message>
-        <source>A variant of Sobol reordered along a Morton (Z-order) curve. Converges at least as well as plain Sobol, with better behavior under adaptive/progressive sampling.</source>
-        <translation type="vanished">Una variante de Sobol reordenada a lo largo de una curva de Morton (orden Z). Converge al menos tan bien como el Sobol normal, con mejor comportamiento bajo muestreo adaptativo/progresivo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="421"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="427"/>
         <source>Padded Sobol</source>
         <translation>Sobol acolchado</translation>
     </message>
     <message>
-        <source>Sobol sequence with extra padding dimensions, avoiding correlation artifacts when a pixel needs more random dimensions than base Sobol comfortably covers (e.g. paths with many bounces).</source>
-        <translation type="vanished">Secuencia de Sobol con dimensiones de relleno adicionales, que evita artefactos de correlación cuando un píxel necesita más dimensiones aleatorias de las que el Sobol base cubre con comodidad (por ejemplo, trayectorias con muchos rebotes).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="427"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="433"/>
         <source>Stratified</source>
         <translation>Estratificado</translation>
     </message>
     <message>
-        <source>Splits each pixel into a grid of sub-cells and takes one sample per cell. Simple, predictable coverage - less sophisticated than Sobol/Halton, but useful as a reference/comparison sampler.</source>
-        <translation type="vanished">Divide cada píxel en una cuadrícula de subceldas y toma una muestra por celda. Cobertura simple y predecible - menos sofisticada que Sobol/Halton, pero útil como muestreador de referencia o comparación.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="432"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="438"/>
         <source>PMJ02BN</source>
         <translation>PMJ02BN</translation>
     </message>
     <message>
-        <source>Progressive multi-jittered (0,2) sequence with blue-noise ordering. Especially even spatial (blue-noise) distribution of samples across neighboring pixels.</source>
-        <translation type="vanished">Secuencia progresiva multi-jittered (0,2) con ordenamiento de ruido azul. Distribución espacial (de ruido azul) especialmente uniforme de las muestras entre píxeles vecinos.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="437"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="443"/>
         <source>Halton</source>
         <translation>Halton</translation>
     </message>
     <message>
-        <source>A classic low-discrepancy sequence built from a different prime base per dimension. Well-tested, avoids the axis-aligned clustering plain stratified sampling can show.</source>
-        <translation type="vanished">Una secuencia clásica de baja discrepancia construida a partir de una base prima distinta por dimensión. Bien probada, evita las agrupaciones alineadas con los ejes que puede mostrar el muestreo estratificado normal.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="442"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="448"/>
         <source>Independent (no stratification)</source>
         <translation>Independiente (sin estratificación)</translation>
     </message>
     <message>
-        <source>Plain uncorrelated pseudo-random numbers, no low-discrepancy structure at all. Included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive, not a recommended choice for its own sake.</source>
-        <translation type="vanished">Números pseudoaleatorios sin correlación, sin ninguna estructura de baja discrepancia. Incluido por fidelidad a la propia directiva Sampler de una escena .pbrt cargada, no como una opción recomendada por sí misma.</translation>
-    </message>
-    <message>
-        <source>Which sampler drives random decisions (all but Independent are
-low-discrepancy). CPU default path tracer only - no effect on GPU
-or under BDPT/MLT/SPPM/the debug integrators.</source>
-        <translation type="vanished">Qué muestreador dirige las decisiones aleatorias (todos excepto Independiente son secuencias de baja discrepancia). Solo para el trazador de rayos predeterminado en CPU - no tiene efecto en GPU ni bajo BDPT/MLT/SPPM/los integradores de depuración.</translation>
-    </message>
-    <message>
-        <source>Ordinary rendering tracks light as three numbers - red, green, blue - the same way a screen displays color.
-
-Real light is a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths refract by different amounts - RGB alone can&apos;t represent that. Spectral rendering tracks a handful of actual wavelengths per ray instead of just RGB, at the cost of being noisier and slower per sample.
-
-Grayed out? This only exists on the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="vanished">El renderizado ordinario registra la luz como tres números - rojo, verde, azul - de la misma manera en que una pantalla muestra el color.
-
-La luz real es un espectro continuo de longitudes de onda, y algunos efectos físicos (como un prisma que descompone la luz blanca en un arcoíris) solo ocurren porque distintas longitudes de onda refractan de forma diferente - el RGB por sí solo no puede representar eso. El renderizado espectral registra un puñado de longitudes de onda reales por rayo en lugar de solo RGB, a costa de ser más ruidoso y lento por muestra.
-
-¿En gris? Esto solo existe en el trazador de rutas predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Ajustes para usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="562"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="568"/>
         <source>Adaptive sampling (--adaptive)</source>
         <translation>Muestreo adaptativo (--adaptive)</translation>
     </message>
     <message>
-        <source>Stops sampling a pixel early once it&apos;s converged, instead of
-always spending the full Samples budget on every pixel - Samples
-becomes a ceiling, not a fixed count. CPU default path tracer only.</source>
-        <translation type="vanished">Deja de muestrear un píxel en cuanto ha convergido, en lugar de
-gastar siempre todo el presupuesto de Muestras en cada píxel - Muestras
-pasa a ser un techo, no un recuento fijo. Solo trazador de rutas predeterminado de CPU.</translation>
-    </message>
-    <message>
-        <source>Target relative noise level to consider a pixel converged.
-Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</source>
-        <translation type="vanished">Nivel de ruido relativo objetivo para considerar que un píxel ha convergido.
-Menor = más limpio pero más lento. 0.01 coincide con el valor predeterminado de Blender Cycles.</translation>
-    </message>
-    <message>
-        <source>A Monte Carlo path tracer&apos;s noise comes from randomness - some pixels (a bright, evenly-lit wall) converge to a clean estimate in just a few samples, while others (a dim corner lit only by a small window) need far more before the noise settles down. Spending the same fixed sample count on both wastes time on the pixels that were already done.
-
-Adaptive sampling tracks each pixel&apos;s own running noise estimate and stops early once it drops below the threshold below, letting Samples act as a ceiling rather than a flat quota - the same idea as Blender Cycles&apos; own adaptive sampling.
-
-Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="vanished">El ruido de un trazador de rutas de Monte Carlo proviene de la aleatoriedad - algunos píxeles (una pared brillante y uniformemente iluminada) convergen a una estimación limpia en solo unas pocas muestras, mientras que otros (un rincón oscuro iluminado solo por una ventana pequeña) necesitan muchas más antes de que el ruido se asiente. Gastar el mismo número fijo de muestras en ambos desperdicia tiempo en los píxeles que ya estaban listos.
-
-El muestreo adaptativo rastrea la estimación de ruido propia y continua de cada píxel y se detiene antes en cuanto cae por debajo del umbral de abajo, dejando que Muestras actúe como un techo en lugar de una cuota fija - la misma idea que el propio muestreo adaptativo de Blender Cycles.
-
-¿En gris? Esto solo afecta al trazador de rutas predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Ajustes para usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="605"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="611"/>
         <source>Time limit (--time-limit)</source>
         <translation>Límite de tiempo (--time-limit)</translation>
     </message>
     <message>
-        <source>Stop rendering once this many seconds have elapsed, instead of
-always running until every scanline is done. CPU default path
-tracer only.</source>
-        <translation type="vanished">Detiene el renderizado una vez transcurridos estos segundos, en lugar de
-seguir siempre hasta que toda línea de barrido esté terminada. Solo trazador de rutas
-predeterminado de CPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="616"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="622"/>
         <source> s</source>
         <translation> s</translation>
     </message>
     <message>
-        <source>Seconds to render before stopping, regardless of the Samples
-budget above.</source>
-        <translation type="vanished">Segundos a renderizar antes de detenerse, independientemente del
-presupuesto de Muestras de arriba.</translation>
-    </message>
-    <message>
-        <source>Useful for a fixed preview or render-farm time budget instead of guessing a sample count that happens to finish in time - lets Samples above stay a generous ceiling while this decides when to actually stop.
-
-Scanline-granular: whatever rows were already being worked on when the deadline passes finish normally; any row that never got started is written black rather than left out, so the image stays a valid (if incomplete) render instead of a corrupted file.
-
-Generating a video? This is a budget for the WHOLE video, not each frame - later frames get whatever&apos;s left of it, and any frames still remaining once it runs out are skipped.
-
-Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="vanished">Útil para un presupuesto de tiempo fijo de vista previa o de granja de renderizado, en lugar de adivinar un número de muestras que resulte terminando a tiempo - deja que Muestras arriba siga siendo un techo generoso mientras esto decide cuándo detenerse realmente.
-
-Con granularidad de línea de barrido: las filas que ya se estaban procesando cuando pasa el plazo terminan con normalidad; cualquier fila que nunca llegó a empezar se escribe en negro en lugar de omitirse, de modo que la imagen sigue siendo un renderizado válido (aunque incompleto) en vez de un archivo corrupto.
-
-¿Generando un vídeo? Esto es un presupuesto para TODO el vídeo, no por fotograma - los fotogramas posteriores reciben lo que quede de él, y cualquier fotograma restante una vez agotado se omite.
-
-¿En gris? Esto solo afecta al trazador de rutas predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Ajustes para usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="869"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="877"/>
         <source>Post-Processing &amp;&amp; Diagnostics</source>
         <translation>Posprocesado y diagnóstico</translation>
     </message>
     <message>
-        <source>Tone mapping curve, whether to print render statistics, and OptiX validation mode - behavior flags for how the final image is processed and reported, not what to render. Denoising has its own dedicated section further down this tab.</source>
-        <translation type="vanished">Curva de mapeo de tonos, si se imprimen estadísticas de renderizado, y el modo de validación de OptiX - opciones de comportamiento sobre cómo se procesa y reporta la imagen final, no sobre qué renderizar. La eliminación de ruido tiene su propia sección dedicada más abajo en esta pestaña.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="949"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="959"/>
         <source>Denoiser</source>
         <translation>Eliminador de ruido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="952"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="962"/>
         <source>Every render mode&apos;s own denoiser settings, gathered in one place. Image/Video and Live Preview each have independent controls below - only the subsection for the currently selected Output Mode is active.</source>
         <translation>Los ajustes propios del eliminador de ruido de cada modo de renderizado, reunidos en un solo lugar. Imagen/Vídeo y Vista previa en vivo tienen cada uno controles independientes abajo - solo está activa la subsección del Modo de salida seleccionado actualmente.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="961"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="971"/>
         <source>Image &amp; Video</source>
         <translation>Imagen y vídeo</translation>
     </message>
     <message>
-        <source>Blend between the noisy input and the fully denoised output
-(0.0 = 100% denoised, 1.0 = original noisy image). Lower this to
-preserve more fine texture/grain that full-strength denoising
-can over-smooth.</source>
-        <translation type="vanished">Mezcla entre la entrada con ruido y la salida totalmente eliminada de ruido
-(0.0 = 100% sin ruido, 1.0 = imagen original con ruido). Reduce esto para
-preservar más textura/grano fino que la eliminación de ruido a plena
-potencia puede suavizar en exceso.</translation>
-    </message>
-    <message>
-        <source>Ray tracing is noisy by nature - low sample counts leave a grainy, speckled image, which is why more samples usually means a cleaner picture.
-
-A denoiser is a machine-learning model trained to recognize that speckle pattern and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
-
-Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and GPU Backend to Recursive) on the Settings tab to use it.</source>
-        <translation type="vanished">El ray tracing es ruidoso por naturaleza - un número bajo de muestras deja una imagen granulada y moteada, por eso más muestras suele significar una imagen más limpia.
-
-Un eliminador de ruido es un modelo de aprendizaje automático entrenado para reconocer ese patrón moteado y suavizarlo a posteriori, sin necesidad de trazar rayos adicionales - una forma de obtener una imagen de aspecto limpio más rápido, a cierto coste en detalle fino. El número a su derecha mezcla entre el original con ruido y el resultado totalmente eliminado de ruido - 0 es totalmente eliminado de ruido (el predeterminado); subirlo conserva algo del grano original, útil cuando la eliminación de ruido a plena potencia suaviza una textura que querías conservar.
-
-¿En gris? Esto necesita el backend recursivo de GPU - cambia el Renderizador a GPU (y el Backend de GPU a Recursivo) en la pestaña Ajustes para usarlo.</translation>
-    </message>
-    <message>
-        <source>None: raw accumulated samples, no denoising.
-
-OptiX AI Denoiser: cleans up Live Preview&apos;s noisy low-sample image using the same OptiX AI denoiser the Image &amp; Video subsection above runs for finished renders - lets the view look reasonable almost immediately instead of waiting many frames to converge. Costs a small amount of GPU time per frame.
-
-SVGF Denoiser: an alternative, experimental spatiotemporal filter - tracks per-pixel variance over time and uses it to drive an edge-aware spatial filter, which holds up better during camera movement than the AI denoiser + running-mean combination. Always shows the latest filtered frame rather than accumulating (see the SVGF Advanced Tuning group below for its own tunable constants).</source>
-        <translation type="vanished">Ninguno: muestras acumuladas en bruto, sin eliminación de ruido.
-
-Eliminador de ruido OptiX AI: limpia la imagen ruidosa de pocas muestras de la Vista previa en vivo usando el mismo eliminador de ruido OptiX AI que ejecuta la subsección Imagen y vídeo de arriba para renderizados terminados - hace que la vista se vea razonable casi de inmediato en lugar de esperar muchos fotogramas a que converja. Cuesta una pequeña cantidad de tiempo de GPU por fotograma.
-
-Eliminador de ruido SVGF: un filtro espaciotemporal alternativo y experimental - rastrea la varianza por píxel a lo largo del tiempo y la usa para dirigir un filtro espacial que preserva bordes, que se sostiene mejor durante el movimiento de cámara que la combinación de eliminador de ruido AI + media continua. Siempre muestra el último fotograma filtrado en lugar de acumular (consulta el grupo Ajuste avanzado de SVGF de abajo para sus propias constantes ajustables).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="410"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="415"/>
         <source>Radiance Cache</source>
         <translation>Caché de radiancia</translation>
     </message>
     <message>
-        <source>World-space irradiance probe cache - caches and resamples diffuse lighting two or more bounces deep, independent of ReSTIR GI above (that only resamples the FIRST indirect bounce; this covers every bounce beyond it). Converges over many frames, so expect it to look patchy or noisy for the first few seconds after enabling it or moving the camera into a new area. Disabling it falls back to classic next-event estimation for every bounce, which is noisier in scenes with a lot of deep indirect light but has no convergence delay.</source>
-        <translation type="vanished">Caché de sondas de irradiancia en espacio de mundo - almacena en caché y remuestrea la iluminación difusa a partir de dos o más rebotes de profundidad, independiente de ReSTIR GI de arriba (esa solo remuestrea el PRIMER rebote indirecto; esta cubre cada rebote más allá de ese). Converge a lo largo de muchos fotogramas, así que es normal que se vea parcheada o ruidosa durante los primeros segundos tras activarla o al mover la cámara a una zona nueva. Desactivarla vuelve a la estimación clásica de próximo evento para cada rebote, más ruidosa en escenas con mucha luz indirecta profunda, pero sin retraso de convergencia.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="431"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="436"/>
         <source>Path Guiding</source>
         <translation>Guiado de trayectoria</translation>
     </message>
     <message>
-        <source>Importance-samples the bounce direction for glossy/metal surfaces against a coarse, incrementally-learned estimate of where incident light actually is, instead of relying purely on the material&apos;s own reflection-lobe sampling. Requires the Radiance Cache above to also be on - it reuses that cache&apos;s own grid and update pipeline, and is a no-op without it. Like the Radiance Cache, converges over several seconds; disabling it falls back to the material&apos;s own unbiased reflection sampling.</source>
-        <translation type="vanished">Muestrea por importancia la dirección de rebote para superficies brillantes/metálicas según una estimación aproximada y aprendida de forma incremental de dónde se encuentra realmente la luz incidente, en lugar de depender solo del muestreo del propio lóbulo de reflexión del material. Requiere que la Caché de radiancia de arriba también esté activada - reutiliza la malla y el proceso de actualización de esa caché, y no tiene efecto sin ella. Al igual que la Caché de radiancia, converge a lo largo de varios segundos; al desactivarla, se vuelve al muestreo de reflexión sin sesgo propio del material.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="524"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="529"/>
         <source>Temporal Upscale:</source>
         <translation>Sobremuestreo temporal:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="503"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="508"/>
         <source>Off</source>
         <translation>Desactivado</translation>
     </message>
@@ -2896,389 +2786,198 @@ Eliminador de ruido SVGF: un filtro de reducción de ruido alternativo y experim
         <translation>Cuántas pasadas de suavizado ejecuta el filtro, cada una cubriendo un área más amplia que la anterior (el tamaño de paso se duplica en cada pasada: 1, 2, 4, 8, ...). Más pasadas suavizan un área mayor, pero cuestan proporcionalmente más tiempo de GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="348"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="353"/>
         <source>Covers ReSTIR DI/GI, the Radiance Cache, Path Guiding, Exposure, Samples/Max Bounces per frame, and the Firefly Clamp - all separate from the Advanced Parameters group below (which only affects Image/Video renders) and from the Denoiser section above. These settings only actually take effect when Output Mode above is set to &quot;Live Preview (interactive)&quot;, but you can still edit them in any mode.</source>
         <translation>Incluye ReSTIR DI/GI, la Caché de radiancia, el Guiado de trayectoria, la Exposición, las Muestras/Rebotes máximos por fotograma, y el Límite de destellos; todo esto es independiente del grupo Parámetros avanzados de más abajo (que solo afecta a los renderizados de Imagen/Vídeo) y de la sección Eliminador de ruido de arriba. Estos ajustes solo tienen efecto realmente cuando el Modo de salida de arriba está en &quot;Vista previa en vivo (interactiva)&quot;, aunque se pueden editar en cualquier modo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="381"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="386"/>
         <source>Improves indirect lighting - light that&apos;s bounced off at least one other surface before reaching what you&apos;re looking at - by reusing good light samples found at nearby pixels and in recent frames, instead of only trying once per pixel. Works independently of whichever denoiser is active above. Turning it off falls back to the simpler one-sample-per-pixel method, which looks noisier but is cheaper to render.</source>
         <translation>Mejora la iluminación indirecta (la luz que ha rebotado en al menos otra superficie antes de llegar a lo que estás mirando) reutilizando buenas muestras de luz encontradas en píxeles cercanos y en fotogramas recientes, en lugar de probar solo una vez por píxel. Funciona de forma independiente de cualquier eliminador de ruido activo arriba. Al desactivarlo, se vuelve al método más simple de una muestra por píxel, que se ve con más ruido pero es más barato de renderizar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="397"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="402"/>
         <source>Improves direct lighting - light that reaches a surface straight from a light source, with no bounces - the same way ReSTIR GI above improves indirect lighting: by reusing good light samples found at nearby pixels and in recent frames instead of only trying once per pixel. Independent of ReSTIR GI above (that one handles light that&apos;s already bounced at least once; this one handles light hitting a surface directly). Turning it off falls back to picking one light sample per pixel the plain way, which is noisier in scenes with many lights but cheaper to render.</source>
         <translation>Mejora la iluminación directa (la luz que llega a una superficie directamente desde una fuente de luz, sin rebotes) de la misma manera en que ReSTIR GI mejora arriba la iluminación indirecta: reutilizando buenas muestras de luz encontradas en píxeles cercanos y en fotogramas recientes, en lugar de probar solo una vez por píxel. Es independiente de ReSTIR GI de arriba (ese se ocupa de la luz que ya ha rebotado al menos una vez; este se ocupa de la luz que llega directamente a una superficie). Al desactivarlo, se vuelve a elegir una muestra de luz por píxel de la forma sencilla, lo que da más ruido en escenas con muchas luces pero es más barato de renderizar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="416"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="421"/>
         <source>Caches and reuses estimates of indirect lighting - light that&apos;s bounced two or more times - across frames and nearby points in space, instead of recalculating it completely from scratch every frame. Independent of ReSTIR GI above (that one only improves the very first bounce; this one covers every bounce after that). It needs a few seconds to catch up, so expect the lighting to look patchy or noisy right after you turn it on or fly the camera into a new area, then smooth out as it builds up data. Turning it off falls back to computing every bounce the plain way, which looks noisier in scenes with a lot of deep indirect light, but shows the correct result immediately with no warm-up delay.</source>
         <translation>Guarda en caché y reutiliza estimaciones de la iluminación indirecta (la luz que ha rebotado dos o más veces) entre fotogramas y puntos cercanos del espacio, en lugar de recalcularla por completo desde cero en cada fotograma. Es independiente de ReSTIR GI de arriba (ese solo mejora el primer rebote; este cubre todos los rebotes posteriores). Necesita unos segundos para ponerse al día, así que espera que la iluminación se vea irregular o con ruido justo después de activarlo o de mover la cámara a una zona nueva, y que luego se suavice a medida que acumula datos. Al desactivarlo, se vuelve a calcular cada rebote de la forma normal, lo que se ve con más ruido en escenas con mucha luz indirecta profunda, pero muestra el resultado correcto de inmediato, sin ningún retraso de calentamiento.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="437"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="442"/>
         <source>For shiny/metal surfaces, this learns roughly where the brightest light is coming from at each point in the scene, so bounce rays get aimed more toward useful directions instead of just guessing based on the surface&apos;s own reflective properties. Requires the Radiance Cache above to also be turned on - this feature reuses that cache&apos;s own data and does nothing without it. Like the Radiance Cache, it needs a few seconds to learn and improve; turning it off falls back to the material&apos;s own plain reflection-based guessing.</source>
         <translation>Para superficies brillantes o metálicas, esto aprende más o menos de dónde viene la luz más intensa en cada punto de la escena, de modo que los rayos de rebote se apuntan hacia direcciones más útiles en lugar de basarse solo en las propiedades reflectantes de la propia superficie. Requiere que también esté activada la Caché de radiancia de arriba; esta función reutiliza los datos de esa caché y no hace nada sin ella. Igual que la Caché de radiancia, necesita unos segundos para aprender y mejorar; al desactivarla, se vuelve a la simple estimación basada en la reflexión propia del material.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="452"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="457"/>
         <source>Neural Radiance Cache</source>
         <translation>Caché de radiancia neuronal</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="458"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="463"/>
         <source>A small AI model, trained live while you render, that learns to predict indirect lighting for both plain matte surfaces and shiny/metal ones - unlike the Radiance Cache above, which only handles matte surfaces and doesn&apos;t account for the angle you&apos;re viewing from. Like the Radiance Cache, it takes a while to catch up, so expect it to need several frames to settle in after you turn it on or move the camera into a new area. Turning it off falls back to tracing every bounce the plain way (or to the Radiance Cache, if that&apos;s also turned on).</source>
         <translation>Un pequeño modelo de IA, entrenado en vivo mientras renderizas, que aprende a predecir la iluminación indirecta tanto para superficies mate sencillas como para las brillantes o metálicas, a diferencia de la Caché de radiancia de arriba, que solo maneja superficies mate y no tiene en cuenta el ángulo desde el que miras. Igual que la Caché de radiancia, tarda un rato en ponerse al día, así que espera que necesite varios fotogramas para estabilizarse después de activarla o de mover la cámara a una zona nueva. Al desactivarla, se vuelve a trazar cada rebote de la forma normal (o se usa la Caché de radiancia, si también está activada).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="481"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="486"/>
         <source>Overrides the current scene&apos;s own camera lens size and focus distance with the Aperture and Focus Distance values below, without changing the scene file itself. Only works for scenes loaded from a scene file - it has no effect on the built-in demo gallery, which always uses its own fixed camera.</source>
         <translation>Sustituye el tamaño de lente y la distancia de enfoque propios de la cámara de la escena actual por los valores de Apertura y Distancia de enfoque de abajo, sin modificar el propio archivo de la escena. Solo funciona con escenas cargadas desde un archivo de escena; no tiene ningún efecto en la galería de demostraciones incluida, que siempre usa su propia cámara fija.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="504"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="509"/>
         <source>2x</source>
         <translation>2x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="505"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="510"/>
         <source>4x</source>
         <translation>4x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="525"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="530"/>
         <source>Builds up a sharper-looking image over several frames using a repeating pixel-shift pattern, instead of just stretching Live Preview&apos;s native low-resolution image to fit the window. The cost of rendering each individual frame doesn&apos;t change - 2x vs. 4x only changes how many frames it takes to reach a sharp image (4 frames for 2x, 16 frames for 4x, counting from when the camera stops moving). 4x uses noticeably more memory (roughly 150-200 MB) than 2x (roughly 40-50 MB). This doesn&apos;t combine with the Denoiser dropdown&apos;s SVGF mode or the &apos;Show latest frame&apos; option above - if either of those is on, it takes priority instead.</source>
         <translation>Construye a lo largo de varios fotogramas una imagen de aspecto más nítido usando un patrón repetitivo de desplazamiento de píxeles, en lugar de simplemente estirar la imagen nativa de baja resolución de la Vista previa en vivo para ajustarla a la ventana. El costo de renderizar cada fotograma individual no cambia: la diferencia entre 2x y 4x está solo en cuántos fotogramas hacen falta para llegar a una imagen nítida (4 fotogramas para 2x, 16 para 4x, contando desde que la cámara deja de moverse). 4x usa notablemente más memoria (unos 150-200 MB) que 2x (unos 40-50 MB). Esto no se combina con el modo SVGF del menú desplegable Eliminador de ruido ni con la opción &quot;Mostrar último fotograma&quot; de arriba; si cualquiera de los dos está activado, tiene prioridad en su lugar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="546"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="551"/>
         <source>Neural Reconstruction</source>
         <translation>Reconstrucción neuronal</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="553"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="558"/>
         <source>Replaces Temporal Upscale&apos;s own basic image-building method with a small AI model, trained live while you render, that blends nearby samples together more smartly instead of just copying pixel blocks into place - this cuts down on the blocky, ghost-like artifacts the plain method can show around moving object edges. Requires Temporal Upscale above to be set to 2x or 4x (does nothing at Off). Like the Radiance Cache, it takes a few seconds after you turn it on to start looking good. Works best with Samples/Frame set to 1 - higher values get averaged together before this feature sees them, which blurs the data it&apos;s learning from.</source>
         <translation>Sustituye el método básico de construcción de imagen del propio Sobremuestreo temporal por un pequeño modelo de IA, entrenado en vivo mientras renderizas, que mezcla las muestras cercanas de forma más inteligente en lugar de simplemente copiar bloques de píxeles en su lugar; esto reduce los artefactos en bloques y con aspecto fantasma que el método normal puede mostrar alrededor de los bordes de objetos en movimiento. Requiere que el Sobremuestreo temporal de arriba esté en 2x o 4x (no hace nada si está Desactivado). Igual que la Caché de radiancia, tarda unos segundos después de activarlo en empezar a verse bien. Funciona mejor con Muestras/Fotograma en 1; los valores más altos se promedian entre sí antes de que esta función los vea, lo que difumina los datos de los que está aprendiendo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="579"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="584"/>
         <source>A flat brightness multiplier applied to the image before final color adjustments. Same idea as this tab&apos;s own Output-group Exposure control above, but set separately just for Live Preview.</source>
         <translation>Un multiplicador de brillo uniforme que se aplica a la imagen antes de los ajustes finales de color. Es la misma idea que el propio control de Exposición del grupo Salida de esta pestaña, de arriba, solo que configurado por separado para la Vista previa en vivo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="606"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="611"/>
         <source>How many light rays are traced per pixel each time Live Preview renders a frame - more samples means a cleaner image but a slower frame. Separate from the Advanced Parameters group below, which only affects Image/Video renders.</source>
         <translation>Cuántos rayos de luz se trazan por píxel cada vez que la Vista previa en vivo renderiza un fotograma; más muestras significa una imagen más limpia pero un fotograma más lento. Es independiente del grupo Parámetros avanzados de abajo, que solo afecta a los renderizados de Imagen/Vídeo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="619"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="624"/>
         <source>The most times a light ray is allowed to bounce off surfaces before Live Preview stops tracing it - higher lets light reach further into a scene (useful for mirrors, glass, or rooms lit indirectly) at a higher cost per frame. Separate from the Advanced Parameters group below, which only affects Image/Video renders.</source>
         <translation>El máximo número de veces que se permite que un rayo de luz rebote en superficies antes de que la Vista previa en vivo deje de seguirlo; un valor más alto permite que la luz llegue más lejos en la escena (útil para espejos, vidrio o habitaciones iluminadas indirectamente) a un costo mayor por fotograma. Es independiente del grupo Parámetros avanzados de abajo, que solo afecta a los renderizados de Imagen/Vídeo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="640"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="645"/>
         <source>Puts a ceiling on how bright any single sample is allowed to be, to suppress fireflies - an isolated ray that happens to catch a very bright, small light at just the right angle, showing up as a stray bright speckle in the image. The tradeoff is that genuinely bright highlights can get dimmed too. Lower values clamp more aggressively.</source>
         <translation>Pone un tope a lo brillante que puede llegar a ser una sola muestra, para suprimir destellos: un rayo aislado que por casualidad capta una luz muy pequeña e intensa desde el ángulo justo, y que aparece como una mota brillante suelta en la imagen. La contrapartida es que también se pueden atenuar brillos que sí eran genuinos. Los valores más bajos recortan de forma más agresiva.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="660"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="665"/>
         <source>How wide the camera&apos;s lens opening is, in scene units - bigger values create more blur outside the focus distance. 0 means a pinhole-sharp image with no blur at all.</source>
         <translation>Cuán ancha es la abertura de la lente de la cámara, en unidades de escena; valores más grandes crean más desenfoque fuera de la distancia de enfoque. 0 significa una imagen tan nítida como la de un agujero de aguja, sin nada de desenfoque.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="677"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="682"/>
         <source>How far from the camera things are in perfectly sharp focus, in scene units.</source>
         <translation>A qué distancia de la cámara están las cosas en foco perfectamente nítido, en unidades de escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="688"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="693"/>
         <source>Adaptive Sampling</source>
         <translation>Muestreo adaptativo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="694"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="699"/>
         <source>Stops resampling a pixel once it&apos;s converged, and shows a black-and-white heatmap instead of the normal preview while it&apos;s on: white where a pixel is still noisy enough to need more samples (per the Convergence Threshold below), black where it&apos;s already converged and no longer being resampled.</source>
         <translation>Deja de volver a muestrear un píxel una vez que ha convergido, y muestra un mapa de calor en blanco y negro en lugar de la vista previa normal mientras está activado: blanco donde un píxel todavía tiene suficiente ruido como para necesitar más muestras (según el umbral de convergencia de abajo), negro donde ya ha convergido y ya no se vuelve a muestrear.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="712"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="717"/>
         <source>Convergence Threshold:</source>
         <translation>Umbral de convergencia:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="713"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="718"/>
         <source>How settled a pixel&apos;s brightness needs to be, relative to its own noise level, before Adaptive Sampling above considers it converged - lower values demand more certainty (more of the image reads as still-noisy for longer) before treating a pixel as done. 0.01 matches this project&apos;s own CPU/offline --adaptive-threshold default and Blender Cycles&apos; own default.</source>
         <translation>Indica cuánto debe haberse estabilizado el brillo de un píxel, en relación con su propio nivel de ruido, antes de que el Muestreo adaptativo de arriba lo considere convergido - valores más bajos exigen más certeza (más parte de la imagen se ve todavía ruidosa durante más tiempo) antes de tratar un píxel como terminado. 0.01 coincide con el valor predeterminado de --adaptive-threshold de la versión CPU/sin conexión de este proyecto y con el valor predeterminado de Blender Cycles.</translation>
     </message>
     <message>
-        <source>Reconstructs a sharper image over several frames from a deterministic sub-pixel jitter sequence, instead of Live Preview&apos;s native low resolution just being stretched to fit the window. Render cost per frame is unchanged - 2x/4x only changes how many frames it takes to sharpen (4 or 16 respectively after a camera move settles). 4x uses noticeably more memory (roughly 150-200 MB) than 2x (roughly 40-50 MB). Mutually exclusive with the Denoiser dropdown&apos;s SVGF mode and &apos;Show latest frame&apos; option above - those take priority when both are on.</source>
-        <translation type="vanished">Reconstruye una imagen más nítida a lo largo de varios fotogramas a partir de una secuencia determinista de fluctuación de subpíxel, en lugar de que la resolución nativa baja de la Vista Previa en Vivo simplemente se estire para ajustarse a la ventana. El coste de renderizado por fotograma no cambia - 2x/4x solo cambia cuántos fotogramas se necesitan para enfocar (4 o 16 respectivamente una vez que se estabiliza un movimiento de cámara). 4x usa notablemente más memoria (unos 150-200 MB) que 2x (unos 40-50 MB). Se excluye mutuamente con el modo SVGF del menú desplegable Denoiser y la opción &apos;Mostrar el último fotograma&apos; de arriba - esas tienen prioridad cuando ambas están activadas.</translation>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="730"/>
+        <source>Smooth noisy pixels</source>
+        <translation>Suavizar píxeles ruidosos</translation>
     </message>
     <message>
-        <source>Turns on extra correctness checks inside the GPU ray-tracing pipeline itself, catching certain classes of bugs that would otherwise silently produce a wrong image or crash unpredictably.
-
-It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
-
-Grayed out? This is GPU-only - switch Renderer to GPU on the Settings tab to use it.</source>
-        <translation type="vanished">Activa comprobaciones de corrección adicionales dentro de la propia canalización de ray tracing de la GPU, detectando ciertas clases de errores que de otro modo producirían silenciosamente una imagen incorrecta o fallarían de forma impredecible.
-
-Es una ayuda de depuración para quienes trabajan en el propio código de GPU del renderizador, no algo de lo que se beneficie un renderizado normal - tiene un coste de rendimiento real y no cambia el aspecto de un renderizado correcto.
-
-¿En gris? Esto es exclusivo de GPU - cambia el Renderizador a GPU en la pestaña Ajustes para usarlo.</translation>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="736"/>
+        <source>Smooths the pixels that have only a few samples so far - right after a camera move, or in areas the move just revealed - using their neighbours on the same surface, so the picture looks calmer while it settles. It never touches pixels that have gathered enough samples, so a settled picture is exactly what was rendered, and it does not change what is accumulated. Turn it off to see the raw samples.</source>
+        <translation>Suaviza los píxeles que de momento tienen pocas muestras (justo después de mover la cámara o en las zonas que el movimiento acaba de descubrir) usando sus vecinos de la misma superficie, de modo que la imagen se vea más tranquila mientras se asienta. Nunca toca los píxeles que ya han reunido suficientes muestras, así que una imagen asentada es exactamente lo que se renderizó, y no cambia lo que se acumula. Desactívalo para ver las muestras sin procesar.</translation>
     </message>
     <message>
-        <source>Ray tracing needs a lot of random numbers - which direction to bounce a ray, which point on a light to sample, and so on - and HOW those &quot;random&quot; numbers are generated changes how quickly the image converges to a clean result.
-
-A naive random-number generator clusters and leaves gaps; most samplers here (Sobol, Halton, etc.) are low-discrepancy sequences, deliberately spread out to cover the sampling space more evenly, which converges to a clean image faster than true randomness would for the same sample count. Independent is the exception - plain uncorrelated random numbers, included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive rather than as a recommended choice.
-
-Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Basic Settings tab to use it.</source>
-        <translation type="vanished">El trazado de rayos necesita muchos números aleatorios - hacia qué dirección rebotar un rayo, qué punto de una luz muestrear, etc. - y CÓMO se generan esos números &quot;aleatorios&quot; cambia la rapidez con que la imagen converge a un resultado limpio.
-
-Un generador de números aleatorios ingenuo produce agrupaciones y huecos; la mayoría de los muestreadores de aquí (Sobol, Halton, etc.) son secuencias de baja discrepancia, distribuidas deliberadamente para cubrir el espacio de muestreo de forma más uniforme, lo que converge a una imagen limpia más rápido que la aleatoriedad real para el mismo número de muestras. Independiente es la excepción - números aleatorios puramente no correlacionados, incluido por fidelidad a la propia directiva Sampler de una escena .pbrt cargada, no como una opción recomendada.
-
-¿Aparece en gris? Esto solo afecta al trazador de rayos predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Configuración básica para usarlo.</translation>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="743"/>
+        <source>Auto exposure</source>
+        <translation>Exposición automática</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="480"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="749"/>
+        <source>Brightens a dim scene so it does not come up nearly black: the average brightness of the lit pixels is brought up towards a mid-grey, up to 64x, following the picture smoothly. It never darkens anything - a normally exposed or bright scene looks exactly as it does with this off - and it multiplies the Exposure value above, which still works as a manual correction.</source>
+        <translation>Aclara una escena oscura para que no salga casi negra: el brillo medio de los píxeles iluminados se eleva hacia un gris medio, hasta 64x, siguiendo la imagen con suavidad. Nunca oscurece nada: una escena con exposición normal o brillante se ve exactamente igual que con esto desactivado. Además multiplica el valor de Exposición de arriba, que sigue sirviendo como corrección manual.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="486"/>
         <source>BVH (default)</source>
         <translation>BVH (predeterminado)</translation>
     </message>
     <message>
-        <source>Builds a spatial hierarchy over the scene&apos;s lights and weighs each one by both power and proximity to the shading point, adapting per bounce rather than using one global weighting. pbrt-v4&apos;s own default - generally the best convergence, at a small extra bookkeeping cost.</source>
-        <translation type="vanished">Construye una jerarquía espacial sobre las luces de la escena y pondera cada una tanto por su potencia como por la proximidad al punto de sombreado, adaptándose en cada rebote en vez de usar una única ponderación global. El propio valor predeterminado de pbrt-v4 - por lo general la mejor convergencia, a un pequeño coste adicional de gestión.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="487"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="493"/>
         <source>Auto (use scene&apos;s own request)</source>
         <translation>Automático (usa la solicitud propia de la escena)</translation>
     </message>
     <message>
-        <source>Uses whatever this scene&apos;s own Integrator &quot;string lightsampler&quot; parameter requested (BVH if it made no request, or requested something this project doesn&apos;t implement) instead of a fixed choice - matches the CLI&apos;s own --lightsampler auto. Picking this once and leaving it is the one choice here that stays correct as you switch between scenes with different recommendations.</source>
-        <translation type="vanished">Usa lo que solicite el propio parámetro de Integrador &quot;string lightsampler&quot; de esta escena (BVH si no solicitó nada, o algo que este proyecto no implementa) en lugar de una elección fija - coincide con el propio --lightsampler auto de la CLI. Elegir esto una vez y dejarlo así es la única opción aquí que se mantiene correcta al cambiar entre escenas con recomendaciones distintas.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="494"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="500"/>
         <source>Power</source>
         <translation>Potencia</translation>
     </message>
     <message>
-        <source>Picks a light with probability weighted by its total emitted power - bright lights get sampled more often than dim ones. Converges faster than uniform in scenes with a wide range of light brightness, but ignores distance and occlusion.</source>
-        <translation type="vanished">Elige una luz con una probabilidad ponderada por su potencia total emitida - las luces brillantes se muestrean con más frecuencia que las tenues. Converge más rápido que el uniforme en escenas con un amplio rango de brillo entre luces, pero ignora la distancia y la oclusión.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="501"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="507"/>
         <source>Uniform</source>
         <translation>Uniforme</translation>
     </message>
     <message>
-        <source>Picks a light uniformly at random from every light in the scene, regardless of how bright or how far away it is. Simple and unbiased, but converges slowly in scenes with many lights of very different brightness - a dim light gets sampled just as often as a bright one.</source>
-        <translation type="vanished">Elige una luz al azar de manera uniforme entre todas las luces de la escena, sin importar cuán brillante o lejana sea. Simple y sin sesgo, pero converge lentamente en escenas con muchas luces de brillo muy distinto - una luz tenue se muestrea con la misma frecuencia que una brillante.</translation>
-    </message>
-    <message>
-        <source>Which strategy picks the light to sample at each next-event-
-estimation bounce. Affects noise/convergence speed, not the
-converged image. CPU default path tracer only - no effect on GPU
-or under BDPT/MLT/SPPM/the debug integrators.</source>
-        <translation type="vanished">Qué estrategia elige la luz a muestrear en cada rebote de
-estimación de eventos siguientes. Afecta al ruido/velocidad de convergencia,
-no a la imagen ya convergida. Solo en el path tracer predeterminado de CPU -
-sin efecto en GPU ni bajo BDPT/MLT/SPPM/los integradores de depuración.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="516"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="522"/>
         <source>Light Sampler:</source>
         <translation>Muestreador de luces:</translation>
     </message>
     <message>
-        <source>Every diffuse/glossy bounce needs to pick ONE light (out of potentially many) to sample directly for next-event estimation - which light gets picked, and how fairly, changes how quickly the image converges, though never what it converges TO.
-
-BVH (the default, matching pbrt-v4 itself) builds a spatial hierarchy over the scene&apos;s lights and adapts its weighting per shading point - both bright AND nearby lights get preferred. Power picks by brightness alone, ignoring position - simpler, worse in scenes where light distance varies a lot. Uniform ignores both - every light equally likely regardless of brightness or distance, included mainly for comparison/debugging.
-
-Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Basic Settings tab to use it.</source>
-        <translation type="vanished">Cada rebote difuso/brillante necesita elegir UNA luz (de entre potencialmente muchas) para muestrearla directamente en la estimación de eventos siguientes - qué luz se elige, y con qué justicia, cambia la rapidez con que converge la imagen, aunque nunca aquello A LO QUE converge.
-
-BVH (el predeterminado, igual que el propio pbrt-v4) construye una jerarquía espacial sobre las luces de la escena y adapta su ponderación en cada punto de sombreado - se prefieren tanto las luces brillantes COMO las cercanas. Potencia elige solo por el brillo, ignorando la posición - más simple, peor en escenas donde la distancia a las luces varía mucho. Uniforme ignora ambos factores - todas las luces son igual de probables sin importar su brillo o distancia, incluido principalmente para comparación/depuración.
-
-¿Aparece en gris? Esto solo afecta al trazador de rayos predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Configuración básica para usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="665"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="671"/>
         <source>Path regularization (--regularize)</source>
         <translation>Regularización de rutas (--regularize)</translation>
     </message>
     <message>
-        <source>Widens a rough BSDF&apos;s GGX alpha after the path&apos;s first
-non-specular bounce - tames fireflies from hard caustic paths,
-at the cost of some blur. Both CPU and GPU default path tracer
-only. A scene that already requests this itself is unaffected -
-this checkbox only ever adds the request, never removes it.</source>
-        <translation type="vanished">Amplía el alpha GGX de un BSDF rugoso tras el primer
-rebote no especular de la ruta - controla los píxeles atípicos de
-rutas cáusticas difíciles, a costa de algo de desenfoque. Solo en el
-path tracer predeterminado de CPU y GPU. Una escena que ya solicita
-esto por sí misma no se ve afectada - esta casilla solo puede añadir
-la solicitud, nunca quitarla.</translation>
-    </message>
-    <message>
-        <source>Some light paths are genuinely hard for a path tracer to find cleanly - light that bounces off a rough (but not perfectly specular) surface, through another rough surface, into a small bright light. Those paths show up as bright, isolated speckle (&quot;fireflies&quot;) that take a very long time to average away.
-
-Path regularization deliberately blurs a surface&apos;s roughness a little more with each non-specular bounce a path has already taken - it introduces a small bias (technically a wrong answer), but in exchange fireflies convergence dramatically faster, which is usually the better trade for how a render actually looks.
-
-Off by default, matching pbrt-v4&apos;s own default. If a loaded .pbrt scene&apos;s file already requests this itself, it&apos;s applied either way - this checkbox can only add the request on top, never take it away.</source>
-        <translation type="vanished">Algunas rutas de luz son genuinamente difíciles de encontrar con precisión para un path tracer: luz que rebota en una superficie rugosa (pero no perfectamente especular), atraviesa otra superficie rugosa y llega a una luz pequeña y brillante. Esas rutas aparecen como motas brillantes y aisladas (&quot;píxeles atípicos&quot;) que tardan muchísimo tiempo en promediarse y desaparecer.
-
-La regularización de rutas desenfoca deliberadamente un poco más la rugosidad de una superficie con cada rebote no especular que la ruta ya ha realizado - introduce un pequeño sesgo (técnicamente una respuesta incorrecta), pero a cambio los píxeles atípicos convergen mucho más rápido, lo cual suele ser el mejor compromiso para el aspecto final del render.
-
-Desactivado por defecto, igual que el valor predeterminado de pbrt-v4. Si el archivo de una escena .pbrt cargada ya solicita esto por sí misma, se aplica de todos modos - esta casilla solo puede añadir la solicitud, nunca quitarla.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="692"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="699"/>
         <source>Firefly clamp (--maxcomponentvalue)</source>
         <translation>Límite de píxeles atípicos (--maxcomponentvalue)</translation>
     </message>
     <message>
-        <source>Clamps any pixel sample whose brightest channel exceeds the
-value below, scaling all channels down together to preserve hue.
-CPU and both GPU backends - recursive matches CPU exactly,
-wavefront approximates it per-contribution rather than
-per-sample-total.</source>
-        <translation type="vanished">Limita cualquier muestra de píxel cuyo canal más brillante supere
-el valor indicado abajo, reduciendo todos los canales juntos para
-preservar el tono. En CPU y en ambos backends de GPU - el recursivo
-coincide exactamente con la CPU, el wavefront lo aproxima por
-contribución en lugar de por muestra total.</translation>
-    </message>
-    <message>
-        <source>A Monte Carlo path tracer occasionally samples a path that&apos;s individually correct but extremely bright - a ray that happens to graze a small, intense light at just the right angle - and one such sample can dominate a pixel&apos;s average for a long time before enough other samples arrive to smooth it out. These show up as bright, isolated speckle (&quot;fireflies&quot;).
-
-This clamp caps how bright any single sample&apos;s brightest channel is allowed to be before it&apos;s averaged in, trading a small, controlled bias for a dramatically cleaner-looking image at the same sample count - lower values clean up more aggressively but risk visibly dimming genuinely bright small lights, not just outlier noise.
-
-Off by default (effectively unbounded, matching pbrt-v4&apos;s own default). CPU default path tracer only.</source>
-        <translation type="vanished">Un path tracer de Monte Carlo a veces muestrea una ruta que es individualmente correcta pero extremadamente brillante - un rayo que roza una luz pequeña e intensa justo en el ángulo preciso - y una sola muestra así puede dominar el promedio de un píxel durante mucho tiempo, hasta que llegan suficientes muestras adicionales para suavizarlo. Esto aparece como motas brillantes y aisladas (&quot;píxeles atípicos&quot;).
-
-Este límite acota cuán brillante puede llegar a ser el canal más brillante de una sola muestra antes de promediarse, cambiando un pequeño sesgo controlado por una imagen notablemente más limpia con el mismo número de muestras - valores más bajos limpian de forma más agresiva, pero corren el riesgo de oscurecer visiblemente luces pequeñas genuinamente brillantes, no solo el ruido atípico.
-
-Desactivado por defecto (sin límite efectivo, igual que el valor predeterminado de pbrt-v4). Solo en el path tracer predeterminado de CPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="968"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="978"/>
         <source>OptiX AI denoiser (GPU only)</source>
         <translation>Eliminador de ruido con IA de OptiX (solo GPU)</translation>
     </message>
     <message>
-        <source>Run the OptiX AI denoiser on the finished render, guided by
-albedo + normal buffers. GPU only, both backends (recursive
-and wavefront each have their own denoiser).</source>
-        <translation type="vanished">Ejecuta el eliminador de ruido con IA de OptiX sobre el renderizado terminado, guiado
-por los búferes de albedo y normales. Solo en GPU, en ambos backends (el recursivo
-y el wavefront tienen cada uno su propio eliminador de ruido).</translation>
-    </message>
-    <message>
-        <source>Which low-discrepancy sampler drives random decisions.
-CPU default path tracer only - no effect on GPU or under
-BDPT/MLT/SPPM/the debug integrators.</source>
-        <translation type="vanished">Qué muestreador de baja discrepancia impulsa las decisiones aleatorias.
-Solo en el trazador de rutas predeterminado de CPU - sin efecto en GPU ni
-bajo BDPT/MLT/SPPM/los integradores de depuración.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="455"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="461"/>
         <source>Sampler:</source>
         <translation>Muestreador:</translation>
     </message>
     <message>
-        <source>Ray tracing needs a lot of random numbers - which direction to bounce a ray, which point on a light to sample, and so on - and HOW those &quot;random&quot; numbers are generated changes how quickly the image converges to a clean result.
-
-A naive random-number generator clusters and leaves gaps; the samplers here (Sobol, Halton, etc.) are all low-discrepancy sequences, deliberately spread out to cover the sampling space more evenly, which converges to a clean image faster than true randomness would for the same sample count.
-
-Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Basic Settings tab to use it.</source>
-        <translation type="vanished">El trazado de rayos necesita muchos números aleatorios - en qué dirección rebotar un rayo, qué punto de una luz muestrear, etc. - y CÓMO se generan esos números &quot;aleatorios&quot; cambia la rapidez con la que la imagen converge a un resultado limpio.
-
-Un generador de números aleatorios ingenuo forma agrupaciones y deja huecos; los muestreadores de aquí (Sobol, Halton, etc.) son todos secuencias de baja discrepancia, deliberadamente repartidas para cubrir el espacio de muestreo de forma más uniforme, lo que converge a una imagen limpia más rápido de lo que lo haría la aleatoriedad real con la misma cantidad de muestras.
-
-¿Está atenuado? Esto solo afecta al trazador de rutas predeterminado del renderizador de CPU - cambia Renderizador a CPU en la pestaña de Configuración Básica para usarlo.</translation>
-    </message>
-    <message>
-        <source>Which rendering algorithm to use. Path Tracer (the default) is the
-well-tested, general-purpose choice - the alternates below trade
-generality for a specific technique (photon mapping, bidirectional/
-Metropolis light transport, or a handful of unbiased reference and
-debug integrators). All alternates are CPU-only except SPPM, and none
-can be combined with Generate Video mode.
-
-Sampler/Spectral/Exposure/Tonemap/Stats below only affect the
-default Path Tracer - see each control&apos;s own tooltip.</source>
-        <translation type="vanished">Qué algoritmo de renderizado usar. El Trazador de rayos (el predeterminado) es la opción de propósito general, bien probada - las alternativas de abajo cambian esa generalidad por una técnica específica (mapeo de fotones, transporte de luz bidireccional/Metropolis, o un puñado de integradores de referencia y depuración sin sesgo). Todas las alternativas son solo CPU excepto SPPM, y ninguna puede combinarse con el modo Generar Video.
-
-Muestreador/Espectral/Exposición/Mapeo tonal/Estadísticas de abajo solo afectan al Trazador de rayos predeterminado - consulta la información de cada control.</translation>
-    </message>
-    <message>
-        <source>Ray tracing needs a lot of random numbers - which direction to bounce a ray, which point on a light to sample, and so on - and HOW those &quot;random&quot; numbers are generated changes how quickly the image converges to a clean result.
-
-A naive random-number generator clusters and leaves gaps; most samplers here (Sobol, Halton, etc.) are low-discrepancy sequences, deliberately spread out to cover the sampling space more evenly, which converges to a clean image faster than true randomness would for the same sample count. Independent is the exception - plain uncorrelated random numbers, included for fidelity to a loaded .pbrt scene&apos;s own Sampler directive rather than as a recommended choice.
-
-Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="vanished">El ray tracing necesita muchos números aleatorios - en qué dirección rebotar un rayo, qué punto de una luz muestrear, y así sucesivamente - y CÓMO se generan esos números &quot;aleatorios&quot; cambia la rapidez con la que la imagen converge a un resultado limpio.
-
-Un generador de números aleatorios ingenuo se agrupa y deja huecos; la mayoría de los muestreadores aquí (Sobol, Halton, etc.) son secuencias de baja discrepancia, deliberadamente repartidas para cubrir el espacio de muestreo de forma más uniforme, lo que converge a una imagen limpia más rápido de lo que lo haría una aleatoriedad real con el mismo número de muestras. Independiente es la excepción - números aleatorios sin correlación, incluido para fidelidad con la propia directiva Sampler de una escena .pbrt cargada, en lugar de como opción recomendada.
-
-¿En gris? Esto solo afecta al trazador de rutas predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Ajustes para usarlo.</translation>
-    </message>
-    <message>
-        <source>Every diffuse/glossy bounce needs to pick ONE light (out of potentially many) to sample directly for next-event estimation - which light gets picked, and how fairly, changes how quickly the image converges, though never what it converges TO.
-
-BVH (the default, matching pbrt-v4 itself) builds a spatial hierarchy over the scene&apos;s lights and adapts its weighting per shading point - both bright AND nearby lights get preferred. Auto instead uses whatever the loaded scene&apos;s own Integrator parameter requested (BVH if it made no request). Power picks by brightness alone, ignoring position - simpler, worse in scenes where light distance varies a lot. Uniform ignores both - every light equally likely regardless of brightness or distance, included mainly for comparison/debugging.
-
-Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation type="vanished">Cada rebote difuso/glossy necesita elegir UNA luz (de entre potencialmente muchas) para muestrear directamente con fines de estimación de próximo evento - qué luz se elige, y con qué justicia, cambia la rapidez con la que converge la imagen, aunque nunca a QUÉ converge.
-
-BVH (el predeterminado, coincidiendo con el propio pbrt-v4) construye una jerarquía espacial sobre las luces de la escena y adapta su ponderación por punto de sombreado - se prefieren tanto las luces brillantes COMO las cercanas. Automático, en cambio, usa lo que solicite el propio parámetro de Integrador de la escena cargada (BVH si no solicitó nada). Power elige solo por brillo, ignorando la posición - más simple, peor en escenas donde la distancia de las luces varía mucho. Uniform ignora ambos - todas las luces igual de probables sin importar brillo o distancia, incluido principalmente para comparación/depuración.
-
-¿En gris? Esto solo afecta al trazador de rutas predeterminado del renderizador de CPU - cambia el Renderizador a CPU en la pestaña Ajustes para usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="539"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="545"/>
         <source>Spectral rendering (--spectral)</source>
         <translation>Renderizado espectral (--spectral)</translation>
     </message>
     <message>
-        <source>Real hero-wavelength spectral rendering instead of flat RGB.
-CPU default path tracer only. Only lambertian, metal, dielectric,
-rough_dielectric, conductor, and diffuse_light materials are
-supported - a scene using anything else fails to render rather
-than silently rendering wrong colors. Noticeably slower per-sample.</source>
-        <translation type="vanished">Renderizado espectral real de longitud de onda protagonista en vez de RGB plano.
-Solo en el trazador de rutas predeterminado de CPU. Solo se admiten los materiales
-lambertian, metal, dielectric, rough_dielectric, conductor y diffuse_light -
-una escena que use cualquier otro material falla al renderizar en vez de
-renderizar colores incorrectos silenciosamente. Notablemente más lento por muestra.</translation>
-    </message>
-    <message>
-        <source>Ordinary rendering tracks light as three numbers - red, green, blue - the same way a screen displays color.
-
-Real light is a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths refract by different amounts - RGB alone can&apos;t represent that. Spectral rendering tracks a handful of actual wavelengths per ray instead of just RGB, at the cost of being noisier and slower per sample.
-
-Grayed out? This only exists on the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Basic Settings tab to use it.</source>
-        <translation type="vanished">El renderizado convencional representa la luz con tres números - rojo, verde, azul - de la misma manera que una pantalla muestra el color.
-
-La luz real es un espectro continuo de longitudes de onda, y algunos efectos físicos (como un prisma que divide la luz blanca en un arcoíris) solo ocurren porque distintas longitudes de onda se refractan en distinta medida - el RGB por sí solo no puede representar eso. El renderizado espectral rastrea un puñado de longitudes de onda reales por rayo en lugar de solo RGB, a costa de ser más ruidoso y lento por muestra.
-
-¿Está atenuado? Esto solo existe en el trazador de rutas predeterminado del renderizador de CPU - cambia Renderizador a CPU en la pestaña de Configuración Básica para usarlo.</translation>
-    </message>
-    <message>
-        <source>Flat multiplier on linear color before tone-mapping (1.0 = no-op).
-Both CPU and GPU default path tracer only.</source>
-        <translation type="vanished">Multiplicador plano sobre el color lineal antes del mapeo de tonos (1.0 = sin efecto).
-Solo en el trazador de rutas predeterminado, tanto de CPU como de GPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="656"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="578"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="662"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="583"/>
         <source>Exposure:</source>
         <translation>Exposición:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="657"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="663"/>
         <source>A flat brightness multiplier applied to the whole image, the same knob a camera&apos;s exposure setting is.
 
 1.0 leaves the image unchanged; below 1.0 darkens it, above 1.0 brightens it - useful for a scene that&apos;s rendering correctly but is just too dark or too bright to see clearly, without changing any actual light in the scene.</source>
@@ -3287,268 +2986,126 @@ Solo en el trazador de rutas predeterminado, tanto de CPU como de GPU.</translat
 1.0 deja la imagen sin cambios; por debajo de 1.0 la oscurece, por encima de 1.0 la aclara - útil para una escena que se renderiza correctamente pero resulta demasiado oscura o demasiado brillante para verse con claridad, sin cambiar ninguna luz real de la escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="749"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="673"/>
+        <source>Slightly softens a rough, reflective, or glassy surface&apos;s
+sharpness after the path&apos;s first non-mirror-like bounce - this
+calms down fireflies (isolated bright speckles) from hard-to-
+trace light paths, at the cost of a little extra blur. CPU and
+OptiX GPU default path tracer only - not implemented under Metal
+(macOS GPU rendering). A scene that already asks for this itself
+is unaffected - this checkbox only ever adds the request, never
+removes it.</source>
+        <translation>Suaviza ligeramente la nitidez de una superficie rugosa, reflectante o de vidrio después del primer rebote que no sea especular; así se calman las luciérnagas (puntos brillantes aislados) de trayectorias de luz difíciles de trazar, a costa de un poco más de desenfoque. Solo en el trazador de rayos predeterminado de CPU y de GPU OptiX; no está implementado en Metal (renderizado por GPU de macOS). Una escena que ya lo pide por sí misma no se ve afectada: esta casilla solo añade la petición, nunca la quita.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="701"/>
+        <source>Caps any single sample whose brightest color channel exceeds
+the value below, scaling all its channels down together so the
+color/hue stays the same. CPU and both OptiX GPU backends - the
+recursive GPU mode matches the CPU exactly, while the wavefront
+GPU mode applies it slightly differently (per light bounce
+rather than per whole sample). Not implemented under Metal
+(macOS GPU rendering).</source>
+        <translation>Limita cualquier muestra cuyo canal de color más brillante supere el valor de abajo, reduciendo todos sus canales a la vez para que el color y el matiz se mantengan. Funciona en CPU y en los dos motores de GPU OptiX: el modo recursivo de GPU coincide exactamente con la CPU, mientras que el modo wavefront de GPU lo aplica de forma ligeramente distinta (por cada rebote de luz en lugar de por muestra completa). No está implementado en Metal (renderizado por GPU de macOS).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="757"/>
         <source>Accelerator</source>
         <translation>Acelerador</translation>
     </message>
     <message>
-        <source>CPU-only spatial acceleration structure and split heuristic used to speed up ray-scene intersection tests. Applies to every integrator, not just the default path tracer - the defaults work well for almost every scene.</source>
-        <translation type="vanished">Estructura de aceleración espacial y heurística de división solo para CPU, usadas para acelerar las pruebas de intersección rayo-escena. Se aplica a todos los integradores, no solo al trazador de rutas predeterminado - los valores predeterminados funcionan bien en casi todas las escenas.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="765"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="773"/>
         <source>Scene&apos;s own choice (default)</source>
         <translation>Elección propia de la escena (predeterminado)</translation>
     </message>
     <message>
-        <source>Leaves a loaded .pbrt scene&apos;s own Accelerator directive alone (bvh if it named none, real pbrt-v4&apos;s own default). No effect on a native (non-.pbrt) scene either way.</source>
-        <translation type="vanished">Deja intacta la propia directiva Accelerator de una escena .pbrt cargada (bvh si no especificó ninguna, el propio predeterminado de pbrt-v4 real). No tiene efecto en una escena nativa (no .pbrt) de todos modos.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="770"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="778"/>
         <source>BVH</source>
         <translation>BVH</translation>
     </message>
     <message>
-        <source>A bounding volume hierarchy, built by the split method chosen below - this project&apos;s pre-existing default accelerator, matching pbrt-v4 itself.</source>
-        <translation type="vanished">Una jerarquía de volúmenes envolventes, construida mediante el método de división elegido abajo - el acelerador predeterminado preexistente de este proyecto, igual que el propio pbrt-v4.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="774"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="782"/>
         <source>Kd-tree</source>
         <translation>Árbol Kd</translation>
     </message>
     <message>
-        <source>A k-d tree instead of a BVH - pbrt-v4&apos;s other real accelerator option. Has no split-method concept of its own (the combo below is ignored when this is chosen). Falls back to BVH/sah on a scene with object motion blur (this project&apos;s kd-tree wrapper has no per-ray-time channel) - a warning is printed when that happens.</source>
-        <translation type="vanished">Un árbol k-d en lugar de un BVH - la otra opción real de acelerador de pbrt-v4. No tiene concepto propio de método de división (el desplegable de abajo se ignora cuando se elige esto). Recae en BVH/sah en una escena con desenfoque de movimiento de objetos (el envoltorio de árbol kd de este proyecto no tiene un canal por tiempo de rayo) - se imprime una advertencia cuando eso ocurre.</translation>
-    </message>
-    <message>
-        <source>Which acceleration structure holds the scene&apos;s geometry. Every
-choice renders the identical converged image - a build-strategy/
-perf knob, not a quality one. CPU only, every integrator - no
-effect on GPU (always its own fixed BVH) or a native (non-.pbrt)
-scene (has no Accelerator directive to override - see the log).</source>
-        <translation type="vanished">Qué estructura de aceleración contiene la geometría de la escena. Toda
-opción renderiza la imagen convergida idéntica - un ajuste de estrategia de
-construcción/rendimiento, no de calidad. Solo CPU, todos los integradores - sin
-efecto en GPU (siempre su propio BVH fijo) ni en una escena nativa (no .pbrt)
-(no tiene directiva Accelerator que anular - ver el registro).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="791"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="799"/>
         <source>Accelerator:</source>
         <translation>Acelerador:</translation>
     </message>
     <message>
-        <source>A flat list of triangles/spheres would make every ray test every single primitive in the scene - the acceleration structure is what lets a ray skip most of the scene and only test the handful of primitives near where it actually travels.
-
-BVH (bounding volume hierarchy) and Kd-tree are two different real strategies for organizing the same geometry - both produce the exact same rendered image, just at different build/traversal speeds depending on the scene&apos;s shape.
-
-Only a loaded .pbrt scene has an Accelerator directive to override at all - a native (non-.pbrt) scene always uses its own fixed BVH regardless of this choice (a warning is printed if you pick something else anyway).</source>
-        <translation type="vanished">Una lista plana de triángulos/esferas haría que cada rayo probara cada primitivo de la escena - la estructura de aceleración es lo que permite a un rayo saltarse la mayor parte de la escena y probar solo el puñado de primitivos cercanos a por donde realmente pasa.
-
-BVH (jerarquía de volúmenes envolventes) y Árbol Kd son dos estrategias reales distintas para organizar la misma geometría - ambas producen exactamente la misma imagen renderizada, solo que a distintas velocidades de construcción/recorrido según la forma de la escena.
-
-Solo una escena .pbrt cargada tiene una directiva Accelerator que anular en absoluto - una escena nativa (no .pbrt) siempre usa su propio BVH fijo sin importar esta elección (se imprime una advertencia si de todos modos eliges otra cosa).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="813"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="821"/>
         <source>SAH (default)</source>
         <translation>SAH (predeterminado)</translation>
     </message>
     <message>
-        <source>Surface Area Heuristic - estimates the traversal cost of several candidate splits and picks the cheapest. Slower to build than Middle/Equal, but the best-traversing tree in most scenes - this project&apos;s pre-existing BVH build.</source>
-        <translation type="vanished">Heurística de área de superficie - estima el coste de recorrido de varias divisiones candidatas y elige la más barata. Más lenta de construir que Middle/Equal, pero el árbol con mejor recorrido en la mayoría de escenas - la construcción de BVH preexistente de este proyecto.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="819"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="827"/>
         <source>Middle</source>
         <translation>Middle</translation>
     </message>
     <message>
-        <source>Splits each node at the midpoint of its bounding box&apos;s longest axis. Cheap to build, no cost estimation at all - can traverse poorly on unevenly-distributed geometry.</source>
-        <translation type="vanished">Divide cada nodo en el punto medio del eje más largo de su caja envolvente. Barato de construir, sin ninguna estimación de coste - puede recorrer mal en geometría distribuida de forma desigual.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="824"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="832"/>
         <source>Equal counts</source>
         <translation>Recuentos iguales</translation>
     </message>
     <message>
-        <source>Splits each node so an equal number of primitives fall on each side, regardless of their spatial extent. Cheap to build; can produce badly-shaped nodes for clustered geometry.</source>
-        <translation type="vanished">Divide cada nodo de forma que un número igual de primitivos caiga a cada lado, sin importar su extensión espacial. Barato de construir; puede producir nodos de forma deficiente en geometría agrupada.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="829"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="837"/>
         <source>HLBVH</source>
         <translation>HLBVH</translation>
     </message>
     <message>
-        <source>Hierarchical Linear BVH - builds bottom-up from Morton codes, the fastest of these four to build for very large triangle counts, at some traversal-quality cost versus SAH.</source>
-        <translation type="vanished">BVH Lineal Jerárquico - se construye de abajo hacia arriba a partir de códigos de Morton, el más rápido de estos cuatro en construir para conteos de triángulos muy grandes, a costa de algo de calidad de recorrido frente a SAH.</translation>
-    </message>
-    <message>
-        <source>How the BVH above is built (ignored when Accelerator is set to
-Kd-tree). Every choice renders the identical converged image.
-Falls back to sah on a scene with object motion blur (this
-project&apos;s non-sah BVH build has no per-ray-time channel) - a
-warning is printed when that happens.</source>
-        <translation type="vanished">Cómo se construye el BVH de arriba (se ignora cuando Accelerator está
-en Kd-tree). Toda opción renderiza la imagen convergida idéntica.
-Recae en sah en una escena con desenfoque de movimiento de objetos (la
-construcción de BVH no-sah de este proyecto no tiene canal por tiempo de rayo) - se imprime una
-advertencia cuando eso ocurre.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="843"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="851"/>
         <source>BVH split method:</source>
         <translation>Método de división de BVH:</translation>
     </message>
     <message>
-        <source>Only consulted when the accelerator above resolves to BVH (ignored for Kd-tree, which has no split-method concept). All four build the same tree shape family from a different strategy - SAH spends more time building in exchange for a better-traversing tree; Middle/Equal are cheap, simple fallbacks; HLBVH trades some traversal quality for the fastest build on very large scenes.</source>
-        <translation type="vanished">Solo se consulta cuando el acelerador de arriba se resuelve en BVH (se ignora para Árbol Kd, que no tiene concepto de método de división). Las cuatro construyen la misma familia de forma de árbol a partir de una estrategia distinta - SAH invierte más tiempo en construir a cambio de un árbol con mejor recorrido; Middle/Equal son alternativas simples y baratas; HLBVH sacrifica algo de calidad de recorrido por la construcción más rápida en escenas muy grandes.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="883"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="891"/>
         <source>ACES (default)</source>
         <translation>ACES (predeterminado)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="884"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="892"/>
         <source>Reinhard</source>
         <translation>Reinhard</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="885"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="893"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="70"/>
         <source>None</source>
         <translation>Ninguno</translation>
     </message>
     <message>
-        <source>Which tone-mapping operator to apply before the sRGB curve.
-Applies to both CPU and GPU (recursive and wavefront) - no
-effect under BDPT/MLT/SPPM/the debug integrators.</source>
-        <translation type="vanished">Qué operador de mapeo de tonos aplicar antes de la curva sRGB.
-Se aplica tanto en CPU como en GPU (recursivo y wavefront) - sin
-efecto bajo BDPT/MLT/SPPM/los integradores de depuración.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="891"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="899"/>
         <source>Tone mapping:</source>
         <translation>Mapeo de tonos:</translation>
     </message>
     <message>
-        <source>A raytraced scene&apos;s true brightness values are unbounded - a light bulb might be a hundred times brighter than a wall - but a screen can only display a fixed range. Tone mapping is the curve that compresses that huge range down into something displayable.
-
-ACES rolls off bright highlights gently, the way film does; Reinhard is a simpler, older compression; None just clips anything too bright to flat white, which can look harsh.</source>
-        <translation type="vanished">Los valores de brillo reales de una escena trazada por rayos no tienen límite - una bombilla puede ser cien veces más brillante que una pared - pero una pantalla solo puede mostrar un rango fijo. El mapeo de tonos es la curva que comprime ese rango enorme en algo que se pueda mostrar.
-
-ACES atenúa las altas luces brillantes de forma suave, como lo hace la película fotográfica; Reinhard es una compresión más simple y antigua; Ninguno simplemente recorta cualquier cosa demasiado brillante a blanco plano, lo que puede verse duro.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="903"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="911"/>
         <source>Print render stats</source>
         <translation>Imprimir estadísticas de renderizado</translation>
     </message>
     <message>
-        <source>Print a small end-of-render stats block (rays cast, bounces,
-shadow rays, samples/sec) to the Log tab. Observation-only -
-never changes the rendered image.</source>
-        <translation type="vanished">Imprime un pequeño bloque de estadísticas al final del renderizado (rayos lanzados, rebotes,
-rayos de sombra, muestras/seg) en la pestaña de Registro. Es solo informativo -
-nunca cambia la imagen renderizada.</translation>
-    </message>
-    <message>
-        <source>Prints a short summary after the render finishes - how many rays were cast, how many bounces happened, how many shadow rays were traced, and samples per second.
-
-Purely informational: it never changes the rendered image, just tells you what the renderer actually did.</source>
-        <translation type="vanished">Imprime un breve resumen cuando termina el renderizado - cuántos rayos se lanzaron, cuántos rebotes ocurrieron, cuántos rayos de sombra se trazaron, y muestras por segundo.
-
-Es puramente informativo: nunca cambia la imagen renderizada, solo te indica qué hizo realmente el renderizador.</translation>
-    </message>
-    <message>
-        <source>OptiX AI denoiser (GPU recursive only)</source>
-        <translation type="vanished">Eliminador de ruido con IA de OptiX (solo GPU recursivo)</translation>
-    </message>
-    <message>
-        <source>Run the OptiX AI denoiser on the finished render, guided by
-albedo + normal buffers. GPU recursive backend only - silently
-has no effect under the wavefront backend.</source>
-        <translation type="vanished">Ejecuta el eliminador de ruido con IA de OptiX sobre el renderizado terminado, guiado
-por los búferes de albedo y normales. Solo en el backend recursivo de GPU - no tiene
-efecto (de forma silenciosa) bajo el backend wavefront.</translation>
-    </message>
-    <message>
-        <source>Ray tracing is noisy by nature - low sample counts leave a grainy, speckled image, which is why more samples usually means a cleaner picture.
-
-A denoiser is a machine-learning model trained to recognize that speckle pattern and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail.
-
-Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and GPU Backend to Recursive) on the Basic Settings tab to use it.</source>
-        <translation type="vanished">El trazado de rayos es ruidoso por naturaleza - un número bajo de muestras deja una imagen granulada y moteada, por eso más muestras suele significar una imagen más limpia.
-
-Un eliminador de ruido es un modelo de aprendizaje automático entrenado para reconocer ese patrón moteado y suavizarlo después del hecho, sin necesidad de trazar rayos adicionales - una forma de obtener una imagen de aspecto limpio más rápido, a costa de algo de detalle fino.
-
-¿Está atenuado? Esto necesita el backend recursivo de GPU - cambia Renderizador a GPU (y Backend de GPU a Recursivo) en la pestaña de Configuración Básica para usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="917"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="925"/>
         <source>OptiX validation mode (slower, debugging only)</source>
         <translation>Modo de validación de OptiX (más lento, solo para depuración)</translation>
     </message>
     <message>
-        <source>Enable OptiX validation mode - extra device-side checks with a
-real per-launch cost. GPU only, for debugging, not routine use.</source>
-        <translation type="vanished">Activa el modo de validación de OptiX - comprobaciones adicionales del lado del
-dispositivo con un coste real por lanzamiento. Solo GPU, para depuración, no para uso habitual.</translation>
-    </message>
-    <message>
-        <source>Turns on extra correctness checks inside the GPU ray-tracing pipeline itself, catching certain classes of bugs that would otherwise silently produce a wrong image or crash unpredictably.
-
-It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
-
-Grayed out? This is GPU-only - switch Renderer to GPU on the Basic Settings tab to use it.</source>
-        <translation type="vanished">Activa comprobaciones adicionales de corrección dentro del propio pipeline de trazado de rayos en GPU, detectando ciertas clases de errores que de otro modo producirían silenciosamente una imagen incorrecta o provocarían fallos impredecibles.
-
-Es una ayuda de depuración para quienes trabajan en el propio código de GPU del renderizador, no algo de lo que se beneficie un renderizado normal - tiene un coste de rendimiento real y no cambia el aspecto de un renderizado correcto.
-
-¿Está atenuado? Esto es exclusivo de GPU - cambia Renderizador a GPU en la pestaña de Configuración Básica para usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1032"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1044"/>
         <source>Crop Window</source>
         <translation>Ventana de recorte</translation>
     </message>
     <message>
-        <source>Render only a rectangular sub-region of the full frame, given as normalized 0-1 coordinates - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
-        <translation type="vanished">Renderiza solo una subregión rectangular del fotograma completo, dada como coordenadas normalizadas de 0 a 1 - útil para probar rápidamente el renderizado de un área de una escena sin pagar el coste de la imagen completa.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1044"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1056"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>Renderizar solo una parte del cuadro (--crop)</translation>
     </message>
     <message>
-        <source>Restricts rendering to a rectangle of the frame, given as
-fractions of the full image in [0,1]. Both CPU and GPU default
-path tracer only.</source>
-        <translation type="vanished">Restringe el renderizado a un rectángulo del cuadro, indicado como
-fracciones de la imagen completa en [0,1]. Solo en el path tracer
-predeterminado de CPU y GPU.</translation>
+        <location filename="../mainwindow_tabs_render.cpp" line="89"/>
+        <source>⚠ Live Preview uses the Metal progressive path tracer directly - none of the settings on this tab apply to it, except the &quot;Live Preview Settings&quot; group below.</source>
+        <translation>⚠ La vista previa en vivo usa directamente el trazador de caminos progresivo de Metal: ninguno de los ajustes de esta pestaña se le aplica, salvo el grupo «Ajustes de vista previa en vivo» de abajo.</translation>
     </message>
     <message>
-        <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
-
-Useful for iterating faster on one troublesome part of a large, slow scene - the same total sample count converges much faster when it only has to cover a corner of the frame instead of the whole thing.
-
-Off by default (the full frame). If a loaded .pbrt scene&apos;s file already requests its own cropwindow/pixelbounds, checking this overrides it with the rectangle below; leaving it unchecked lets the scene&apos;s own request (if any) stand.</source>
-        <translation type="vanished">Renderiza solo una porción rectangular del cuadro completo - todo lo que queda fuera se deja en negro - en lugar de la imagen entera. El rectángulo se indica como cuatro fracciones del ancho/alto del cuadro completo, de 0 (borde izquierdo/superior) a 1 (borde derecho/inferior), de modo que conserva la misma forma sin importar la resolución.
-
-Útil para iterar más rápido sobre una parte problemática de una escena grande y lenta - el mismo número total de muestras converge mucho más rápido cuando solo tiene que cubrir una esquina del cuadro en lugar de todo él.
-
-Desactivado por defecto (el cuadro completo). Si el archivo de una escena .pbrt cargada ya solicita su propio cropwindow/pixelbounds, activar esto lo sustituye por el rectángulo indicado abajo; dejarlo desactivado permite que la solicitud propia de la escena (si existe) prevalezca.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="147"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="153"/>
         <source>Which rendering method to use. Path Tracer (the default) is the
 well-tested, general-purpose choice - the alternates below trade
 that generality for a specific technique (like photon mapping, or
@@ -3571,7 +3128,7 @@ Muestreador/Espectral/Exposición/Mapeo tonal/Estadísticas de abajo solo afecta
 al Trazador de rayos predeterminado; consulta la información de cada control.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="171"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="177"/>
         <source>This picks the rendering method itself, not just how fast it runs. Path Tracer (the default) is the general-purpose, well-tested choice used everywhere else in this app.
 
 SPPM (a photon-mapping technique) handles tricky glass and focused-light effects that regular path tracing struggles with. BDPT and MLT (built on top of BDPT) trace rays starting from both the camera and the light source and connect them together in the middle - this helps with some difficult lighting setups, but only works with area lights. RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, and LightPath are reference and debugging modes - simpler, often noisier or narrower in what they show (for example, Ambient Occlusion doesn&apos;t produce a real lit image at all), useful for isolating what one specific technique contributes to the final picture.
@@ -3584,107 +3141,107 @@ SPPM (una técnica de mapeo de fotones) maneja efectos complicados de vidrio y d
 Pasa el cursor sobre cualquier elemento del menú desplegable para ver los detalles de ese modo en particular.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="232"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="238"/>
         <source>How many rounds of the SPPM technique to run (each round traces rays from the camera, then traces simulated light particles from the lights). More rounds build up a cleaner result, at a render time cost that grows roughly in proportion.</source>
         <translation>Cuántas rondas de la técnica SPPM ejecutar (cada ronda traza rayos desde la cámara y luego traza partículas de luz simuladas desde las luces). Más rondas dan un resultado más limpio, con un costo de tiempo de renderizado que crece aproximadamente en proporción.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="242"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="248"/>
         <source>How many simulated light particles (photons) are sent out from the lights during each round. More photons reduce graininess in bounced and focused lighting (like light through glass), at the cost of a slower round.</source>
         <translation>Cuántas partículas de luz simuladas (fotones) se envían desde las luces en cada ronda. Más fotones reducen el ruido en la iluminación rebotada y enfocada (como la luz que atraviesa un vidrio), a costa de una ronda más lenta.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="260"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="266"/>
         <source>The most bounces allowed on each of the two ray paths - one starting from the camera, one from the light - that this method traces and then joins together.</source>
         <translation>El máximo de rebotes permitido en cada una de las dos trayectorias de rayos (una que parte de la cámara y otra de la luz) que este método traza y luego une.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="277"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="283"/>
         <source>How many candidate light paths this method tries out up front, for each bounce depth, before it starts refining from them - more gives it a better-informed starting point.</source>
         <translation>Cuántas trayectorias de luz candidatas prueba este método de antemano, para cada profundidad de rebote, antes de empezar a refinarlas; un número mayor le da un punto de partida mejor informado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="286"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="292"/>
         <source>The total number of small random tweaks this method tries while refining its light paths, added up across all of its parallel search chains - the main render time/quality knob here, similar to what samples per pixel controls in the default path tracer.</source>
         <translation>El número total de pequeños ajustes aleatorios que prueba este método al refinar sus trayectorias de luz, sumando todas sus cadenas de búsqueda en paralelo; es el principal control de tiempo/calidad aquí, similar a lo que controlan las muestras por píxel en el Trazador de rayos predeterminado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="297"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="303"/>
         <source>Same meaning as BDPT&apos;s max path depth above - this method is built directly on top of that same two-sided path-tracing machinery.</source>
         <translation>Tiene el mismo significado que la profundidad máxima de trayectoria de BDPT de arriba: este método está construido directamente sobre ese mismo mecanismo de trazado de trayectorias por ambos lados.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="315"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="321"/>
         <source>How far a test ray is allowed to travel before it&apos;s considered to have found open sky (nothing blocking it). The default (10 billion) is effectively unlimited - lower it if you only want nearby objects to count as blocking.</source>
         <translation>Hasta dónde se le permite viajar a un rayo de prueba antes de considerar que ha encontrado cielo abierto (nada que lo bloquee). El valor predeterminado (10 mil millones) es prácticamente ilimitado; redúcelo si solo quieres que cuenten como bloqueo los objetos cercanos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="323"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="329"/>
         <source>By default, test rays are aimed more toward straight-up-from-the-surface directions, matching how a plain matte surface is actually lit in real life. Turning this on spreads the test rays out evenly in every direction instead - a different, unweighted way of measuring the same thing.</source>
         <translation>Por defecto, los rayos de prueba se dirigen más hacia las direcciones perpendiculares a la superficie, tal como se ilumina en realidad una superficie mate sencilla. Al activar esto, los rayos de prueba se reparten en cambio de forma uniforme en todas las direcciones: una manera distinta, sin ponderación, de medir lo mismo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="333"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="339"/>
         <source>A flat brightness multiplier applied to the occlusion color below.</source>
         <translation>Un multiplicador de brillo uniforme que se aplica al color de oclusión de abajo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="351"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="357"/>
         <source>The color used to visualize how occluded (blocked-off) each point is - since this mode isn&apos;t a real lit render, this is just a display choice, not an actual light color. Default is white (1, 1, 1).</source>
         <translation>El color usado para visualizar cuán ocluido (bloqueado) está cada punto; como este modo no es un renderizado con iluminación real, esto es solo una opción visual, no un color de luz real. El valor predeterminado es blanco (1, 1, 1).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="367"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="373"/>
         <source>On by default. This aims a ray directly at a light source on every bounce, instead of hoping a random bounce happens to hit one - it sharply cuts down graininess in scenes with small, bright lights. Turning it off falls back to finding lights only by chance, the way a bare-bones path tracer would.</source>
         <translation>Activado por defecto. Esto apunta un rayo directamente a una fuente de luz en cada rebote, en lugar de confiar en que un rebote aleatorio acierte con una; reduce mucho el ruido en escenas con luces pequeñas e intensas. Al desactivarlo, se vuelve a encontrar las luces solo por azar, como haría un trazador de rayos básico.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="375"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="381"/>
         <source>On by default. Picks each bounce&apos;s new direction weighted toward the directions the surface&apos;s material actually reflects light in, rather than guessing blindly. Turning it off falls back to picking directions evenly at random, which is less efficient.</source>
         <translation>Activado por defecto. Elige la nueva dirección de cada rebote dando preferencia a las direcciones en las que el material de la superficie realmente refleja la luz, en lugar de adivinar a ciegas. Al desactivarlo, se vuelve a elegir direcciones al azar de forma uniforme, lo cual es menos eficiente.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="394"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="400"/>
         <source>Which random-sampling method is used, whether to simulate light by individual wavelength, whether to stop early on pixels that already look clean, and a time-limit alternative to a fixed sample count. These control HOW samples are gathered, separately from HOW MANY (set on the Settings tab).</source>
         <translation>Qué método de muestreo aleatorio se usa, si se debe simular la luz por longitud de onda individual, si hay que dejar de trabajar antes de tiempo en los píxeles que ya se ven limpios, y una alternativa de límite de tiempo a un número fijo de muestras. Esto controla CÓMO se reúnen las muestras, algo distinto de CUÁNTAS (que se configura en la pestaña Ajustes).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="409"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="415"/>
         <source>A well-spread pattern of sample points (mixed up differently in each pixel) that fills in gaps more evenly than pure randomness. The best general-purpose default - it cleans up the image quickly without leaving visible patterns.</source>
         <translation>Un patrón de puntos de muestra bien repartido (mezclado de forma distinta en cada píxel) que rellena los huecos de manera más uniforme que la aleatoriedad pura. Es la mejor opción predeterminada de propósito general: limpia la imagen rápido sin dejar patrones visibles.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="415"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="421"/>
         <source>A variant of the Sobol pattern above, reordered to work better when samples are taken progressively (a few at a time) rather than all at once. Cleans up the image at least as well as plain Sobol, with better behavior when combined with adaptive sampling.</source>
         <translation>Una variante del patrón Sobol de arriba, reordenada para funcionar mejor cuando las muestras se toman progresivamente (unas pocas cada vez) en lugar de todas de golpe. Limpia la imagen al menos tan bien como Sobol normal, con mejor comportamiento cuando se combina con el muestreo adaptativo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="421"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="427"/>
         <source>The Sobol pattern above, extended with extra random dimensions - this avoids repeating patterns showing up when a pixel needs more random choices than plain Sobol comfortably covers (for example, light paths with many bounces).</source>
         <translation>El patrón Sobol de arriba, ampliado con dimensiones aleatorias adicionales; esto evita que aparezcan patrones repetidos cuando un píxel necesita más decisiones aleatorias de las que Sobol normal cubre cómodamente (por ejemplo, trayectorias de luz con muchos rebotes).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="427"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="433"/>
         <source>Splits each pixel into a small grid of sub-cells and takes one sample from each cell. Simple, predictable coverage - less refined than Sobol/Halton above, but useful as a plain reference to compare against.</source>
         <translation>Divide cada píxel en una pequeña cuadrícula de subceldas y toma una muestra de cada una. Cobertura simple y predecible, menos refinada que Sobol/Halton de arriba, pero útil como referencia sencilla con la que comparar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="432"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="438"/>
         <source>A sampling pattern designed to spread samples especially evenly between neighboring pixels (what&apos;s called &quot;blue-noise&quot; distribution), avoiding clumps of similar samples landing next to each other.</source>
         <translation>Un patrón de muestreo diseñado para repartir las muestras de forma especialmente uniforme entre píxeles vecinos (lo que se conoce como distribución de &quot;ruido azul&quot;), evitando que caigan juntos grupos de muestras parecidas.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="437"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="443"/>
         <source>A classic, well-spread sampling pattern built from a well-established mathematical formula. Well-tested, and avoids the grid-like clustering that plain stratified sampling above can show.</source>
         <translation>Un patrón de muestreo clásico y bien repartido, construido a partir de una fórmula matemática consolidada. Está bien probado y evita la agrupación en forma de cuadrícula que puede mostrar el muestreo estratificado normal de arriba.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="442"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="448"/>
         <source>Plain, ordinary random numbers, with none of the deliberate even-spacing the other options use. Included so a loaded .pbrt scene file that specifically asks for this can be reproduced faithfully - not a recommended choice otherwise.</source>
         <translation>Números aleatorios simples y corrientes, sin ninguno de los repartos deliberadamente uniformes que usan las demás opciones. Se incluye para poder reproducir fielmente un archivo de escena .pbrt cargado que lo pida específicamente; fuera de eso, no es una opción recomendada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="450"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="456"/>
         <source>Which method generates the random decisions used while
 rendering (all but Independent spread samples out more evenly
 than pure randomness). CPU default path tracer only - no effect
@@ -3696,26 +3253,12 @@ predeterminado por CPU; no tiene efecto en GPU ni en los métodos de
 renderizado alternativos de arriba.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="456"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="462"/>
         <source>Rendering needs a lot of random numbers - which direction to bounce a ray, which point on a light to aim at, and so on - and HOW those &quot;random&quot; choices are generated changes how quickly the image builds up into a clean result.
 
 Ordinary random numbers tend to clump together in some spots and leave gaps in others. Most samplers here (Sobol, Halton, etc.) instead use patterns deliberately spread out to cover all the possibilities more evenly, which cleans up the image faster than true randomness would for the same number of samples. Independent is the exception - plain, uncorrelated random numbers, included so a loaded .pbrt scene file that specifically asks for it can be reproduced faithfully, not as a recommended choice.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation>Renderizar necesita muchos números aleatorios (en qué dirección rebota un rayo, a qué punto de una luz apuntar, y así sucesivamente), y CÓMO se generan esas decisiones &quot;aleatorias&quot; cambia la rapidez con la que la imagen se va volviendo limpia.
-
-Los números aleatorios corrientes tienden a agruparse en algunas zonas y dejar huecos en otras. La mayoría de los muestreadores de aquí (Sobol, Halton, etc.) usan en cambio patrones deliberadamente repartidos para cubrir todas las posibilidades de forma más uniforme, lo que limpia la imagen más rápido que la aleatoriedad pura con el mismo número de muestras. Independiente es la excepción: números aleatorios simples y sin correlación, incluidos para poder reproducir fielmente un archivo de escena .pbrt cargado que lo pida específicamente, no como una opción recomendada.
-
-¿Está en gris? Esto solo afecta al Trazador de rayos predeterminado del renderizador por CPU; cambia Renderizador a CPU en la pestaña Ajustes para poder usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="480"/>
-        <source>Organizes the scene&apos;s lights into a quick-lookup index and weighs each one by both its brightness and how close it is to the point being shaded, adjusting per bounce instead of using one fixed weighting for the whole scene. The underlying renderer&apos;s own default - generally converges to a clean image fastest, at a small extra bookkeeping cost.</source>
-        <translation>Qué método genera las decisiones aleatorias que se usan al renderizar (todos menos Independent reparten las muestras de forma más uniforme que el azar puro). Solo afecta al Trazador de rayos predeterminado en CPU; no tiene efecto en GPU ni con los métodos de renderizado alternativos de arriba.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="487"/>
-        <source>Uses whatever light-sampling method the loaded scene file itself asks for (falling back to BVH above if it doesn&apos;t ask for anything, or asks for something this app doesn&apos;t support) instead of a fixed choice. Picking this once and leaving it is the one choice here that stays correct as you switch between scenes with different recommendations.</source>
         <translation>Renderizar necesita muchos números aleatorios: en qué dirección rebotar un rayo, a qué punto de una luz apuntar, y así sucesivamente. Y CÓMO se generan esas decisiones &quot;aleatorias&quot; cambia lo rápido que la imagen se va limpiando.
 
 Los números aleatorios comunes tienden a agruparse en algunas zonas y dejar huecos en otras. La mayoría de los muestreadores de aquí (Sobol, Halton, etc.) usan en cambio patrones pensados para cubrir todas las posibilidades de forma más uniforme, lo que limpia la imagen más rápido que el azar puro con la misma cantidad de muestras. Independent es la excepción: números aleatorios simples y sin correlación, incluidos solo para poder reproducir fielmente un archivo de escena .pbrt que los pida específicamente, no como una opción recomendada.
@@ -3723,51 +3266,42 @@ Los números aleatorios comunes tienden a agruparse en algunas zonas y dejar hue
 ¿Está en gris? Esto solo afecta al Trazador de rayos predeterminado del renderizador de CPU; cambia Renderer a CPU en la pestaña Ajustes para poder usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="494"/>
-        <source>Picks a light to sample with odds weighted by its overall brightness - brighter lights get picked more often than dim ones. Cleans up the image faster than picking lights with equal odds in scenes with a wide range of light brightness, but it ignores how far away or how blocked-off a light is.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="486"/>
+        <source>Organizes the scene&apos;s lights into a quick-lookup index and weighs each one by both its brightness and how close it is to the point being shaded, adjusting per bounce instead of using one fixed weighting for the whole scene. The underlying renderer&apos;s own default - generally converges to a clean image fastest, at a small extra bookkeeping cost.</source>
         <translation>Organiza las luces de la escena en un índice de consulta rápida y pondera cada una según su brillo y su cercanía al punto que se está iluminando, ajustando esa ponderación en cada rebote en lugar de usar un valor fijo para toda la escena. Es la opción predeterminada del renderizador: normalmente converge a una imagen limpia más rápido que las demás, a cambio de un pequeño costo extra de gestión interna.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="501"/>
-        <source>Picks a light completely at random from everything in the scene, with equal odds regardless of brightness or distance. Simple, but cleans up slowly in scenes with many lights of very different brightness - a dim light gets picked just as often as a bright one.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="493"/>
+        <source>Uses whatever light-sampling method the loaded scene file itself asks for (falling back to BVH above if it doesn&apos;t ask for anything, or asks for something this app doesn&apos;t support) instead of a fixed choice. Picking this once and leaving it is the one choice here that stays correct as you switch between scenes with different recommendations.</source>
         <translation>Usa el método de muestreo de luces que pida el propio archivo de escena cargado (recurriendo a BVH, descrito arriba, si no pide nada en concreto o pide algo que esta aplicación no admite) en lugar de una opción fija. Elegir esta y dejarla así es la única opción de esta lista que sigue siendo correcta al cambiar entre escenas con recomendaciones distintas.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="509"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="500"/>
+        <source>Picks a light to sample with odds weighted by its overall brightness - brighter lights get picked more often than dim ones. Cleans up the image faster than picking lights with equal odds in scenes with a wide range of light brightness, but it ignores how far away or how blocked-off a light is.</source>
+        <translation>Elige qué luz muestrear con una probabilidad basada en su brillo general: las luces más brillantes se eligen más a menudo que las tenues. Limpia la imagen más rápido que elegir las luces con la misma probabilidad en escenas con luces de brillos muy distintos, pero ignora la distancia de cada luz o cuánto está bloqueada.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="507"/>
+        <source>Picks a light completely at random from everything in the scene, with equal odds regardless of brightness or distance. Simple, but cleans up slowly in scenes with many lights of very different brightness - a dim light gets picked just as often as a bright one.</source>
+        <translation>Elige una luz completamente al azar entre todas las de la escena, con la misma probabilidad sin importar su brillo o distancia. Es sencillo, pero limpia la imagen despacio en escenas con muchas luces de brillos muy distintos, ya que una luz tenue se elige tan a menudo como una brillante.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="515"/>
         <source>Which strategy picks the light to aim a ray at directly, each
 time a bounce tries to sample light straight from a source.
 Affects how grainy the image looks along the way and how fast it
 cleans up, not what it eventually converges to. CPU default path
 tracer only - no effect on GPU or under the alternate rendering
 methods above.</source>
-        <translation>Elige qué luz muestrear con una probabilidad basada en su brillo general: las luces más brillantes se eligen más a menudo que las tenues. Limpia la imagen más rápido que elegir las luces con la misma probabilidad en escenas con luces de brillos muy distintos, pero ignora la distancia de cada luz o cuánto está bloqueada.</translation>
+        <translation>Qué estrategia elige la luz a la que apuntar un rayo directamente, cada vez que un rebote intenta muestrear luz directamente desde una fuente. Afecta a cuánto ruido se ve en la imagen mientras se renderiza y a la velocidad con la que se limpia, no al resultado final al que converge. Solo afecta al Trazador de rayos predeterminado en CPU; no tiene efecto en GPU ni con los métodos de renderizado alternativos de arriba.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="517"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="523"/>
         <source>Every bounce off a matte or semi-glossy surface needs to pick ONE light (out of potentially many in the scene) to aim a ray directly at - which light gets picked, and how fairly, changes how quickly the image cleans up, though never what it eventually looks like.
 
 BVH (the default) organizes the scene&apos;s lights into a quick-lookup index and adjusts its weighting for each point being shaded - both bright AND nearby lights get preferred. Auto instead uses whatever the loaded scene file itself asks for (falling back to BVH if it doesn&apos;t ask for anything). Power picks by brightness alone, ignoring position - simpler, and worse in scenes where lights are at very different distances. Uniform ignores both - every light is equally likely regardless of brightness or distance, included mainly for comparison and debugging.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation>Elige una luz completamente al azar entre todas las de la escena, con la misma probabilidad sin importar su brillo o distancia. Es sencillo, pero limpia la imagen despacio en escenas con muchas luces de brillos muy distintos, ya que una luz tenue se elige tan a menudo como una brillante.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="541"/>
-        <source>Simulates individual wavelengths of light (like a rainbow)
-instead of simplifying everything to red/green/blue. CPU default
-path tracer only. Only lambertian, metal, dielectric,
-rough_dielectric, conductor, and diffuse_light materials are
-supported - a scene using anything else fails to render rather
-than silently rendering wrong colors. Noticeably slower per-sample.</source>
-        <translation>Qué estrategia elige la luz a la que apuntar un rayo directamente, cada vez que un rebote intenta muestrear luz directamente desde una fuente. Afecta a cuánto ruido se ve en la imagen mientras se renderiza y a la velocidad con la que se limpia, no al resultado final al que converge. Solo afecta al Trazador de rayos predeterminado en CPU; no tiene efecto en GPU ni con los métodos de renderizado alternativos de arriba.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="549"/>
-        <source>Ordinary rendering tracks light as just three numbers - red, green, blue - the same way a screen displays color.
-
-Real light is actually a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths bend by different amounts - plain red/green/blue can&apos;t represent that. This option tracks a handful of actual individual wavelengths per ray instead, at the cost of a grainier, slower render.
-
-Grayed out? This only exists on the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
         <translation>Cada rebote sobre una superficie mate o semibrillante necesita elegir UNA luz (de las posiblemente muchas que hay en la escena) para apuntarle un rayo directamente. Qué luz se elige, y con qué criterio, cambia lo rápido que se limpia la imagen, aunque nunca el aspecto final al que llega.
 
 BVH (la opción predeterminada) organiza las luces de la escena en un índice de consulta rápida y ajusta su ponderación para cada punto que se está iluminando, favoreciendo tanto las luces brillantes como las cercanas. Auto usa en cambio lo que pida el propio archivo de escena cargado (recurriendo a BVH si no pide nada). Power elige solo por brillo, ignorando la posición: es más simple, y funciona peor en escenas con luces a distancias muy distintas. Uniform ignora ambas cosas: todas las luces tienen la misma probabilidad sin importar su brillo o distancia, y se incluye sobre todo para comparar y depurar.
@@ -3775,17 +3309,22 @@ BVH (la opción predeterminada) organiza las luces de la escena en un índice de
 ¿Está en gris? Esto solo afecta al Trazador de rayos predeterminado del renderizador de CPU; cambia Renderer a CPU en la pestaña Ajustes para poder usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="564"/>
-        <source>Stops adding more samples to a pixel once it already looks
-clean, instead of always spending the full Samples budget on
-every pixel - Samples becomes a ceiling, not a fixed amount every
-pixel must use. CPU default path tracer only.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="547"/>
+        <source>Simulates individual wavelengths of light (like a rainbow)
+instead of simplifying everything to red/green/blue. CPU default
+path tracer only. Only lambertian, metal, dielectric,
+rough_dielectric, conductor, and diffuse_light materials are
+supported - a scene using anything else fails to render rather
+than silently rendering wrong colors. Noticeably slower per-sample.</source>
         <translation>Simula longitudes de onda de luz individuales (como en un arcoíris) en lugar de simplificarlo todo a rojo/verde/azul. Solo en el Trazador de rayos predeterminado de CPU. Solo se admiten los materiales lambertian, metal, dielectric, rough_dielectric, conductor y diffuse_light; una escena que use cualquier otro material no se renderiza, en lugar de renderizarse en silencio con colores incorrectos. Notablemente más lento por muestra.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="576"/>
-        <source>How clean a pixel must look before it&apos;s considered done.
-Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
+        <source>Ordinary rendering tracks light as just three numbers - red, green, blue - the same way a screen displays color.
+
+Real light is actually a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths bend by different amounts - plain red/green/blue can&apos;t represent that. This option tracks a handful of actual individual wavelengths per ray instead, at the cost of a grainier, slower render.
+
+Grayed out? This only exists on the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
         <translation>El renderizado normal representa la luz con solo tres números: rojo, verde y azul, igual que una pantalla muestra el color.
 
 La luz real es en realidad un espectro continuo de longitudes de onda, y algunos efectos físicos (como un prisma que separa la luz blanca en un arcoíris) solo ocurren porque cada longitud de onda se desvía una cantidad distinta; el simple rojo/verde/azul no puede representar eso. Esta opción sigue en cambio unas pocas longitudes de onda concretas por rayo, a cambio de un renderizado con más ruido y más lento.
@@ -3793,25 +3332,26 @@ La luz real es en realidad un espectro continuo de longitudes de onda, y algunos
 ¿Está en gris? Esto solo existe en el Trazador de rayos predeterminado del renderizador de CPU; cambia Renderer a CPU en la pestaña Ajustes para poder usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="587"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="570"/>
+        <source>Stops adding more samples to a pixel once it already looks
+clean, instead of always spending the full Samples budget on
+every pixel - Samples becomes a ceiling, not a fixed amount every
+pixel must use. CPU default path tracer only.</source>
+        <translation>Deja de añadir más muestras a un píxel en cuanto ya se ve limpio, en lugar de gastar siempre el total de Muestras en todos los píxeles por igual. Así, Muestras pasa a ser un límite máximo y no una cantidad fija que cada píxel deba usar. Solo en el Trazador de rayos predeterminado de CPU.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="582"/>
+        <source>How clean a pixel must look before it&apos;s considered done.
+Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</source>
+        <translation>Qué tan limpio debe verse un píxel antes de darlo por terminado. Cuanto más bajo, más limpio pero más lento. 0.01 coincide con el valor predeterminado de Blender Cycles.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="593"/>
         <source>Rendering builds up an image from many random samples, so it looks grainy at first and gradually cleans up - but different pixels clean up at different speeds. A pixel on a bright, evenly-lit wall might look clean after just a few samples, while a dim corner lit only by a small window can take far more before its graininess settles down. Spending the same fixed number of samples on both wastes time on pixels that were already done.
 
 Adaptive sampling keeps track of how grainy each pixel still looks and stops adding samples to it early once that drops below the threshold below, letting Samples act as a ceiling rather than a flat amount every pixel must use - the same idea as Blender Cycles&apos; own adaptive sampling.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation>Deja de añadir más muestras a un píxel en cuanto ya se ve limpio, en lugar de gastar siempre el total de Muestras en todos los píxeles por igual. Así, Muestras pasa a ser un límite máximo y no una cantidad fija que cada píxel deba usar. Solo en el Trazador de rayos predeterminado de CPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="607"/>
-        <source>Stop rendering once this many seconds have passed, instead of
-always running until the whole image is finished. CPU default
-path tracer only.</source>
-        <translation>Qué tan limpio debe verse un píxel antes de darlo por terminado. Cuanto más bajo, más limpio pero más lento. 0.01 coincide con el valor predeterminado de Blender Cycles.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="619"/>
-        <source>How many seconds to render before stopping, regardless of the
-Samples budget above.</source>
         <translation>El renderizado construye una imagen a partir de muchas muestras aleatorias, así que al principio se ve con ruido y poco a poco se va limpiando, pero cada píxel se limpia a su propia velocidad. Un píxel de una pared brillante e iluminada de forma uniforme puede verse limpio con solo unas pocas muestras, mientras que un rincón oscuro iluminado solo por una ventana pequeña puede necesitar muchas más antes de que su ruido desaparezca. Usar siempre la misma cantidad fija de muestras en ambos casos desperdicia tiempo en píxeles que ya estaban listos.
 
 El muestreo adaptativo controla cuánto ruido le queda a cada píxel y deja de añadirle muestras en cuanto ese ruido cae por debajo del umbral de abajo, haciendo que Muestras funcione como un límite máximo en lugar de una cantidad fija para todos los píxeles. Es la misma idea que el muestreo adaptativo de Blender Cycles.
@@ -3819,7 +3359,20 @@ El muestreo adaptativo controla cuánto ruido le queda a cada píxel y deja de a
 ¿Está en gris? Esto solo afecta al Trazador de rayos predeterminado del renderizador de CPU; cambia Renderer a CPU en la pestaña Ajustes para poder usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="630"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="613"/>
+        <source>Stop rendering once this many seconds have passed, instead of
+always running until the whole image is finished. CPU default
+path tracer only.</source>
+        <translation>Detiene el renderizado al cabo de este número de segundos, en lugar de continuar siempre hasta terminar toda la imagen. Solo en el Trazador de rayos predeterminado de CPU.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="625"/>
+        <source>How many seconds to render before stopping, regardless of the
+Samples budget above.</source>
+        <translation>Cuántos segundos renderizar antes de detenerse, sin importar el total de Muestras indicado arriba.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="636"/>
         <source>Useful for a fixed preview or a shared-computer time budget, instead of guessing a sample count that happens to finish in time - lets Samples above stay a generous ceiling while this decides when to actually stop.
 
 It stops row by row: whichever rows of the image were already being worked on when time runs out still finish normally; any row that was never started is left black instead of skipped over, so you still get a valid (if incomplete) image rather than a broken file.
@@ -3827,58 +3380,74 @@ It stops row by row: whichever rows of the image were already being worked on wh
 Generating a video? This is a budget for the WHOLE video, not each frame - later frames get whatever time is left, and any frames still remaining once it runs out are skipped entirely.
 
 Grayed out? This only affects the CPU renderer&apos;s default path tracer - switch Renderer to CPU on the Settings tab to use it.</source>
-        <translation>Detiene el renderizado al cabo de este número de segundos, en lugar de continuar siempre hasta terminar toda la imagen. Solo en el Trazador de rayos predeterminado de CPU.</translation>
+        <translation>Útil para una vista previa fija o para un presupuesto de tiempo en un equipo compartido, en lugar de adivinar un número de muestras que acabe a tiempo: permite que Muestras, arriba, siga siendo un tope generoso mientras esto decide cuándo detenerse de verdad. Se detiene fila a fila: las filas de la imagen en las que ya se estaba trabajando cuando se agota el tiempo terminan con normalidad; cualquier fila que nunca se empezó se deja en negro en lugar de omitirse, de modo que sigues obteniendo una imagen válida (aunque incompleta) en lugar de un archivo roto. ¿Generas un vídeo? Es un presupuesto para el vídeo ENTERO, no para cada fotograma: los fotogramas posteriores reciben el tiempo que quede, y los que falten cuando se agote se omiten por completo. ¿Está en gris? Solo afecta al trazador de rayos predeterminado del renderizador de CPU; cambia el Renderizador a CPU en la pestaña Ajustes para usarlo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="652"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="658"/>
         <source>A flat brightness multiplier applied before the final
 brightness/contrast adjustment (1.0 = no change). Both CPU and
 GPU default path tracer only.</source>
-        <translation>Cuántos segundos renderizar antes de detenerse, sin importar el total de Muestras indicado arriba.</translation>
+        <translation>Un multiplicador de brillo uniforme que se aplica antes del ajuste final de brillo/contraste (1.0 = sin cambios). Solo en el Trazador de rayos predeterminado, tanto en CPU como en GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="667"/>
-        <source>Slightly softens a rough, reflective, or glassy surface&apos;s
-sharpness after the path&apos;s first non-mirror-like bounce - this
-calms down fireflies (isolated bright speckles) from hard-to-
-trace light paths, at the cost of a little extra blur. Both CPU
-and GPU default path tracer only. A scene that already asks for
-this itself is unaffected - this checkbox only ever adds the
-request, never removes it.</source>
-        <translation>Es útil para una vista previa con un tiempo fijo o para repartir el uso de un ordenador compartido, en lugar de adivinar cuántas muestras terminarán a tiempo: deja que Muestras siga siendo un límite generoso mientras esto decide cuándo detenerse de verdad.
-
-Se detiene fila por fila: las filas de la imagen que ya se estaban procesando cuando se acaba el tiempo terminan con normalidad; cualquier fila que nunca llegó a empezar se deja en negro en lugar de omitirse, así que obtienes una imagen válida (aunque incompleta) en vez de un archivo dañado.
-
-¿Estás generando un vídeo? Este es un límite para el vídeo COMPLETO, no para cada fotograma: los fotogramas posteriores reciben el tiempo que quede, y los que aún falten cuando se acabe el tiempo se omiten por completo.
-
-¿Está en gris? Esto solo afecta al Trazador de rayos predeterminado del renderizador de CPU; cambia Renderer a CPU en la pestaña Ajustes para poder usarlo.</translation>
+        <location filename="../mainwindow_tabs_render.cpp" line="927"/>
+        <source>Turns on extra GPU-side correctness checks, which have a real
+performance cost each time the GPU runs. OptiX GPU only (not
+available under Metal, macOS GPU rendering), meant for
+debugging, not routine use.</source>
+        <translation>Activa comprobaciones de corrección adicionales en el lado de la GPU, que tienen un coste de rendimiento real cada vez que se ejecuta la GPU. Solo para la GPU con OptiX (no disponible en Metal, renderizado por GPU de macOS); pensado para depurar, no para un uso habitual.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="676"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="933"/>
+        <source>Turns on extra correctness checks inside the GPU rendering process itself, catching certain kinds of bugs that would otherwise silently produce a wrong image or crash unpredictably.
+
+It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
+
+This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent, so it stays grayed out even with Renderer set to GPU on macOS.</source>
+        <translation>Activa comprobaciones de corrección adicionales dentro del propio proceso de renderizado en GPU, que detectan ciertos tipos de errores que, de otro modo, producirían en silencio una imagen incorrecta o provocarían un fallo impredecible. Es una ayuda para depurar pensada para quienes trabajan en el propio código de GPU del renderizador, no algo que beneficie a un renderizado normal: tiene un coste real de rendimiento y no cambia el aspecto de un renderizado correcto. Es específico del motor de GPU OptiX (Windows); no tiene equivalente en Metal, así que permanece en gris incluso con el Renderizador en GPU en macOS.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="980"/>
+        <source>Runs an AI denoiser on the finished render to smooth out
+graininess, using extra information about each pixel&apos;s base
+color and surface direction to do a better job than a plain
+blur. OptiX GPU only, both GPU modes (recursive and wavefront
+each have their own denoiser) - not available under Metal
+(macOS GPU rendering).</source>
+        <translation>Ejecuta un eliminador de ruido con IA sobre el renderizado terminado para suavizar el grano, usando información adicional sobre el color base y la dirección de la superficie de cada píxel para hacerlo mejor que un simple desenfoque. Solo en la GPU con OptiX, en ambos modos de GPU (el recursivo y el wavefront tienen cada uno su propio eliminador de ruido); no disponible en Metal (renderizado por GPU de macOS).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1007"/>
+        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
+
+A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
+
+Grayed out? This needs the OptiX GPU backend (Windows) - switch Renderer to GPU on the Settings tab. Both the recursive and wavefront GPU modes support it; it has no Metal equivalent, so it stays grayed out on macOS.</source>
+        <translation>El renderizado es granulado por naturaleza cuando se usan pocas muestras, y por eso más muestras suelen dar una imagen más limpia (pero también un renderizado más lento). Un eliminador de ruido es un modelo de IA entrenado para reconocer ese grano y suavizarlo a posteriori, sin necesidad de trazar rayos adicionales: una forma de obtener antes una imagen de aspecto limpio, a cambio de perder algo de detalle fino. El número de su derecha mezcla entre el original con ruido y el resultado totalmente sin ruido: 0 es totalmente sin ruido (el valor predeterminado); subirlo conserva parte del grano original, útil cuando la eliminación a máxima potencia suaviza una textura que querías conservar. ¿Está en gris? Necesita el motor de GPU OptiX (Windows): cambia el Renderizador a GPU en la pestaña Ajustes. Lo admiten tanto el modo recursivo como el wavefront de la GPU; no tiene equivalente en Metal, así que permanece en gris en macOS.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1058"/>
+        <source>Restricts rendering to a rectangle of the frame, given as
+fractions of the full image from 0 to 1. Default path tracer
+only; works on the CPU and both GPU backends (OptiX and
+Metal). Pixels outside the rectangle are left black.</source>
+        <translation>Limita el renderizado a un rectángulo del fotograma, indicado como fracciones de la imagen completa de 0 a 1. Solo con el trazador de rayos predeterminado; funciona en la CPU y en los dos motores de GPU (OptiX y Metal). Los píxeles fuera del rectángulo se dejan en negro.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1238"/>
+        <source>Makes this render reproduce byte-for-byte on a rerun with the
+same seed. Default path tracer only. On the GPU (both OptiX and
+Metal) renders are already repeatable by default; the seed picks a
+different, but equally repeatable, random sequence.</source>
+        <translation>Hace que este renderizado se reproduzca byte a byte al repetirlo con la misma semilla. Solo con el trazador de rayos predeterminado. En la GPU (tanto OptiX como Metal) los renderizados ya son repetibles por defecto; la semilla elige una secuencia aleatoria distinta, pero igualmente repetible.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="683"/>
         <source>Some light paths are genuinely hard for a path tracer to find cleanly - light that bounces off a rough (but not mirror-perfect) surface, through another rough surface, into a small bright light. Those paths show up as fireflies: single rays that happen to catch a very bright, small light at just the right angle, appearing as an isolated bright speckle that takes a very long time to average away.
 
 This setting deliberately softens a surface&apos;s roughness a little more with each non-mirror-like bounce a light path has already taken - it introduces a small, technically-incorrect bias, but in exchange the fireflies clean up dramatically faster, which usually looks better in the final image.
 
 Off by default. If a loaded .pbrt scene file already asks for this itself, it&apos;s applied either way - this checkbox can only add the request on top, never take it away.</source>
-        <translation>Un multiplicador de brillo uniforme que se aplica antes del ajuste final de brillo/contraste (1.0 = sin cambios). Solo en el Trazador de rayos predeterminado, tanto en CPU como en GPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="694"/>
-        <source>Caps any single sample whose brightest color channel exceeds
-the value below, scaling all its channels down together so the
-color/hue stays the same. CPU and both GPU backends - the
-recursive GPU mode matches the CPU exactly, while the wavefront
-GPU mode applies it slightly differently (per light bounce
-rather than per whole sample).</source>
-        <translation>Suaviza ligeramente la nitidez de una superficie rugosa, reflectante o de vidrio después del primer rebote no perfectamente especular del recorrido del rayo. Esto calma los destellos (motas brillantes aisladas) que vienen de trayectorias de luz difíciles de calcular, a cambio de un poco de desenfoque extra. Solo en el Trazador de rayos predeterminado, tanto en CPU como en GPU. Una escena que ya pida esto por su cuenta no se ve afectada: esta casilla solo puede añadir la petición, nunca quitarla.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="724"/>
-        <source>Ray-traced rendering occasionally comes up with a sample that&apos;s technically correct but extremely bright - a ray that happens to catch a small, intense light at just the right angle - and one such sample can dominate a pixel&apos;s average for a long time before enough other samples arrive to balance it out. These show up as fireflies: single bright speckles standing out against the rest of the image.
-
-This clamp caps how bright any single sample&apos;s brightest color channel is allowed to be before it gets averaged in, trading a small, controlled inaccuracy for a much cleaner-looking image at the same sample count - lower values clean up more aggressively but risk visibly dimming genuinely bright small lights, not just stray noise.
-
-Off by default (effectively unlimited). CPU default path tracer only.</source>
         <translation>Algunas trayectorias de luz son realmente difíciles de encontrar con limpieza para un trazador de rayos: luz que rebota en una superficie rugosa (pero no perfectamente especular), atraviesa otra superficie rugosa y llega a una luz pequeña y brillante. Esas trayectorias aparecen como destellos: rayos sueltos que por casualidad captan una luz pequeña y muy brillante con el ángulo justo, y se ven como una mota brillante aislada que tarda muchísimo en promediarse y desaparecer.
 
 Este ajuste suaviza a propósito un poco más la rugosidad de una superficie con cada rebote no especular que ya haya tenido una trayectoria de luz. Introduce una pequeña imprecisión técnica, pero a cambio los destellos se limpian muchísimo más rápido, lo que suele verse mejor en la imagen final.
@@ -3886,13 +3455,12 @@ Este ajuste suaviza a propósito un poco más la rugosidad de una superficie con
 Desactivado por defecto. Si un archivo de escena .pbrt cargado ya lo pide por su cuenta, se aplica de todas formas: esta casilla solo puede sumar la petición, nunca quitarla.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="752"/>
-        <source>A CPU-only setting for the index the renderer builds to quickly skip past objects a ray obviously can&apos;t hit, instead of checking every single object in the scene, plus the strategy used to build that index. Applies to every rendering method, not just the default path tracer - the defaults work well for almost every scene.</source>
-        <translation>Limita cualquier muestra cuyo canal de color más brillante supere el valor de abajo, reduciendo todos sus canales por igual para que el color y el tono se mantengan. Funciona en CPU y en los dos backends de GPU: el modo Recursivo de GPU se comporta igual que la CPU, mientras que el modo Wavefront de GPU lo aplica de forma ligeramente distinta (por cada rebote de luz en vez de por cada muestra completa).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="765"/>
-        <source>Leaves a loaded .pbrt scene file&apos;s own accelerator choice alone (falling back to BVH below if it didn&apos;t name one). Has no effect either way on a scene that isn&apos;t loaded from a .pbrt file.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="732"/>
+        <source>Ray-traced rendering occasionally comes up with a sample that&apos;s technically correct but extremely bright - a ray that happens to catch a small, intense light at just the right angle - and one such sample can dominate a pixel&apos;s average for a long time before enough other samples arrive to balance it out. These show up as fireflies: single bright speckles standing out against the rest of the image.
+
+This clamp caps how bright any single sample&apos;s brightest color channel is allowed to be before it gets averaged in, trading a small, controlled inaccuracy for a much cleaner-looking image at the same sample count - lower values clean up more aggressively but risk visibly dimming genuinely bright small lights, not just stray noise.
+
+Off by default (effectively unlimited). CPU default path tracer only.</source>
         <translation>El renderizado por trazado de rayos a veces obtiene una muestra técnicamente correcta pero extremadamente brillante: un rayo que por casualidad capta una luz pequeña e intensa con el ángulo justo. Una sola muestra así puede dominar el promedio de un píxel durante mucho tiempo, hasta que lleguen suficientes muestras más para compensarla. Esto se ve como destellos: motas brillantes aisladas que resaltan sobre el resto de la imagen.
 
 Este límite recorta cuánto puede brillar el canal de color más intenso de una sola muestra antes de promediarla, a cambio de una imagen mucho más limpia con la misma cantidad de muestras, aceptando una pequeña imprecisión controlada. Los valores más bajos limpian de forma más agresiva, pero corren el riesgo de atenuar visiblemente luces pequeñas que sí son realmente brillantes, no solo el ruido suelto.
@@ -3900,42 +3468,42 @@ Este límite recorta cuánto puede brillar el canal de color más intenso de una
 Desactivado por defecto (sin límite, en la práctica). Solo en el Trazador de rayos predeterminado de CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="770"/>
-        <source>An index built by grouping nearby objects inside a hierarchy of bounding boxes, using the split strategy chosen below - this app&apos;s default index type.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="760"/>
+        <source>A CPU-only setting for the index the renderer builds to quickly skip past objects a ray obviously can&apos;t hit, instead of checking every single object in the scene, plus the strategy used to build that index. Applies to every rendering method, not just the default path tracer - the defaults work well for almost every scene.</source>
         <translation>Un ajuste exclusivo de CPU para el índice que construye el renderizador para saltarse rápidamente los objetos que un rayo obviamente no puede tocar, en lugar de comprobar cada objeto de la escena uno por uno, además de la estrategia usada para construir ese índice. Se aplica a todos los métodos de renderizado, no solo al Trazador de rayos predeterminado; los valores predeterminados funcionan bien en casi cualquier escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="774"/>
-        <source>A different indexing structure that divides up space itself into regions, instead of grouping objects into boxes. It has no split-strategy option of its own (the combo below is ignored when this is chosen). Falls back to BVH above on a scene with moving-object motion blur (this app&apos;s version of this index type can&apos;t handle that) - a warning is printed when that happens.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="773"/>
+        <source>Leaves a loaded .pbrt scene file&apos;s own accelerator choice alone (falling back to BVH below if it didn&apos;t name one). Has no effect either way on a scene that isn&apos;t loaded from a .pbrt file.</source>
         <translation>Respeta la elección de acelerador que traiga el propio archivo de escena .pbrt cargado (recurriendo a BVH, descrito abajo, si no especifica ninguno). No tiene ningún efecto en una escena que no provenga de un archivo .pbrt.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="784"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="778"/>
+        <source>An index built by grouping nearby objects inside a hierarchy of bounding boxes, using the split strategy chosen below - this app&apos;s default index type.</source>
+        <translation>Un índice construido agrupando objetos cercanos dentro de una jerarquía de cajas envolventes, usando la estrategia de división elegida abajo. Es el tipo de índice predeterminado de esta aplicación.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="782"/>
+        <source>A different indexing structure that divides up space itself into regions, instead of grouping objects into boxes. It has no split-strategy option of its own (the combo below is ignored when this is chosen). Falls back to BVH above on a scene with moving-object motion blur (this app&apos;s version of this index type can&apos;t handle that) - a warning is printed when that happens.</source>
+        <translation>Una estructura de indexado distinta que divide el propio espacio en regiones, en lugar de agrupar objetos en cajas. No tiene su propia opción de estrategia de división (el menú de abajo se ignora al elegir esta). En una escena con desenfoque de movimiento de objetos, recurre a BVH (descrito arriba), ya que la versión de este índice que usa la aplicación no puede manejar ese caso; se muestra un aviso cuando eso ocurre.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="792"/>
         <source>Which indexing structure organizes the scene&apos;s geometry for
 fast ray tests. Every choice renders the identical final image -
 this only affects build time and render speed, not quality. CPU
 only, every rendering method - no effect on GPU (which always
 uses its own fixed index) or a scene that wasn&apos;t loaded from a
 .pbrt file (see the log).</source>
-        <translation>Un índice construido agrupando objetos cercanos dentro de una jerarquía de cajas envolventes, usando la estrategia de división elegida abajo. Es el tipo de índice predeterminado de esta aplicación.</translation>
+        <translation>Qué estructura de indexado organiza la geometría de la escena para comprobar los rayos más rápido. Todas las opciones producen exactamente la misma imagen final; solo cambia el tiempo de construcción y la velocidad de renderizado, no la calidad. Solo en CPU, con cualquier método de renderizado; no tiene efecto en GPU (que siempre usa su propio índice fijo) ni en una escena que no venga de un archivo .pbrt (consulta el registro).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="792"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="800"/>
         <source>If the renderer had to check every single object in the scene for every ray, even simple scenes would be painfully slow. This index lets a ray quickly skip past objects it obviously can&apos;t hit, and only test the handful of objects actually near where it travels.
 
 BVH (grouping nearby objects into a hierarchy of boxes) and Kd-tree (dividing up space itself) are two different real strategies for organizing the same geometry - both produce the exact same rendered image, just at different build and render speeds depending on the scene&apos;s shape.
 
 Only a scene loaded from a .pbrt file has its own accelerator choice to override at all - any other scene always uses its own fixed BVH-style index regardless of this setting (a warning is printed if you pick something else anyway).</source>
-        <translation>Una estructura de indexado distinta que divide el propio espacio en regiones, en lugar de agrupar objetos en cajas. No tiene su propia opción de estrategia de división (el menú de abajo se ignora al elegir esta). En una escena con desenfoque de movimiento de objetos, recurre a BVH (descrito arriba), ya que la versión de este índice que usa la aplicación no puede manejar ese caso; se muestra un aviso cuando eso ocurre.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="813"/>
-        <source>Tries out several ways of splitting the index and estimates which one will be fastest to search later, then picks the cheapest. Slower to build than Middle/Equal Counts below, but produces the best-performing index for most scenes - this app&apos;s long-standing default.</source>
-        <translation>Qué estructura de indexado organiza la geometría de la escena para comprobar los rayos más rápido. Todas las opciones producen exactamente la misma imagen final; solo cambia el tiempo de construcción y la velocidad de renderizado, no la calidad. Solo en CPU, con cualquier método de renderizado; no tiene efecto en GPU (que siempre usa su propio índice fijo) ni en una escena que no venga de un archivo .pbrt (consulta el registro).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="819"/>
-        <source>Splits each group of objects right down the middle of its longest side. Cheap and fast to build, with no cost estimation at all - but can perform poorly on unevenly-spread-out geometry.</source>
         <translation>Si el renderizador tuviera que comprobar cada objeto de la escena para cada rayo, hasta las escenas más simples serían insoportablemente lentas. Este índice permite que un rayo se salte rápidamente los objetos que obviamente no puede tocar, y solo comprueba el puñado de objetos que están realmente cerca de su recorrido.
 
 BVH (agrupar objetos cercanos en una jerarquía de cajas) y Kd-tree (dividir el propio espacio) son dos estrategias reales distintas para organizar la misma geometría: ambas producen exactamente la misma imagen renderizada, solo que con distinta velocidad de construcción y de renderizado según la forma de la escena.
@@ -3943,186 +3511,94 @@ BVH (agrupar objetos cercanos en una jerarquía de cajas) y Kd-tree (dividir el 
 Solo una escena cargada desde un archivo .pbrt tiene su propia elección de acelerador que se pueda anular; cualquier otra escena siempre usa su propio índice fijo de tipo BVH sin importar este ajuste (si igualmente eliges otra opción, se muestra un aviso).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="824"/>
-        <source>Splits each group so an equal number of objects fall on each side, regardless of how they&apos;re actually spread out in space. Cheap to build, but can produce badly-shaped groups when objects are clustered together.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="821"/>
+        <source>Tries out several ways of splitting the index and estimates which one will be fastest to search later, then picks the cheapest. Slower to build than Middle/Equal Counts below, but produces the best-performing index for most scenes - this app&apos;s long-standing default.</source>
         <translation>Prueba varias formas de dividir el índice y calcula cuál será más rápida de recorrer después, y elige la más eficiente. Tarda más en construirse que Middle o Equal Counts (descritos abajo), pero produce el índice con mejor rendimiento para la mayoría de las escenas. Es el valor predeterminado de esta aplicación desde hace tiempo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="829"/>
-        <source>Builds the index from the bottom up using a fast spatial-sorting trick, making it the fastest of these four strategies to build for very large numbers of triangles - at some cost to how well the finished index performs later, compared to SAH above.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="827"/>
+        <source>Splits each group of objects right down the middle of its longest side. Cheap and fast to build, with no cost estimation at all - but can perform poorly on unevenly-spread-out geometry.</source>
         <translation>Divide cada grupo de objetos justo por la mitad de su lado más largo. Es barato y rápido de construir, sin ningún cálculo de coste, pero puede rendir mal con geometría repartida de forma muy desigual.</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="832"/>
+        <source>Splits each group so an equal number of objects fall on each side, regardless of how they&apos;re actually spread out in space. Cheap to build, but can produce badly-shaped groups when objects are clustered together.</source>
+        <translation>Divide cada grupo para que quede el mismo número de objetos a cada lado, sin importar cómo estén repartidos realmente en el espacio. Es barato de construir, pero puede generar grupos con formas poco adecuadas cuando los objetos están muy agrupados.</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render.cpp" line="837"/>
+        <source>Builds the index from the bottom up using a fast spatial-sorting trick, making it the fastest of these four strategies to build for very large numbers of triangles - at some cost to how well the finished index performs later, compared to SAH above.</source>
+        <translation>Construye el índice de abajo hacia arriba usando un truco rápido de ordenación espacial, lo que la convierte en la más rápida de estas cuatro estrategias para construirse cuando hay muchísimos triángulos, a costa de que el índice terminado rinda algo peor después, en comparación con SAH.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="845"/>
         <source>How the BVH index above is built (ignored when Accelerator is
 set to Kd-tree). Every choice renders the identical final image.
 Falls back to SAH above on a scene with moving-object motion blur
 (the other build strategies here can&apos;t handle that) - a warning
 is printed when that happens.</source>
-        <translation>Divide cada grupo para que quede el mismo número de objetos a cada lado, sin importar cómo estén repartidos realmente en el espacio. Es barato de construir, pero puede generar grupos con formas poco adecuadas cuando los objetos están muy agrupados.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="844"/>
-        <source>Only used when the accelerator above is set to BVH (ignored for Kd-tree, which has no split-strategy option). All four strategies build the same general kind of index in a different way - SAH above spends more time building in exchange for a better-performing index; Middle and Equal Counts are cheap, simple fallbacks; HLBVH trades a little performance for the fastest build on very large scenes.</source>
-        <translation>Construye el índice de abajo hacia arriba usando un truco rápido de ordenación espacial, lo que la convierte en la más rápida de estas cuatro estrategias para construirse cuando hay muchísimos triángulos, a costa de que el índice terminado rinda algo peor después, en comparación con SAH.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="872"/>
-        <source>How the image&apos;s brightness/contrast is adjusted for display, whether to print render statistics, and a GPU debugging mode - these control how the final image is processed and reported, not what to render. Denoising (cleaning up graininess) has its own dedicated section further down this tab.</source>
         <translation>Cómo se construye el índice BVH descrito arriba (se ignora cuando Acelerador está en Kd-tree). Todas las opciones producen exactamente la misma imagen final. En una escena con desenfoque de movimiento de objetos, recurre a SAH (las demás estrategias de construcción no pueden manejar ese caso); se muestra un aviso cuando eso ocurre.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="887"/>
-        <source>Which brightness/contrast curve to apply before converting to
-the final display colors. Applies to both CPU and GPU (both GPU
-modes) - no effect under the alternate rendering methods above.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="852"/>
+        <source>Only used when the accelerator above is set to BVH (ignored for Kd-tree, which has no split-strategy option). All four strategies build the same general kind of index in a different way - SAH above spends more time building in exchange for a better-performing index; Middle and Equal Counts are cheap, simple fallbacks; HLBVH trades a little performance for the fastest build on very large scenes.</source>
         <translation>Solo se usa cuando el Acelerador de arriba está en BVH (se ignora con Kd-tree, que no tiene opción de estrategia de división). Las cuatro estrategias construyen el mismo tipo general de índice, cada una a su manera: SAH tarda más en construirse a cambio de un índice con mejor rendimiento; Middle y Equal Counts son alternativas simples y económicas; HLBVH sacrifica algo de rendimiento a cambio de la construcción más rápida en escenas muy grandes.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="892"/>
-        <source>A rendered scene&apos;s true brightness values have no upper limit - a light bulb might be a hundred times brighter than a wall - but a screen can only show a fixed range of brightness. Tone mapping is the curve used to compress that huge range down into something a screen can actually display.
-
-ACES rolls off bright highlights gently, the way film does, giving a soft, filmic look; Reinhard is a simpler, older way of compressing brightness; None just clips anything too bright straight to flat white, which can look harsh.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="880"/>
+        <source>How the image&apos;s brightness/contrast is adjusted for display, whether to print render statistics, and a GPU debugging mode - these control how the final image is processed and reported, not what to render. Denoising (cleaning up graininess) has its own dedicated section further down this tab.</source>
         <translation>Cómo se ajusta el brillo/contraste de la imagen para mostrarla, si se muestran las estadísticas del renderizado y un modo de depuración de GPU. Estos ajustes controlan cómo se procesa y se informa sobre la imagen final, no qué se renderiza. Eliminar el ruido tiene su propia sección dedicada más abajo en esta pestaña.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="905"/>
-        <source>Print a small end-of-render statistics summary (rays cast,
-bounces, shadow rays, samples/sec) to the Log tab. Purely
-informational - it never changes the rendered image.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="895"/>
+        <source>Which brightness/contrast curve to apply before converting to
+the final display colors. Applies to both CPU and GPU (both GPU
+modes) - no effect under the alternate rendering methods above.</source>
         <translation>Qué curva de brillo/contraste aplicar antes de convertir la imagen a los colores finales de pantalla. Se aplica tanto en CPU como en GPU (en ambos modos de GPU); no tiene efecto con los métodos de renderizado alternativos de arriba.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="910"/>
-        <source>Prints a short summary after the render finishes - how many rays were cast, how many bounces happened, how many shadow rays were traced (rays checking whether a point can see a light), and samples per second.
+        <location filename="../mainwindow_tabs_render.cpp" line="900"/>
+        <source>A rendered scene&apos;s true brightness values have no upper limit - a light bulb might be a hundred times brighter than a wall - but a screen can only show a fixed range of brightness. Tone mapping is the curve used to compress that huge range down into something a screen can actually display.
 
-Purely informational: it never changes the rendered image, it just tells you what the renderer actually did.</source>
+ACES rolls off bright highlights gently, the way film does, giving a soft, filmic look; Reinhard is a simpler, older way of compressing brightness; None just clips anything too bright straight to flat white, which can look harsh.</source>
         <translation>Los valores reales de brillo de una escena renderizada no tienen límite superior (una bombilla puede ser cien veces más brillante que una pared), pero una pantalla solo puede mostrar un rango de brillo limitado. El mapeo tonal es la curva que se usa para comprimir ese rango tan amplio en algo que una pantalla pueda mostrar de verdad.
 
 ACES atenúa las zonas muy brillantes de forma suave, como hace el cine, dando un aspecto suave y cinematográfico; Reinhard es una forma más simple y antigua de comprimir el brillo; None simplemente recorta todo lo que sea demasiado brillante y lo deja en blanco puro, lo que puede verse duro.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="919"/>
-        <source>Turns on extra GPU-side correctness checks, which have a real
-performance cost each time the GPU runs. GPU only, meant for
-debugging, not routine use.</source>
-        <translation>Muestra un pequeño resumen de estadísticas al terminar el renderizado (rayos lanzados, rebotes, rayos de sombra, muestras por segundo) en la pestaña Registro. Es puramente informativo: nunca cambia la imagen renderizada.</translation>
+        <location filename="../mainwindow_tabs_render.cpp" line="913"/>
+        <source>Print a small end-of-render statistics summary (rays cast,
+bounces, shadow rays, samples/sec) to the Log tab. Purely
+informational - it never changes the rendered image.</source>
+        <translation>Imprime en la pestaña Registro un pequeño resumen de estadísticas al final del renderizado (rayos lanzados, rebotes, rayos de sombra, muestras/s). Es puramente informativo: nunca cambia la imagen renderizada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="924"/>
-        <source>Turns on extra correctness checks inside the GPU rendering process itself, catching certain kinds of bugs that would otherwise silently produce a wrong image or crash unpredictably.
+        <location filename="../mainwindow_tabs_render.cpp" line="918"/>
+        <source>Prints a short summary after the render finishes - how many rays were cast, how many bounces happened, how many shadow rays were traced (rays checking whether a point can see a light), and samples per second.
 
-It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
-
-Grayed out? This is GPU-only - switch Renderer to GPU on the Settings tab to use it.</source>
-        <translation>Muestra un breve resumen al terminar el renderizado: cuántos rayos se lanzaron, cuántos rebotes hubo, cuántos rayos de sombra se trazaron (rayos que comprueban si un punto puede ver una luz) y las muestras por segundo.
-
-Es puramente informativo: nunca cambia la imagen renderizada, solo te dice lo que hizo realmente el renderizador.</translation>
+Purely informational: it never changes the rendered image, it just tells you what the renderer actually did.</source>
+        <translation>Muestra un breve resumen cuando termina el renderizado: cuántos rayos se lanzaron, cuántos rebotes hubo, cuántos rayos de sombra se trazaron (rayos que comprueban si un punto ve una luz) y las muestras por segundo. Es puramente informativo: nunca cambia la imagen renderizada, solo te dice lo que el renderizador hizo realmente.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="970"/>
-        <source>Runs an AI denoiser on the finished render to smooth out
-graininess, using extra information about each pixel&apos;s base
-color and surface direction to do a better job than a plain
-blur. GPU only, both GPU modes (recursive and wavefront each
-have their own denoiser).</source>
-        <translation>Activa comprobaciones adicionales de corrección en el lado de la GPU, que tienen un coste real de rendimiento cada vez que se ejecuta la GPU. Solo en GPU, pensado para depuración, no para uso habitual.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="983"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="994"/>
         <source>Blends between the grainy original and the fully denoised
 result (0.0 = fully denoised, 1.0 = original grainy image).
 Raise this toward 1.0 to keep back more fine texture/grain that
 full-strength denoising can smooth away.</source>
-        <translation>Activa comprobaciones adicionales de corrección dentro del propio proceso de renderizado en GPU, que detectan ciertos tipos de errores que, de otro modo, producirían en silencio una imagen incorrecta o provocarían un fallo impredecible.
-
-Es una ayuda para depurar pensada para quienes trabajan en el propio código de GPU del renderizador, no algo que beneficie a un renderizado normal: tiene un coste real de rendimiento y no cambia el aspecto de un renderizado correcto.
-
-¿Está en gris? Esto es exclusivo de GPU; cambia Renderer a GPU en la pestaña Ajustes para poder usarlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="996"/>
-        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
-
-A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
-
-Grayed out? This needs the GPU recursive backend - switch Renderer to GPU (and GPU Backend to Recursive) on the Settings tab to use it.</source>
-        <translation>Aplica un eliminador de ruido basado en IA sobre el renderizado terminado para suavizar el ruido, usando información adicional sobre el color base y la orientación de la superficie de cada píxel para hacerlo mejor que un simple desenfoque. Solo en GPU, en ambos modos (Recursivo y Wavefront tienen cada uno su propio eliminador de ruido).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1035"/>
-        <source>Render only a rectangular slice of the full frame, given as fractions from 0 to 1 of the image&apos;s width and height - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>Mezcla entre la imagen original con ruido y el resultado totalmente sin ruido (0.0 = totalmente sin ruido, 1.0 = imagen original con todo su ruido). Sube este valor hacia 1.0 para conservar más textura fina o grano que un eliminado de ruido a máxima potencia podría suavizar de más.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1046"/>
-        <source>Restricts rendering to a rectangle of the frame, given as
-fractions of the full image from 0 to 1. Both CPU and GPU
-default path tracer only.</source>
-        <translation>El renderizado tiene ruido por naturaleza cuando se usan pocas muestras, por eso más muestras suelen significar una imagen más limpia (aunque también un renderizado más lento).
-
-Un eliminador de ruido es un modelo de IA entrenado para reconocer ese ruido y suavizarlo después, sin necesidad de trazar rayos adicionales: una forma de conseguir una imagen limpia más rápido, a costa de algo de detalle fino. El número de la derecha mezcla entre el original con ruido y el resultado totalmente sin ruido; 0 es totalmente sin ruido (el valor predeterminado); subirlo conserva parte del ruido original, lo cual es útil cuando un eliminado de ruido a máxima potencia suaviza texturas que querías conservar.
-
-¿Está en gris? Esto necesita el backend Recursivo de GPU; cambia Renderer a GPU (y Backend de GPU a Recursivo) en la pestaña Ajustes para poder usarlo.</translation>
+        <location filename="../mainwindow_tabs_render.cpp" line="1047"/>
+        <source>Render only a rectangular slice of the full frame, given as fractions from 0 to 1 of the image&apos;s width and height - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
+        <translation>Renderiza solo un recorte rectangular del fotograma completo, indicado como fracciones de 0 a 1 del ancho y el alto de la imagen. Es útil para probar rápidamente el renderizado de una zona de la escena sin pagar el coste de la imagen entera.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1051"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1064"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame&apos;s width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total number of samples cleans up much faster when it only has to cover a corner of the frame instead of the whole thing.
 
 Off by default (the full frame). If a loaded .pbrt scene file already requests its own crop region, checking this overrides it with the rectangle below; leaving it unchecked lets the scene&apos;s own request (if any) stand.</source>
-        <translation>Renderiza solo un recorte rectangular del fotograma completo, indicado como fracciones de 0 a 1 del ancho y el alto de la imagen. Es útil para probar rápidamente el renderizado de una zona de la escena sin pagar el coste de la imagen entera.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1095"/>
-        <source>Left (X0):</source>
-        <translation>Izquierda (X0):</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1096"/>
-        <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
-        <translation>Borde izquierdo del rectángulo de recorte, como fracción del ancho total del fotograma (0 = borde izquierdo, 1 = borde derecho).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1098"/>
-        <source>Top (Y0):</source>
-        <translation>Arriba (Y0):</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1099"/>
-        <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
-        <translation>Borde superior del rectángulo de recorte, como fracción del alto total del fotograma (0 = borde superior, 1 = borde inferior).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1101"/>
-        <source>Right (X1):</source>
-        <translation>Derecha (X1):</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1102"/>
-        <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
-        <translation>Borde derecho del rectángulo de recorte, como fracción del ancho total del fotograma - debe ser mayor que Izquierda (X0) para renderizar algo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1104"/>
-        <source>Bottom (Y1):</source>
-        <translation>Abajo (Y1):</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1105"/>
-        <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
-        <translation>Borde inferior del rectángulo de recorte, como fracción del alto total del fotograma - debe ser mayor que Arriba (Y0) para renderizar algo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1145"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="475"/>
-        <source>Depth of Field</source>
-        <translation>Limita el renderizado a un rectángulo del fotograma, indicado como fracciones de la imagen completa de 0 a 1. Solo en el Trazador de rayos predeterminado, tanto en CPU como en GPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1148"/>
-        <source>Override the active scene&apos;s own camera lens diameter/focus distance without editing its scene file - only affects scenes loaded from a scene file; built-in demo-gallery scenes keep their own fixed camera.</source>
         <translation>Renderiza solo un recorte rectangular del fotograma completo (todo lo que quede fuera se deja en negro) en lugar de la imagen entera. El rectángulo se indica con cuatro fracciones del ancho y el alto del fotograma completo, de 0 (borde izquierdo/superior) a 1 (borde derecho/inferior), así que mantiene la misma forma sin importar la resolución.
 
 Es útil para iterar más rápido sobre una parte problemática de una escena grande y lenta: el mismo número total de muestras limpia mucho más rápido cuando solo tiene que cubrir una esquina del fotograma en lugar de todo él.
@@ -4130,73 +3606,117 @@ Es útil para iterar más rápido sobre una parte problemática de una escena gr
 Desactivado por defecto (se usa el fotograma completo). Si un archivo de escena .pbrt cargado ya pide su propia zona de recorte, marcar esto la sustituye por el rectángulo de abajo; si lo dejas sin marcar, se respeta la petición de la propia escena (si tiene alguna).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1157"/>
-        <source>Override depth of field (--aperture/--focus-distance)</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="1108"/>
+        <source>Left (X0):</source>
+        <translation>Izquierda (X0):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1109"/>
+        <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
+        <translation>Borde izquierdo del rectángulo de recorte, como fracción del ancho total del fotograma (0 = borde izquierdo, 1 = borde derecho).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1111"/>
+        <source>Top (Y0):</source>
+        <translation>Arriba (Y0):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1112"/>
+        <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
+        <translation>Borde superior del rectángulo de recorte, como fracción del alto total del fotograma (0 = borde superior, 1 = borde inferior).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1114"/>
+        <source>Right (X1):</source>
+        <translation>Derecha (X1):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1115"/>
+        <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
+        <translation>Borde derecho del rectángulo de recorte, como fracción del ancho total del fotograma - debe ser mayor que Izquierda (X0) para renderizar algo.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1117"/>
+        <source>Bottom (Y1):</source>
+        <translation>Abajo (Y1):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1118"/>
+        <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
+        <translation>Borde inferior del rectángulo de recorte, como fracción del alto total del fotograma - debe ser mayor que Arriba (Y0) para renderizar algo.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1158"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="480"/>
+        <source>Depth of Field</source>
         <translation>Profundidad de campo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1159"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1161"/>
+        <source>Override the active scene&apos;s own camera lens diameter/focus distance without editing its scene file - only affects scenes loaded from a scene file; built-in demo-gallery scenes keep their own fixed camera.</source>
+        <translation>Anula el diámetro del objetivo y la distancia de enfoque de la cámara de la escena activa sin editar su archivo de escena. Solo afecta a las escenas cargadas desde un archivo de escena; las escenas de la galería de demostraciones integrada mantienen su propia cámara fija.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1170"/>
+        <source>Override depth of field (--aperture/--focus-distance)</source>
+        <translation>Anular la profundidad de campo (--aperture/--focus-distance)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1172"/>
         <source>Sets the camera&apos;s lens diameter and focus distance, overriding
 whatever the scene&apos;s own Camera directive requests. Only affects
 scenes loaded from a scene file - has no effect on the built-in
 demo gallery, which keeps its own fixed camera.</source>
-        <translation>Anula el diámetro del objetivo y la distancia de enfoque de la cámara de la escena activa sin editar su archivo de escena. Solo afecta a las escenas cargadas desde un archivo de escena; las escenas de la galería de demostraciones integrada mantienen su propia cámara fija.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1165"/>
-        <source>Thin-lens depth-of-field blur is already fully supported for any scene loaded from a scene file - a &quot;lensradius&quot;/&quot;focaldistance&quot; Camera directive in the file is all it takes. This lets you set or change that without hand-editing the file: Aperture is the lens diameter in world units (0 = pinhole-sharp, no blur), and Focus Distance is how far away the plane of sharp focus sits.
-
-Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loaded from a scene file - the built-in demo gallery&apos;s scenes keep their own author-chosen fixed camera regardless of this setting.</source>
-        <translation>Anular la profundidad de campo (--aperture/--focus-distance)</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1183"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="659"/>
-        <source>Aperture:</source>
         <translation>Define el diámetro del objetivo y la distancia de enfoque de la cámara, anulando lo que pida la propia directiva Camera de la escena. Solo afecta a las escenas cargadas desde un archivo de escena; no tiene efecto en la galería de demostraciones integrada, que mantiene su propia cámara fija.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1184"/>
-        <source>Lens diameter in world units - larger values blur more. 0 means pinhole-sharp (no blur).</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="1178"/>
+        <source>Thin-lens depth-of-field blur is already fully supported for any scene loaded from a scene file - a &quot;lensradius&quot;/&quot;focaldistance&quot; Camera directive in the file is all it takes. This lets you set or change that without hand-editing the file: Aperture is the lens diameter in world units (0 = pinhole-sharp, no blur), and Focus Distance is how far away the plane of sharp focus sits.
+
+Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loaded from a scene file - the built-in demo gallery&apos;s scenes keep their own author-chosen fixed camera regardless of this setting.</source>
         <translation>El desenfoque de profundidad de campo tipo &quot;lente fina&quot; ya funciona completamente en cualquier escena cargada desde un archivo de escena; basta con una directiva Camera con &quot;lensradius&quot;/&quot;focaldistance&quot; en el archivo. Esto te permite definir o cambiar eso sin editar el archivo a mano: Apertura es el diámetro del objetivo en unidades de la escena (0 = nitidez total, sin desenfoque), y Distancia de enfoque es a qué distancia se sitúa el plano donde todo se ve perfectamente nítido.
 
 Desactivado por defecto (se respeta la cámara propia de la escena, sin cambios). Solo afecta a las escenas cargadas desde un archivo de escena; las escenas de la galería de demostraciones integrada mantienen la cámara fija elegida por su autor, sin importar este ajuste.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1195"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="676"/>
-        <source>Focus Distance:</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="1196"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="664"/>
+        <source>Aperture:</source>
         <translation>Apertura:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1196"/>
-        <source>Distance from the camera to the plane of sharp focus, in world units.</source>
+        <location filename="../mainwindow_tabs_render.cpp" line="1197"/>
+        <source>Lens diameter in world units - larger values blur more. 0 means pinhole-sharp (no blur).</source>
         <translation>Diámetro del objetivo en unidades de la escena; los valores más altos generan más desenfoque. 0 significa nitidez total (sin desenfoque).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1212"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1208"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="681"/>
+        <source>Focus Distance:</source>
+        <translation>Distancia de enfoque:</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1209"/>
+        <source>Distance from the camera to the plane of sharp focus, in world units.</source>
+        <translation>Distancia desde la cámara hasta el plano de enfoque nítido, en unidades de la escena.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1225"/>
         <source>Reproducibility</source>
         <translation>Reproducibilidad</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1215"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1228"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>Fija la semilla aleatoria para que un renderizado se pueda reproducir exactamente, píxel a píxel, en una ejecución posterior - útil para comparar cambios de ajustes sin que las diferencias de ruido aleatorio confundan la comparación.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1223"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1236"/>
         <source>Reproducible render (--seed)</source>
         <translation>Renderizado reproducible (--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1225"/>
-        <source>Makes this render reproduce byte-for-byte on a rerun with the
-same seed. Both CPU and GPU default path tracer only.</source>
-        <translation>Hace que este renderizado se reproduzca byte a byte al repetirse con la
-misma semilla. Solo para el trazador de trayectorias por defecto, tanto en CPU como en GPU.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1229"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1244"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -4205,37 +3725,37 @@ Off by default (genuinely random every render).</source>
 Desactivado por defecto (aleatorio genuino en cada renderizado).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1249"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1264"/>
         <source>Seed:</source>
         <translation>Semilla:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1250"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1265"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>El entero específico usado para sembrar el generador de números aleatorios del renderizado. Solo tiene efecto cuando Renderizado reproducible de arriba está marcado - la misma semilla en la misma escena/ajustes siempre produce un ruido idéntico píxel a píxel.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1274"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1289"/>
         <source>Render Options</source>
         <translation>Opciones de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1474"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1521"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>Muestra en el Explorador la carpeta que contiene el renderizado de la pestaña activa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1486"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1533"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>Abre el renderizado de la pestaña activa en el visor del sistema</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1512"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1559"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1586"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1633"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -4244,284 +3764,210 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/Abajo para volar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1612"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1659"/>
         <source>Live Preview — %1</source>
         <translation>Vista previa en vivo — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1617"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1664"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>Vista previa interactiva por GPU - arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/Abajo para volar, Izquierda/Derecha para orbitar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1643"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1690"/>
         <source>Select a scene first</source>
         <translation>Selecciona primero una escena</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1714"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1780"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1730"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1796"/>
         <source>Stopped</source>
         <translation>Detenido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1756"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1822"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En vivo (con ruido eliminado, sin acumular)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1758"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1824"/>
         <source>%1 samples</source>
         <translation>%1 muestras</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1783"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1849"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[Vista previa en vivo] ERROR: %1</translation>
     </message>
     <message>
-        <source>Live Preview: %1</source>
-        <translation type="vanished">Vista previa en vivo: %1</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2399"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2505"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Por qué se ve así&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="669"/>
         <location filename="../mainwindow_slots.cpp" line="708"/>
-        <location filename="../mainwindow_tabs.cpp" line="457"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="2525"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="2538"/>
+        <location filename="../mainwindow_tabs.cpp" line="508"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2631"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2644"/>
         <source>Pause</source>
         <translation>Pausar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2538"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2644"/>
         <source>Play</source>
         <translation>Reproducir</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2548"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2654"/>
         <source>Video playback error (%1): %2</source>
         <translation>Error de reproducción de video (%1): %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="48"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="129"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="53"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="134"/>
         <source>Progress</source>
         <translation>Progreso</translation>
     </message>
     <message>
-        <source>Live status for whichever job is currently rendering - which job it is, percent complete, and elapsed/estimated time. Pause, Stop, and Abandon act on this job specifically.</source>
-        <translation type="vanished">Estado en vivo del trabajo que se esté renderizando actualmente - cuál es, porcentaje completado, y tiempo transcurrido/estimado. Pausar, Detener y Abandonar actúan específicamente sobre este trabajo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="92"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="97"/>
         <source>Render Queue</source>
         <translation>Cola de renderizado</translation>
     </message>
     <message>
-        <source>Jobs queued behind the one currently rendering - clicking Render while a job is already in progress adds another here instead of interrupting it. Renders in order, automatically, as each one finishes.</source>
-        <translation type="vanished">Trabajos en cola detrás del que se está renderizando actualmente - hacer clic en Renderizar mientras ya hay un trabajo en curso añade otro aquí en lugar de interrumpirlo. Se renderizan en orden, automáticamente, a medida que cada uno termina.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="50"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="55"/>
         <source>Shows what&apos;s rendering right now - which job it is, how far along it is (as a percentage), and how much time has passed and is left. Pause, Stop, and Abandon only affect this job.</source>
-        <translation>Distancia de enfoque:</translation>
+        <translation>Muestra qué se está renderizando en este momento: de qué trabajo se trata, cuánto ha avanzado (como porcentaje) y cuánto tiempo ha pasado y cuánto queda. Pausar, Detener y Abandonar solo afectan a este trabajo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="94"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="99"/>
         <source>Jobs waiting their turn behind the one currently rendering - clicking Render while something is already in progress adds another job here instead of interrupting it. Waiting jobs start automatically, one after another, as each one finishes.</source>
-        <translation>Distancia desde la cámara hasta el plano de enfoque nítido, en unidades de la escena.</translation>
+        <translation>Los trabajos que esperan su turno detrás del que se está renderizando ahora mismo. Si haces clic en Renderizar mientras ya hay algo en curso, se añade otro trabajo aquí en lugar de interrumpir el actual. Los trabajos en espera se inician automáticamente, uno tras otro, a medida que cada uno termina.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="109"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="114"/>
         <source>Re&amp;move Selected</source>
         <translation>Elimina&amp;r seleccionado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="110"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="115"/>
         <source>Remove the selected job from the render queue</source>
         <translation>Elimina el trabajo seleccionado de la cola de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="115"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="120"/>
         <source>Clear &amp;Queue</source>
         <translation>&amp;Vaciar cola</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="117"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="122"/>
         <source>Remove every job from the render queue</source>
         <translation>Elimina todos los trabajos de la cola de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="162"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="216"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="228"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="285"/>
         <source>&amp;Copy All</source>
         <translation>&amp;Copiar todo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="183"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="249"/>
         <source>Log Output</source>
         <translation>Salida de registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="200"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="266"/>
         <source>Click &quot;Run Diagnostics&quot; to check GPU/CUDA/OptiX availability, CPU/RAM, disk space, and scene asset availability.</source>
         <translation>Haz clic en &quot;Ejecutar diagnóstico&quot; para comprobar la disponibilidad de GPU/CUDA/OptiX, la CPU/RAM, el espacio en disco y la disponibilidad de los recursos de la escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="211"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="280"/>
         <source>&amp;Run Diagnostics</source>
         <translation>&amp;Ejecutar diagnóstico</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="221"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="290"/>
         <source>&amp;Save Report…</source>
         <translation>&amp;Guardar informe…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="232"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="301"/>
         <source>Diagnostics</source>
         <translation>Diagnóstico</translation>
     </message>
     <message>
-        <source>⚠ These settings only take effect when Output Mode (Basic Settings tab) is set to &quot;Generate Video&quot;.</source>
-        <translation type="vanished">⚠ Esta configuración solo tiene efecto cuando el Modo de Salida (pestaña de Configuración Básica) está establecido en &quot;Generar video&quot;.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="964"/>
+        <location filename="../mainwindow_tabs.cpp" line="1025"/>
         <source>Video Generation Settings</source>
         <translation>Configuración de generación de video</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="991"/>
+        <location filename="../mainwindow_tabs.cpp" line="1052"/>
         <source>(custom - choose settings below)</source>
         <translation>(personalizado - elige la configuración abajo)</translation>
     </message>
     <message>
-        <source>Famous ray-tracing reference scenes and motions, pre-tuned so you don&apos;t
-have to set the scene, camera path, frame count, fps, and speed by hand.
-Selecting one changes the scene on the Basic tab too. Choosing any of the
-other controls on this tab afterward is fine - they simply stop matching
-the preset, the same as if you had built the same settings by hand.</source>
-        <translation type="vanished">Escenas y movimientos de referencia famosos del trazado de rayos, preajustados para que
-no tengas que fijar a mano la escena, la trayectoria de cámara, el número de fotogramas, los fps y la velocidad.
-Seleccionar uno también cambia la escena en la pestaña Básica. Está bien elegir cualquiera de
-los demás controles de esta pestaña después - simplemente dejan de coincidir con
-el preajuste, igual que si hubieras configurado esos mismos ajustes a mano.</translation>
-    </message>
-    <message>
-        <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
-
-Picking one fills in every field below (and the scene on the Basic tab) - you can still change anything afterward, it just stops matching the preset once you do.</source>
-        <translation type="vanished">Un paquete ya preparado de escena + trayectoria de cámara + número de fotogramas + fps + velocidad, ajustado para que el video resultante se vea bien sin tener que elegir tú mismo cada ajuste.
-
-Elegir uno rellena todos los campos de abajo (y la escena en la pestaña Básica) - aún puedes cambiar cualquier cosa después, simplemente deja de coincidir con el preajuste al hacerlo.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1016"/>
+        <location filename="../mainwindow_tabs.cpp" line="1077"/>
         <source>Orbit (Circular rotation)</source>
         <translation>Órbita (rotación circular)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1017"/>
+        <location filename="../mainwindow_tabs.cpp" line="1078"/>
         <source>Linear (Straight path)</source>
         <translation>Lineal (trayectoria recta)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1018"/>
+        <location filename="../mainwindow_tabs.cpp" line="1079"/>
         <source>Figure-8 (Lemniscate)</source>
         <translation>Ocho (lemniscata)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1019"/>
+        <location filename="../mainwindow_tabs.cpp" line="1080"/>
         <source>Spiral (Zoom-in)</source>
         <translation>Espiral (acercamiento)</translation>
     </message>
     <message>
-        <source>How the camera moves over the frame sequence:
-  Orbit     — full circle around the scene, always looking at its centre
-  Linear    — straight sweep past the scene
-  Figure-8  — lemniscate, crossing back through the middle
-  Spiral    — orbits while moving steadily closer
-Every path starts from the camera position on the Advanced tab.</source>
-        <translation type="vanished">Cómo se mueve la cámara a lo largo de la secuencia de fotogramas:
-  Órbita    — círculo completo alrededor de la escena, mirando siempre hacia su centro
-  Lineal    — barrido recto que pasa junto a la escena
-  Ocho      — lemniscata, cruzando de vuelta por el centro
-  Espiral   — orbita mientras se acerca de forma constante
-Cada trayectoria empieza desde la posición de cámara de la pestaña Avanzada.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1033"/>
+        <location filename="../mainwindow_tabs.cpp" line="1094"/>
         <source>Camera Path:</source>
         <translation>Trayectoria de cámara:</translation>
     </message>
     <message>
-        <source>How the camera moves across the sequence of frames.
-
-Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a lemniscate, crossing back through the middle. Spiral orbits while steadily moving closer. Every path starts from wherever the camera is positioned on the Advanced tab.</source>
-        <translation type="vanished">Cómo se mueve la cámara a lo largo de la secuencia de fotogramas.
-
-Órbita gira completamente alrededor de la escena, mirando siempre hacia su centro - la clásica toma de &quot;plato giratorio&quot;. Lineal barre en línea recta. Ocho traza una lemniscata, cruzando de vuelta por el centro. Espiral orbita mientras se acerca de forma constante. Cada trayectoria empieza desde donde esté posicionada la cámara en la pestaña Avanzada.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1063"/>
+        <location filename="../mainwindow_tabs.cpp" line="1124"/>
         <source> frames</source>
         <translation> fotogramas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1065"/>
+        <location filename="../mainwindow_tabs.cpp" line="1126"/>
         <source>Frame Count:</source>
         <translation>Número de fotogramas:</translation>
     </message>
     <message>
-        <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
-
-Paired with Frames Per Second below to determine the video&apos;s total length in seconds.</source>
-        <translation type="vanished">Cuántas imágenes individuales componen el video - cada una es un renderizado completo e independiente, así que esto multiplica directamente el tiempo total de renderizado (100 fotogramas tarda aproximadamente 100 veces más que una imagen con la misma configuración).
-
-Se combina con Fotogramas Por Segundo, abajo, para determinar la duración total del video en segundos.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1078"/>
+        <location filename="../mainwindow_tabs.cpp" line="1139"/>
         <source> fps</source>
         <translation> fps</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1080"/>
+        <location filename="../mainwindow_tabs.cpp" line="1141"/>
         <source>Frames Per Second:</source>
         <translation>Fotogramas por segundo:</translation>
     </message>
     <message>
-        <source>How many of the rendered frames play per second of video.
-
-Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count above) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
-        <translation type="vanished">Cuántos de los fotogramas renderizados se reproducen por segundo de video.
-
-No cambia cuántos fotogramas se renderizan (eso es Número de Fotogramas, arriba) - solo la velocidad de reproducción, y por tanto cuántos segundos dura el video terminado (Número de Fotogramas dividido entre FPS).</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1104"/>
-        <location filename="../mainwindow_tabs.cpp" line="1240"/>
-        <location filename="../mainwindow_tabs.cpp" line="1258"/>
+        <location filename="../mainwindow_tabs.cpp" line="1165"/>
+        <location filename="../mainwindow_tabs.cpp" line="1301"/>
+        <location filename="../mainwindow_tabs.cpp" line="1319"/>
         <source>x</source>
         <translation>x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1106"/>
+        <location filename="../mainwindow_tabs.cpp" line="1167"/>
         <source>Movement Speed:</source>
         <translation>Velocidad de movimiento:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1107"/>
+        <location filename="../mainwindow_tabs.cpp" line="1168"/>
         <source>A multiplier on how many frames the camera&apos;s full path is spread across - not a change to the path itself, which always completes the same full sweep.
 
 Speed 0.5x renders twice as many frames to cover the same journey more slowly and smoothly; speed 2x renders half as many frames, covering the same journey faster.</source>
@@ -4530,42 +3976,14 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
 Una velocidad de 0.5x renderiza el doble de fotogramas para cubrir el mismo recorrido de forma más lenta y suave; una velocidad de 2x renderiza la mitad de fotogramas, cubriendo el mismo recorrido más rápido.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1143"/>
+        <location filename="../mainwindow_tabs.cpp" line="1204"/>
         <source>%1 frames</source>
         <translation>%1 fotogramas</translation>
     </message>
     <message>
-        <source>%1 frames (base %2 × 1/%3x speed)%4</source>
-        <translation type="vanished">%1 fotogramas (base %2 × 1/%3x velocidad)%4</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs.cpp" line="1146"/>
+        <location filename="../mainwindow_tabs.cpp" line="1207"/>
         <source> - capped at 5000</source>
         <translation> - limitado a 5000</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Video Duration:&lt;/b&gt; %1 seconds (%2)&lt;br&gt;&lt;b&gt;Camera Path:&lt;/b&gt; %3, always completes its full sweep regardless of speed&lt;br&gt;&lt;b&gt;Output:&lt;/b&gt; Frames will be saved to &lt;code&gt;output/frames/&lt;/code&gt;</source>
-        <translation type="vanished">&lt;b&gt;Duración del video:&lt;/b&gt; %1 segundos (%2)&lt;br&gt;&lt;b&gt;Trayectoria de cámara:&lt;/b&gt; %3, siempre completa su recorrido completo sin importar la velocidad&lt;br&gt;&lt;b&gt;Salida:&lt;/b&gt; Los fotogramas se guardarán en &lt;code&gt;output/frames/&lt;/code&gt;</translation>
-    </message>
-    <message>
-        <source>ℹ️ Requirements</source>
-        <translation type="vanished">ℹ️ Requisitos</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Requires ffmpeg:&lt;/b&gt; Video encoding uses ffmpeg (libx264), which must be installed and on your PATH.&lt;br&gt;&lt;small&gt;Get it from &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; if the render log reports it&apos;s missing.&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Automatic Assembly:&lt;/b&gt; After rendering all frames, the video will be automatically assembled and opened.</source>
-        <translation type="vanished">&lt;b&gt;Requiere ffmpeg:&lt;/b&gt; La codificación de video usa ffmpeg (libx264), que debe estar instalado y en tu PATH.&lt;br&gt;&lt;small&gt;Consíguelo en &lt;a href=&quot;https://ffmpeg.org/download.html&quot;&gt;ffmpeg.org&lt;/a&gt; si el registro de renderizado indica que falta.&lt;/small&gt;&lt;br&gt;&lt;br&gt;&lt;b&gt;Montaje automático:&lt;/b&gt; Después de renderizar todos los fotogramas, el video se montará y abrirá automáticamente.</translation>
-    </message>
-    <message>
-        <source>Usage Instructions</source>
-        <translation type="vanished">Instrucciones de uso</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Step 1:&lt;/b&gt; Configure video settings (camera path, frames, FPS)&lt;br&gt;&lt;b&gt;Step 2:&lt;/b&gt; Configure quality settings in Basic/Advanced tabs&lt;br&gt;&lt;b&gt;Step 3:&lt;/b&gt; Click START VIDEO RENDER and wait&lt;br&gt;&lt;b&gt;Step 4:&lt;/b&gt; Video automatically assembles and opens when done!&lt;br&gt;&lt;br&gt;&lt;b&gt;Tips:&lt;/b&gt;&lt;br&gt;• Use GPU mode for faster rendering&lt;br&gt;• Lower samples/pixel for quick previews (10-50)&lt;br&gt;• Higher samples/pixel for production quality (100-500)&lt;br&gt;• Typical render time: 1-5 minutes (GPU), 15-60 minutes (CPU)</source>
-        <translation type="vanished">&lt;b&gt;Paso 1:&lt;/b&gt; Configura los ajustes de video (trayectoria de cámara, fotogramas, FPS)&lt;br&gt;&lt;b&gt;Paso 2:&lt;/b&gt; Configura los ajustes de calidad en las pestañas Básica/Avanzada&lt;br&gt;&lt;b&gt;Paso 3:&lt;/b&gt; Haz clic en INICIAR RENDERIZADO DE VIDEO y espera&lt;br&gt;&lt;b&gt;Paso 4:&lt;/b&gt; ¡El video se monta y abre automáticamente al terminar!&lt;br&gt;&lt;br&gt;&lt;b&gt;Consejos:&lt;/b&gt;&lt;br&gt;• Usa el modo GPU para un renderizado más rápido&lt;br&gt;• Baja las muestras/píxel para vistas previas rápidas (10-50)&lt;br&gt;• Sube las muestras/píxel para calidad de producción (100-500)&lt;br&gt;• Tiempo de renderizado típico: 1-5 minutos (GPU), 15-60 minutos (CPU)</translation>
-    </message>
-    <message>
-        <source>Video Settings</source>
-        <translation type="vanished">Configuración de video</translation>
     </message>
     <message>
         <location filename="../theme_switch.cpp" line="50"/>
@@ -4633,91 +4051,13 @@ Una velocidad de 0.5x renderiza el doble de fotogramas para cubrir el mismo reco
         <translation>Elegir fuente</translation>
     </message>
     <message>
-        <source>The general-purpose importance-sampled path tracer used everywhere else in this app - next-event estimation plus BSDF importance sampling, combined via the power heuristic (MIS). The well-tested default; start here unless you have a specific reason not to.
-
-The alternates below trade that generality for a specific technique - photon mapping, bidirectional/Metropolis light transport, or a handful of unbiased reference and debug integrators. All are CPU-only except SPPM, and none can be combined with Generate Video mode. Sampler/Spectral/Exposure/Tonemap/Stats above only affect this default Path Tracer.</source>
-        <translation type="vanished">El trazador de rayos de propósito general con muestreo por importancia usado en el resto de esta aplicación - estimación de eventos siguientes más muestreo por importancia del BSDF, combinados mediante la heurística de potencia (MIS). El predeterminado, bien probado; empieza aquí a menos que tengas una razón específica para no hacerlo.
-
-Las alternativas de abajo cambian esa generalidad por una técnica específica - mapeo de fotones, transporte de luz bidireccional/Metropolis, o un puñado de integradores de referencia y depuración sin sesgo. Todos son solo CPU excepto SPPM, y ninguno puede combinarse con el modo Generar Video. Muestreador/Espectral/Exposición/Mapeo tonal/Estadísticas de arriba solo afectan a este Trazador de rayos predeterminado.</translation>
-    </message>
-    <message>
-        <source>Stochastic Progressive Photon Mapping (pbrt-v4 style). Best for hard caustic/glass scenes ordinary path tracing struggles to resolve.
-
-CPU: verified end-to-end on the Cornell Rough Glass scene; other scenes are unverified and only support lambertian + delta-BSDF materials.
-
-GPU: capability-checked per scene - Lambertian/DiffuseLight, RoughDielectric, Metal, Dielectric, Conductor, RoughMetal, and DiffuseTransmission are supported (area lights only); an unsupported scene falls back to an error - use CPU SPPM instead.</source>
-        <translation type="vanished">Stochastic Progressive Photon Mapping (al estilo pbrt-v4). Ideal para escenas con cáusticas difíciles/vidrio con las que el trazado de rayos normal tiene problemas para resolver.
-
-CPU: verificado de extremo a extremo en la escena Cornell Rough Glass; otras escenas no están verificadas y solo admiten materiales lambertianos + BSDF delta.
-
-GPU: comprobación de capacidad por escena - se admiten Lambertian/DiffuseLight, RoughDielectric, Metal, Dielectric, Conductor, RoughMetal y DiffuseTransmission (solo luces de área); una escena no admitida cae a un error - usa SPPM de CPU en su lugar.</translation>
-    </message>
-    <message>
-        <source>Bidirectional Path Tracing - traces subpaths from both the camera and the light source and connects every pair, better for some difficult lighting configurations path tracing alone struggles with.
-
-CPU only. Area lights only (no punctual/sky-light NEE yet). Verified end-to-end on the Cornell Box scene only; other scenes are unverified.</source>
-        <translation type="vanished">Trazado bidireccional de rayos - traza subcaminos tanto desde la cámara como desde la fuente de luz y conecta cada par, mejor para algunas configuraciones de iluminación difícil con las que el trazado de rayos por sí solo tiene problemas.
-
-Solo CPU. Solo luces de área (aún sin NEE de luces puntuales/de cielo). Verificado de extremo a extremo solo en la escena Cornell Box; otras escenas no están verificadas.</translation>
-    </message>
-    <message>
-        <source>Metropolis Light Transport, built directly on BDPT&apos;s subpath machinery - uses a Markov chain to concentrate samples on light paths that already contribute, useful for scenes with hard-to-find bright paths.
-
-CPU only. Same area-lights-only scope and single-scene (Cornell Box) verification as BDPT.</source>
-        <translation type="vanished">Metropolis Light Transport, construido directamente sobre la maquinaria de subcaminos de BDPT - usa una cadena de Markov para concentrar las muestras en caminos de luz que ya contribuyen, útil para escenas con caminos brillantes difíciles de encontrar.
-
-Solo CPU. Mismo alcance de solo luces de área y la misma verificación de una única escena (Cornell Box) que BDPT.</translation>
-    </message>
-    <message>
-        <source>pbrt-v4&apos;s unbiased reference path tracer - uniform-sphere sampling, no next-event estimation or multiple importance sampling. Simpler and noisier than the default path tracer; useful as a ground-truth reference to check other integrators against.
-
-CPU only.</source>
-        <translation type="vanished">El trazador de rayos de referencia sin sesgo de pbrt-v4 - muestreo de esfera uniforme, sin estimación de eventos siguientes ni muestreo de importancia múltiple. Más simple y ruidoso que el trazador de rayos predeterminado; útil como referencia de verdad fundamental para comprobar otros integradores.
-
-Solo CPU.</translation>
-    </message>
-    <message>
-        <source>A visualization/debug mode, not a lit render - measures how occluded each point is by nearby geometry, ignoring material color and indirect lighting entirely.
-
-CPU only.</source>
-        <translation type="vanished">Un modo de visualización/depuración, no un renderizado iluminado - mide cuán ocluido está cada punto por la geometría cercana, ignorando por completo el color del material y la iluminación indirecta.
-
-Solo CPU.</translation>
-    </message>
-    <message>
-        <source>pbrt-v4&apos;s canonical reference path tracer - optional next-event estimation and optional BSDF importance sampling, both on by default (see the toggles below).
-
-CPU only. NEE, when enabled, is area-lights-only, the same scope as BDPT/MLT.</source>
-        <translation type="vanished">El trazador de rayos de referencia canónico de pbrt-v4 - estimación de eventos siguientes opcional y muestreo por importancia del BSDF opcional, ambos activados por defecto (ver los interruptores de abajo).
-
-Solo CPU. La NEE, cuando está activada, es solo para luces de área, el mismo alcance que BDPT/MLT.</translation>
-    </message>
-    <message>
-        <source>pbrt-v4&apos;s simplest volumetric path tracer - pure delta tracking, no NEE/MIS/surface BSDFs.
-
-Reachable but medium-free in this integration, so it renders mostly black on ordinary solid-geometry scenes except where a camera ray lands directly on a light - matches pbrt-v4&apos;s own upstream behavior on medium-free scenes.
-
-CPU only.</source>
-        <translation type="vanished">El trazador de rayos volumétrico más simple de pbrt-v4 - delta tracking puro, sin NEE/MIS/BSDF de superficie.
-
-Alcanzable pero sin medio en esta integración, por lo que renderiza mayormente negro en escenas de geometría sólida ordinaria, salvo donde un rayo de cámara incide directamente en una luz - coincide con el comportamiento propio de pbrt-v4 en escenas sin medio.
-
-Solo CPU.</translation>
-    </message>
-    <message>
-        <source>A pure light tracer - the opposite direction of every other integrator here: every sample starts at a light and splats camera-connection contributions into the film, instead of starting at the camera.
-
-CPU only. Area lights only.</source>
-        <translation type="vanished">Un trazador de luz puro - la dirección opuesta a la de cualquier otro integrador aquí: cada muestra empieza en una luz y proyecta contribuciones de conexión con la cámara sobre la película, en lugar de empezar en la cámara.
-
-Solo CPU. Solo luces de área.</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_style.cpp" line="1239"/>
         <source>The general-purpose way this app simulates light, used everywhere else in the program. At each bounce it both aims a ray straight at a light (so straightforward lighting cleans up quickly) and sends a ray off in a direction chosen to match how the surface reflects light, then blends the two results together so the image converges with less speckly noise than either approach alone. It&apos;s the well-tested default; start here unless you have a specific reason not to.
 
 The alternates below trade that general-purpose approach for a specific technique - simulating light as bouncing particles, tracing extra paths starting from the light itself, or a handful of plain reference/debug modes used mainly for testing. All of them run on the CPU only except one (SPPM), and none can be combined with Generate Video mode. The Sampler/Spectral/Exposure/Tonemap/Stats settings above only affect this default Path Tracer.</source>
-        <translation>Muestra qué se está renderizando en este momento: de qué trabajo se trata, cuánto ha avanzado (como porcentaje) y cuánto tiempo ha pasado y cuánto queda. Pausar, Detener y Abandonar solo afectan a este trabajo.</translation>
+        <translation>La forma general en que esta aplicación simula la luz, y la que se usa en el resto del programa. En cada rebote, apunta un rayo directamente a una luz (para que la iluminación directa se limpie rápido) y además envía un rayo en una dirección elegida según cómo refleja la luz esa superficie; luego combina ambos resultados para que la imagen converja con menos ruido moteado que cualquiera de los dos métodos por separado. Es la opción predeterminada, bien probada; empieza por aquí salvo que tengas un motivo concreto para no hacerlo.
+
+Las alternativas de abajo cambian ese enfoque general por una técnica específica: simular la luz como partículas que rebotan, trazar trayectorias adicionales que empiezan desde la propia luz, o un puñado de modos de referencia/depuración sencillos usados sobre todo para pruebas. Todas ellas funcionan solo en CPU, salvo una (SPPM), y ninguna se puede combinar con el modo Generar vídeo. Los ajustes de Muestreador/Espectral/Exposición/Mapeo tonal/Estadísticas de arriba solo afectan a este Trazador de rayos predeterminado.</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1257"/>
@@ -4726,22 +4066,6 @@ The alternates below trade that general-purpose approach for a specific techniqu
 CPU: confirmed to work correctly on the Cornell Rough Glass scene; other scenes haven&apos;t been checked and only support matte surfaces plus perfectly mirror-like or glass-like materials.
 
 GPU: only certain materials are supported, checked per scene - matte surfaces and plain light sources, plus the Rough Dielectric, Metal, Dielectric, Conductor, Rough Metal, and Diffuse Transmission material types (and only with lights that have a physical size or shape, not point or sky lights). A scene using anything else shows an error - use the CPU version of this mode instead.</source>
-        <translation>Los trabajos que esperan su turno detrás del que se está renderizando ahora mismo. Si haces clic en Renderizar mientras ya hay algo en curso, se añade otro trabajo aquí en lugar de interrumpir el actual. Los trabajos en espera se inician automáticamente, uno tras otro, a medida que cada uno termina.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_style.cpp" line="1276"/>
-        <source>Builds partial light paths starting from both the camera and the light source, then connects every pair of them together. This can handle some tricky lighting setups - like light squeezing through a narrow gap - better than tracing from the camera alone.
-
-CPU only. Only works with lights that have a physical size or shape (point lights and a sky/environment light aren&apos;t supported yet). Confirmed to work correctly on the Cornell Box scene only; other scenes haven&apos;t been checked.</source>
-        <translation>La forma general en que esta aplicación simula la luz, y la que se usa en el resto del programa. En cada rebote, apunta un rayo directamente a una luz (para que la iluminación directa se limpie rápido) y además envía un rayo en una dirección elegida según cómo refleja la luz esa superficie; luego combina ambos resultados para que la imagen converja con menos ruido moteado que cualquiera de los dos métodos por separado. Es la opción predeterminada, bien probada; empieza por aquí salvo que tengas un motivo concreto para no hacerlo.
-
-Las alternativas de abajo cambian ese enfoque general por una técnica específica: simular la luz como partículas que rebotan, trazar trayectorias adicionales que empiezan desde la propia luz, o un puñado de modos de referencia/depuración sencillos usados sobre todo para pruebas. Todas ellas funcionan solo en CPU, salvo una (SPPM), y ninguna se puede combinar con el modo Generar vídeo. Los ajustes de Muestreador/Espectral/Exposición/Mapeo tonal/Estadísticas de arriba solo afectan a este Trazador de rayos predeterminado.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_style.cpp" line="1287"/>
-        <source>Builds on the same path-connecting approach as Bidirectional Path Tracing above, but once it finds a light path that actually contributes, it keeps taking small random steps nearby to find more paths like it. Useful for scenes where most of the light arrives through just a few hard-to-find routes.
-
-CPU only. Same lights-must-have-a-physical-size-or-shape limitation and single-scene (Cornell Box) verification as Bidirectional Path Tracing above.</source>
         <translation>Simula la luz como una lluvia de partículas que rebotan por la escena y se van asentando cerca de la cámara. Es especialmente bueno para renderizar los patrones de luz brillantes y concentrados que se ven a través del vidrio o en el agua (como el brillo del fondo de una piscina), escenas que al trazado de rayos normal le cuesta mucho limpiar.
 
 CPU: se ha comprobado que funciona correctamente en la escena Cornell Rough Glass; el resto de escenas no se han verificado y solo admiten superficies mate además de materiales perfectamente especulares o de vidrio.
@@ -4749,31 +4073,49 @@ CPU: se ha comprobado que funciona correctamente en la escena Cornell Rough Glas
 GPU: solo se admiten ciertos materiales, comprobados escena por escena: superficies mate y fuentes de luz simples, además de los tipos de material Rough Dielectric, Metal, Dielectric, Conductor, Rough Metal y Diffuse Transmission (y solo con luces que tengan un tamaño o forma físicos, no luces puntuales ni de cielo). Una escena que use cualquier otra cosa muestra un error; en ese caso, usa la versión de CPU de este modo.</translation>
     </message>
     <message>
+        <location filename="../mainwindow_style.cpp" line="1276"/>
+        <source>Builds partial light paths starting from both the camera and the light source, then connects every pair of them together. This can handle some tricky lighting setups - like light squeezing through a narrow gap - better than tracing from the camera alone.
+
+CPU only. Only works with lights that have a physical size or shape (point lights and a sky/environment light aren&apos;t supported yet). Confirmed to work correctly on the Cornell Box scene only; other scenes haven&apos;t been checked.</source>
+        <translation>Construye trayectorias de luz parciales que empiezan tanto desde la cámara como desde la fuente de luz, y luego conecta cada par de ellas entre sí. Esto puede resolver mejor algunas situaciones de iluminación complicadas, como luz que se cuela por una rendija estrecha, que si se trazara solo desde la cámara.
+
+Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos (las luces puntuales y la luz de cielo/entorno todavía no son compatibles). Se ha comprobado que funciona correctamente solo en la escena Cornell Box; el resto de escenas no se han verificado.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_style.cpp" line="1287"/>
+        <source>Builds on the same path-connecting approach as Bidirectional Path Tracing above, but once it finds a light path that actually contributes, it keeps taking small random steps nearby to find more paths like it. Useful for scenes where most of the light arrives through just a few hard-to-find routes.
+
+CPU only. Same lights-must-have-a-physical-size-or-shape limitation and single-scene (Cornell Box) verification as Bidirectional Path Tracing above.</source>
+        <translation>Se basa en el mismo enfoque de conectar trayectorias que BDPT (descrito arriba), pero en cuanto encuentra una trayectoria de luz que realmente aporta algo, sigue dando pequeños pasos aleatorios cerca de ella para encontrar más trayectorias parecidas. Es útil en escenas donde la mayor parte de la luz llega por solo unas pocas rutas difíciles de encontrar.
+
+Solo en CPU. Tiene la misma limitación de que las luces deban tener un tamaño o forma físicos, y la misma verificación limitada a una sola escena (Cornell Box), que BDPT.</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_style.cpp" line="1298"/>
         <source>A bare-bones renderer that bounces rays off surfaces in completely random directions, without any of the shortcuts the default Path Tracer uses to clean up noise faster. It&apos;s simpler, but the image stays grainy for much longer - useful mainly as a trustworthy reference to double-check that other modes are producing correct results.
 
 CPU only.</source>
-        <translation>Construye trayectorias de luz parciales que empiezan tanto desde la cámara como desde la fuente de luz, y luego conecta cada par de ellas entre sí. Esto puede resolver mejor algunas situaciones de iluminación complicadas, como luz que se cuela por una rendija estrecha, que si se trazara solo desde la cámara.
+        <translation>Un renderizador muy básico que hace rebotar los rayos en las superficies en direcciones completamente aleatorias, sin ninguno de los atajos que usa el Trazador de rayos predeterminado para limpiar el ruido más rápido. Es más simple, pero la imagen tarda mucho más en dejar de verse con ruido; sirve sobre todo como referencia de confianza para comprobar que los demás modos producen resultados correctos.
 
-Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos (las luces puntuales y la luz de cielo/entorno todavía no son compatibles). Se ha comprobado que funciona correctamente solo en la escena Cornell Box; el resto de escenas no se han verificado.</translation>
+Solo en CPU.</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1307"/>
         <source>A visualization/debug mode rather than a finished picture - it shows how enclosed or exposed each point on a surface is based on nearby objects blocking it, similar to the soft shadows you see in the corners of a room. It ignores material colors and any bounced light entirely.
 
 CPU only.</source>
-        <translation>Se basa en el mismo enfoque de conectar trayectorias que BDPT (descrito arriba), pero en cuanto encuentra una trayectoria de luz que realmente aporta algo, sigue dando pequeños pasos aleatorios cerca de ella para encontrar más trayectorias parecidas. Es útil en escenas donde la mayor parte de la luz llega por solo unas pocas rutas difíciles de encontrar.
+        <translation>Es un modo de visualización/depuración más que una imagen terminada: muestra lo encerrado o expuesto que está cada punto de una superficie según los objetos cercanos que lo bloquean, parecido a las sombras suaves que se ven en las esquinas de una habitación. Ignora por completo los colores de los materiales y cualquier luz rebotada.
 
-Solo en CPU. Tiene la misma limitación de que las luces deban tener un tamaño o forma físicos, y la misma verificación limitada a una sola escena (Cornell Box), que BDPT.</translation>
+Solo en CPU.</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1315"/>
         <source>A straightforward reference path tracer with two optional shortcuts, both on by default (see the toggles below): aiming some rays directly at lights to clean up noise faster, and biasing bounce directions toward the angles that matter most for how the surface reflects light.
 
 CPU only. When &quot;aim at lights&quot; is on, it only works with lights that have a physical size or shape - the same limitation as Bidirectional Path Tracing and Metropolis Light Transport above.</source>
-        <translation>Un renderizador muy básico que hace rebotar los rayos en las superficies en direcciones completamente aleatorias, sin ninguno de los atajos que usa el Trazador de rayos predeterminado para limpiar el ruido más rápido. Es más simple, pero la imagen tarda mucho más en dejar de verse con ruido; sirve sobre todo como referencia de confianza para comprobar que los demás modos producen resultados correctos.
+        <translation>Un trazador de rayos de referencia sencillo con dos atajos opcionales, ambos activados por defecto (consulta los interruptores de abajo): apuntar algunos rayos directamente a las luces para limpiar el ruido más rápido, y favorecer las direcciones de rebote hacia los ángulos que más importan para cómo refleja la luz esa superficie.
 
-Solo en CPU.</translation>
+Solo en CPU. Cuando &quot;apuntar a las luces&quot; está activado, solo funciona con luces que tengan un tamaño o forma físicos, la misma limitación que BDPT y MLT.</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1326"/>
@@ -4782,7 +4124,9 @@ Solo en CPU.</translation>
 This app doesn&apos;t currently have any smoke/fog to render with it, so on ordinary solid-object scenes it mostly produces a black image, except where a camera ray happens to look straight at a light source - that matches the underlying renderer&apos;s normal behavior when there&apos;s nothing to render.
 
 CPU only.</source>
-        <translation>Es un modo de visualización/depuración más que una imagen terminada: muestra lo encerrado o expuesto que está cada punto de una superficie según los objetos cercanos que lo bloquean, parecido a las sombras suaves que se ven en las esquinas de una habitación. Ignora por completo los colores de los materiales y cualquier luz rebotada.
+        <translation>El modo más simple para renderizar volúmenes translúcidos como humo o niebla: avanza a través del espacio vacío hasta que choca con algo al azar. No apunta rayos a las luces, no hace ninguna de las mezclas para limpiar ruido que usa el Trazador de rayos predeterminado, y no maneja superficies sólidas en absoluto.
+
+Esta aplicación no tiene actualmente ningún humo o niebla con el que renderizar usando este modo, así que en escenas normales con objetos sólidos suele producir una imagen negra, salvo donde un rayo de cámara mira directamente a una fuente de luz, que es el comportamiento normal del renderizador cuando no hay nada que renderizar.
 
 Solo en CPU.</translation>
     </message>
@@ -4791,9 +4135,9 @@ Solo en CPU.</translation>
         <source>Works backwards compared to every other mode here: instead of starting each ray at the camera, it starts at a light source and traces outward, adding its contribution to the image whenever a path happens to connect back to the camera.
 
 CPU only. Only works with lights that have a physical size or shape.</source>
-        <translation>Un trazador de rayos de referencia sencillo con dos atajos opcionales, ambos activados por defecto (consulta los interruptores de abajo): apuntar algunos rayos directamente a las luces para limpiar el ruido más rápido, y favorecer las direcciones de rebote hacia los ángulos que más importan para cómo refleja la luz esa superficie.
+        <translation>Funciona al revés que todos los demás modos de esta lista: en lugar de empezar cada rayo en la cámara, lo empieza en una fuente de luz y lo traza hacia fuera, sumando su contribución a la imagen cada vez que una trayectoria termina conectando de vuelta con la cámara.
 
-Solo en CPU. Cuando &quot;apuntar a las luces&quot; está activado, solo funciona con luces que tengan un tamaño o forma físicos, la misma limitación que BDPT y MLT.</translation>
+Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</translation>
     </message>
     <message>
         <location filename="../mainwindow_style.cpp" line="1360"/>
@@ -4952,38 +4296,38 @@ Solo en CPU. Cuando &quot;apuntar a las luces&quot; está activado, solo funcion
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;Ajustes utilizados&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="319"/>
+        <location filename="../recent_renders.cpp" line="327"/>
         <source>just now</source>
         <translation>ahora mismo</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="320"/>
+        <location filename="../recent_renders.cpp" line="328"/>
         <source>%1 min ago</source>
         <translation>hace %1 min</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="321"/>
+        <location filename="../recent_renders.cpp" line="329"/>
         <source>%1 hr ago</source>
         <translation>hace %1 h</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="322"/>
+        <location filename="../recent_renders.cpp" line="330"/>
         <source>%1 days ago</source>
         <translation>hace %1 días</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="329"/>
+        <location filename="../recent_renders.cpp" line="337"/>
         <source>%1%2 — %3</source>
         <translation>%1%2 — %3</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="331"/>
-        <location filename="../recent_renders.cpp" line="336"/>
+        <location filename="../recent_renders.cpp" line="339"/>
+        <location filename="../recent_renders.cpp" line="344"/>
         <source> · Video</source>
         <translation> · Vídeo</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="339"/>
+        <location filename="../recent_renders.cpp" line="347"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7 — %8</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7 — %8</translation>
     </message>
@@ -4991,526 +4335,104 @@ Solo en CPU. Cuando &quot;apuntar a las luces&quot; está activado, solo funcion
 <context>
     <name>QObject</name>
     <message>
-        <source>Builds the box from shared Cornell-box data: five lambertian walls, a diffuse_light ceiling quad, a rotated axis-aligned box in plain white lambertian, and a sphere with a dielectric BSDF doing full Fresnel-weighted reflection/refraction. It&apos;s the renderer&apos;s canonical convergence test - diffuse interreflection off the walls, a specular/transmissive object for BSDF-sampling correctness, and an area light quad that exercises next-event estimation, so most cross-cutting material or light-sampling regressions show up here first.</source>
-        <translation type="vanished">Construye la caja a partir de los datos compartidos de la Cornell Box: cinco paredes lambertianas, un cuadrilátero de techo diffuse_light, una caja rotada alineada a los ejes en lambertiano blanco liso, y una esfera con un BSDF dieléctrico que hace reflexión/refracción completa ponderada por Fresnel. Es la prueba de convergencia canónica del renderizador - interreflexión difusa entre las paredes, un objeto especular/transmisivo para verificar el muestreo del BSDF, y un cuadrilátero de luz de área que ejercita la estimación de eventos siguientes (NEE), por lo que la mayoría de las regresiones transversales de materiales o muestreo de luz aparecen aquí primero.</translation>
-    </message>
-    <message>
-        <source>The classic &quot;Ray Tracing in One Weekend&quot; closer: a checker-textured lambertian ground sphere under a BVH-accelerated field of small spheres, most diffuse but some built with a second center offset in time so the sphere itself carries linear motion blur, some metal with per-sphere random fuzz radius, and a few dielectric. Three large feature spheres - a sharp dielectric, a flat lambertian, and a zero-fuzz mirror-perfect metal - sit in front as reference specular/diffuse endpoints. Primarily a stress test for the BVH build and for motion-blurred ray-sphere intersection alongside the fuzzy-metal reflection model.</source>
-        <translation type="vanished">El clásico cierre de &quot;Ray Tracing in One Weekend&quot;: una esfera de suelo lambertiana con textura de tablero de ajedrez bajo un campo de esferas pequeñas acelerado por BVH, la mayoría difusas pero algunas construidas con un segundo centro desplazado en el tiempo para que la propia esfera lleve desenfoque de movimiento lineal, algunas metálicas con un radio de difuminado aleatorio por esfera, y unas pocas dieléctricas. Tres esferas grandes destacadas - una dieléctrica nítida, una lambertiana plana, y un metal perfectamente especular sin difuminado - se colocan al frente como referencias de los extremos especular/difuso. Es principalmente una prueba de estrés para la construcción del BVH y para la intersección rayo-esfera con desenfoque de movimiento junto con el modelo de reflexión de metal difuminado.</translation>
-    </message>
-    <message>
-        <source>Two enormous spheres (radius 10, one above and one below the origin) share a single procedural checker texture sampled through spherical UV coordinates and shaded with plain lambertian - the pattern is generated analytically from 3D position, not an image lookup. A handful of smaller accent spheres (diffuse, glossy metal with slight fuzz, and a dielectric) sit on the lower sphere&apos;s cap for scale and to give the frame real specular/refractive behavior. Mostly a test of the procedural texture&apos;s 3D-to-checker mapping holding up at large sphere-surface curvature.</source>
-        <translation type="vanished">Dos esferas enormes (radio 10, una encima y otra debajo del origen) comparten una única textura procedural de tablero de ajedrez muestreada mediante coordenadas UV esféricas y sombreada con lambertiano liso - el patrón se genera analíticamente a partir de la posición 3D, no mediante consulta de imagen. Un puñado de esferas de acento más pequeñas (difusa, metal brillante con ligero difuminado, y una dieléctrica) se colocan sobre la parte superior de la esfera inferior para dar escala y aportar al fotograma un comportamiento especular/refractivo real. Es sobre todo una prueba de que el mapeo 3D-a-tablero de la textura procedural se mantenga con la gran curvatura de la superficie esférica.</translation>
-    </message>
-    <message>
-        <source>Ground and a large sphere both use a Perlin/turbulence-based procedural marble texture evaluated directly from world-space position and fed through lambertian - no image texture involved. Two smaller companion spheres reuse the same technique at a higher noise frequency for contrast, lit by a diffuse_light quad sampled via next-event estimation. Tests the Perlin-noise turbulence/marble output feeding correctly into the BSDF pipeline under real NEE lighting rather than flat ambient.</source>
-        <translation type="vanished">El suelo y una esfera grande usan una textura de mármol procedural basada en ruido Perlin/turbulencia evaluada directamente a partir de la posición en el espacio del mundo y alimentada a través de lambertiano - sin ninguna textura de imagen implicada. Dos esferas compañeras más pequeñas reutilizan la misma técnica con una frecuencia de ruido mayor para dar contraste, iluminadas por un cuadrilátero diffuse_light muestreado mediante estimación de eventos siguientes. Comprueba que la salida de turbulencia/mármol de ruido Perlin se alimenta correctamente en el pipeline del BSDF bajo iluminación NEE real en vez de ambiente plano.</translation>
-    </message>
-    <message>
-        <source>Five quad primitives, each spanning a different orientation (front-facing, side-facing, top-facing) via distinct basis vectors, each with a flat lambertian color - this exercises the quad hittable&apos;s plane-intersection and per-orientation normal/UV computation rather than shading complexity. A separate diffuse_light quad floats in the room as the scene&apos;s only emitter, giving next-event estimation something concrete to importance-sample. Mainly a correctness check for quad geometry and orientation-dependent normals under real area-light sampling.</source>
-        <translation type="vanished">Cinco primitivas de tipo cuadrilátero, cada una con una orientación distinta (mirando al frente, de lado, hacia arriba) mediante vectores base diferentes, cada una con un color lambertiano plano - esto ejercita la intersección de plano del cuadrilátero y el cálculo de normal/UV por orientación en vez de la complejidad del sombreado. Un cuadrilátero diffuse_light aparte flota en la sala como único emisor de la escena, dándole a la estimación de eventos siguientes algo concreto que muestrear por importancia. Es principalmente una comprobación de corrección de la geometría del cuadrilátero y de las normales dependientes de la orientación bajo muestreo real de luz de área.</translation>
-    </message>
-    <message>
-        <source>Reuses the Perlin-noise ground/sphere setup from the marble-texture scenes, but the real subject is emission: a sphere given a diffuse_light material (warm tint) acts as a curved, non-planar area-light emitter, alongside a separate cool-toned diffuse_light quad. Having both a spherical and a quad emitter live in the same scene tests that light-sampling handles solid-angle sampling correctly across different emitter geometries, not just the usual flat quad case - the color-temperature split makes it easy to see which light contributes where.</source>
-        <translation type="vanished">Reutiliza la configuración de suelo/esfera con ruido Perlin de las escenas de textura de mármol, pero el tema real es la emisión: una esfera con material diffuse_light (tono cálido) actúa como emisor de luz de área curvo y no plano, junto a un cuadrilátero diffuse_light aparte de tono frío. Tener tanto un emisor esférico como uno de cuadrilátero conviviendo en la misma escena comprueba que el muestreo de luz maneja correctamente el muestreo de ángulo sólido en distintas geometrías de emisor, no solo el caso habitual del cuadrilátero plano - la división de temperatura de color facilita ver qué luz contribuye dónde.</translation>
-    </message>
-    <message>
-        <source>Rebuilds the standard Cornell walls plus its own oversized ceiling diffuse_light quad, then replaces the usual solid boxes with two rotated/translated boxes wrapped in constant_medium - a homogeneous isotropic-scattering participating medium with low density and its own tint, instead of the classic monochrome smoke. This is the volumetric-medium test: box geometry used elsewhere as solid lambertian surfaces here instead defines the boundary of an isotropic in-scattering volume, checking that medium sampling and boundary-shape intersection cooperate correctly.</source>
-        <translation type="vanished">Reconstruye las paredes estándar de la Cornell Box más su propio cuadrilátero de techo diffuse_light sobredimensionado, y luego sustituye las cajas sólidas habituales por dos cajas rotadas/trasladadas envueltas en constant_medium - un medio participante de dispersión isotrópica homogénea con baja densidad y tono propio, en vez del clásico humo monocromo. Esta es la prueba de medio volumétrico: la geometría de caja que en otras escenas se usa como superficie lambertiana sólida aquí define en cambio el límite de un volumen de dispersión isotrópica, comprobando que el muestreo del medio y la intersección con la forma límite cooperan correctamente.</translation>
-    </message>
-    <message>
-        <source>The most feature-dense scene in the set: a grid of randomly-heighted lambertian boxes forming undulating BVH-built ground, a ceiling-quad area light, a motion-blurred lambertian sphere, a dielectric glass sphere, a fuzzy metal sphere, a colored constant_medium bounded inside a dielectric sphere (a self-contained volumetric fog pocket), a second near-zero-density constant_medium wrapped around a giant enclosing sphere as faint global atmosphere, a mipmapped image-textured earth sphere, a Perlin-noise marble sphere, and a cluster of small white spheres packed into a rotated BVH sub-tree. Exercises motion blur, dielectric/metal/lambertian BSDFs, bounded and global participating media, image-texture mip-mapping, and multi-level BVH construction all in one render.</source>
-        <translation type="vanished">La escena con más funciones del conjunto: una cuadrícula de cajas lambertianas de altura aleatoria formando un suelo ondulado construido con BVH, una luz de área en cuadrilátero de techo, una esfera lambertiana con desenfoque de movimiento, una esfera de vidrio dieléctrico, una esfera de metal difuminado, un constant_medium coloreado acotado dentro de una esfera dieléctrica (un bolsillo de niebla volumétrica autocontenido), un segundo constant_medium de densidad casi nula envolviendo una esfera envolvente gigante como tenue atmósfera global, una esfera de tierra con textura de imagen con mipmapping, una esfera de mármol con ruido Perlin, y un grupo de esferas blancas pequeñas empaquetadas en un subárbol BVH rotado. Ejercita el desenfoque de movimiento, los BSDF dieléctrico/metálico/lambertiano, medios participantes acotados y globales, el mipmapping de texturas de imagen, y la construcción de BVH multinivel, todo en un solo renderizado.</translation>
-    </message>
-    <message>
-        <source>A row of five spheres running through pure roughness values on the same gold-tinted rough_metal material (GGX/Trowbridge-Reitz microfacet distribution with a simple RGB-tinted reflectance, not full complex-IOR Fresnel). Isolated on a ground plane under one area light, so the only variable in frame is how the specular highlight spreads and dims as roughness increases.</source>
-        <translation type="vanished">Una fila de cinco esferas que recorren valores puros de rugosidad sobre el mismo material rough_metal con tono dorado (distribución de microfacetas GGX/Trowbridge-Reitz con una reflectancia simple con tono RGB, no un Fresnel completo de IOR complejo). Aisladas sobre un plano de suelo bajo una única luz de área, de modo que la única variable en el encuadre es cómo se extiende y atenúa el brillo especular al aumentar la rugosidad.</translation>
-    </message>
-    <message>
-        <source>The same rough_metal GGX BxDF as the rough-metal-spheres scene (brushed aluminium box, brushed gold sphere at a different roughness) but dropped into the familiar Cornell box instead of an open studio setup, so glossy microfacet reflection has to hold up under real indirect bounce lighting and colored wall bleed rather than a single overhead light.</source>
-        <translation type="vanished">El mismo BxDF rough_metal GGX que la escena de esferas de metal rugoso (caja de aluminio cepillado, esfera de oro cepillado con otra rugosidad) pero colocado dentro de la conocida Cornell Box en lugar de un estudio abierto, de modo que la reflexión brillante de microfacetas debe sostenerse bajo iluminación indirecta rebotada real y el sangrado de color de las paredes en vez de una única luz cenital.</translation>
-    </message>
-    <message>
-        <source>A Cornell box glass sphere swapped from perfect dielectric to rough_dielectric - GGX microfacets applied to both the reflection and the transmission lobe, so refracted light scatters into a frosted blur instead of a sharp Snell-law ray, while still respecting Fresnel&apos;s reflect/transmit split per microfacet.</source>
-        <translation type="vanished">Una esfera de vidrio de la Cornell Box cambiada de dieléctrico perfecto a rough_dielectric - microfacetas GGX aplicadas tanto al lóbulo de reflexión como al de transmisión, de modo que la luz refractada se dispersa en un desenfoque esmerilado en lugar de un rayo nítido según la ley de Snell, respetando aun así la división reflexión/transmisión de Fresnel por microfaceta.</translation>
-    </message>
-    <message>
-        <source>Polished gold and aluminium surfaces using the conductor material with real per-channel complex Fresnel from measured eta/k spectra, rather than an RGB-albedo approximation - so the metal color comes from actual reflectance spectra, not an artist-picked tint.</source>
-        <translation type="vanished">Superficies pulidas de oro y aluminio usando el material conductor con Fresnel complejo real por canal a partir de espectros medidos de eta/k, en vez de una aproximación de albedo RGB - de modo que el color del metal proviene de espectros de reflectancia reales, no de un tono elegido por un artista.</translation>
-    </message>
-    <message>
-        <source>A coated-diffuse sphere and box using coated_diffuse: a rough dielectric coat layered over a Lambertian base. Exercises the layered-BSDF solve - light can specularly reflect off the coat, or transmit through and pick up the diffuse base color, with internal reflection between the two layers.</source>
-        <translation type="vanished">Una esfera y una caja con recubrimiento difuso usando coated_diffuse: una capa dieléctrica rugosa superpuesta sobre una base lambertiana. Ejercita la resolución de BSDF por capas - la luz puede reflejarse especularmente en el recubrimiento, o transmitirse a través de él y adquirir el color de la base difusa, con reflexión interna entre las dos capas.</translation>
-    </message>
-    <message>
-        <source>A vertical glass panel using thin_dielectric splitting the Cornell box in two: zero-thickness glass with the analytic multi-bounce Fresnel formula instead of a real refractive interface, so transmitted rays pass straight through with no bending. The panel is tilted deliberately, since IOR-1.5 Fresnel reflectance only becomes visible near grazing incidence.</source>
-        <translation type="vanished">Un panel de vidrio vertical usando thin_dielectric que divide la Cornell Box en dos: vidrio de espesor cero con la fórmula analítica de Fresnel multirrebote en lugar de una interfaz refractiva real, de modo que los rayos transmitidos pasan directamente sin desviarse. El panel está inclinado a propósito, ya que la reflectancia de Fresnel con IOR 1.5 solo se hace visible cerca de la incidencia rasante.</translation>
-    </message>
-    <message>
-        <source>Lacquered-metal look via coated_conductor: a gold sphere and copper box, each a rough dielectric coat over a GGX conductor base with per-channel complex Fresnel. The most stacked BxDF in this category - it combines spectral metal reflectance underneath an achromatic glossy coat, showing the coat&apos;s Fresnel sheen sitting on top of the metal&apos;s own tint.</source>
-        <translation type="vanished">Aspecto de metal lacado mediante coated_conductor: una esfera de oro y una caja de cobre, cada una con una capa dieléctrica rugosa sobre una base conductora GGX con Fresnel complejo por canal. El BxDF más apilado de esta categoría - combina la reflectancia espectral del metal bajo un recubrimiento brillante acromático, mostrando el brillo Fresnel del recubrimiento sobre el propio tono del metal.</translation>
-    </message>
-    <message>
-        <source>A wax-like sphere using diffuse_transmission with separate reflectance and transmittance colors - light scatters diffusely into both the same hemisphere (reflection) and the opposite one (transmission), a cheap two-parameter stand-in for translucency that needs no volumetric random walk, unlike the subsurface-slab scene&apos;s approach to the same visual goal.</source>
-        <translation type="vanished">Una esfera de aspecto ceroso usando diffuse_transmission con colores de reflectancia y transmitancia separados - la luz se dispersa difusamente tanto hacia el mismo hemisferio (reflexión) como hacia el opuesto (transmisión), un sustituto barato de dos parámetros para la translucidez que no necesita un paseo aleatorio volumétrico, a diferencia del enfoque de la escena de losa de dispersión subsuperficial para el mismo objetivo visual.</translation>
-    </message>
-    <message>
-        <source>A crystal sphere using normalized_fresnel - Fresnel-weighted diffuse exitance where the BSDF value rises toward grazing angles (where Fresnel transmittance is low, so more internally-scattered light escapes). Sampling stays cosine-hemisphere, but the scattering PDF carries the Fresnel weighting itself, normalized so total reflected energy stays correct under MIS.</source>
-        <translation type="vanished">Una esfera de cristal usando normalized_fresnel - exitancia difusa ponderada por Fresnel donde el valor del BSDF aumenta hacia los ángulos rasantes (donde la transmitancia de Fresnel es baja, así que escapa más luz dispersada internamente). El muestreo sigue siendo por hemisferio coseno, pero la propia PDF de dispersión lleva la ponderación de Fresnel, normalizada para que la energía reflejada total se mantenga correcta bajo MIS.</translation>
-    </message>
-    <message>
-        <source>Seven spheres sweeping the principled material&apos;s parameter space in one row: matte diffuse, low-roughness plastic, clearcoated plastic, semi-metallic, rough near-metallic, smooth full metal, and a clearcoated full metal - varying metallic, roughness, and clearcoat independently to show how one unified BSDF spans the whole dielectric-to-conductor range that separate materials elsewhere in this category cover individually.</source>
-        <translation type="vanished">Siete esferas que recorren el espacio de parámetros del material principled en una fila: difuso mate, plástico de baja rugosidad, plástico con capa transparente, semimetálico, casi metálico y rugoso, metal completo liso, y metal completo con capa transparente - variando metallic, roughness y clearcoat de forma independiente para mostrar cómo un único BSDF unificado abarca todo el rango de dieléctrico a conductor que en otras partes de esta categoría cubren materiales separados.</translation>
-    </message>
-    <message>
-        <source>Five spheres using the hair material (HairBxDF) with distinct absorption/roughness parameters, tuned for a strongly forward/specular-scattering fiber BSDF rather than a diffuse one - the light had to be recalibrated far dimmer than other scenes in this set because hair&apos;s peak BSDF response blows out under normal area-light intensity. Applied to sphere surfaces rather than real curve geometry, isolating the BxDF&apos;s shading behavior from the curve-intersection machinery (see the Curve Fibers scene for that half).</source>
-        <translation type="vanished">Cinco esferas usando el material hair (HairBxDF) con distintos parámetros de absorción/rugosidad, ajustadas para un BSDF de fibra con dispersión fuertemente hacia adelante/especular en lugar de difusa - la luz tuvo que recalibrarse mucho más tenue que en otras escenas de este conjunto porque la respuesta pico del BSDF del pelo se satura bajo la intensidad de luz de área normal. Aplicado a superficies esféricas en vez de geometría de curva real, aislando el comportamiento de sombreado del BxDF de la maquinaria de intersección de curvas (ver la escena de Fibras de Curva para esa otra mitad).</translation>
-    </message>
-    <message>
-        <source>Two perturbation techniques on plain Lambertian surfaces: bump mapping displaces shading normals from a Perlin marble noise texture (back wall and box), while normal mapping perturbs them from a checker pattern (sphere) - the geometric surface stays flat/spherical but the shading normal used for lighting is bent to fake fine surface detail.</source>
-        <translation type="vanished">Dos técnicas de perturbación sobre superficies lambertianas lisas: el bump mapping desplaza las normales de sombreado a partir de una textura de ruido de mármol Perlin (pared trasera y caja), mientras que el normal mapping las perturba a partir de un patrón de tablero de ajedrez (esfera) - la superficie geométrica permanece plana/esférica pero la normal de sombreado usada para la iluminación se dobla para simular detalle fino de superficie.</translation>
-    </message>
-    <message>
-        <source>Not a true BSSRDF - light entering the milky wax slab and jade sphere passes through a dielectric shell into a constant_medium (homogeneous participating medium with its own density and tint), so the translucent glow comes from a real volumetric random walk inside the object bounded by refractive Fresnel at the surface, rather than a diffusion-based subsurface term.</source>
-        <translation type="vanished">No es un BSSRDF verdadero - la luz que entra en la losa de cera lechosa y en la esfera de jade pasa por una envoltura dieléctrica hacia un constant_medium (medio participante homogéneo con densidad y tono propios), de modo que el brillo translúcido proviene de un paseo aleatorio volumétrico real dentro del objeto, acotado por el Fresnel refractivo en la superficie, en lugar de un término subsuperficial basado en difusión.</translation>
-    </message>
-    <message>
-        <source>Exercises the pbrt-v4 measured-BRDF data pipeline - synthetically generated tabulated NDF, sigma, VNDF, luminance and per-wavelength spectral tables (rather than a real captured material) across a row of five spheres. BSDF evaluation itself is simplified to cosine-hemisphere sampling with a flat tint rather than the full 5D importance-sampling warp chain, so this scene tests the tabulated-data plumbing more than a realistic measured-material result.</source>
-        <translation type="vanished">Ejercita el pipeline de datos de BRDF medida de pbrt-v4 - tablas de NDF, sigma, VNDF, luminancia y espectrales por longitud de onda generadas sintéticamente (en lugar de un material realmente capturado) en una fila de cinco esferas. La propia evaluación del BSDF se simplifica a muestreo por hemisferio coseno con un tono plano en vez de la cadena completa de deformación de muestreo por importancia en 5D, así que esta escena comprueba la integración de los datos tabulados más que un resultado realista de material medido.</translation>
-    </message>
-    <message>
-        <source>A literal triangular glass prism using a dispersive dielectric - a Cauchy-equation index of refraction that varies with wavelength, matching real crown glass - instead of a flat IOR. White light entering the prism splits by wavelength on exit, fanning across a catcher screen the way a physical glass prism does, but only under --spectral, which tracks per-wavelength rays through the renderer; without it, each RGB channel just refracts by a fixed, slightly different amount rather than a continuous spread.</source>
-        <translation type="vanished">Un prisma de vidrio triangular literal usando un dieléctrico dispersivo - un índice de refracción según la ecuación de Cauchy que varía con la longitud de onda, igual que el vidrio crown real - en lugar de un IOR plano. La luz blanca que entra en el prisma se divide por longitud de onda al salir, abriéndose en abanico sobre una pantalla receptora tal como lo hace un prisma de vidrio físico, pero solo bajo --spectral, que rastrea rayos por longitud de onda a través del renderizador; sin él, cada canal RGB simplemente se refracta en una cantidad fija ligeramente distinta en lugar de un abanico continuo.</translation>
-    </message>
-    <message>
-        <source>The same dispersive prism as B23, ground to frosted glass (rough_dielectric) instead of polished smooth. Under --spectral, the same rainbow fan appears on the catcher screen, blurred by the surface roughness rather than sharp - the underlying physics (wavelength-dependent index of refraction) is identical, only the microfacet scattering added on top differs. Frosted glass needed more than a flat re-skin of B23 to disperse correctly: unlike smooth glass, a rough surface&apos;s light sampling has to reach an off-axis light (like this scene&apos;s directional beam) through explicit next-event estimation, so that sampling itself had to become wavelength-aware too, not just the initial refraction.</source>
-        <translation type="vanished">El mismo prisma dispersivo que B23, pero pulido a vidrio esmerilado (rough_dielectric) en lugar de vidrio liso. Con --spectral, el mismo abanico de arcoíris aparece en la pantalla receptora, difuminado por la rugosidad de la superficie en vez de nítido - la física subyacente (índice de refracción dependiente de la longitud de onda) es idéntica, solo difiere la dispersión por microfacetas añadida encima. El vidrio esmerilado necesitaba más que un simple recubrimiento de B23 para dispersar correctamente: a diferencia del vidrio liso, el muestreo de luz de una superficie rugosa tiene que alcanzar una luz fuera de eje (como el haz direccional de esta escena) mediante estimación explícita de eventos siguientes, así que ese propio muestreo también tuvo que volverse sensible a la longitud de onda, no solo la refracción inicial.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s &quot;mix&quot; material blends two materials per shading point using real per-sample stochastic selection - a probability-weighted choice at each hit, not a flat blended color - so a mix of matte diffuse and a metallic conductor shows up as genuine speckled grain: some samples land pure diffuse, others pure specular, averaging out correctly over many samples. Exercised identically on CPU, GPU-recursive, and GPU-wavefront.</source>
-        <translation type="vanished">El material &quot;mix&quot; de pbrt mezcla dos materiales por punto de sombreado usando una selección estocástica real por muestra - una elección ponderada por probabilidad en cada impacto, no un color mezclado plano - así que una mezcla de difuso mate y un conductor metálico se muestra como un grano moteado genuino: algunas muestras caen en difuso puro, otras en especular puro, promediando correctamente a lo largo de muchas muestras. Se ejercita de forma idéntica en CPU, GPU recursivo y GPU wavefront.</translation>
-    </message>
-    <message>
-        <source>Four material kinds bundled nowhere else in this app: thindielectric (a zero-thickness glass sheet that refracts without displacing the ray, unlike ordinary dielectric), coatedconductor (a clear coat over a metal base), diffusetransmission (light passes through as well as scattering back, like a thin leaf or paper), and subsurface scattering via a named preset (&quot;Marble&quot;) - real subsurface parameters without needing an external measured-data file.</source>
-        <translation type="vanished">Cuatro tipos de material que no se agrupan en ningún otro lugar de esta aplicación: thindielectric (una lámina de vidrio de espesor cero que refracta sin desplazar el rayo, a diferencia del dieléctrico ordinario), coatedconductor (un recubrimiento transparente sobre una base metálica), diffusetransmission (la luz pasa a través además de dispersarse de vuelta, como una hoja fina o el papel), y dispersión subsuperficial mediante un preajuste con nombre (&quot;Marble&quot;) - parámetros subsuperficiales reales sin necesitar un archivo externo de datos medidos.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s CoatedDiffuse material (a diffuse base under a clear dielectric coat, like varnished wood) reading its reflectance from an actual image texture instead of a flat color - this exact combination used to silently ignore the texture and fall back to solid grey on both backends.</source>
-        <translation type="vanished">El material CoatedDiffuse de pbrt (una base difusa bajo un recubrimiento dieléctrico transparente, como madera barnizada) leyendo su reflectancia de una textura de imagen real en lugar de un color plano - esta combinación exacta solía ignorar silenciosamente la textura y recaer en gris sólido en ambos backends.</translation>
-    </message>
-    <message>
-        <source>A conductor material driven by explicit RGB eta/k (the complex index of refraction that gives metals their tinted, wavelength-dependent reflectance) rather than a named preset - plus the same complex-IOR math applied through a coatedconductor&apos;s metal base layer, producing accurate colored specular highlights instead of a flat mirror tint.</source>
-        <translation type="vanished">Un material conductor impulsado por valores RGB explícitos de eta/k (el índice de refracción complejo que da a los metales su reflectancia teñida y dependiente de la longitud de onda) en lugar de un preajuste con nombre - además de las mismas matemáticas de IOR complejo aplicadas a través de la capa base metálica de un coatedconductor, produciendo brillos especulares coloreados precisos en lugar de un tono de espejo plano.</translation>
-    </message>
-    <message>
-        <source>DiffuseTransmission (light both reflects and transmits diffusely, the model for something like a thin leaf or lampshade) with its reflectance and transmittance each bound to a real texture instead of flat colors, on both backends.</source>
-        <translation type="vanished">DiffuseTransmission (la luz se refleja y transmite difusamente a la vez, el modelo para algo como una hoja fina o una pantalla de lámpara) con su reflectancia y transmitancia vinculadas cada una a una textura real en lugar de colores planos, en ambos backends.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s Material &quot;hair&quot; - the Marschner/Chiang fiber-scattering model, the same physically-based hair BSDF real film production renderers use - applied to plain spheres here for a controlled, side-by-side comparison against this project&apos;s own native Hair Fibers demo.</source>
-        <translation type="vanished">El Material &quot;hair&quot; de pbrt - el modelo de dispersión de fibra de Marschner/Chiang, el mismo BSDF de pelo físicamente correcto que usan los renderizadores de producción cinematográfica reales - aplicado aquí a esferas lisas para una comparación controlada, lado a lado, con la propia demo nativa de Fibras de Pelo de este proyecto.</translation>
-    </message>
-    <message>
-        <source>A pbrt checkerboard texture whose two colors are themselves each bound to a real image (an imagemap texture nested one level inside the checker/mix texture), not just flat literal colors - tests that texture references can compose, not just appear standalone.</source>
-        <translation type="vanished">Una textura de tablero de ajedrez de pbrt cuyos dos colores están a su vez cada uno vinculados a una imagen real (una textura imagemap anidada un nivel dentro de la textura checker/mix), y no simples colores literales planos - comprueba que las referencias de textura se puedan componer, no solo aparecer de forma independiente.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s NamedMaterial referenced directly on a shape (declared once, reused by name, rather than only appearing as a &quot;mix&quot; material&apos;s sub-ingredient) plus a texture bound to one of that material&apos;s parameters, and an AreaLightSource with its twosided flag set so both faces emit.</source>
-        <translation type="vanished">El NamedMaterial de pbrt referenciado directamente en una forma (declarado una vez, reutilizado por nombre, en lugar de aparecer solo como ingrediente de un material &quot;mix&quot;) más una textura vinculada a uno de los parámetros de ese material, y un AreaLightSource con su indicador twosided activado para que ambas caras emitan.</translation>
-    </message>
-    <message>
-        <source>Seven spheres, one per named glass IOR preset (BK7, BAF10, FK51A, LASF9, F5, F10, F11) resolved via FindGlassPreset() into a fixed dielectric IOR at the render&apos;s reference wavelength - the same lookup table real optical-glass catalogs use, previously reachable only from unit tests, never actually rendered before this scene.</source>
-        <translation type="vanished">Siete esferas, una por cada preajuste de IOR de vidrio con nombre (BK7, BAF10, FK51A, LASF9, F5, F10, F11) resuelto mediante FindGlassPreset() en un IOR dieléctrico fijo a la longitud de onda de referencia del renderizado - la misma tabla de consulta que usan los catálogos reales de vidrio óptico, antes accesible solo desde pruebas unitarias, nunca renderizada de verdad antes de esta escena.</translation>
-    </message>
-    <message>
-        <source>Four quads, same source image and UV scale, each isolating one imagemap texture option: default sRGB decode and wrap-repeat as the reference case, a linear-decode quad reading the same bytes as brighter (skipping the gamma curve that normally compresses mid-tones), a clamp-wrap quad that holds its edge texel instead of tiling past [0,1], and an inverted-channel quad - none of these paths were reachable via any other bundled scene&apos;s default texture settings.</source>
-        <translation type="vanished">Cuatro cuadriláteros, misma imagen de origen y misma escala UV, cada uno aislando una opción de la textura imagemap: la decodificación sRGB predeterminada y el ajuste wrap-repeat como caso de referencia, un cuadrilátero de decodificación lineal que lee los mismos bytes de forma más brillante (saltándose la curva gamma que normalmente comprime los tonos medios), un cuadrilátero clamp-wrap que retiene su texel de borde en lugar de repetirse más allá de [0,1], y un cuadrilátero de canal invertido - ninguno de estos caminos era accesible mediante la configuración de textura predeterminada de ninguna otra escena incluida.</translation>
-    </message>
-    <message>
-        <source>Four quads, left to right, each driven by a different pbrt-v4 procedural texture class wired into the builder but never previously used by any bundled scene: windy (parameterless turbulence), wrinkled (Perlin turbulence with tunable octaves/roughness), dots (two flat colors split by a Perlin-noise boundary), and bilerp (four corner colors blended smoothly across UV).</source>
-        <translation type="vanished">Cuatro cuadriláteros, de izquierda a derecha, cada uno impulsado por una clase de textura procedural distinta de pbrt-v4 conectada al constructor pero nunca usada antes por ninguna escena incluida: windy (turbulencia sin parámetros), wrinkled (turbulencia Perlin con octavas/rugosidad ajustables), dots (dos colores planos separados por un límite de ruido Perlin), y bilerp (cuatro colores de esquina mezclados suavemente a lo largo de las UV).</translation>
-    </message>
-    <message>
-        <source>Two quads compare a texture nested TWO levels deep (an outer checkerboard whose own tex1 is ANOTHER checkerboard, whose own tex1 is a real image) against the simpler one-level case reproduced alongside it. Real on CPU - two different checker frequencies of the same photo genuinely tile inside each other; GPU intentionally flattens the whole nested tree into one average color and warns instead, a documented approximation rather than a bug, so rendering this scene both ways shows the real divergence.</source>
-        <translation type="vanished">Dos cuadriláteros comparan una textura anidada DOS niveles de profundidad (un tablero de ajedrez exterior cuyo propio tex1 es OTRO tablero de ajedrez, cuyo propio tex1 es una imagen real) frente al caso más simple de un solo nivel reproducido al lado. Real en CPU - dos frecuencias de tablero distintas de la misma foto se repiten genuinamente una dentro de la otra; la GPU aplana intencionadamente todo el árbol anidado en un único color promedio y avisa en su lugar, una aproximación documentada y no un error, así que renderizar esta escena de las dos formas muestra la divergencia real.</translation>
-    </message>
-    <message>
-        <source>An open scene lit purely by a procedural HDR sky gradient (blue zenith fading to a warm horizon) wired in as an image-based infinite light, rather than any local emitter. A diffuse sphere, a near-mirror metal sphere, and a dielectric sphere sit under it to show how that environment illumination reads across different BSDFs, from soft ambient-occlusion-like shading to sharp reflected/refracted copies of the sky gradient.</source>
-        <translation type="vanished">Una escena abierta iluminada únicamente por un degradado de cielo HDR procedural (cenit azul que se difumina hacia un horizonte cálido) conectado como una luz infinita basada en imagen, en lugar de cualquier emisor local. Una esfera difusa, una esfera metálica casi espejo, y una esfera dieléctrica se colocan debajo para mostrar cómo se percibe esa iluminación ambiental en distintos BSDF, desde un sombreado suave similar a oclusión ambiental hasta copias nítidas reflejadas/refractadas del degradado del cielo.</translation>
-    </message>
-    <message>
-        <source>Bare Cornell walls lit entirely by a single spotlight-style punctual light aimed straight down from the ceiling, with a wide total cone width and a narrower inner falloff start, giving it a smooth penumbra rather than a hard-edged disc of light. Unlike the area-light Cornell scenes, this is a delta light with no surface to sample - the cone shape and falloff are the whole point.</source>
-        <translation type="vanished">Paredes desnudas de Cornell iluminadas por completo por una única luz puntual tipo foco (spotlight) apuntando recto hacia abajo desde el techo, con un ancho de cono total amplio y un inicio de atenuación interior más estrecho, dándole una penumbra suave en lugar de un disco de luz de bordes duros. A diferencia de las escenas de Cornell con luz de área, esta es una luz delta sin superficie que muestrear - la forma cónica y la atenuación son todo el objetivo.</translation>
-    </message>
-    <message>
-        <source>Bare Cornell walls lit by a parallel, sun-like distant light: a fixed direction vector with no 1/r-squared falloff, so the radiance scale directly is the incident irradiance rather than an intensity compensating for distance. A deliberate contrast case for verifying the punctual-light pipeline handles directional, non-attenuating lights correctly alongside the point/spot/gonio lights that do fall off.</source>
-        <translation type="vanished">Paredes desnudas de Cornell iluminadas por una luz distante paralela, similar al sol: un vector de dirección fijo sin atenuación de 1/r², de modo que la escala de radiancia es directamente la irradiancia incidente en lugar de una intensidad que compensa la distancia. Un caso de contraste deliberado para verificar que el pipeline de luces puntuales maneja correctamente las luces direccionales sin atenuación junto a las luces punto/foco/goniométrica que sí se atenúan.</translation>
-    </message>
-    <message>
-        <source>Cornell walls lit by a single overhead isotropic point light with classic 1/r-squared intensity falloff - the simplest punctual emitter in this category, with no cone, no directional profile, no parallel rays, just distance-based attenuation from one location near the ceiling.</source>
-        <translation type="vanished">Paredes de Cornell iluminadas por una única luz puntual isotrópica cenital con la clásica atenuación de intensidad 1/r² - el emisor puntual más simple de esta categoría, sin cono, sin perfil direccional, sin rayos paralelos, solo atenuación por distancia desde una ubicación cerca del techo.</translation>
-    </message>
-    <message>
-        <source>Cornell walls lit by a goniometric light: a point light whose intensity varies by direction according to a tabulated image rather than emitting uniformly, combined with the same 1/r-squared falloff as an ordinary point light and an explicit rotation orienting the profile in world space. The arbitrary-directional-intensity case, as opposed to a spotlight&apos;s simple cone or a point light&apos;s uniform emission.</source>
-        <translation type="vanished">Paredes de Cornell iluminadas por una luz goniométrica: una luz puntual cuya intensidad varía según la dirección de acuerdo con una imagen tabulada en lugar de emitir de forma uniforme, combinada con la misma atenuación 1/r² que una luz puntual ordinaria y una rotación explícita que orienta el perfil en el espacio del mundo. El caso de intensidad direccional arbitraria, en contraste con el cono simple de un foco o la emisión uniforme de una luz puntual.</translation>
-    </message>
-    <message>
-        <source>Cornell walls lit by a projection light: a punctual light that projects a checkerboard slide image through a perspective frustum, casting a sharp patterned beam onto the scene like a real slide projector rather than emitting a plain cone or uniform sphere of light.</source>
-        <translation type="vanished">Paredes de Cornell iluminadas por una luz de proyección: una luz puntual que proyecta una imagen de diapositiva de tablero de ajedrez a través de un frustum en perspectiva, lanzando sobre la escena un haz nítido con patrón como un proyector de diapositivas real, en lugar de emitir un simple cono o una esfera uniforme de luz.</translation>
-    </message>
-    <message>
-        <source>A Cornell-style room with no ceiling light quad at all - instead the back wall has an actual rectangular hole cut into it, and a sky light is visible only through that window. Exercises portal-sampled infinite lighting: the environment light&apos;s sampling is restricted to directions actually visible through the portal aperture rather than the full sphere, the harder, more failure-prone case for infinite-light next-event estimation.</source>
-        <translation type="vanished">Una sala estilo Cornell sin ningún cuadrilátero de luz en el techo - en su lugar, la pared trasera tiene un agujero rectangular real recortado en ella, y una luz de cielo solo es visible a través de esa ventana. Ejercita la iluminación infinita muestreada por portal: el muestreo de la luz de entorno se restringe a las direcciones realmente visibles a través de la abertura del portal en lugar de la esfera completa, el caso más difícil y propenso a fallos para la estimación de eventos siguientes de luz infinita.</translation>
-    </message>
-    <message>
-        <source>All five of pbrt-v4&apos;s punctual (delta-distribution) light kinds in one scene: point, spot, distant, goniometric, and projection - a single reference scene for comparing every zero-area light type side by side.</source>
-        <translation type="vanished">Los cinco tipos de luz puntual (de distribución delta) de pbrt-v4 en una sola escena: point, spot, distant, goniometric y projection - una única escena de referencia para comparar lado a lado todos los tipos de luz de área cero.</translation>
-    </message>
-    <message>
-        <source>Real image decoding for pbrt&apos;s goniometric and projection lights, which previously silently ignored their own filename parameter and fell back to a uniform beam - this scene is the regression check that they now actually read and apply the image.</source>
-        <translation type="vanished">Decodificación de imagen real para las luces goniometric y projection de pbrt, que antes ignoraban silenciosamente su propio parámetro filename y recaían en un haz uniforme - esta escena es la comprobación de regresión de que ahora realmente leen y aplican la imagen.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s &quot;blackbody L&quot; light color, specified as a temperature in Kelvin rather than an RGB triple, converted through real Planckian-locus blackbody-to-RGB math. Two otherwise-identical panels at a warm, incandescent-like temperature and a cool, overcast-sky-like one sit side by side so a color regression would be immediately visible as both panels going flat white.</source>
-        <translation type="vanished">El color de luz &quot;blackbody L&quot; de pbrt, especificado como una temperatura en Kelvin en lugar de una tripleta RGB, convertido mediante matemáticas reales del lugar geométrico planckiano de cuerpo negro a RGB. Dos paneles por lo demás idénticos, uno con una temperatura cálida similar a incandescente y otro fría similar a un cielo nublado, se colocan uno al lado del otro para que una regresión de color sea inmediatamente visible como ambos paneles volviéndose blanco plano.</translation>
-    </message>
-    <message>
-        <source>An AreaLightSource on a non-triangle shape (sphere or quad) that&apos;s both filename-textured (its emission pattern comes from an image, not a flat color) and twosided (emits from both faces, not just the one its surface normal points toward) - on both backends.</source>
-        <translation type="vanished">Un AreaLightSource sobre una forma que no es un triángulo (esfera o cuadrilátero) que es a la vez texturizado por filename (su patrón de emisión proviene de una imagen, no de un color plano) y twosided (emite desde ambas caras, no solo la que apunta su normal de superficie) - en ambos backends.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s &quot;infinite&quot; light - a constant-color light with no shape at all, illuminating the scene from every direction at once, the simplest possible substitute for a sky. Needs open geometry to see the effect, since a closed room would block it from every side anyway.</source>
-        <translation type="vanished">La luz &quot;infinite&quot; de pbrt - una luz de color constante sin ninguna forma, que ilumina la escena desde todas las direcciones a la vez, el sustituto más simple posible de un cielo. Necesita geometría abierta para ver el efecto, ya que una sala cerrada la bloquearía de todos modos por todos los lados.</translation>
-    </message>
-    <message>
-        <source>Disk and cylinder shapes acting as real next-event-estimation light sources - solid-angle sampling toward the light on every bounce, not just accidentally hitting it - on both GPU backends, converging as cleanly as the CPU path instead of the noisier &quot;hope a ray hits it&quot; fallback non-NEE lights get.</source>
-        <translation type="vanished">Formas de disco y cilindro actuando como fuentes de luz reales para estimación de eventos siguientes - muestreo de ángulo sólido hacia la luz en cada rebote, no solo golpeándola por accidente - en ambos backends de GPU, convergiendo tan limpiamente como en CPU en lugar del alternativa más ruidosa de &quot;esperar a que un rayo la golpee&quot; que reciben las luces sin NEE.</translation>
-    </message>
-    <message>
-        <source>Two separate sphere area lights in one scene - a minimal case that once pinned a real GPU bug where a light-type lookup table was sized for only one light, so every light past the first silently misread its own type and rendered wrong.</source>
-        <translation type="vanished">Dos luces de área esféricas separadas en una sola escena - un caso mínimo que en su momento identificó un error real de GPU donde una tabla de consulta de tipos de luz estaba dimensionada solo para una luz, así que cada luz posterior a la primera interpretaba mal su propio tipo de forma silenciosa y se renderizaba incorrectamente.</translation>
-    </message>
-    <message>
-        <source>An area light shaped as an irregular 5-triangle fan - not a simple parallelogram, and not something the renderer&apos;s quad-merge optimization (which re-joins two triangles into one quad for cheaper sampling) can rejoin - so this exercises genuine per-triangle light sampling on the GPU instead of the more common quad shortcut.</source>
-        <translation type="vanished">Una luz de área con forma de abanico irregular de 5 triángulos - no un paralelogramo simple, y no algo que la optimización de fusión de cuadriláteros del renderizador (que reúne dos triángulos en un cuadrilátero para un muestreo más barato) pueda recombinar - así que esto ejercita el muestreo de luz genuino por triángulo en la GPU en lugar del atajo de cuadrilátero más habitual.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s &quot;ColorSpace&quot; directive, choosing the working RGB color space (here, Rec.2020&apos;s wider primaries instead of the sRGB default) that a &quot;blackbody&quot; temperature converts through. Identical geometry and identical 2500K/9000K temperatures to the Blackbody Light example - only the declared color space differs - so the two scenes&apos; panel colors are a direct side-by-side proof the directive is actually applied, not just parsed and ignored.</source>
-        <translation type="vanished">La directiva &quot;ColorSpace&quot; de pbrt, que elige el espacio de color RGB de trabajo (aquí, los primarios más amplios de Rec.2020 en vez del sRGB predeterminado) a través del cual se convierte una temperatura &quot;blackbody&quot;. Geometría idéntica y las mismas temperaturas de 2500K/9000K que el ejemplo de Blackbody Light - solo difiere el espacio de color declarado - así que los colores del panel de ambas escenas son una prueba directa, lado a lado, de que la directiva realmente se aplica, no que solo se analiza y se ignora.</translation>
-    </message>
-    <message>
-        <source>The real pbrt-v4 PortalImageInfiniteLight: an equal-area environment-map infinite light restricted to a window quad, so only that opening shows real sky detail rather than the whole environment leaking in from every direction. The native &quot;Portal Infinite Light&quot; scene (C7) only cuts a geometric hole in a wall behind a flat sky_light and never actually builds this class - this is the first bundled scene that does.</source>
-        <translation type="vanished">El PortalImageInfiniteLight real de pbrt-v4: una luz infinita de mapa de entorno de área igual, restringida a un cuadrilátero de ventana, de modo que solo esa abertura muestra detalle real del cielo en lugar de que todo el entorno se filtre desde cualquier dirección. La escena nativa &quot;Portal Infinite Light&quot; (C7) solo recorta un agujero geométrico en una pared detrás de una sky_light plana y nunca llega a construir esta clase - esta es la primera escena incluida que sí lo hace.</translation>
-    </message>
-    <message>
-        <source>Three otherwise-identical spheres, each lit by only one light type - point, spot, and area - specifying its brightness as &quot;float power&quot; (total flux in watts) instead of the usual intensity/radiance directly. The renderer has to invert the power-to-intensity conversion through a different solid-angle formula for each light kind (4*pi for the point light, the spot&apos;s cone solid angle, and area*pi for the Lambertian emitter), so a wrong conversion for any one type shows up as a visibly mismatched sphere brightness, not a uniformly wrong scene.</source>
-        <translation type="vanished">Tres esferas por lo demás idénticas, cada una iluminada por un único tipo de luz - point, spot y area - que especifica su brillo como &quot;float power&quot; (flujo total en vatios) en lugar de la intensidad/radiancia habitual de forma directa. El renderizador tiene que invertir la conversión de potencia a intensidad mediante una fórmula de ángulo sólido distinta para cada tipo de luz (4*pi para la luz puntual, el ángulo sólido del cono del foco, y area*pi para el emisor lambertiano), así que una conversión incorrecta en cualquiera de los tipos se manifiesta como un brillo de esfera visiblemente desajustado, no como una escena uniformemente equivocada.</translation>
-    </message>
-    <message>
-        <source>A projection light slide image that is deliberately non-square (8x4, not the usual square uv-checker.bmp every other projection-light scene uses), the first bundled scene to exercise a real aspect-ratio mismatch between the image and the light&apos;s own field of view. A correctly aspect-preserving projection casts a clearly wide rectangular footprint matching the image&apos;s own 2:1 shape; a bug here would squish it to square or stretch it to fill the light&apos;s fov instead.</source>
-        <translation type="vanished">Una imagen de diapositiva de luz de proyección deliberadamente no cuadrada (8x4, no el habitual uv-checker.bmp cuadrado que usan todas las demás escenas de luz de proyección), la primera escena incluida que ejercita un desajuste real de relación de aspecto entre la imagen y el campo de visión propio de la luz. Una proyección que preserva correctamente el aspecto proyecta una huella rectangular claramente ancha que coincide con la forma 2:1 propia de la imagen; un error aquí la comprimiría a cuadrada o la estiraría para llenar el fov de la luz.</translation>
-    </message>
-    <message>
-        <source>Three saturated, close-range colored lights over a plain diffuse surface, positioned so their overlap regions sit right at the sRGB gamut boundary under --spectral rendering. This is the exact condition a real per-sample XYZ-to-RGB gamut-clamp bug used to darken and desaturate incorrectly - the fix defers that conversion to per-pixel instead of per-sample, so overlap regions should blend smoothly toward white/pastel here, not show banding or a muddy under-saturated patch.</source>
-        <translation type="vanished">Tres luces de colores saturados y a corta distancia sobre una superficie difusa lisa, colocadas de modo que sus regiones de solapamiento caigan justo en el límite del gamut sRGB bajo el renderizado --spectral. Esta es exactamente la condición que un error real de recorte de gamut XYZ a RGB por muestra solía oscurecer y desaturar incorrectamente - la corrección difiere esa conversión a por píxel en lugar de por muestra, así que las regiones de solapamiento deberían fundirse suavemente hacia blanco/pastel aquí, sin mostrar bandas ni una mancha turbia y subsaturada.</translation>
-    </message>
-    <message>
-        <source>An open scene (checker ground plus spheres at several depths, one glass, one metal) rendered with the default perspective camera&apos;s built-in thin-lens defocus blur, so only the sphere at the focus distance renders sharp while the near and far spheres blur out - the straightforward aperture-plus-focus-distance depth-of-field path, no alternate camera class involved.</source>
-        <translation type="vanished">Una escena abierta (suelo de tablero de ajedrez más esferas a varias profundidades, una de vidrio, una de metal) renderizada con el desenfoque de lente delgada incorporado en la cámara en perspectiva predeterminada, de modo que solo la esfera a la distancia de enfoque se renderiza nítida mientras las esferas cercana y lejana se desenfocan - el sencillo camino de profundidad de campo de apertura más distancia de enfoque, sin ninguna clase de cámara alternativa implicada.</translation>
-    </message>
-    <message>
-        <source>A row of spheres over a checker ground, rendered through an explicit orthographic camera. Rays are cast parallel rather than converging from a single eye point, so the spheres show no perspective foreshortening - equal-size spheres stay equal-size regardless of depth, the defining visual signature of parallel projection.</source>
-        <translation type="vanished">Una fila de esferas sobre un suelo de tablero de ajedrez, renderizada mediante una cámara ortográfica explícita. Los rayos se lanzan paralelos en lugar de converger desde un único punto de vista, así que las esferas no muestran escorzo en perspectiva - esferas del mismo tamaño se mantienen del mismo tamaño sin importar la profundidad, la firma visual característica de la proyección paralela.</translation>
-    </message>
-    <message>
-        <source>A ring of colored spheres around a central emissive sphere, captured by an explicit spherical (equirectangular) camera, so the whole 360-degree surroundings are mapped into one panoramic image rather than a bounded field-of-view frustum.</source>
-        <translation type="vanished">Un anillo de esferas de colores alrededor de una esfera emisiva central, capturado mediante una cámara esférica (equirrectangular) explícita, de modo que todo el entorno de 360 grados se proyecta en una única imagen panorámica en lugar de un frustum de campo de visión acotado.</translation>
-    </message>
-    <message>
-        <source>Five spheres at increasing depth over a checker ground, rendered through an explicit realistic camera built from a real multi-element lens prescription (per-surface curvature, thickness, IOR, and aperture) rather than an idealized thin lens - rays are traced element-by-element through the lens stack, producing genuine lens-induced bokeh and vignetting instead of a closed-form defocus-disc approximation.</source>
-        <translation type="vanished">Cinco esferas a profundidad creciente sobre un suelo de tablero de ajedrez, renderizadas mediante una cámara realista explícita construida a partir de una prescripción de lente real multielemento (curvatura, espesor, IOR y apertura por superficie) en lugar de una lente delgada idealizada - los rayos se trazan elemento a elemento a través del conjunto de lentes, produciendo un bokeh y un viñeteado genuinamente inducidos por la lente en lugar de una aproximación de disco de desenfoque de forma cerrada.</translation>
-    </message>
-    <message>
-        <source>The same classic Cornell box geometry as the plain Cornell Box scene and the other camera-comparison Cornell scenes, rendered with the default perspective camera&apos;s thin-lens defocus blur rather than an alternate camera class. Isolates depth-of-field as the one variable against the same room the other camera-comparison scenes also use, so the technique&apos;s effect can be compared directly rather than confounded with different geometry.</source>
-        <translation type="vanished">La misma geometría clásica de Cornell Box que la escena Cornell Box simple y las demás escenas de Cornell para comparación de cámaras, renderizada con el desenfoque de lente delgada de la cámara en perspectiva predeterminada en lugar de una clase de cámara alternativa. Aísla la profundidad de campo como la única variable frente a la misma sala que usan las demás escenas de comparación de cámaras, para que el efecto de la técnica se pueda comparar directamente en vez de confundirse con geometría diferente.</translation>
-    </message>
-    <message>
-        <source>The same shared Cornell box as the other camera-comparison scenes, rendered through an explicit orthographic camera, viewed dead-on down the box&apos;s depth axis. Because projection is parallel rather than perspective, the box&apos;s edges stay parallel all the way to the frame edges instead of converging the way the perspective/depth-of-field version does - the same room used specifically to make that contrast legible.</source>
-        <translation type="vanished">La misma Cornell Box compartida que las demás escenas de comparación de cámaras, renderizada mediante una cámara ortográfica explícita, vista de frente a lo largo del eje de profundidad de la caja. Como la proyección es paralela en lugar de en perspectiva, los bordes de la caja se mantienen paralelos hasta los bordes del encuadre en lugar de converger como lo hace la versión en perspectiva/profundidad de campo - la misma sala usada específicamente para hacer legible ese contraste.</translation>
-    </message>
-    <message>
-        <source>The same shared Cornell box, toured with an explicit spherical (equirectangular) camera positioned at the box&apos;s center. The panorama wraps all five walls, the ceiling light, and the glass sphere into one 360-degree image from a single interior vantage point - the same technique as the standalone Spherical Camera scene, now applied to the shared comparison geometry.</source>
-        <translation type="vanished">La misma Cornell Box compartida, recorrida con una cámara esférica (equirrectangular) explícita posicionada en el centro de la caja. El panorama envuelve las cinco paredes, la luz del techo y la esfera de vidrio en una única imagen de 360 grados desde un único punto de vista interior - la misma técnica que la escena independiente de Cámara Esférica, ahora aplicada a la geometría compartida de comparación.</translation>
-    </message>
-    <message>
-        <source>The same shared Cornell box, rendered through the identical multi-element realistic-camera lens prescription used in the standalone Realistic Camera scene, but with its aperture scaled up to suit the box&apos;s much larger scale - keeping the defocus cone&apos;s angular size, and thus the visible lens bokeh, comparable despite the different scene scale.</source>
-        <translation type="vanished">La misma Cornell Box compartida, renderizada mediante la misma prescripción de lente multielemento de cámara realista usada en la escena independiente de Cámara Realista, pero con su apertura escalada para adaptarse a la escala mucho mayor de la caja - manteniendo comparable el tamaño angular del cono de desenfoque, y por tanto el bokeh de lente visible, pese a la diferente escala de la escena.</translation>
-    </message>
-    <message>
-        <source>The same shared Cornell box, but the camera itself moves during the exposure - keyframed from one side to the other via real AnimatedTransform interpolation (pbrt-v4&apos;s motion-blur technique), with each ray sampling its own time within the shutter interval instead of a single fixed camera position. Applies only under the default path tracer and SPPM (not BDPT/MLT/the debug integrators, which render a static first-keyframe frame instead). GPU also renders a static frame at the first keyframe.</source>
-        <translation type="vanished">La misma Cornell Box compartida, pero la propia cámara se mueve durante la exposición - con fotogramas clave de un lado a otro mediante interpolación real de AnimatedTransform (la técnica de motion blur de pbrt-v4), con cada rayo muestreando su propio instante dentro del intervalo del obturador en lugar de una única posición de cámara fija. Solo se aplica bajo el trazador de rayos predeterminado y SPPM (no BDPT/MLT/los integradores de depuración, que renderizan un fotograma estático del primer fotograma clave). La GPU también renderiza un fotograma estático en el primer fotograma clave.</translation>
-    </message>
-    <message>
-        <source>A perspective camera&apos;s thin-lens depth-of-field - lens radius and focus distance - loaded straight from a pbrt file&apos;s Camera directive, on both backends. The same optical model as this project&apos;s own native Depth of Field scene, exercising the file-loading path instead.</source>
-        <translation type="vanished">La profundidad de campo de lente delgada de una cámara en perspectiva - radio de lente y distancia de enfoque - cargada directamente desde la directiva Camera de un archivo pbrt, en ambos backends. El mismo modelo óptico que la escena nativa propia de Profundidad de Campo de este proyecto, ejercitando en cambio el camino de carga de archivo.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s orthographic (parallel-projection) camera loaded from a file - rays are all parallel instead of converging at an eye point, so two same-size spheres at different depths read as the same size on screen rather than the nearer one looking bigger, the opposite of ordinary perspective foreshortening.</source>
-        <translation type="vanished">La cámara ortográfica (proyección paralela) de pbrt cargada desde un archivo - todos los rayos son paralelos en lugar de converger en un punto de vista, así que dos esferas del mismo tamaño a distintas profundidades se ven del mismo tamaño en pantalla en lugar de que la más cercana parezca más grande, lo opuesto al escorzo en perspectiva ordinario.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s spherical (equal-area) camera loaded from a file - rays fan out in every direction from a single point rather than through a flat image plane, so one render can capture a full 360-degree surround. Placed inside an enclosed room so every direction actually has something to see.</source>
-        <translation type="vanished">La cámara esférica (de área igual) de pbrt cargada desde un archivo - los rayos se abren en abanico en todas las direcciones desde un único punto en lugar de a través de un plano de imagen plano, así que un solo renderizado puede capturar un entorno completo de 360 grados. Colocada dentro de una sala cerrada para que en cada dirección haya realmente algo que ver.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s realistic camera - a real multi-element lens system, not the idealized thin-lens/pinhole model every other camera scene uses - loaded from a lens-prescription file, tracing rays through actual glass elements for authentic depth-of-field and lens aberrations, including the lensfile-loading path a compiled-in scene never exercised.</source>
-        <translation type="vanished">La cámara realista de pbrt - un sistema de lentes multielemento real, no el modelo idealizado de lente delgada/orificio estenopeico que usan las demás escenas de cámara - cargada desde un archivo de prescripción de lente, trazando rayos a través de elementos de vidrio reales para lograr una profundidad de campo y aberraciones de lente auténticas, incluyendo el camino de carga de lensfile que una escena compilada nunca ejercitaba.</translation>
-    </message>
-    <message>
-        <source>Fills a Cornell box with a homogeneous participating medium - a boundary box with a uniform scattering coefficient and Henyey-Greenstein phase function. Every point inside the boundary has identical density, so this tests the basic free-flight-sampling / single-scattering-coefficient medium path rather than any spatially-varying density model.</source>
-        <translation type="vanished">Llena una Cornell Box con un medio participante homogéneo - una caja límite con un coeficiente de dispersión uniforme y una función de fase de Henyey-Greenstein. Cada punto dentro del límite tiene densidad idéntica, así que esto comprueba el camino básico de muestreo de vuelo libre / coeficiente de dispersión único en lugar de cualquier modelo de densidad variable espacialmente.</translation>
-    </message>
-    <message>
-        <source>A real heterogeneous volume whose density is evaluated procedurally per-point via multi-octave Perlin noise with a wispiness perturbation and an altitude falloff, rather than a lookup into baked voxel data. Rendering uses delta tracking (null-collision sampling) to handle the non-uniform density field, giving a denser base and thinning top the way a real cloud does.</source>
-        <translation type="vanished">Un volumen heterogéneo real cuya densidad se evalúa proceduralmente punto a punto mediante ruido Perlin multioctava con una perturbación de aspecto vaporoso y una atenuación por altitud, en lugar de una consulta a datos de vóxel precalculados. El renderizado usa delta tracking (muestreo por colisión nula) para manejar el campo de densidad no uniforme, dando una base más densa y una parte superior que se adelgaza tal como lo hace una nube real.</translation>
-    </message>
-    <message>
-        <source>Shows the dielectric-plus-internal-medium combination as its own subject: glass spheres, each built from a refractive dielectric surface with a homogeneous participating medium of a different density packed inside it. Exercises the case where a scattering medium is bounded by a real refracting surface rather than an opaque shell, so rays must refract in, scatter/absorb through the internal fog, and refract back out.</source>
-        <translation type="vanished">Muestra la combinación de dieléctrico más medio interno como tema propio: esferas de vidrio, cada una construida con una superficie dieléctrica refractiva con un medio participante homogéneo de distinta densidad empaquetado en su interior. Ejercita el caso en que un medio de dispersión está acotado por una superficie refractiva real en lugar de una envoltura opaca, así que los rayos deben refractarse hacia dentro, dispersarse/absorberse a través de la niebla interna, y refractarse de vuelta hacia fuera.</translation>
-    </message>
-    <message>
-        <source>A heterogeneous medium with real per-voxel scattering data baked into a 3D grid, with independent red/green/blue channels generated at different frequencies so the color decorrelates spatially instead of reading as a uniformly tinted cloud - sampled via majorant-grid-accelerated delta tracking. Unlike a procedural medium evaluated analytically per point, this is discrete voxel data mapped from the render-space box onto the grid&apos;s own coordinate space.</source>
-        <translation type="vanished">Un medio heterogéneo con datos de dispersión reales por vóxel precalculados en una cuadrícula 3D, con canales rojo/verde/azul independientes generados a distintas frecuencias para que el color se decorrelacione espacialmente en lugar de leerse como una nube de tono uniforme - muestreado mediante delta tracking acelerado por cuadrícula mayorante. A diferencia de un medio procedural evaluado analíticamente punto a punto, esto son datos discretos de vóxel mapeados desde la caja del espacio de renderizado al propio espacio de coordenadas de la cuadrícula.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s MakeNamedMedium &quot;cloud&quot; - a heterogeneous scattering volume whose density comes from 3D Perlin noise, the same noise-driven approach real cloud rendering uses to avoid a flat, obviously-fake fog block - loaded from a file, on both backends.</source>
-        <translation type="vanished">El MakeNamedMedium &quot;cloud&quot; de pbrt - un volumen de dispersión heterogéneo cuya densidad proviene de ruido Perlin 3D, el mismo enfoque basado en ruido que usa el renderizado de nubes real para evitar un bloque de niebla plano y obviamente falso - cargado desde un archivo, en ambos backends.</translation>
-    </message>
-    <message>
-        <source>A homogeneous participating medium (uniform fog/scattering density) attached to a cylinder shape - this combination used to silently render as ordinary empty geometry with no fog effect at all on the GPU backends; this scene is the regression check that the medium is now real there too.</source>
-        <translation type="vanished">Un medio participante homogéneo (densidad de niebla/dispersión uniforme) asociado a una forma de cilindro - esta combinación solía renderizarse silenciosamente como geometría vacía ordinaria sin ningún efecto de niebla en los backends de GPU; esta escena es la comprobación de regresión de que el medio ahora también es real allí.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s MakeNamedMedium &quot;rgbgrid&quot; - a 3D voxel grid where each cell carries its own RGB scattering color, not just a density scalar - rendering as a soft, coloured nebula-like volume, on both backends.</source>
-        <translation type="vanished">El MakeNamedMedium &quot;rgbgrid&quot; de pbrt - una cuadrícula de vóxeles 3D donde cada celda lleva su propio color de dispersión RGB, no solo un escalar de densidad - renderizándose como un volumen suave y coloreado, similar a una nebulosa, en ambos backends.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s MakeNamedMedium &quot;uniformgrid&quot; - a single-channel density voxel grid, no per-voxel color, unlike the RGB grid medium scene - rendering as a soft glowing blob, the simpler sibling of that scene.</source>
-        <translation type="vanished">El MakeNamedMedium &quot;uniformgrid&quot; de pbrt - una cuadrícula de vóxeles de densidad de un solo canal, sin color por vóxel, a diferencia de la escena de medio con cuadrícula RGB - renderizándose como una masa brillante suave, la hermana más simple de esa escena.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s MakeNamedMedium &quot;nanovdb&quot;: a real NanoVDB-format sparse density grid read from an external .nvdb file, rendering as a soft fog-volume sphere - the biggest single pbrt-v4 gap this project closed, since sparse voxel data needs a fundamentally different lookup than the dense grids the other medium scenes use. CPU only; GPU doesn&apos;t implement the NanoVDB lookup at all and falls back to flat homogeneous fog instead, a documented approximation rather than a bug.</source>
-        <translation type="vanished">El MakeNamedMedium &quot;nanovdb&quot; de pbrt: una cuadrícula de densidad dispersa real en formato NanoVDB leída desde un archivo .nvdb externo, renderizándose como una esfera de volumen de niebla suave - la mayor brecha individual de pbrt-v4 que cerró este proyecto, ya que los datos de vóxeles dispersos necesitan una consulta fundamentalmente distinta a las cuadrículas densas que usan las demás escenas de medios. Solo CPU; la GPU no implementa en absoluto la consulta NanoVDB y en su lugar recae en niebla homogénea plana, una aproximación documentada y no un error.</translation>
-    </message>
-    <message>
-        <source>pbrt-v4&apos;s camera-medium idiom: a MediumInterface directive issued BEFORE the Camera directive puts the camera itself inside a fog with no boundary shape at all, a genuinely different mechanism from every other bundled medium scene (which all attach their MediumInterface to a shape the camera looks at from outside). Implemented as an explicit post-hit step in the camera code rather than a BVH hittable, since this renderer has no ray-carried medium state. Real on CPU and GPU-recursive; GPU-wavefront doesn&apos;t implement it at all and silently renders without the fog, a real backend gap significant enough to need its own tolerance carve-out in the CPU/GPU parity tests.</source>
-        <translation type="vanished">El idioma de medio de cámara de pbrt-v4: una directiva MediumInterface emitida ANTES de la directiva Camera coloca la propia cámara dentro de una niebla sin ninguna forma delimitadora, un mecanismo genuinamente distinto al de cualquier otra escena de medio incluida (que en todos los casos adjuntan su MediumInterface a una forma que la cámara mira desde fuera). Implementado como un paso explícito posterior al impacto en el código de la cámara en lugar de como un hittable de BVH, ya que este renderizador no tiene estado de medio transportado por el rayo. Real en CPU y GPU recursivo; GPU wavefront no lo implementa en absoluto y renderiza silenciosamente sin la niebla, una brecha de backend real lo bastante significativa como para necesitar su propia excepción de tolerancia en las pruebas de paridad CPU/GPU.</translation>
-    </message>
-    <message>
-        <source>Tests the bilinear patch primitive - a true 4-corner curved surface defined by its own intersection routine, not a pair of triangles - by placing two patches whose corners are offset in height to form a hyperbolic-paraboloid saddle and a curved ramp. A soft-roughness metal material is used deliberately so the shading gradient traces the surface&apos;s continuous curvature - a mirror finish would only show a single sharp highlight and hide the fact that the surface isn&apos;t flat.</source>
-        <translation type="vanished">Comprueba la primitiva de parche bilineal - una superficie curva real de 4 esquinas definida por su propia rutina de intersección, no un par de triángulos - colocando dos parches cuyas esquinas están desplazadas en altura para formar una silla de montar paraboloide hiperbólico y una rampa curva. Se usa deliberadamente un material metálico de rugosidad suave para que el degradado de sombreado trace la curvatura continua de la superficie - un acabado espejo solo mostraría un único brillo nítido y ocultaría el hecho de que la superficie no es plana.</translation>
-    </message>
-    <message>
-        <source>Builds a procedural icosahedron as a real indexed triangle mesh, exercising the mesh&apos;s watertight ray-triangle intersection path used by every loaded mesh in the renderer. No per-vertex normals are supplied, so each triangle falls back to its flat per-face geometric normal, giving the faceted low-poly look rather than smooth-shaded interpolated normals.</source>
-        <translation type="vanished">Construye un icosaedro procedural como una malla de triángulos indexada real, ejercitando el camino de intersección rayo-triángulo hermético usado por cada malla cargada en el renderizador. No se proporcionan normales por vértice, así que cada triángulo recae en su normal geométrica plana por cara, dando el aspecto facetado de baja poligonización en lugar de normales interpoladas con sombreado suave.</translation>
-    </message>
-    <message>
-        <source>Exercises real curve geometry with its own ray-curve intersection test, unlike the separate Hair Fibers scene which shades plain spheres with a hair BSDF instead of curving the surface itself. Bezier strands with root-to-tip taper are rooted across the surface in a scattered pattern, so this tests the curve primitive&apos;s actual swept-ribbon geometry rather than the hair shading model.</source>
-        <translation type="vanished">Ejercita geometría de curva real con su propia prueba de intersección rayo-curva, a diferencia de la escena separada de Fibras de Pelo que sombrea esferas lisas con un BSDF de pelo en lugar de curvar la propia superficie. Hebras de Bézier con estrechamiento de raíz a punta se enraízan sobre la superficie en un patrón disperso, así que esto comprueba la geometría real de cinta barrida de la primitiva de curva en lugar del modelo de sombreado del pelo.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s Shape &quot;plymesh&quot; real per-vertex UV data, threaded through both backends - previously GPU-recursive rendered this exact scene solid black because those UVs were silently dropped.</source>
-        <translation type="vanished">Los datos UV reales por vértice del Shape &quot;plymesh&quot; de pbrt, propagados a través de ambos backends - antes, GPU recursivo renderizaba esta escena exacta en negro sólido porque esos UV se descartaban silenciosamente.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s Shape &quot;plymesh&quot; loading a real external .ply mesh file end to end, including fan-triangulating a face in the source file that isn&apos;t already a triangle - the loader can&apos;t assume every face is pre-triangulated.</source>
-        <translation type="vanished">El Shape &quot;plymesh&quot; de pbrt cargando un archivo de malla .ply externo real de principio a fin, incluyendo la triangulación en abanico de una cara del archivo fuente que aún no es un triángulo - el cargador no puede asumir que cada cara ya está pretriangulada.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s Shape &quot;curve&quot; - true cubic-Bezier fiber geometry, tessellated into GPU-friendly triangles under the hood, rather than any triangle-mesh approximation - compared directly against this project&apos;s own native curve-tuft demo built the same way.</source>
-        <translation type="vanished">El Shape &quot;curve&quot; de pbrt - geometría de fibra Bézier cúbica real, teselada internamente en triángulos aptos para GPU, en lugar de cualquier aproximación de malla de triángulos - comparada directamente con la propia demo nativa de mechón de curvas de este proyecto, construida de la misma manera.</translation>
-    </message>
-    <message>
-        <source>Real curve geometry paired with Material &quot;hair&quot; for the first time in this project - exactly the combination that exposed a bug where the hair BSDF was using a flat-surface normal instead of the fiber&apos;s own tangent direction, which is what makes the highlight along each strand look like a strand instead of matte fuzz.</source>
-        <translation type="vanished">Geometría de curva real combinada con el Material &quot;hair&quot; por primera vez en este proyecto - exactamente la combinación que expuso un error en el que el BSDF del pelo usaba una normal de superficie plana en lugar de la dirección tangente propia de la fibra, que es lo que hace que el brillo a lo largo de cada hebra se vea como una hebra en lugar de una pelusa mate.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s Shape &quot;trianglemesh&quot; &quot;point2 uv&quot; parameter - explicit per-vertex texture coordinates on a triangle mesh - threaded through both backends; GPU-recursive used to render this exact scene solid black before that plumbing existed.</source>
-        <translation type="vanished">El parámetro &quot;point2 uv&quot; del Shape &quot;trianglemesh&quot; de pbrt - coordenadas de textura explícitas por vértice en una malla de triángulos - propagado a través de ambos backends; GPU recursivo solía renderizar esta escena exacta en negro sólido antes de que existiera esa integración.</translation>
-    </message>
-    <message>
-        <source>pbrt&apos;s PixelFilter directive selecting a box filter - every sample within a pixel counted equally, a hard cutoff at the pixel boundary - instead of the smoother default Gaussian. Compare the more aliased, harder-edged silhouettes here against any other scene&apos;s default-filtered render.</source>
-        <translation type="vanished">La directiva PixelFilter de pbrt seleccionando un filtro de caja - cada muestra dentro de un píxel cuenta por igual, con un corte duro en el límite del píxel - en lugar del gaussiano predeterminado más suave. Compara aquí las siluetas más aliasadas y de bordes más duros con el renderizado con filtro predeterminado de cualquier otra escena.</translation>
-    </message>
-    <message>
-        <source>A sphere&apos;s ActiveTransform StartTime/EndTime bracket bakes two different world-space centers into the same shape, sampled per-ray by the camera&apos;s own shutter interval - the moving sphere should render as a soft directional streak, not a crisp or doubled copy, next to a static reference sphere with no bracketing at all. Real on all three backends (CPU, GPU-recursive, GPU-wavefront), unlike the disk/cylinder case below.</source>
-        <translation type="vanished">El intervalo StartTime/EndTime de ActiveTransform de una esfera hornea dos centros distintos en espacio de mundo dentro de la misma forma, muestreados por rayo según el propio intervalo de obturador de la cámara - la esfera en movimiento debería renderizarse como una estela direccional suave, no como una copia nítida o duplicada, junto a una esfera de referencia estática sin ningún intervalo. Real en los tres backends (CPU, GPU recursivo, GPU wavefront), a diferencia del caso de disco/cilindro de más abajo.</translation>
-    </message>
-    <message>
-        <source>The same ActiveTransform motion-blur technique as the Object Motion Blur scene, but applied to Shape &quot;disk&quot;/&quot;cylinder&quot; instead of a sphere - a different code path internally (baked into the shape&apos;s own start/end transform rather than a sphere&apos;s center1/center2 pair). CPU only: both GPU backends render these shapes frozen at their start pose and warn instead of blurring, unlike sphere motion blur, which GPU does support.</source>
-        <translation type="vanished">La misma técnica de desenfoque de movimiento por ActiveTransform que la escena Desenfoque de Movimiento de Objeto, pero aplicada al Shape &quot;disk&quot;/&quot;cylinder&quot; en lugar de a una esfera - un camino de código distinto internamente (horneado en la propia transformación de inicio/fin de la forma en lugar del par center1/center2 de una esfera). Solo CPU: ambos backends de GPU renderizan estas formas congeladas en su pose inicial y avisan en lugar de difuminar, a diferencia del desenfoque de movimiento de esferas, que la GPU sí admite.</translation>
-    </message>
-    <message>
-        <source>Two quads share the identical point array and index winding, which by itself produces a normal facing away from the camera - a one-sided area light with that winding is invisible from the front. The bare ReverseOrientation directive, issued immediately before the second quad, flips its effective normal to face the camera instead, so one quad stays dark and the other lights up; a bug in ReverseOrientation would show up as both quads dark or both lit, never exactly one of each.</source>
-        <translation type="vanished">Dos cuadriláteros comparten el mismo array de puntos y el mismo orden de índices, que por sí solo produce una normal que mira en dirección contraria a la cámara - una luz de área de una sola cara con ese orden es invisible desde el frente. La directiva ReverseOrientation por sí sola, emitida justo antes del segundo cuadrilátero, invierte su normal efectiva para que mire hacia la cámara en su lugar, así que un cuadrilátero permanece oscuro y el otro se ilumina; un error en ReverseOrientation se manifestaría como ambos cuadriláteros oscuros o ambos iluminados, nunca exactamente uno de cada.</translation>
-    </message>
-    <message>
-        <source>Four shapes exercising this project&apos;s own pbrt-v3-compatibility extension (Shape &quot;cone&quot;/&quot;paraboloid&quot;, not part of real pbrt-v4): a plain diffuse cone and paraboloid as base shapes, a cone used as an AreaLightSource emitter instead of a normal material, and a paraboloid used as a MediumInterface fog boundary with its open rim facing the camera so rays enter the medium through the open end rather than the solid surface. CPU only - GPU (both backends) warns and drops any cone/paraboloid shape entirely.</source>
-        <translation type="vanished">Cuatro formas que ejercitan la propia extensión de compatibilidad con pbrt-v3 de este proyecto (Shape &quot;cone&quot;/&quot;paraboloid&quot;, que no forma parte del pbrt-v4 real): un cono y un paraboloide difusos simples como formas base, un cono usado como emisor AreaLightSource en lugar de un material normal, y un paraboloide usado como límite de niebla MediumInterface con su borde abierto orientado hacia la cámara, de modo que los rayos entran en el medio por el extremo abierto en lugar de por la superficie sólida. Solo CPU - la GPU (ambos backends) avisa y descarta por completo cualquier forma cone/paraboloid.</translation>
-    </message>
-    <message>
-        <source>The classic pbrt-v4 &quot;killeroo&quot; statue example scene - a full end-to-end scene loaded from its own .pbrt file (geometry, materials, lights, camera all file-driven) rather than compiled directly into this renderer, the same file format and loading path a user&apos;s own custom pbrt scenes go through.</source>
-        <translation type="vanished">La clásica escena de ejemplo de la estatua &quot;killeroo&quot; de pbrt-v4 - una escena completa de principio a fin cargada desde su propio archivo .pbrt (geometría, materiales, luces y cámara, todo definido por archivo) en lugar de compilada directamente en este renderizador, el mismo formato de archivo y camino de carga por el que pasan las escenas pbrt personalizadas propias de un usuario.</translation>
-    </message>
-    <message>
-        <source>The exact same Cornell box as A1, rendered at a deliberately low 16 samples per pixel instead of the usual 100 - too few to converge cleanly. Switch Sampler on the Render Options tab (Sobol, Z-Sobol, Padded Sobol, Stratified, PMJ02BN, Halton) and re-render: every choice is a different low-discrepancy sequence for spreading those 16 samples across the pixel and the light, so the noise/clumping pattern in the soft shadow&apos;s penumbra changes with it even though nothing else about the scene does. CPU default path tracer only - the Sampler control has no effect on GPU.</source>
-        <translation type="vanished">La misma Cornell Box que A1, renderizada a un número deliberadamente bajo de 16 muestras por píxel en vez de las 100 habituales - demasiado pocas para converger limpiamente. Cambia el Muestreador en la pestaña Opciones de renderizado (Sobol, Z-Sobol, Padded Sobol, Stratified, PMJ02BN, Halton) y vuelve a renderizar: cada opción es una secuencia de baja discrepancia distinta para repartir esas 16 muestras por el píxel y la luz, así que el patrón de ruido/agrupación en la penumbra de la sombra suave cambia con ello aunque nada más en la escena lo haga. Solo para el trazador de rayos predeterminado en CPU - el control Muestreador no tiene efecto en GPU.</translation>
-    </message>
-    <message>
-        <source>The same glass prism as B23 (Spectral Dispersion), re-framed here as the Spectral rendering checkbox&apos;s own demo. With Spectral rendering (Render Options tab) switched off, the renderer tracks only red/green/blue and every wavelength bends by the same fixed amount through the glass; switched on, the renderer tracks real per-ray wavelengths and the prism&apos;s index of refraction genuinely varies with wavelength, fanning white light into a visible spectrum the same way a physical prism does. CPU default path tracer only.</source>
-        <translation type="vanished">El mismo prisma de vidrio que B23 (Dispersión espectral), reencuadrado aquí como demostración propia de la casilla Renderizado espectral. Con el renderizado espectral (pestaña Opciones de renderizado) desactivado, el renderizador solo sigue rojo/verde/azul y cada longitud de onda se desvía la misma cantidad fija al pasar por el vidrio; activado, el renderizador sigue longitudes de onda reales por rayo y el índice de refracción del prisma varía de verdad con la longitud de onda, abriendo la luz blanca en un espectro visible tal como lo haría un prisma físico. Solo para el trazador de rayos predeterminado en CPU.</translation>
-    </message>
-    <message>
-        <source>The same HDR sky gradient as C1 (HDRI Sky): a bright procedural sky behind a diffuse sphere sitting in its own shadow - real brightness values from near-black to far past what a screen can display in one image. Two Render Options tab controls act on that range differently: Exposure is a flat multiplier applied before anything else, so raising it brightens the whole image evenly, sphere and sky alike; Tone mapping is the curve applied after that multiplier to compress the result into a displayable range - ACES rolls the sky&apos;s brightest highlights off gently, Reinhard compresses harder, and None just clips them to flat white. Try each Tone mapping choice at a couple of different Exposure values to see the two controls act independently. Works on both CPU and GPU.</source>
-        <translation type="vanished">El mismo degradado de cielo HDR que C1 (Cielo HDRI): un cielo procedural brillante detrás de una esfera difusa sentada en su propia sombra - valores de brillo reales desde casi negro hasta mucho más allá de lo que una pantalla puede mostrar en una sola imagen. Dos controles de la pestaña Opciones de renderizado actúan sobre ese rango de forma distinta: la Exposición es un multiplicador plano aplicado antes que nada, así que subirla aclara toda la imagen por igual, esfera y cielo por igual; el Mapeo tonal es la curva aplicada después de ese multiplicador para comprimir el resultado a un rango representable - ACES suaviza los brillos más intensos del cielo con delicadeza, Reinhard comprime con más fuerza, y Ninguno simplemente los recorta a blanco plano. Prueba cada opción de Mapeo tonal con un par de valores de Exposición distintos para ver cómo los dos controles actúan de forma independiente. Funciona tanto en CPU como en GPU.</translation>
-    </message>
-    <message>
-        <source>The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it&apos;s genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene&apos;s own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU only - both the recursive and wavefront backends have their own denoiser. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there&apos;s nothing to visually compare for that one.</source>
-        <translation type="vanished">La misma Cornell Box que A1, renderizada a un número deliberadamente bajo de 32 muestras por píxel para que resulte genuinamente granulada antes de cualquier limpieza - renderízala una vez con el eliminador de ruido de IA de OptiX (pestaña Opciones de renderizado) desactivado y otra vez con él activado. El eliminador de ruido es un modelo de aprendizaje automático que reconoce ese patrón de motas (guiado por los propios búferes de albedo y normales de la escena) y lo suaviza sin trazar ni un solo rayo adicional, cambiando un poco de detalle fino por una imagen notablemente más limpia con el mismo número de muestras. Solo GPU - tanto el backend recursivo como el wavefront tienen cada uno su propio eliminador de ruido. La casilla de modo de validación de OptiX de al lado también merece mención aquí: solo activa comprobaciones adicionales de corrección en el dispositivo con un coste real de rendimiento - nunca cambia la imagen renderizada, así que no hay nada que comparar visualmente en ese caso.</translation>
-    </message>
-    <message>
-        <source>The same frosted-glass Cornell box as B3 (Cornell Rough Glass), re-framed as the Integrator dropdown&apos;s own SPPM demo. Render once with the default Path Tracer and once with SPPM (Render Options tab) at the same sample count: the floor caustic under the rough-dielectric sphere - exactly the hard, high-frequency indirect-light case ordinary path tracing struggles to converge on - should visibly clean up much faster under SPPM&apos;s photon-mapping approach, which is built for precisely this kind of light transport.</source>
-        <translation type="vanished">La misma Cornell Box de vidrio esmerilado que B3 (Cornell Rough Glass), reencuadrada aquí como demostración propia de SPPM del desplegable Integrador. Renderízala una vez con el Trazador de rayos predeterminado y otra con SPPM (pestaña Opciones de renderizado) con el mismo número de muestras: la cáustica del suelo bajo la esfera dieléctrica rugosa - exactamente el caso de luz indirecta duro y de alta frecuencia con el que el trazado de rayos ordinario lucha para converger - debería limpiarse visiblemente mucho más rápido con el enfoque de mapeo de fotones de SPPM, construido precisamente para este tipo de transporte de luz.</translation>
-    </message>
-    <message>
-        <source>The same Cornell box as A1, re-framed as the Integrator dropdown&apos;s own BDPT/MLT demo. Try BDPT or MLT (Render Options tab) instead of the default Path Tracer: both trace light paths from the camera AND from the light source and connect them partway, rather than only tracing from the camera the way the default integrator and SPPM do - a fundamentally different strategy that can converge differently (sometimes better, sometimes with different noise character) on scenes with meaningful indirect lighting like this one.</source>
-        <translation type="vanished">La misma Cornell Box que A1, reencuadrada aquí como demostración propia de BDPT/MLT del desplegable Integrador. Prueba BDPT o MLT (pestaña Opciones de renderizado) en lugar del Trazador de rayos predeterminado: ambos trazan caminos de luz desde la cámara Y desde la fuente de luz y los conectan a mitad de camino, en lugar de trazar solo desde la cámara como hacen el integrador predeterminado y SPPM - una estrategia fundamentalmente distinta que puede converger de forma diferente (a veces mejor, a veces con un carácter de ruido distinto) en escenas con iluminación indirecta significativa como esta.</translation>
-    </message>
-    <message>
-        <source>The same Cornell box as A1, re-framed as a tour of the Integrator dropdown&apos;s reference/debug modes. RandomWalk samples the next bounce direction uniformly over the hemisphere with no light sampling and no MIS at all - the slowest-converging but least-biased baseline. SimplePath adds two independent checkboxes for exactly those two ingredients: with only &quot;sample lights&quot; (NEE) on, direct light comes in cheaply but a bounce toward a bright but off-axis light still relies on luck; with only &quot;sample BSDF&quot; on, the reverse; with both on, that&apos;s Multiple Importance Sampling combining them - which is also what the default Path Tracer already does. Render each at the same low sample count to see how differently they converge on identical geometry.</source>
-        <translation type="vanished">La misma Cornell Box que A1, reencuadrada aquí como recorrido por los modos de referencia/depuración del desplegable Integrador. RandomWalk muestrea la siguiente dirección de rebote de forma uniforme sobre el hemisferio, sin muestreo de luces ni MIS en absoluto - la base más lenta en converger pero menos sesgada. SimplePath añade dos casillas independientes para exactamente esos dos ingredientes: con solo «muestrear luces» (NEE) activado, la luz directa llega de forma económica, pero un rebote hacia una luz brillante pero fuera de eje sigue dependiendo de la suerte; con solo «muestrear BSDF» activado, ocurre lo contrario; con ambos activados, eso es Muestreo de Importancia Múltiple combinándolos - que es también lo que ya hace el Trazador de rayos predeterminado. Renderiza cada uno con el mismo número bajo de muestras para ver cuán distinto convergen sobre la misma geometría.</translation>
-    </message>
-    <message>
-        <source>A Cornell box built specifically for this demo: five ceiling lights instead of A1&apos;s one, with deliberately lopsided power (roughly 1:2:6:15:80, not just different sizes). Uniform (Light sampler, Render Options tab) spends a fifth of every next-event-estimation sample on each light regardless of how much it actually contributes to the image - so most of its samples go toward the four lights that barely matter, and the one genuinely dominant light stays noisier than it needs to. Power and BVH both weight the selection toward that dominant light instead (BVH also accounts for distance/direction, Power only for total emitted flux) - render all three at the same low sample count and compare how quickly the noise around the bright corner light settles down.</source>
-        <translation type="vanished">Una Cornell Box construida específicamente para esta demostración: cinco luces de techo en lugar de la única de A1, con potencias deliberadamente desiguales (aproximadamente 1:2:6:15:80, no solo tamaños distintos). Uniform (Muestreador de luces, pestaña Opciones de renderizado) dedica una quinta parte de cada muestra de estimación de evento siguiente a cada luz sin importar cuánto contribuya realmente a la imagen - así que la mayoría de sus muestras van hacia las cuatro luces que apenas importan, y la única luz genuinamente dominante permanece más ruidosa de lo necesario. Power y BVH ponderan la selección hacia esa luz dominante en su lugar (BVH también tiene en cuenta la distancia/dirección, Power solo el flujo total emitido) - renderiza los tres con el mismo número bajo de muestras y compara qué tan rápido se asienta el ruido alrededor de la luz brillante de la esquina.</translation>
-    </message>
-    <message>
-        <source>The same Cornell box as A1, re-framed as the Integrator dropdown&apos;s own Ambient Occlusion demo. AO is deliberately not a lit render at all: switch to it (Render Options tab) and every surface&apos;s own color and every real light in the scene are ignored entirely, replaced by a single grayscale occlusion term - how much of the hemisphere above each point is blocked by nearby geometry. The rotated box&apos;s own contact shadow and the corners where two walls meet are the only structure left, which is exactly what makes AO useful as a fast preview of a scene&apos;s geometric complexity in isolation from its lighting.</source>
-        <translation type="vanished">La misma Cornell Box que A1, reencuadrada aquí como demostración propia de Oclusión Ambiental del desplegable Integrador. AO deliberadamente no es en absoluto un renderizado iluminado: cámbiate a él (pestaña Opciones de renderizado) y el color propio de cada superficie y cada luz real de la escena se ignoran por completo, sustituidos por un único término de oclusión en escala de grises - cuánto del hemisferio sobre cada punto está bloqueado por la geometría cercana. La sombra de contacto de la caja rotada y las esquinas donde se encuentran dos paredes son la única estructura que queda, que es exactamente lo que hace útil a AO como vista previa rápida de la complejidad geométrica de una escena, aislada de su iluminación.</translation>
-    </message>
-    <message>
-        <source>The same frosted-glass Cornell box as B3 and I5 - the rough-dielectric sphere&apos;s floor caustic is a textbook hard-caustic case, the kind of light path (specular-like scattering into a small solid angle, then landing on a diffuse floor) that produces isolated bright-pixel fireflies under plain path tracing. Regularize and Firefly clamp (--maxcomponentvalue, both Render Options tab) tame that two different ways: Regularize widens the rough BSDF&apos;s own roughness after the first non-specular bounce, so the caustic itself is less pathologically sharp to sample in the first place; the clamp instead lets the firefly happen and then scales down any sample whose brightest channel exceeds the threshold, trading a little energy loss for a guaranteed ceiling. Render plain, then each on its own, at the same sample count to compare.</source>
-        <translation type="vanished">La misma Cornell Box de vidrio esmerilado que B3 e I5 - la cáustica del suelo bajo la esfera dieléctrica rugosa es un caso de manual de cáustica dura, el tipo de camino de luz (dispersión casi especular hacia un ángulo sólido pequeño, que después incide sobre un suelo difuso) que produce píxeles atípicos aislados y brillantes con el trazado de rayos habitual. Regularize y Límite de píxeles atípicos (--maxcomponentvalue, ambos en la pestaña Opciones de renderizado) lo controlan de dos formas distintas: Regularize amplía la rugosidad propia del BSDF rugoso tras el primer rebote no especular, de modo que la cáustica en sí es menos patológicamente aguda de muestrear desde el principio; el límite, en cambio, deja que el píxel atípico ocurra y luego reduce cualquier muestra cuyo canal más brillante supere el umbral, cambiando algo de energía por un techo garantizado. Renderiza sin nada activado, luego cada uno por separado, con el mismo número de muestras, para comparar.</translation>
-    </message>
-    <message>
-        <source>The same Cornell box as A1, rendered at a deliberately low 32 samples per pixel so it&apos;s genuinely grainy before any cleanup - render it once with the OptiX AI denoiser (Render Options tab) off and once with it on. The denoiser is a machine-learning model that recognizes that speckle pattern (guided by the scene&apos;s own albedo and normal buffers) and smooths it away without tracing a single additional ray, trading a little fine detail for a dramatically cleaner-looking image at the same sample count. GPU recursive backend only. The neighboring OptiX validation mode checkbox is a different kind of control worth knowing about here too: it only turns on extra device-side correctness checks with a real performance cost - it never changes the rendered image, so there&apos;s nothing to visually compare for that one.</source>
-        <translation type="vanished">La misma Cornell Box que A1, renderizada a un número deliberadamente bajo de 32 muestras por píxel para que resulte genuinamente granulada antes de cualquier limpieza - renderízala una vez con el eliminador de ruido de IA de OptiX (pestaña Opciones de renderizado) desactivado y otra vez con él activado. El eliminador de ruido es un modelo de aprendizaje automático que reconoce ese patrón de motas (guiado por los propios búferes de albedo y normales de la escena) y lo suaviza sin trazar ni un solo rayo adicional, cambiando un poco de detalle fino por una imagen notablemente más limpia con el mismo número de muestras. Solo para el backend recursivo de GPU. La casilla de modo de validación de OptiX de al lado también merece mención aquí: solo activa comprobaciones adicionales de corrección en el dispositivo con un coste real de rendimiento - nunca cambia la imagen renderizada, así que no hay nada que comparar visualmente en ese caso.</translation>
-    </message>
-    <message>
         <location filename="../scene_technique_notes.h" line="44"/>
         <source>The Cornell box is one of the most famous test scenes in computer graphics: a small room with colored side walls, a glowing light panel set into the ceiling, a plain white box, and a glass sphere that both reflects and refracts the light around it. Watch how the red and green walls tint nearby white surfaces with bounced color, and how the ceiling light produces soft, clean shadows rather than a speckled, noisy look. Because it packs bounced light, a light source, and a glass object into one small room, this scene is usually the first place any lighting or material problem shows up.</source>
-        <translation>El modo más simple para renderizar volúmenes translúcidos como humo o niebla: avanza a través del espacio vacío hasta que choca con algo al azar. No apunta rayos a las luces, no hace ninguna de las mezclas para limpiar ruido que usa el Trazador de rayos predeterminado, y no maneja superficies sólidas en absoluto.
-
-Esta aplicación no tiene actualmente ningún humo o niebla con el que renderizar usando este modo, así que en escenas normales con objetos sólidos suele producir una imagen negra, salvo donde un rayo de cámara mira directamente a una fuente de luz, que es el comportamiento normal del renderizador cuando no hay nada que renderizar.
-
-Solo en CPU.</translation>
+        <translation>La Cornell box es una de las escenas de prueba más famosas de la infografía: una pequeña habitación con paredes laterales de colores, un panel de luz brillante empotrado en el techo, una caja blanca lisa y una esfera de vidrio que refleja y refracta la luz a su alrededor. Fíjate en cómo las paredes roja y verde tiñen con su color rebotado las superficies blancas cercanas, y en cómo la luz del techo produce sombras suaves y limpias en lugar de un aspecto moteado y con ruido. Como reúne luz rebotada, una fuente de luz y un objeto de vidrio en una habitación tan pequeña, esta escena suele ser el primer lugar donde se nota cualquier problema de iluminación o de materiales.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="45"/>
         <source>A tribute to the classic &quot;Ray Tracing in One Weekend&quot; finale: a checkerboard ground stretches to the horizon under a scattered field of small spheres in matte, metallic, and glass finishes. Look closely and some of the spheres appear slightly streaked - those are moving through the frame during the shot, captured with motion blur just like a camera would. Metal spheres range from mirror-sharp to soft and brushed depending on how rough their surface is. Three larger spheres out front - a clear glass ball, a plain matte sphere, and a perfect mirror - serve as a reference lineup for comparing the different finishes side by side.</source>
-        <translation>Funciona al revés que todos los demás modos de esta lista: en lugar de empezar cada rayo en la cámara, lo empieza en una fuente de luz y lo traza hacia fuera, sumando su contribución a la imagen cada vez que una trayectoria termina conectando de vuelta con la cámara.
-
-Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</translation>
+        <translation>Un homenaje al final clásico de &quot;Ray Tracing in One Weekend&quot;: un suelo a cuadros se extiende hasta el horizonte bajo un campo disperso de pequeñas esferas con acabados mate, metálico y de vidrio. Si te fijas bien, algunas esferas se ven ligeramente difuminadas: se están moviendo durante la toma, capturadas con desenfoque de movimiento tal como lo haría una cámara real. Las esferas metálicas van desde un acabado espejo nítido hasta uno suave y cepillado, según lo rugosa que sea su superficie. Tres esferas más grandes en primer plano (una bola de vidrio transparente, una esfera mate lisa y un espejo perfecto) sirven como referencia para comparar los distintos acabados uno al lado del otro.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="46"/>
         <source>Two giant spheres, one sitting above the other, are wrapped in the same blue-and-white checkerboard pattern - not painted on, but generated mathematically so it wraps cleanly around the curved surface without stretching or seams. A few smaller spheres perched on top - one matte, one a softly blurred metal, one glass - give a sense of scale and show how the same light interacts differently with each material.</source>
-        <translation>La Cornell box es una de las escenas de prueba más famosas de la infografía: una pequeña habitación con paredes laterales de colores, un panel de luz brillante empotrado en el techo, una caja blanca lisa y una esfera de vidrio que refleja y refracta la luz a su alrededor. Fíjate en cómo las paredes roja y verde tiñen con su color rebotado las superficies blancas cercanas, y en cómo la luz del techo produce sombras suaves y limpias en lugar de un aspecto moteado y con ruido. Como reúne luz rebotada, una fuente de luz y un objeto de vidrio en una habitación tan pequeña, esta escena suele ser el primer lugar donde se nota cualquier problema de iluminación o de materiales.</translation>
+        <translation>Dos esferas gigantes, una encima de la otra, están envueltas en el mismo patrón de cuadros azules y blancos, que no está pintado sino generado matemáticamente para que se ajuste con precisión a la superficie curva sin estirarse ni dejar costuras. Unas esferas más pequeñas colocadas encima (una mate, una de metal suavemente difuminado y una de vidrio) dan una idea de la escala y muestran cómo la misma luz interactúa de forma distinta con cada material.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="47"/>
         <source>The ground and a large sphere are covered in a procedural marble-like pattern - swirling, naturally varied bands of color generated by a mathematical noise function (Perlin noise) rather than a painted image, the same kind of technique used to make believable clouds, wood grain, or marble in computer graphics and games. Two smaller spheres nearby use a finer, busier version of the same pattern for contrast, lit by a glowing light panel overhead that gives the whole scene soft, realistic shadows.</source>
-        <translation>Un homenaje al final clásico de &quot;Ray Tracing in One Weekend&quot;: un suelo a cuadros se extiende hasta el horizonte bajo un campo disperso de pequeñas esferas con acabados mate, metálico y de vidrio. Si te fijas bien, algunas esferas se ven ligeramente difuminadas: se están moviendo durante la toma, capturadas con desenfoque de movimiento tal como lo haría una cámara real. Las esferas metálicas van desde un acabado espejo nítido hasta uno suave y cepillado, según lo rugosa que sea su superficie. Tres esferas más grandes en primer plano (una bola de vidrio transparente, una esfera mate lisa y un espejo perfecto) sirven como referencia para comparar los distintos acabados uno al lado del otro.</translation>
+        <translation>El suelo y una esfera grande están cubiertos por un patrón procedural parecido al mármol: bandas de color arremolinadas y variadas de forma natural, generadas por una función matemática de ruido (ruido de Perlin) en lugar de una imagen pintada. Es el mismo tipo de técnica que se usa para crear nubes, vetas de madera o mármol creíbles en infografía y videojuegos. Dos esferas más pequeñas cercanas usan una versión más fina y recargada del mismo patrón como contraste, iluminadas por un panel de luz brillante en lo alto que le da a toda la escena sombras suaves y realistas.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="48"/>
         <source>Five flat colored panels are arranged at different angles - facing forward, sideways, and up - to check that each one catches light correctly no matter which way it&apos;s turned. A separate glowing panel floating in the room is the scene&apos;s only light source, casting soft, direct light and shadows onto the others.</source>
-        <translation>Dos esferas gigantes, una encima de la otra, están envueltas en el mismo patrón de cuadros azules y blancos, que no está pintado sino generado matemáticamente para que se ajuste con precisión a la superficie curva sin estirarse ni dejar costuras. Unas esferas más pequeñas colocadas encima (una mate, una de metal suavemente difuminado y una de vidrio) dan una idea de la escala y muestran cómo la misma luz interactúa de forma distinta con cada material.</translation>
+        <translation>Cinco paneles planos de colores están colocados en ángulos distintos (mirando hacia delante, hacia los lados y hacia arriba) para comprobar que cada uno recibe la luz correctamente sin importar hacia dónde esté orientado. Un panel brillante independiente que flota en la habitación es la única fuente de luz de la escena, y proyecta luz directa y sombras suaves sobre los demás.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="49"/>
         <source>Reuses the marble-textured ground from the marble-sphere scenes, but the real star here is light itself: a warm-glowing sphere and a cooler-toned glowing panel act as two very differently shaped light sources in the same room. Because one light is a curved ball and the other is a flat panel, this is a good place to see how light of different shapes and colors spreads and blends across nearby surfaces.</source>
-        <translation>El suelo y una esfera grande están cubiertos por un patrón procedural parecido al mármol: bandas de color arremolinadas y variadas de forma natural, generadas por una función matemática de ruido (ruido de Perlin) en lugar de una imagen pintada. Es el mismo tipo de técnica que se usa para crear nubes, vetas de madera o mármol creíbles en infografía y videojuegos. Dos esferas más pequeñas cercanas usan una versión más fina y recargada del mismo patrón como contraste, iluminadas por un panel de luz brillante en lo alto que le da a toda la escena sombras suaves y realistas.</translation>
+        <translation>Reutiliza el suelo con textura de mármol de las escenas de esferas de mármol, pero aquí la verdadera protagonista es la propia luz: una esfera que brilla con un tono cálido y un panel que brilla con un tono más frío actúan como dos fuentes de luz con formas muy distintas en la misma habitación. Como una luz es una bola curva y la otra un panel plano, este es un buen sitio para ver cómo se reparte y se mezcla en las superficies cercanas la luz de formas y colores diferentes.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="50"/>
         <source>Takes the familiar Cornell room and swaps out the two solid boxes for boxes filled with colored fog instead - so rather than blocking light like solid objects, they scatter it internally, giving them a soft, hazy, smoke-filled look rather than sharp edges. It&apos;s a good look at how the renderer handles fog and haze confined to a defined shape and thickness, rather than just flat, solid surfaces.</source>
-        <translation>Cinco paneles planos de colores están colocados en ángulos distintos (mirando hacia delante, hacia los lados y hacia arriba) para comprobar que cada uno recibe la luz correctamente sin importar hacia dónde esté orientado. Un panel brillante independiente que flota en la habitación es la única fuente de luz de la escena, y proyecta luz directa y sombras suaves sobre los demás.</translation>
+        <translation>Toma la conocida habitación Cornell y cambia las dos cajas sólidas por cajas llenas de niebla de color: en lugar de bloquear la luz como los objetos sólidos, la dispersan por dentro, dándoles un aspecto suave, brumoso y lleno de humo en vez de bordes nítidos. Es una buena forma de ver cómo maneja el renderizador la niebla y la bruma confinadas en una forma y un grosor definidos, en lugar de simples superficies sólidas y planas.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="51"/>
         <source>The single busiest scene in the whole set, packing in nearly every trick at once: a rolling, uneven ground made from many small boxes of random heights, a glowing ceiling panel, a sphere that&apos;s visibly moving (motion blur), a glass sphere, a softly brushed-metal sphere, a glass sphere with colored fog trapped inside it like a snow globe, a very faint haze drifting through the whole room, a sphere textured with an image of Earth, a marble-patterned sphere, and a tight cluster of small white spheres in the corner. If a single render could show off everything this renderer can do, this would be it.</source>
-        <translation>Reutiliza el suelo con textura de mármol de las escenas de esferas de mármol, pero aquí la verdadera protagonista es la propia luz: una esfera que brilla con un tono cálido y un panel que brilla con un tono más frío actúan como dos fuentes de luz con formas muy distintas en la misma habitación. Como una luz es una bola curva y la otra un panel plano, este es un buen sitio para ver cómo se reparte y se mezcla en las superficies cercanas la luz de formas y colores diferentes.</translation>
+        <translation>La escena más recargada de todo el conjunto, que reúne casi todos los trucos a la vez: un suelo ondulado e irregular hecho de muchas cajas pequeñas de alturas aleatorias, un panel de techo brillante, una esfera que se mueve de forma visible (desenfoque de movimiento), una esfera de vidrio, una esfera de metal suavemente cepillado, una esfera de vidrio con niebla de color atrapada dentro como una bola de nieve, una bruma muy tenue flotando por toda la habitación, una esfera con la textura de una imagen de la Tierra, una esfera con patrón de mármol y un grupo apretado de pequeñas esferas blancas en un rincón. Si un solo renderizado pudiera mostrar todo lo que sabe hacer este renderizador, sería este.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="56"/>
         <source>Five gold-toned spheres sit in a row, each identical except for one thing: how rough its surface is. The leftmost is nearly mirror-smooth with a small, sharp reflected highlight; moving right, the surface gets progressively rougher and the highlight spreads into a soft, wide glow, the same way a brushed or satin-finished metal looks duller and blurrier than a polished one. It&apos;s a clean side-by-side look at how surface roughness alone changes a metal&apos;s appearance.</source>
-        <translation>Toma la conocida habitación Cornell y cambia las dos cajas sólidas por cajas llenas de niebla de color: en lugar de bloquear la luz como los objetos sólidos, la dispersan por dentro, dándoles un aspecto suave, brumoso y lleno de humo en vez de bordes nítidos. Es una buena forma de ver cómo maneja el renderizador la niebla y la bruma confinadas en una forma y un grosor definidos, en lugar de simples superficies sólidas y planas.</translation>
+        <translation>Cinco esferas de tono dorado están colocadas en fila, todas idénticas salvo por una cosa: lo rugosa que es su superficie. La de más a la izquierda es casi tan lisa como un espejo, con un pequeño reflejo nítido y concentrado; a medida que avanzas hacia la derecha, la superficie se vuelve progresivamente más rugosa y el reflejo se extiende en un brillo suave y amplio, igual que un metal cepillado o satinado se ve más apagado y difuso que uno pulido. Es una comparación clara, una junto a otra, de cómo la rugosidad de la superficie por sí sola cambia el aspecto de un metal.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="57"/>
         <source>The same brushed-metal look from the rough-metal row - a brushed aluminum box and a brushed gold sphere - but now placed inside the Cornell room, where it has to hold up under soft, colored, bounced light instead of one clean overhead studio light. Watch how the blurry, glossy reflections pick up hints of the room&apos;s colored walls.</source>
-        <translation>La escena más recargada de todo el conjunto, que reúne casi todos los trucos a la vez: un suelo ondulado e irregular hecho de muchas cajas pequeñas de alturas aleatorias, un panel de techo brillante, una esfera que se mueve de forma visible (desenfoque de movimiento), una esfera de vidrio, una esfera de metal suavemente cepillado, una esfera de vidrio con niebla de color atrapada dentro como una bola de nieve, una bruma muy tenue flotando por toda la habitación, una esfera con la textura de una imagen de la Tierra, una esfera con patrón de mármol y un grupo apretado de pequeñas esferas blancas en un rincón. Si un solo renderizado pudiera mostrar todo lo que sabe hacer este renderizador, sería este.</translation>
+        <translation>El mismo aspecto de metal cepillado de la fila de metal rugoso (una caja de aluminio cepillado y una esfera de oro cepillado), pero ahora colocado dentro de la habitación Cornell, donde tiene que lucir bien bajo una luz suave, de color y rebotada, en lugar de una única luz de estudio limpia desde arriba. Fíjate en cómo los reflejos difusos y brillantes recogen matices de los colores de las paredes de la habitación.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="58"/>
         <source>The usual clear glass sphere from the Cornell box is swapped for a frosted version - light passing through it scatters into a soft blur instead of bending sharply, the same way frosted or sandblasted glass looks compared to a clean windowpane. Reflections off its surface get the same soft, blurred treatment.</source>
-        <translation>Cinco esferas de tono dorado están colocadas en fila, todas idénticas salvo por una cosa: lo rugosa que es su superficie. La de más a la izquierda es casi tan lisa como un espejo, con un pequeño reflejo nítido y concentrado; a medida que avanzas hacia la derecha, la superficie se vuelve progresivamente más rugosa y el reflejo se extiende en un brillo suave y amplio, igual que un metal cepillado o satinado se ve más apagado y difuso que uno pulido. Es una comparación clara, una junto a otra, de cómo la rugosidad de la superficie por sí sola cambia el aspecto de un metal.</translation>
+        <translation>La habitual esfera de vidrio transparente de la Cornell box se sustituye por una versión esmerilada: la luz que la atraviesa se dispersa en un desenfoque suave en lugar de curvarse con nitidez, igual que se ve un vidrio esmerilado o granallado comparado con una ventana limpia. Los reflejos sobre su superficie reciben el mismo tratamiento suave y difuso.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="59"/>
         <source>Polished gold and aluminum surfaces get their color and shine from real measured optical data for each metal, rather than an artist just picking a gold or silver tint - so the color you see is physically how that metal actually reflects light, not an approximation.</source>
-        <translation>El mismo aspecto de metal cepillado de la fila de metal rugoso (una caja de aluminio cepillado y una esfera de oro cepillado), pero ahora colocado dentro de la habitación Cornell, donde tiene que lucir bien bajo una luz suave, de color y rebotada, en lugar de una única luz de estudio limpia desde arriba. Fíjate en cómo los reflejos difusos y brillantes recogen matices de los colores de las paredes de la habitación.</translation>
+        <translation>Las superficies pulidas de oro y aluminio obtienen su color y su brillo a partir de datos ópticos reales medidos para cada metal, en lugar de que un artista simplemente elija un tono dorado o plateado. Así, el color que ves es físicamente cómo ese metal refleja la luz de verdad, no una aproximación.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="60"/>
         <source>A sphere and a box look like they&apos;ve been dipped in a clear varnish or lacquer: a glassy, reflective clear coat sits on top of an ordinary matte-colored surface underneath. Look closely at the highlights - some light bounces straight off the shiny outer coat, while the rest passes through and picks up the matte color beneath, with some light bouncing back and forth between the two layers before it escapes.</source>
-        <translation>La habitual esfera de vidrio transparente de la Cornell box se sustituye por una versión esmerilada: la luz que la atraviesa se dispersa en un desenfoque suave en lugar de curvarse con nitidez, igual que se ve un vidrio esmerilado o granallado comparado con una ventana limpia. Los reflejos sobre su superficie reciben el mismo tratamiento suave y difuso.</translation>
+        <translation>Una esfera y una caja parecen haber sido bañadas en un barniz o laca transparente: una capa exterior brillante y reflectante de vidrio se asienta sobre una superficie mate de color corriente por debajo. Fíjate bien en los reflejos: parte de la luz rebota directamente en la capa exterior brillante, mientras que el resto la atraviesa y toma el color mate de debajo, con algo de luz que rebota de un lado a otro entre las dos capas antes de escapar.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="61"/>
         <source>A pane of glass divides the Cornell room in two, treated as an idealized zero-thickness sheet, so light passing through goes straight across without bending the way it would through a thick block of glass. It&apos;s tilted at an angle on purpose - glass barely reflects anything when you look straight through it, but becomes noticeably more mirror-like the more shallow the viewing angle gets, the same way a car windshield turns reflective at a glancing angle but seems to disappear when viewed head-on.</source>
-        <translation>Las superficies pulidas de oro y aluminio obtienen su color y su brillo a partir de datos ópticos reales medidos para cada metal, en lugar de que un artista simplemente elija un tono dorado o plateado. Así, el color que ves es físicamente cómo ese metal refleja la luz de verdad, no una aproximación.</translation>
+        <translation>Un panel de vidrio divide en dos la habitación Cornell, tratado como una lámina idealizada sin grosor, de modo que la luz que lo atraviesa pasa recto sin curvarse como lo haría a través de un bloque grueso de vidrio. Está inclinado a propósito: el vidrio apenas refleja nada cuando lo miras de frente, pero se vuelve notablemente más parecido a un espejo cuanto más rasante es el ángulo de visión, igual que el parabrisas de un coche se vuelve reflectante visto de refilón pero parece desaparecer visto de frente.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="62"/>
         <source>A gold sphere and a copper box get a lacquered, showroom-finish look: a glassy clear coat sitting over the real metal&apos;s own reflective color underneath. It&apos;s the most layered material in this set, combining the metal&apos;s natural tinted shine with the coat&apos;s own separate highlight sitting on top of it.</source>
-        <translation>Una esfera y una caja parecen haber sido bañadas en un barniz o laca transparente: una capa exterior brillante y reflectante de vidrio se asienta sobre una superficie mate de color corriente por debajo. Fíjate bien en los reflejos: parte de la luz rebota directamente en la capa exterior brillante, mientras que el resto la atraviesa y toma el color mate de debajo, con algo de luz que rebota de un lado a otro entre las dos capas antes de escapar.</translation>
+        <translation>Una esfera de oro y una caja de cobre reciben un acabado lacado, como de sala de exposición: una capa exterior transparente y brillante sobre el color reflectante real del propio metal debajo. Es el material con más capas de todo este conjunto, combinando el brillo con tono natural del metal con el reflejo propio y aparte de la capa de barniz por encima.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="63"/>
         <source>A sphere with a soft, wax-like, candle-lit quality: light doesn&apos;t just bounce off its surface, some of it also passes through and glows out the other side, scattered rather than sharp - a simple, inexpensive way to fake the look of translucent materials like wax or a lampshade, without simulating light actually bouncing around inside the object.</source>
-        <translation>Un panel de vidrio divide en dos la habitación Cornell, tratado como una lámina idealizada sin grosor, de modo que la luz que lo atraviesa pasa recto sin curvarse como lo haría a través de un bloque grueso de vidrio. Está inclinado a propósito: el vidrio apenas refleja nada cuando lo miras de frente, pero se vuelve notablemente más parecido a un espejo cuanto más rasante es el ángulo de visión, igual que el parabrisas de un coche se vuelve reflectante visto de refilón pero parece desaparecer visto de frente.</translation>
+        <translation>Una esfera con una cualidad suave, como de cera, iluminada como si fuera una vela: la luz no solo rebota en su superficie, sino que parte de ella también la atraviesa y brilla por el otro lado, de forma dispersa en vez de nítida. Es una manera sencilla y económica de imitar el aspecto de materiales translúcidos como la cera o una pantalla de lámpara, sin tener que simular de verdad cómo rebota la luz dentro del objeto.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="64"/>
         <source>A crystal-like sphere that glows more strongly near its edges than head-on - the same angle-dependent effect that makes a glass of water or a soap bubble look brighter and more reflective around its rim than through its center, applied here to how the material lets internally-scattered light escape.</source>
-        <translation>Una esfera de oro y una caja de cobre reciben un acabado lacado, como de sala de exposición: una capa exterior transparente y brillante sobre el color reflectante real del propio metal debajo. Es el material con más capas de todo este conjunto, combinando el brillo con tono natural del metal con el reflejo propio y aparte de la capa de barniz por encima.</translation>
+        <translation>Una esfera de aspecto cristalino que brilla con más fuerza cerca de los bordes que de frente, el mismo efecto dependiente del ángulo que hace que un vaso de agua o una pompa de jabón se vean más brillantes y reflectantes en el borde que a través del centro, aplicado aquí a cómo deja escapar el material la luz dispersada en su interior.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="65"/>
         <source>Seven spheres in a row demonstrate one flexible, do-it-all material sliding smoothly from plain matte, to glossy plastic, to plastic with a clear varnish-like coat, to semi-metallic, to rough brushed metal, and finally to a perfect, glass-smooth mirror finish (with and without a clear coat on top). Rather than needing a different material for each look, this one material can become almost any surface just by adjusting how metallic, how rough, and how glossy-coated it is.</source>
-        <translation>Una esfera con una cualidad suave, como de cera, iluminada como si fuera una vela: la luz no solo rebota en su superficie, sino que parte de ella también la atraviesa y brilla por el otro lado, de forma dispersa en vez de nítida. Es una manera sencilla y económica de imitar el aspecto de materiales translúcidos como la cera o una pantalla de lámpara, sin tener que simular de verdad cómo rebota la luz dentro del objeto.</translation>
+        <translation>Siete esferas en fila muestran un único material flexible y polivalente que pasa suavemente de mate liso, a plástico brillante, a plástico con una capa transparente tipo barniz, a semimetálico, a metal rugoso cepillado, y finalmente a un acabado espejo perfecto y liso como el vidrio (con y sin capa transparente encima). En lugar de necesitar un material distinto para cada aspecto, este único material puede convertirse en casi cualquier superficie con solo ajustar cuánto de metálico, de rugoso y de brillante-con-capa tiene.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="66"/>
         <source>Five spheres are shaded with the same light-scattering model used for individual strands of hair - applied to spheres rather than actual hair-thin fibers, so you can study just the material&apos;s look in isolation (see the Curve Fibers scene for real hair-shaped geometry using the same idea). This material scatters light in a very strong, narrow, almost laser-like way, so much so that the light in this room had to be turned way down to avoid the highlights blowing out completely white.</source>
-        <translation>Una esfera de aspecto cristalino que brilla con más fuerza cerca de los bordes que de frente, el mismo efecto dependiente del ángulo que hace que un vaso de agua o una pompa de jabón se vean más brillantes y reflectantes en el borde que a través del centro, aplicado aquí a cómo deja escapar el material la luz dispersada en su interior.</translation>
+        <translation>Cinco esferas se sombrean con el mismo modelo de dispersión de luz que se usa para las hebras individuales de pelo, aplicado a esferas en lugar de a fibras tan finas como un cabello, para que puedas estudiar solo el aspecto del material de forma aislada (consulta la escena Curve Fibers para ver geometría con forma de pelo real que usa la misma idea). Este material dispersa la luz de forma muy intensa y estrecha, casi como un láser, tanto que hubo que bajar mucho la luz de esta habitación para que los brillos no se quemaran por completo hasta el blanco.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="67"/>
         <source>Two ways of faking fine surface detail without actually modeling it: the back wall and box appear to have a bumpy, marbled texture even though their underlying shape is completely flat, while the sphere appears to have a checkerboard pattern etched into its surface even though it&apos;s perfectly smooth. Both tricks work by subtly bending the direction light &quot;thinks&quot; the surface is facing, without changing the actual geometry at all.</source>
-        <translation>Siete esferas en fila muestran un único material flexible y polivalente que pasa suavemente de mate liso, a plástico brillante, a plástico con una capa transparente tipo barniz, a semimetálico, a metal rugoso cepillado, y finalmente a un acabado espejo perfecto y liso como el vidrio (con y sin capa transparente encima). En lugar de necesitar un material distinto para cada aspecto, este único material puede convertirse en casi cualquier superficie con solo ajustar cuánto de metálico, de rugoso y de brillante-con-capa tiene.</translation>
+        <translation>Dos formas de simular detalle fino en la superficie sin modelarlo realmente: la pared del fondo y la caja parecen tener una textura abultada y veteada aunque su forma subyacente sea completamente plana, mientras que la esfera parece tener un patrón de tablero de ajedrez grabado en su superficie aunque sea perfectamente lisa. Ambos trucos funcionan doblando sutilmente la dirección hacia la que la luz «cree» que mira la superficie, sin cambiar en absoluto la geometría real.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="68"/>
@@ -5894,8 +4816,8 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="192"/>
-        <source>The same first Cornell box demo, rendered with a very low number of samples so it looks genuinely grainy - render it once with the OptiX AI denoiser (Render Options tab) turned off, then once with it on. The denoiser is a machine-learning model that recognizes that speckled noise pattern and smooths it away without tracing a single extra ray, trading a small amount of fine detail for a much cleaner-looking image at no extra rendering cost. GPU only. The nearby OptiX validation mode checkbox is worth knowing about too, but it&apos;s different - it only turns on extra internal safety checks with a performance cost, and never changes what the image looks like, so there&apos;s nothing to visually compare there.</source>
-        <translation>La misma primera demostración de Cornell box, renderizada con muy pocas muestras para que se vea claramente con ruido: renderízala una vez con el Eliminador de ruido de IA de OptiX (pestaña Opciones de renderizado) desactivado, y otra vez con él activado. El eliminador de ruido es un modelo de aprendizaje automático que reconoce ese patrón de ruido moteado y lo suaviza sin trazar ni un solo rayo adicional, a cambio de un poco de detalle fino se obtiene una imagen mucho más limpia sin coste extra de renderizado. Solo GPU. La casilla cercana de modo de validación de OptiX también merece conocerse, pero es distinta: solo activa comprobaciones internas de seguridad adicionales con un coste de rendimiento, y nunca cambia el aspecto de la imagen, así que ahí no hay nada que comparar visualmente.</translation>
+        <source>The same first Cornell box demo, rendered with a very low number of samples so it looks genuinely grainy - render it once with the OptiX AI denoiser (Render Options tab) turned off, then once with it on. The denoiser is a machine-learning model that recognizes that speckled noise pattern and smooths it away without tracing a single extra ray, trading a small amount of fine detail for a much cleaner-looking image at no extra rendering cost. Requires the OptiX GPU backend (Windows) - it has no Metal equivalent, so this demo isn&apos;t available on macOS. The nearby OptiX validation mode checkbox is worth knowing about too, but it&apos;s different - it only turns on extra internal safety checks with a performance cost, and never changes what the image looks like, so there&apos;s nothing to visually compare there.</source>
+        <translation>La misma primera demostración de la Cornell box, renderizada con muy pocas muestras para que se vea realmente granulada: renderízala una vez con el eliminador de ruido con IA de OptiX (pestaña Opciones de renderizado) desactivado y otra con él activado. El eliminador de ruido es un modelo de aprendizaje automático que reconoce ese patrón de ruido moteado y lo suaviza sin trazar ni un solo rayo adicional, a cambio de perder un poco de detalle fino, con una imagen mucho más limpia y sin coste de renderizado extra. Requiere el motor de GPU OptiX (Windows); no tiene equivalente en Metal, así que esta demostración no está disponible en macOS. La casilla cercana del modo de validación de OptiX también merece conocerse, pero es distinta: solo activa comprobaciones internas de seguridad con un coste de rendimiento y nunca cambia el aspecto de la imagen, así que no hay nada que comparar visualmente.</translation>
     </message>
     <message>
         <location filename="../scene_technique_notes.h" line="193"/>
@@ -5939,6 +4861,126 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
     </message>
 </context>
 <context>
+    <name>RenderController</name>
+    <message>
+        <location filename="../mainwindow.cpp" line="549"/>
+        <source>Failed to start renderer: %1</source>
+        <translation>No se pudo iniciar el renderizador: %1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="630"/>
+        <source>Render completed successfully!</source>
+        <translation>¡Renderizado completado correctamente!</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="667"/>
+        <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Troubleshooting:&lt;/b&gt;&lt;br&gt;%1</source>
+        <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;Solución de problemas:&lt;/b&gt;&lt;br&gt;%1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="669"/>
+        <source>&lt;br&gt;&lt;br&gt;&lt;small&gt;Error Code: %1 | Category: %2&lt;/small&gt;</source>
+        <translation>&lt;br&gt;&lt;br&gt;&lt;small&gt;Código de error: %1 | Categoría: %2&lt;/small&gt;</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow.cpp" line="671"/>
+        <source>
+
+Output:
+%1</source>
+        <translation>
+
+Salida:
+%1</translation>
+    </message>
+</context>
+<context>
+    <name>SceneCategory</name>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="164"/>
+        <source>Basics</source>
+        <translation>Fundamentos</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="165"/>
+        <source>Materials</source>
+        <translation>Materiales</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="166"/>
+        <source>Lights</source>
+        <translation>Luces</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="167"/>
+        <source>Cameras</source>
+        <translation>Cámaras</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="168"/>
+        <source>Volumes</source>
+        <translation>Volúmenes</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="169"/>
+        <source>Geometry</source>
+        <translation>Geometría</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="170"/>
+        <source>Models</source>
+        <translation>Modelos</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="171"/>
+        <source>Large Scenes</source>
+        <translation>Escenas grandes</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="172"/>
+        <source>Education</source>
+        <translation>Educación</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="173"/>
+        <source>Textures</source>
+        <translation>Texturas</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="174"/>
+        <source>Custom Scenes</source>
+        <translation>Escenas personalizadas</translation>
+    </message>
+</context>
+<context>
+    <name>ScenePerformance</name>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="183"/>
+        <source>Fast</source>
+        <translation>Rápido</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="184"/>
+        <source>Medium</source>
+        <translation>Medio</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="185"/>
+        <source>Slow</source>
+        <translation>Lento</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="186"/>
+        <source>Very Slow</source>
+        <translation>Muy lento</translation>
+    </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="187"/>
+        <source>Unknown</source>
+        <translation>Desconocido</translation>
+    </message>
+</context>
+<context>
     <name>SplitPreviewTabs</name>
     <message>
         <location filename="../mainwindow_widgets.h" line="1147"/>
@@ -5953,14 +4995,6 @@ around while you compare or tweak settings.</source>
         <translation>Inicia un renderizado desde Ajustes - cada imagen o vídeo
 terminado se abre en su propia pestaña aquí, así los renderizados
 anteriores permanecen mientras comparas o ajustas la configuración.</translation>
-    </message>
-    <message>
-        <source>Start a render from Basic Settings - each finished image
-or video opens in its own tab here, so past renders stay
-around while you compare or tweak settings.</source>
-        <translation type="vanished">Inicia un renderizado desde Configuración Básica - cada imagen
-o video terminado se abre aquí en su propia pestaña, así los renderizados
-anteriores permanecen disponibles mientras comparas o ajustas la configuración.</translation>
     </message>
 </context>
 </TS>

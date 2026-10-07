@@ -312,7 +312,7 @@ void MainWindow::rebuildCategoryTabs(bool requiresFiles) {
 		}
 		if (inCategory == 0) continue;
 
-		const int tab = m_sceneCategoryTabs->addTab(category);
+		const int tab = m_sceneCategoryTabs->addTab(SceneMetadataClient::displayCategory(category));
 		m_sceneCategoryTabs->setTabData(tab, category);
 		m_sceneCategoryTabs->setTabToolTip(tab,
 			tr("%n scene(s)", "", inCategory));
@@ -330,7 +330,7 @@ void MainWindow::createSettingsTab() {
 	layout->setContentsMargins(12, 12, 12, 12);
 
 	// --- Scene selection ---
-	InfoGroupBox *sceneGroup = new InfoGroupBox("Scene", basicTab);
+	InfoGroupBox *sceneGroup = new InfoGroupBox(tr("Scene"), basicTab);
 	styleGroupBox(sceneGroup);
 	sceneGroup->setInfoIcon(createInfoIcon(
 		tr("Pick which scene to render. Scenes are grouped by category and "
