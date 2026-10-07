@@ -947,6 +947,13 @@ struct MetalPocApp {
     // Same, with an explicit look-at point (scene units) instead of the scene's own - Live Preview orbits around one.
     void applyCameraLookAt(double cam_x, double cam_y, double cam_z, bool hasLookAt, double look_x, double look_y, double look_z);
     bool buildGPUResources();
+    // The stages of buildGPUResources() (metal_poc_gpu_resources.mm); GpuBuildState carries what they hand to each other.
+    struct GpuBuildState;
+    bool uploadSceneBuffers(GpuBuildState& s);
+    bool buildTriangleAS(GpuBuildState& s);
+    bool buildAnalyticAS(GpuBuildState& s);
+    bool buildInstancedMeshAS(GpuBuildState& s);
+    bool buildInstanceAS(GpuBuildState& s);
     bool compileShaderAndDispatch(int argc, const char** argv);
     // The stages compileShaderAndDispatch() runs in order (metal_poc_dispatch.mm); DispatchState carries what they hand to each other.
     struct DispatchState;
