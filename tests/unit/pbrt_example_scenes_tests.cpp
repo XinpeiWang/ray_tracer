@@ -467,6 +467,20 @@ TEST(PbrtBackendAgreementTest, DiffuseTransmissionShellReadsOnlyItsReflectionAtD
 	expectChannelMeans("diffuse-transmission-furnace", 256, 1, expected, 0.01, 0.02);
 }
 
+// A diffuse-transmission plate (R = 0.3, T = 0.5) lit by one point light has a closed form at the centre (pbrt_scenes/diffuse-transmission-point-light*.pbrt):
+// E = I / d^2 = 10, so 0.5 / pi * 10 = 1.5915 seen through the plate from a light behind it and 0.3 / pi * 10 = 0.9549 seen from the lit side. Both GPU backends
+// sampled no light at a diffuse-transmission vertex (a BSDF-only estimator), which cannot find a point light at all: the plate rendered black, in both cases.
+// They now sample lights on either side of the surface, with MIS, as the CPU always did.
+TEST(PbrtBackendAgreementTest, DiffuseTransmissionPlateUnderAPointLightBehindIt) {
+	const double expected[3] = {1.5915, 1.5915, 1.5915};
+	expectChannelMeans("diffuse-transmission-point-light", 64, 4, expected, 0.01, 0.02);
+}
+
+TEST(PbrtBackendAgreementTest, DiffuseTransmissionPlateUnderAPointLightInFrontOfIt) {
+	const double expected[3] = {0.9549, 0.9549, 0.9549};
+	expectChannelMeans("diffuse-transmission-point-light-front", 64, 4, expected, 0.01, 0.02);
+}
+
 
 // A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
 // every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU

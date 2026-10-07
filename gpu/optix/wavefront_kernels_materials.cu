@@ -817,25 +817,10 @@ extern "C" __global__ void evaluate_materials(
 		// hemisphere), emission = transmittance T (reused field, not
 		// derived as 1-R), max-component probability weighting.
 		//
-		// is_specular = true (this material's BSDF is genuinely non-specular,
-		// but the flag here means "skip the caller's generic NEE block", see
-		// below): recursive's own shade_material() case for this material has
-		// no explicit light-sampling code at all, so setting is_specular=false
-		// here (matching a naive reading of "diffuse = non-specular") made
-		// this branch the ONLY one of the two backends' NEE blocks that ran
-		// for DiffuseTransmission - and it ran with the caller's hardcoded
-		// Lambertian-shaped 1/pi white BRDF default, which is wrong on two
-		// counts: it ignores mat.albedo's actual color entirely, and it can't
-		// tell the reflective lobe (BRDF = R/pi) from the transmissive one
-		// (BRDF = T/pi, and only for a light on the FAR side of the surface,
-		// which the block's `dot(to_light, normal) > 0` gate would wrongly
-		// reject anyway). CPU's own diffuse_transmission material (see
-		// material_pbrt.h) DOES support real two-hemisphere NEE via its own
-		// cosine_pdf(±normal)/skip_pdf=false machinery - a real BRDF-aware fix
-		// here would port that, not just disable NEE - but until that lands on
-		// both GPU backends, disabling it here removes the wrong, colour-blind
-		// contribution and matches what recursive already (implicitly) ships:
-		// zero explicit NEE, all illumination via the BSDF-sampled bounce.
+		// Direct light is sampled on both sides of the surface (wf_finish_material_scatter's two-sided NEE, wf_local_light_bsdf's
+		// DiffuseTransmission case): R/pi for a light on wo's side, T/pi through the surface, with MIS against the BSDF-sampled lobe below. This used
+		// to be flagged specular (no light sampling), which cannot see a point, spot or distant light at all - a diffuse-transmission surface lit
+		// only by one rendered black. mat.albedo = reflectance R, mat.emission = transmittance T (reused field).
 		// Real per-point value when texture-bound (barcelona-pavilion's
 		// foliage - see pbrt_flatten::Material::textureFilename/
 		// transmittanceTextureFilename's own comments), else the flat
@@ -853,7 +838,8 @@ extern "C" __global__ void evaluate_materials(
 		// Path weight f * cos / pdf = R / p_lobe for a cosine lobe chosen with probability p_lobe (pr / (pr + pt) or pt / (pr + pt)), as pbrt-v4's
 		// DiffuseTransmissionBxDF::Sample_f; the weight used to be R (or T) alone, a factor p_lobe too small (see optix_device_helpers.h).
 		const float p_refl = pr / (pr + pt);
-		if (wf_rand(seed) < p_refl) {
+		const bool dtReflect = wf_rand(seed) < p_refl;
+		if (dtReflect) {
 			scattered_dir = normalize(normal + wf_rand_unit(seed));
 			if (wf_near_zero(scattered_dir)) scattered_dir = normal;
 			attenuation = albedoSpectrum(R / p_refl);
@@ -864,7 +850,10 @@ extern "C" __global__ void evaluate_materials(
 			attenuation = albedoSpectrum(T_col / (1.0f - p_refl));
 		}
 		scattered   = true;
-		is_specular = true;
+		is_specular = false;
+		// The density this direction was drawn with: its lobe's probability times |cos|/pi (the two lobes cover disjoint hemispheres), the pdf
+		// the next emitter hit weighs the NEE sample against.
+		brdf_pdf_override = (dtReflect ? p_refl : 1.0f - p_refl) * fabsf(dot(scattered_dir, normal)) / 3.14159265f;
 		break;
 	}
 	case MaterialType::NormalizedFresnel: {

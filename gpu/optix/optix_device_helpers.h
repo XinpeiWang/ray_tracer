@@ -2030,7 +2030,8 @@ __device__ __forceinline__ void shade_material(
 			// f * cos / pdf = R * (cos / pi) / (pr / (pr + pt) * cos / pi) = R / p_lobe. The weight used to be R alone: a 0.2 / 0.6 surface read a
 			// quarter of its reflection and a third of its transmission, on both GPU backends.
 			const float p_refl = pr / (pr + pt);
-			if (random_float(seed) < p_refl) {
+			const bool dt_reflect = random_float(seed) < p_refl;
+			if (dt_reflect) {
 				// Diffuse reflection: cosine-weighted same hemisphere
 				scattered_dir = normalize(normal + random_unit_vector(seed));
 				if (near_zero(scattered_dir)) scattered_dir = normal;
@@ -2043,9 +2044,60 @@ __device__ __forceinline__ void shade_material(
 				attenuation   = T_col / (1.0f - p_refl);
 			}
 			scattered   = true;
-			// Not a delta BSDF, but flagged like one: no light sampling is done at this vertex (it has no hemisphere-aware NEE here) so the next
-			// emitter hit must be added in full, not MIS-weighted against a light sample that never happened - same as the wavefront backend.
-			is_specular = true;
+
+			// Direct-light sampling on BOTH sides of the surface, with MIS - pbrt-v4's DiffuseTransmissionBxDF is R/pi for a light on wo's side and T/pi
+			// for one on the far side. The BSDF is chosen between the two cosine lobes with probabilities p_refl and 1 - p_refl, so the density of a
+			// direction wi is p_lobe(side of wi) * |cos| / pi. This used to be a BSDF-only estimator (flagged is_specular, no light sampling at all):
+			// unbiased for an area light a bounce can hit, but a point, spot or distant light can never be hit, so a diffuse-transmission surface lit
+			// only by one rendered black on both GPU backends.
+			is_specular = false;
+			{
+				const float kInvPi = 0.31830988618379067f;
+				const float cos_s = fabsf(dot(scattered_dir, normal));
+				brdf_pdf_override = (dt_reflect ? p_refl : 1.0f - p_refl) * cos_s * kInvPi;
+				float3 nee_shadow_rgb_dt = make_float3(1.0f, 1.0f, 1.0f);
+
+				{
+					float3 to_light, sampled_light_emission; float max_dist, light_pdf;
+					if (sample_nee_light(hit_point, seed, to_light, sampled_light_emission, max_dist, light_pdf, optixGetRayTime())) {
+						const float llz = dot(to_light, normal);
+						if (llz != 0.0f && trace_shadow_ray_stochastic(hit_point, to_light, max_dist, seed, nee_shadow_rgb_dt)) {
+							const float3 f_l = ((llz > 0.0f) ? R : T_col) * kInvPi;
+							const float brdf_pdf = ((llz > 0.0f) ? p_refl : 1.0f - p_refl) * fabsf(llz) * kInvPi;
+							const float mis_weight = mis_power_heuristic(light_pdf, brdf_pdf);
+							emission = emission + mis_weight * f_l * sampled_light_emission * fabsf(llz) / light_pdf
+								* (camera_medium_shadow_trans(max_dist) * nee_shadow_rgb_dt);
+						}
+					}
+				}
+
+				for (unsigned int pi = 0; pi < params.numPunctualLights; ++pi) {
+					float3 wi_p, Li_p; float t_max_p;
+					if (!eval_punctual_light(params.punctualLights[pi], hit_point, wi_p, Li_p, t_max_p)) continue;
+					const float plz = dot(wi_p, normal);
+					if (plz == 0.0f) continue;
+					if (trace_shadow_ray_stochastic(hit_point, wi_p, t_max_p, seed, nee_shadow_rgb_dt)) {
+						const float3 f_p = ((plz > 0.0f) ? R : T_col) * kInvPi;
+						emission = emission + f_p * Li_p * fabsf(plz) * (camera_medium_shadow_trans(t_max_p) * nee_shadow_rgb_dt);
+					}
+				}
+
+				{
+					const float3& skyColor = params.camera.backgroundColor;
+					if (skyColor.x > 0.0f || skyColor.y > 0.0f || skyColor.z > 0.0f) {
+						float3 sky_dir, sky_Le_val; float pdf_sky;
+						sample_sky_nee(seed, skyColor, hit_point, sky_dir, pdf_sky, sky_Le_val);
+						const float skz = dot(sky_dir, normal);
+						if (skz != 0.0f && pdf_sky > 0.0f && trace_shadow_ray_stochastic(hit_point, sky_dir, 1e30f, seed, nee_shadow_rgb_dt)) {
+							const float3 f_s = ((skz > 0.0f) ? R : T_col) * kInvPi;
+							const float brdf_pdf_sky = ((skz > 0.0f) ? p_refl : 1.0f - p_refl) * fabsf(skz) * kInvPi;
+							const float mis_weight = mis_power_heuristic(pdf_sky, brdf_pdf_sky);
+							emission = emission + mis_weight * f_s * sky_Le_val * fabsf(skz) / pdf_sky
+								* (camera_medium_shadow_trans(1e30f) * nee_shadow_rgb_dt);
+						}
+					}
+				}
+			}
 			break;
 		}
 
