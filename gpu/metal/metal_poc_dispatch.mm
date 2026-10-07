@@ -527,7 +527,17 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     uint32_t pbrtEnvMapWidth = 0, pbrtEnvMapHeight = 0;
     id<MTLBuffer> pbrtEnvMarginalCDFBuffer;
     id<MTLBuffer> pbrtEnvConditionalCDFBuffer;
-    if (!pbrtEnvDist.marginalCDF.empty()) {
+    if (havePbrtPortalLight) {
+        // Portal light (see metal_poc_sampling.metal, portalSampleLi): the distribution's cell values then its summed-area table in the "marginal"
+        // slot, the rectified RGB image in the "conditional" slot. The shader's plain-environment sites read these buffers through
+        // pbrtEnvSampleDirection()/pbrtEnvLeAt()/pbrtEnvPdfAt(), which switch on Uniforms::pbrtHasPortalLight.
+        std::vector<float> distAndSat(pbrtPortalDistFunc);
+        distAndSat.insert(distAndSat.end(), pbrtPortalSatSum.begin(), pbrtPortalSatSum.end());
+        pbrtEnvMarginalCDFBuffer = [device newBufferWithBytes:distAndSat.data() length:distAndSat.size() * sizeof(float) options:MTLResourceStorageModeShared];
+        pbrtEnvConditionalCDFBuffer = [device newBufferWithBytes:pbrtPortalRectified.data() length:pbrtPortalRectified.size() * sizeof(float) options:MTLResourceStorageModeShared];
+        pbrtEnvMapWidth = (uint32_t)pbrtPortalWidth;
+        pbrtEnvMapHeight = (uint32_t)pbrtPortalHeight;
+    } else if (!pbrtEnvDist.marginalCDF.empty()) {
         pbrtEnvMarginalCDFBuffer = [device newBufferWithBytes:pbrtEnvDist.marginalCDF.data()
             length:pbrtEnvDist.marginalCDF.size() * sizeof(float) options:MTLResourceStorageModeShared];
         pbrtEnvConditionalCDFBuffer = [device newBufferWithBytes:pbrtEnvDist.conditionalCDF.data()
@@ -780,6 +790,18 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
             uniforms.pbrtEnvColor = PackedFloat3{pbrtEnvColor.x, pbrtEnvColor.y, pbrtEnvColor.z};
         } else if (havePbrtImageEnvLight) {
             uniforms.pbrtHasImageEnvLight = 1u;
+        } else if (havePbrtPortalLight) {
+            // The miss path and every environment-NEE site are gated on pbrtHasImageEnvLight / pbrtEnvMapWidth; the portal switch is below them.
+            uniforms.pbrtHasImageEnvLight = 1u;
+            uniforms.pbrtHasPortalLight = 1u;
+            uniforms.pbrtPortalWidth = (uint32_t)pbrtPortalWidth;
+            uniforms.pbrtPortalHeight = (uint32_t)pbrtPortalHeight;
+            uniforms.pbrtPortalScale = pbrtPortalScale;
+            uniforms.portalFrameX = PackedFloat3{pbrtPortalFrameX.x, pbrtPortalFrameX.y, pbrtPortalFrameX.z};
+            uniforms.portalFrameY = PackedFloat3{pbrtPortalFrameY.x, pbrtPortalFrameY.y, pbrtPortalFrameY.z};
+            uniforms.portalFrameZ = PackedFloat3{pbrtPortalFrameZ.x, pbrtPortalFrameZ.y, pbrtPortalFrameZ.z};
+            uniforms.portalP0 = PackedFloat3{pbrtPortalP0.x, pbrtPortalP0.y, pbrtPortalP0.z};
+            uniforms.portalP2 = PackedFloat3{pbrtPortalP2.x, pbrtPortalP2.y, pbrtPortalP2.z};
         }
         // Film's own PixelFilter - see MetalPocApp::pbrtFilterKind's own
         // comment. Same int mapping gpu/optix/scene_builder.cpp uses for

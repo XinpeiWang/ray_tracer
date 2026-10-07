@@ -479,8 +479,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
         // own comment.
         if (pbrtEnvMapWidth > 0u) {
             float pbrtEnvPdfSolidAngle;
-            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
-                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+            float3 pbrtEnvWi = pbrtEnvSampleDirection(uniforms, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, pbrtEnvMapWidth, pbrtEnvMapHeight, hitPoint,
                                                            randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
             float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
             if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
@@ -492,8 +491,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                     traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
-                    float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
-                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float3 pbrtEnvRadianceSample = pbrtEnvLeAt(uniforms, pbrtEnvConditionalCDF, pbrtEnvTexture, textureSampler, hitPoint, pbrtEnvWi);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + uniformPdf * uniformPdf);
                     radiance += throughput * albedo * velvetF(woWorld, pbrtEnvWi, facingNormal, mat.ior)
@@ -1210,8 +1208,8 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
         }
         if (pbrtEnvMapWidth > 0u) {
             float envPdf;
-            float3 envWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
-                                                      randFloat(rngState), randFloat(rngState), envPdf);
+            float3 envWi = pbrtEnvSampleDirection(uniforms, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, pbrtEnvMapWidth, pbrtEnvMapHeight, hitPoint,
+                                                           randFloat(rngState), randFloat(rngState), envPdf);
             float envCos = dot(facingNormal, envWi);
             float3 f; float pdfBsdf;
             if (envCos > 0.0 && envPdf > 1e-9 &&
@@ -1222,7 +1220,7 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
                 shadowRay.min_distance = 0.001f;
                 shadowRay.max_distance = 1e5f;
                 if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
-                    float3 envRadiance = pbrtEnvTexture.sample(textureSampler, envMapUV(envWi)).rgb;
+                    float3 envRadiance = pbrtEnvLeAt(uniforms, pbrtEnvConditionalCDF, pbrtEnvTexture, textureSampler, hitPoint, envWi);
                     float envWeight = (envPdf * envPdf) / (envPdf * envPdf + pdfBsdf * pdfBsdf);
                     radiance += throughput * f * envRadiance * envCos / envPdf * envWeight;
                 }
