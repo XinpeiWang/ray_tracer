@@ -1093,28 +1093,423 @@ inline void buildPunctualLights(const pbrt_flatten::FlatScene &scene, BuildResul
 	}
 }
 
-// Turns flattened geometry into a BVH-accelerated world plus the light list
-// the integrator samples. Materials are created once per (material, emission)
-// pair rather than per primitive - a million-triangle mesh with one material
-// should hold one material object, not a million.
-inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
-	using namespace detail;
+// RGB-to-scalar collapse (Rec.709 weights) for a homogeneous medium's sigma_a/sigma_s - used by the per-shape medium handling and by the
+// camera-medium block, so there is exactly one definition of the formula.
+inline double luminanceOf(const double c[3]) {
+	return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
+}
+
+// Reads the NanoVDB file a medium names and bakes its active region into a dense grid hittable; nullptr (with a message on stderr) if it cannot.
+// The file read plus an O(voxel count) bake is expensive, which is why CpuSceneBuilder caches the result per medium index.
+inline std::shared_ptr<hittable> bakeNanovdbMedium(const pbrt_flatten::Medium &md) {
+	if (md.nanovdbFilename.empty()) return nullptr;
+
+	std::vector<double> density;
+	// Kelvin per voxel, same layout/resolution as density - filled
+	// below only when md.nanovdbTemperatureGridName is non-empty
+	// (see that field's own comment); empty means "no emission".
+	std::vector<double> temperature;
+	int nx = 0, ny = 0, nz = 0;
+	double corner00[3] = {0,0,0}, cornerX[3] = {0,0,0}, cornerY[3] = {0,0,0}, cornerZ[3] = {0,0,0};
+	bool ok = false;
+	try {
+		auto handle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbGridName);
+		const auto* grid = handle.grid<float>();
+		if (!grid) {
+			// The named grid exists in the file but isn't a plain
+			// float build (Vec3f/Mask/Fp4/Fp8/Fp16/FpN/etc - this
+			// loader only reads float grids, disclosed in
+			// docs/PBRT_SUPPORT.md). Unlike a corrupt/unreadable
+			// file, readGrid() doesn't throw for this case, so
+			// without an explicit message here the medium would
+			// silently vanish with nothing in the log to explain
+			// why - the exact gap the catch block below's own
+			// "this file's one deliberate exception" comment claims
+			// is already closed.
+			std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
+					  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
+					  << "\" is not a plain float grid (only float grids are "
+						 "supported); the medium will render as empty (invisible)\n";
+		} else {
+			const auto bbox = grid->indexBBox();
+			const auto bmin = bbox.min();
+			const auto bmax = bbox.max();
+			// bmin/bmax components are int32_t (nanovdb::Coord) read
+			// straight from the file with no min<=max validation -
+			// a corrupt/adversarial file can claim any individually
+			// representable int32 pair, including a degenerate one
+			// (e.g. bmin > bmax). Subtracting in int32 itself (the
+			// prior version of this code did `bmax[0]-bmin[0]` before
+			// ever casting) is signed-overflow UB for such a pair,
+			// which could wrap to a small value that slips past the
+			// kMaxVoxelsPerAxis cap below meant to reject exactly
+			// this input - promoting to int64_t before subtracting
+			// closes that off; the true difference of two int32
+			// values always fits in int64_t, so this is exact, not
+			// just "less wrong".
+			const std::int64_t nx64 = static_cast<std::int64_t>(bmax[0]) - static_cast<std::int64_t>(bmin[0]) + 1;
+			const std::int64_t ny64 = static_cast<std::int64_t>(bmax[1]) - static_cast<std::int64_t>(bmin[1]) + 1;
+			const std::int64_t nz64 = static_cast<std::int64_t>(bmax[2]) - static_cast<std::int64_t>(bmin[2]) + 1;
+			// Sanity cap, checked BEFORE any multiplication and
+			// entirely in int64_t (so it can't itself overflow): a
+			// real .nvdb grid's active bounding box is at most a few
+			// thousand voxels per axis even for large production
+			// assets, but a corrupt or maliciously crafted file
+			// could in principle claim an extreme (still
+			// individually int32-representable) bbox - nx*ny*nz
+			// would then overflow even a 64-bit size_t computation,
+			// silently under-allocating `density` below while the
+			// bake loop still iterates the TRUE (huge) nx/ny/nz - a
+			// real heap buffer overflow, not just a slow/huge
+			// render. Capping each axis independently, before any
+			// multiplication happens, closes that off entirely
+			// (512^3 already safely fits in size_t with enormous
+			// headroom) while still being far more generous than
+			// any real or bundled test asset needs.
+			constexpr std::int64_t kMaxVoxelsPerAxis = 512;
+			if (nx64 > 0 && ny64 > 0 && nz64 > 0 &&
+				nx64 <= kMaxVoxelsPerAxis && ny64 <= kMaxVoxelsPerAxis && nz64 <= kMaxVoxelsPerAxis) {
+				nx = static_cast<int>(nx64);
+				ny = static_cast<int>(ny64);
+				nz = static_cast<int>(nz64);
+				const auto& tree = grid->tree();
+				// A cached accessor, not tree.getValue() directly -
+				// this bake loop's access pattern is spatially
+				// coherent (x fastest, matching the grid's own
+				// internal locality), so a real accessor's cached
+				// traversal state pays off here.
+				auto acc = grid->getAccessor();
+				density.resize(static_cast<std::size_t>(nx) * ny * nz);
+				for (int z = 0; z < nz; ++z)
+					for (int y = 0; y < ny; ++y)
+						for (int x = 0; x < nx; ++x) {
+							const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
+							density[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
+								static_cast<double>(acc.getValue(ijk));
+						}
+
+				// Real blackbody emission (Medium::
+				// nanovdbTemperatureGridName's own comment): a
+				// SECOND named grid in the same file, sampled at the
+				// SAME index-space voxel coordinates as density
+				// above (bmin[]+x/y/z) rather than re-deriving its
+				// own active bbox - a real .nvdb fire/smoke asset's
+				// temperature and density grids share the same
+				// active region in practice, and nanovdb's own
+				// accessor already degrades gracefully (returns the
+				// grid's background value, typically 0) for any
+				// index outside whatever active region the
+				// temperature grid actually has, so a mismatched
+				// bbox just means "no emission at the mismatched
+				// voxels" rather than a crash or garbage read.
+				if (!md.nanovdbTemperatureGridName.empty()) {
+					try {
+						auto tHandle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbTemperatureGridName);
+						const auto* tGrid = tHandle.grid<float>();
+						if (!tGrid) {
+							std::cerr << "[pbrt_cpu_builder] nanovdb medium: temperature grid \""
+									  << md.nanovdbTemperatureGridName << "\" in \"" << md.nanovdbFilename
+									  << "\" is not a plain float grid (only float grids are "
+										 "supported); blackbody emission is dropped\n";
+						} else {
+							auto tAcc = tGrid->getAccessor();
+							temperature.resize(static_cast<std::size_t>(nx) * ny * nz);
+							for (int z = 0; z < nz; ++z)
+								for (int y = 0; y < ny; ++y)
+									for (int x = 0; x < nx; ++x) {
+										const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
+										temperature[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
+											static_cast<double>(tAcc.getValue(ijk));
+									}
+						}
+					} catch (...) {
+						std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read temperature "
+									 "grid \"" << md.nanovdbTemperatureGridName << "\" from \""
+								  << md.nanovdbFilename << "\" (corrupt file or wrong gridname); "
+									 "blackbody emission is dropped\n";
+						temperature.clear();
+					}
+				}
+
+				// Reconstruct the composed (index-[0,1]-space ->
+				// world) affine map by sampling its origin + 3
+				// unit-basis corners, rather than hand-deriving/
+				// multiplying NanoVDB's own Map matrix convention
+				// together with md.nanovdbXform - 4 points fully
+				// determine any affine map, and grid->indexToWorld()
+				// already folds in the grid's own baked voxel-size/
+				// origin transform correctly regardless of what
+				// convention it uses internally.
+				pbrt_scene::Matrix4 sceneXform;
+				for (int i = 0; i < 16; ++i) sceneXform.m[i] = md.nanovdbXform[i];
+				auto mapCorner = [&](double u, double v, double w, double out[3]) {
+					const nanovdb::Vec3d idx(bmin[0] + u * nx, bmin[1] + v * ny, bmin[2] + w * nz);
+					const nanovdb::Vec3d native = grid->indexToWorld(idx);
+					pbrt_flatten::flatten_detail::transformPoint(sceneXform, native[0], native[1], native[2], out);
+				};
+				mapCorner(0, 0, 0, corner00);
+				mapCorner(1, 0, 0, cornerX);
+				mapCorner(0, 1, 0, cornerY);
+				mapCorner(0, 0, 1, cornerZ);
+				ok = true;
+			} else {
+				// Either a degenerate bbox (bmin > bmax on some axis
+				// - possible for a corrupt/adversarial file even
+				// after the int64_t-safe subtraction above, which
+				// only guarantees the VALUE is exact, not positive)
+				// or a real, oversized active region past the
+				// kMaxVoxelsPerAxis cap. Same "explain every nanovdb
+				// degradation" rationale as the grid<float>() check
+				// above and the catch block below.
+				std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
+						  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
+						  << "\" has an active bounding box of " << nx64 << "x" << ny64
+						  << "x" << nz64 << " voxels, which is degenerate or exceeds the "
+						  << kMaxVoxelsPerAxis << "-voxels-per-axis cap this loader "
+						  << "enforces; the medium will render as empty (invisible)\n";
+			}
+		}
+	} catch (...) {
+		// Corrupt file, wrong/missing grid name, or any other NanoVDB
+		// read failure - degrade the same way an empty/wrong-length
+		// uniformgrid "density" array does just above: no hittable
+		// added, an invisible medium, rather than propagating the
+		// exception. pbrt_load.h already confirmed the file EXISTS
+		// (path resolution); this catches everything path resolution
+		// can't - a truncated/non-NanoVDB file, or a gridname pbrt_
+		// flatten.h had no way to check without opening it.
+		//
+		// This file otherwise has NO console-output convention at
+		// all (every other silent-degradation branch above/below
+		// was already warned about earlier, at flatten()/pbrt_load.h
+		// time, where this codebase's real warning infrastructure
+		// lives) - this is a deliberate, disclosed exception: unlike
+		// every sibling case, THIS failure mode genuinely cannot be
+		// detected any earlier than here (opening and parsing the
+		// file is the only way to know the gridname exists or the
+		// bytes are valid NanoVDB), so without this line a scene
+		// author who typos "gridname" or ships a corrupt .nvdb gets
+		// zero indication anywhere why their medium vanished.
+		std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read grid \""
+				  << md.nanovdbGridName << "\" from \"" << md.nanovdbFilename
+				  << "\" (corrupt file, wrong gridname, or an unsupported "
+					 "NanoVDB grid type - only plain float grids are read); "
+					 "the medium will render as empty (invisible)\n";
+		ok = false;
+	}
+	if (!ok || density.empty()) return nullptr;
+
+	// world = worldFromMedium * (u,v,w) + corner00 - worldFromMedium's
+	// columns are the 3 sampled basis differences, matching
+	// pbrt_scene::Matrix4's own row-major layout exactly.
+	pbrt_scene::Matrix4 worldFromMedium;
+	for (int r = 0; r < 3; ++r) {
+		worldFromMedium.m[r * 4 + 0] = cornerX[r] - corner00[r];
+		worldFromMedium.m[r * 4 + 1] = cornerY[r] - corner00[r];
+		worldFromMedium.m[r * 4 + 2] = cornerZ[r] - corner00[r];
+		worldFromMedium.m[r * 4 + 3] = corner00[r];
+	}
+	pbrt_scene::Matrix4 mediumFromWorld;
+	if (!worldFromMedium.inverseAffine(mediumFromWorld)) return nullptr;
+
+	// World-space AABB of the unit cube [0,1]^3 (this medium's own
+	// index-space bounds) under worldFromMedium, and the world<-
+	// >medium matrix split - same shared helpers pbrt_flatten.h's
+	// own cloud/rgbgrid/uniformgrid AABB/transform block uses
+	// (pbrt_flatten::flatten_detail::aabbOfTransformedBox/
+	// splitAffine), rather than each re-deriving the "transform 8
+	// corners, take axis-aligned min/max" and "slice an affine
+	// Matrix4 into mat9+translate3" logic by hand a second time.
+	double worldMin[3], worldMax[3];
+	const double unitLo[3] = {0.0, 0.0, 0.0}, unitHi[3] = {1.0, 1.0, 1.0};
+	pbrt_flatten::flatten_detail::aabbOfTransformedBox(worldFromMedium, unitLo, unitHi, worldMin, worldMax);
+
+	double toMediumMat[9], toMediumTranslate[3];
+	pbrt_flatten::flatten_detail::splitAffine(mediumFromWorld, toMediumMat, toMediumTranslate);
+
+	// sigma_a is forced to 0 (pure scattering) UNLESS a real
+	// temperature grid was just baked above - same convention/
+	// reason as uniformgrid above otherwise (flatten() already
+	// warned if the scene gave a nonzero sigma_a with no
+	// "temperaturename"); see Medium::nanovdbTemperatureGridName's
+	// own comment for why blackbody emission needs a real sigma_a
+	// to be anything other than a physical no-op.
+	const bool hasEmission = !temperature.empty();
+	const Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
+	// std::move: `density` is a disposable local (unlike
+	// uniformgrid's own md.gridDensity above, a persistent member
+	// it can't move out of) - for a large baked grid this avoids a
+	// copy here. Not const: `grid` itself is moved into
+	// grid_medium_hittable below (that constructor's own comment)
+	// rather than deep-copied a second time - for a grid near the
+	// 512-voxel-per-axis cap (up to ~1GB of doubles) that second
+	// copy was a real, avoidable allocation spike.
+	GridMediumData<double> grid(
+		std::move(density), nx, ny, nz, bounds,
+		/*sa=*/hasEmission ? luminanceOf(md.sigma_a) : 0.0, luminanceOf(md.sigma_s), md.g);
+	if (hasEmission) {
+		// Per-voxel Kelvin -> RGB (pbrt_flatten::blackbodyKelvinToRGB,
+		// the same spectral pipeline resolveEmissionColor() uses for
+		// a scene's flat "blackbody L"/"I"), de-interleaved into
+		// three flat channel arrays matching GridMediumData::
+		// set_emission()'s own expected shape (mirrors
+		// RGBGridMediumData<T>::build()'s le_r/le_g/le_b split).
+		//
+		// blackbodyKelvinToRGB() is NOT cheap - it runs a real
+		// spectral integration (BlackbodySpectrum -> SpectrumToXYZ,
+		// ~1900 Blackbody()/FastExp() evaluations per call, see that
+		// function's own comment) - and a real fire/smoke grid can
+		// have tens of millions of voxels (up to the 512-per-axis
+		// cap above), most sharing very similar temperatures (or, in
+		// a sparse grid's inactive region, the exact same
+		// background value). Quantizing to 10K buckets before
+		// converting - well below anything visibly distinguishable
+		// as a colour shift - and memoizing per bucket turns what
+		// would otherwise be one full spectral bake per voxel into
+		// at most a few hundred, independent of grid size.
+		std::vector<double> le_r(temperature.size()), le_g(temperature.size()), le_b(temperature.size());
+		std::map<int, pbrt_scene::Vec3> kelvinBucketCache;
+		constexpr float kKelvinBucketSize = 10.0f;
+		for (std::size_t i = 0; i < temperature.size(); ++i) {
+			const float t = static_cast<float>(temperature[i]);
+			const int bucket = static_cast<int>(std::lround(t / kKelvinBucketSize));
+			auto [it, inserted] = kelvinBucketCache.try_emplace(bucket);
+			if (inserted) {
+				it->second = pbrt_flatten::blackbodyKelvinToRGB(bucket * kKelvinBucketSize);
+			}
+			le_r[i] = it->second.x; le_g[i] = it->second.y; le_b[i] = it->second.z;
+		}
+		grid.set_emission(std::move(le_r), std::move(le_g), std::move(le_b), md.nanovdbLeScale);
+	}
+	// Peak-memory note: `temperature` is no longer needed once le_r/
+	// le_g/le_b above are built from it - freeing it here (rather
+	// than leaving it to fall out of scope alongside density/grid
+	// much later) cuts the transient peak from ~5x a single grid
+	// array's size down to ~4x (density/grid + le_r + le_g + le_b)
+	// for a temperaturename medium near the 512-voxel-per-axis cap.
+	temperature.clear();
+	temperature.shrink_to_fit();
+	const point3 world_min(worldMin[0], worldMin[1], worldMin[2]);
+	const point3 world_max(worldMax[0], worldMax[1], worldMax[2]);
+	return std::make_shared<grid_medium_hittable>(
+		std::move(grid), color(1,1,1), md.g, world_min, world_max, toMediumMat, toMediumTranslate);
+}
+
+namespace scene_builder_impl {
+using namespace detail;
+
+// Turns flattened geometry into a BVH-accelerated world plus the light list the integrator samples. Materials are created once per (material,
+// emission) pair rather than per primitive - a million-triangle mesh with one material should hold one material object, not a million.
+// run() calls the stages below in order.
+class CpuSceneBuilder {
+public:
+	explicit CpuSceneBuilder(const pbrt_flatten::FlatScene &s) : scene(s) {}
+
+	BuildResult run() {
+		out.world = std::make_shared<hittable_list>();
+		out.lights = std::make_shared<hittable_list>();
+
+		emitGeometry(scene.triangles, scene.spheres, scene.disks, scene.cylinders,
+					 scene.cones, scene.paraboloids,
+					 scene.bilinearPatches, scene.curves, *out.world, *out.lights,
+					 !scene.animatedTriangleMeshes.empty());
+		emitInstances();
+		emitAnimatedMeshes();
+		emitAnimatedBilinearPatches();
+		emitAnimatedCurves();
+		accelerate();
+
+		// ---- infinite/sky light ------------------------------------------------
+		// Image-based when pbrt_load::loadFile() successfully decoded one
+		// (imageWidth/imageHeight > 0 - see FlatScene::InfiniteLight's comment on
+		// why the decode happens there and not here or in flatten()). Falls back
+		// to the scene's constant L otherwise - either it never named an image,
+		// or naming one failed to resolve/decode (a warning was already recorded
+		// for that case). Extracted to buildSkyOrPortal() above.
+		buildSkyOrPortal(scene, out);
+
+		// ---- camera medium ------------------------------------------------------
+		// pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own
+		// comment) - already resolved by flatten() to a valid homogeneous-only,
+		// no-per-shape-medium-conflict index, or -1 if none/unsupported (both
+		// scope cuts already warned about there) - this is just the same
+		// Medium-struct-to-runtime-object construction addMediumIfPresent()
+		// above does for a per-shape medium, minus the boundary shape. Extracted
+		// to buildCameraMedium() above.
+		buildCameraMedium(scene, out, luminanceOf);
+
+		// ---- punctual (delta) lights -------------------------------------------
+		// LightSource point/spot/distant/goniometric/projection - see
+		// pbrt_flatten::PunctualLight's own comment for why this is a bridging
+		// job onto punctual_light_objects.h's existing constructors, already
+		// proven by this codebase's own C2-C6 showcase scenes, rather than new
+		// rendering math. Extracted to buildPunctualLights() above.
+		buildPunctualLights(scene, out);
+
+		return std::move(out);
+	}
+
+private:
+	const pbrt_flatten::FlatScene &scene;
 	BuildResult out;
-	out.world = std::make_shared<hittable_list>();
-	out.lights = std::make_shared<hittable_list>();
 
-
-	// forCurve: see makeMaterial's own comment - only affects the Hair case,
-	// picked by the one caller (the curve loop below) that actually has real
-	// curve geometry under the resolved material.
 	// Displacement images decoded once per file (bump vs normal map decided by pixel
 	// content, once), shared by every material that names the same file - see
 	// sharedMipmapTexture()'s comment for why per-material copies are not affordable.
 	struct DispEntry { std::shared_ptr<texture> tex; bool grayscale = false; };
 	std::map<std::string, DispEntry> dispCache;
-	const auto materialFor = [&scene, &dispCache](int materialIndex, int areaLightIndex,
-									   bool forCurve = false)
-			-> std::shared_ptr<material> {
+
+	// One material instance per distinct (material, emission, forCurve) triple
+	// - forCurve is part of the key (not just an argument materialFor reads)
+	// so a materialIndex shared between a curve and a non-curve shape (e.g.
+	// via NamedMaterial reuse - unusual but valid pbrt) gets two distinct
+	// hair_material instances with the right tangent behavior each, instead
+	// of whichever shape asks first silently winning for both.
+	std::map<std::tuple<int, int, bool>, std::shared_ptr<material>> materialCache;
+
+	// A pbrt Shape "alpha" cutout mask (Material::alphaTextureFilename - see
+	// that field's own comment: attached to the Shape's own resolved
+	// material, one entry per unique materialIndex). image_texture rather
+	// than mipmap_texture: an alpha-cutout test only ever needs a single
+	// point sample (triangle::hit()'s alpha test), never mip filtering.
+	// nullptr (the default) for every material with no alpha texture,
+	// matching triangle's own zero-cost default.
+	//
+	// Deliberately NOT rtw_image's own load() (which calls stbi_loadf() -
+	// see OBJ/MTL's map_d handling in mesh.h for that same pattern): for an
+	// 8-bit/LDR source image, stbi_loadf silently applies stb_image's
+	// default gamma-2.2 decode (its "LDR-to-HDR" conversion, meant for
+	// colour data going sRGB -> linear). An alpha/opacity mask is a linear
+	// coverage fraction, not a display colour, so that decode would
+	// systematically bias the cutout threshold (e.g. an authored 0.6 alpha,
+	// byte 153/255, decodes to pow(0.6, 2.2) =~ 0.32 and silently flips
+	// which side of triangle.h's kAlphaCutoutThreshold it falls on).
+	// stbi_load() (the plain 8-bit loader - no float conversion, no gamma of
+	// any kind) plus a manual byte/255 divide is the exact linear
+	// reconstruction pbrt's own alpha-cutout convention expects; the result
+	// is fed into rtw_image's raw-pixel constructor (already used elsewhere
+	// for pre-decoded HDR data) rather than rtw_image::load().
+	std::map<int, std::shared_ptr<texture>> alphaMaskCache;
+	// Decoded masks by file as well: each is width*height*3 floats (8192x8192 is
+	// ~800 MB), and many materials of one asset name the same mask.
+	std::map<std::string, std::shared_ptr<texture>> alphaMaskByFile;
+
+	// addMediumIfPresent()'s own nanovdb branch (below) reads the .nvdb file
+	// from disk and bakes its active region into a dense array EVERY time
+	// it's called - unlike cloud/rgbgrid/uniformgrid (procedural or already
+	// in-memory on `md`), a real file read plus an O(voxel count) bake is
+	// expensive enough to be worth caching. Keyed on mediumIndex (matching
+	// materialCache/alphaMaskCache's own per-index keying just above) rather
+	// than the shape, since the built hittable doesn't depend on which
+	// shape triggered it - see addMediumIfPresent()'s own comment on why
+	// cloud/rgbgrid/uniformgrid/nanovdb all add an independent world-space
+	// hittable rather than wrapping `shape` (only the homogeneous fallback
+	// does that). A scene where N shapes share one MediumInterface
+	// (a normal pbrt pattern) now reads+bakes the file once, not N times.
+	std::map<int, std::shared_ptr<hittable>> nanovdbMediumCache;
+
+	// forCurve: see makeMaterial's own comment - only affects the Hair case, picked by the one caller (the curve loop) that has real curve geometry.
+	std::shared_ptr<material> materialFor(int materialIndex, int areaLightIndex, bool forCurve) {
 		const pbrt_flatten::Emission *em =
 			(areaLightIndex >= 0 && static_cast<std::size_t>(areaLightIndex) < scene.areaLights.size())
 				? &scene.areaLights[static_cast<std::size_t>(areaLightIndex)]
@@ -1182,51 +1577,18 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			}
 		}
 		return base;
-	};
+	}
 
-	// One material instance per distinct (material, emission, forCurve) triple
-	// - forCurve is part of the key (not just an argument materialFor reads)
-	// so a materialIndex shared between a curve and a non-curve shape (e.g.
-	// via NamedMaterial reuse - unusual but valid pbrt) gets two distinct
-	// hair_material instances with the right tangent behavior each, instead
-	// of whichever shape asks first silently winning for both.
-	std::map<std::tuple<int, int, bool>, std::shared_ptr<material>> materialCache;
-	const auto cachedMaterial = [&](int mi, int ai, bool forCurve = false) {
+	std::shared_ptr<material> cachedMaterial(int mi, int ai, bool forCurve = false) {
 		const auto key = std::make_tuple(mi, ai, forCurve);
 		auto it = materialCache.find(key);
 		if (it != materialCache.end()) return it->second;
 		auto made = materialFor(mi, ai, forCurve);
 		materialCache.emplace(key, made);
 		return made;
-	};
+	}
 
-	// A pbrt Shape "alpha" cutout mask (Material::alphaTextureFilename - see
-	// that field's own comment: attached to the Shape's own resolved
-	// material, one entry per unique materialIndex). image_texture rather
-	// than mipmap_texture: an alpha-cutout test only ever needs a single
-	// point sample (triangle::hit()'s alpha test), never mip filtering.
-	// nullptr (the default) for every material with no alpha texture,
-	// matching triangle's own zero-cost default.
-	//
-	// Deliberately NOT rtw_image's own load() (which calls stbi_loadf() -
-	// see OBJ/MTL's map_d handling in mesh.h for that same pattern): for an
-	// 8-bit/LDR source image, stbi_loadf silently applies stb_image's
-	// default gamma-2.2 decode (its "LDR-to-HDR" conversion, meant for
-	// colour data going sRGB -> linear). An alpha/opacity mask is a linear
-	// coverage fraction, not a display colour, so that decode would
-	// systematically bias the cutout threshold (e.g. an authored 0.6 alpha,
-	// byte 153/255, decodes to pow(0.6, 2.2) =~ 0.32 and silently flips
-	// which side of triangle.h's kAlphaCutoutThreshold it falls on).
-	// stbi_load() (the plain 8-bit loader - no float conversion, no gamma of
-	// any kind) plus a manual byte/255 divide is the exact linear
-	// reconstruction pbrt's own alpha-cutout convention expects; the result
-	// is fed into rtw_image's raw-pixel constructor (already used elsewhere
-	// for pre-decoded HDR data) rather than rtw_image::load().
-	std::map<int, std::shared_ptr<texture>> alphaMaskCache;
-	// Decoded masks by file as well: each is width*height*3 floats (8192x8192 is
-	// ~800 MB), and many materials of one asset name the same mask.
-	std::map<std::string, std::shared_ptr<texture>> alphaMaskByFile;
-	const auto alphaMaskFor = [&](int mi) -> std::shared_ptr<texture> {
+	std::shared_ptr<texture> alphaMaskFor(int mi) {
 		if (mi < 0 || static_cast<std::size_t>(mi) >= scene.materials.size()) return nullptr;
 		const auto it = alphaMaskCache.find(mi);
 		if (it != alphaMaskCache.end()) return it->second;
@@ -1255,171 +1617,11 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 		}
 		alphaMaskCache.emplace(mi, mask);
 		return mask;
-	};
-
-	// addMediumIfPresent()'s own nanovdb branch (below) reads the .nvdb file
-	// from disk and bakes its active region into a dense array EVERY time
-	// it's called - unlike cloud/rgbgrid/uniformgrid (procedural or already
-	// in-memory on `md`), a real file read plus an O(voxel count) bake is
-	// expensive enough to be worth caching. Keyed on mediumIndex (matching
-	// materialCache/alphaMaskCache's own per-index keying just above) rather
-	// than the shape, since the built hittable doesn't depend on which
-	// shape triggered it - see addMediumIfPresent()'s own comment on why
-	// cloud/rgbgrid/uniformgrid/nanovdb all add an independent world-space
-	// hittable rather than wrapping `shape` (only the homogeneous fallback
-	// does that). A scene where N shapes share one MediumInterface
-	// (a normal pbrt pattern) now reads+bakes the file once, not N times.
-	std::map<int, std::shared_ptr<hittable>> nanovdbMediumCache;
-
-	// RGB-to-scalar collapse (Rec.709 weights) for a homogeneous medium's
-	// sigma_a/sigma_s - used both by emitGeometry()'s own per-shape medium
-	// handling below (captured by reference into that lambda) and by the
-	// camera-medium block further down (build()'s own top-level scope, well
-	// after emitGeometry() has returned) - declared here, before both, so
-	// there's exactly one definition rather than two independently-
-	// maintained copies of the same formula.
-	const auto luminance = [](const double c[3]) {
-		return 0.2126 * c[0] + 0.7152 * c[1] + 0.0722 * c[2];
-	};
-
-	// Emitting geometry is now done more than once - for the scene itself, and
-	// again for each instance definition, whose geometry stays in object space
-	// and is placed by a transform rather than baked. Everything below is what
-	// it always was; only its inputs and outputs became parameters.
-	const auto emitGeometry = [&](const std::vector<pbrt_flatten::Triangle> &tris,
-								  const std::vector<pbrt_flatten::Sphere> &sphs,
-								  const std::vector<pbrt_flatten::Disk> &disks,
-								  const std::vector<pbrt_flatten::Cylinder> &cylinders,
-								  const std::vector<pbrt_flatten::Cone> &cones,
-								  const std::vector<pbrt_flatten::Paraboloid> &paraboloids,
-								  const std::vector<pbrt_flatten::BilinearPatch> &patches,
-								  const std::vector<pbrt_flatten::Curve> &curveDecls,
-								  hittable_list &world, hittable_list &lights,
-								  // True only for the main scene.triangles call site,
-								  // and only when the scene actually has at least one
-								  // animated mesh (Triangle::gpuOnlyStaticFallback's
-								  // own comment) - both other call sites (ObjectInstance
-								  // group definitions, the animated-mesh block itself)
-								  // structurally never contain a flagged entry, so
-								  // skipping the filtering pass entirely for them (the
-								  // default here) is a correctness no-op, not just an
-								  // optimization; see this lambda's own gpuOnlyStaticFallback
-								  // handling just below for why a real per-scene "any
-								  // flagged?" scan+allocation is otherwise unconditional
-								  // overhead paid by every scene with mesh geometry,
-								  // animated or not (a code-review pass on this feature's
-								  // own commit caught that cost).
-								  bool trisMayHaveGpuOnlyFallback = false) {
-	// ---- triangles -------------------------------------------------------
-	// Triangle::gpuOnlyStaticFallback entries (a StartTime-pose duplicate of
-	// a mesh that's also in scene.animatedTriangleMeshes - see that field's
-	// own comment) exist purely so GPU's own separate builder, which has no
-	// concept of that list, doesn't lose the shape entirely. CPU gets its
-	// real motion blur from animatedTriangleMeshes instead (built by this
-	// same function's own animated-mesh call site below in
-	// pbrt_cpu_builder.h's caller), so building a second, static `triangle`
-	// hittable here too would double-render it - skipped inline below via
-	// `trisMayHaveGpuOnlyFallback` (true only for the one call site that
-	// could ever see a flagged entry) rather than a separate filtering pass
-	// + pointer vector, which would otherwise be unconditional overhead paid
-	// by every scene with mesh geometry, animated or not (a code-review pass
-	// on this feature's own commit caught that cost).
-	if (!tris.empty()) {
-		auto mesh = std::make_shared<triangle_mesh_data>();
-		std::unordered_map<VertexKey, int, detail::VertexKeyHash> seen;
-		seen.reserve(tris.size() * 3 / 2 + 16);   // ~1.5 unique vertices per triangle on a typical mesh
-
-		// A mesh either has a normal for every vertex or for none: `triangle`
-		// gates interpolation on has_normals(), which is all-or-nothing, so a
-		// partially filled list would index past the end. Same story for UV -
-		// `has_uvs()` (triangle.h) is the same all-or-nothing gate.
-		bool anyNormals = false;
-		bool anyUVs = false;
-		for (const pbrt_flatten::Triangle &t : tris) {
-			if (trisMayHaveGpuOnlyFallback && t.gpuOnlyStaticFallback) continue;
-			if (t.hasNormals) anyNormals = true;
-			if (t.hasUVs) anyUVs = true;
-		}
-
-		const auto vertexIndex = [&](const double *p, const double *n, const double *uv) {
-			const VertexKey k{p[0], p[1], p[2],
-							  n ? n[0] : 0.0, n ? n[1] : 0.0, n ? n[2] : 0.0,
-							  uv ? uv[0] : 0.0, uv ? uv[1] : 0.0};
-			auto it = seen.find(k);
-			if (it != seen.end()) return it->second;
-			const int idx = static_cast<int>(mesh->positions.size());
-			mesh->positions.push_back(point3(p[0], p[1], p[2]));
-			if (anyNormals) mesh->normals.push_back(vec3(n[0], n[1], n[2]));
-			// A triangle from a source that never threads UV (loopsubdiv/
-			// plymesh - see pbrt_flatten::Triangle::hasUVs's own comment) has
-			// no meaningful "geometric" UV to fall back to the way a face
-			// normal does - (0,0) is an arbitrary but harmless filler, same
-			// as GPU's own pre-this-fix "no data" default.
-			if (anyUVs) { mesh->uvs.push_back(uv ? uv[0] : 0.0); mesh->uvs.push_back(uv ? uv[1] : 0.0); }
-			seen.emplace(k, idx);
-			return idx;
-		};
-
-		// Indices first, so the mesh is complete before any triangle refers to
-		// it - triangle's constructor reads the positions immediately to
-		// precompute its normal and area.
-		std::vector<std::pair<int, int>> perTriangleMaterial;
-		perTriangleMaterial.reserve(tris.size());
-		for (const pbrt_flatten::Triangle &t : tris) {
-			if (trisMayHaveGpuOnlyFallback && t.gpuOnlyStaticFallback) continue;
-			// When any mesh in the scene has shading normals, a face without
-			// its own still needs one per vertex or the two arrays fall out of
-			// step. Its geometric normal is the honest answer - it renders
-			// exactly as it would have with no normals at all.
-			double gn[3] = {0, 0, 1};
-			if (anyNormals && !t.hasNormals) {
-				const double e1[3] = {t.v[3] - t.v[0], t.v[4] - t.v[1], t.v[5] - t.v[2]};
-				const double e2[3] = {t.v[6] - t.v[0], t.v[7] - t.v[1], t.v[8] - t.v[2]};
-				gn[0] = e1[1] * e2[2] - e1[2] * e2[1];
-				gn[1] = e1[2] * e2[0] - e1[0] * e2[2];
-				gn[2] = e1[0] * e2[1] - e1[1] * e2[0];
-				const double len = std::sqrt(gn[0] * gn[0] + gn[1] * gn[1] + gn[2] * gn[2]);
-				if (len > 0) { gn[0] /= len; gn[1] /= len; gn[2] /= len; }
-			}
-			const double *n0 = t.hasNormals ? &t.n[0] : gn;
-			const double *n1 = t.hasNormals ? &t.n[3] : gn;
-			const double *n2 = t.hasNormals ? &t.n[6] : gn;
-			const double *uv0 = t.hasUVs ? &t.uv[0] : nullptr;
-			const double *uv1 = t.hasUVs ? &t.uv[2] : nullptr;
-			const double *uv2 = t.hasUVs ? &t.uv[4] : nullptr;
-
-			mesh->indices.push_back(vertexIndex(&t.v[0], n0, uv0));
-			mesh->indices.push_back(vertexIndex(&t.v[3], n1, uv1));
-			mesh->indices.push_back(vertexIndex(&t.v[6], n2, uv2));
-			perTriangleMaterial.emplace_back(t.material, t.areaLight);
-		}
-		out.uniqueVertexCount += mesh->positions.size();
-
-		for (std::size_t i = 0; i < perTriangleMaterial.size(); ++i) {
-			auto mat = cachedMaterial(perTriangleMaterial[i].first,
-									  perTriangleMaterial[i].second);
-			auto tri = std::make_shared<triangle>(mesh, static_cast<int>(i), mat,
-												   alphaMaskFor(perTriangleMaterial[i].first));
-			world.add(tri);
-			if (perTriangleMaterial[i].second >= 0) lights.add(tri);
-		}
-		out.triangleCount += perTriangleMaterial.size();
 	}
 
-	// MediumInterface "insideMedium" "" - layer a participating medium INSIDE
-	// a shape already added to world above, exactly the pattern this
-	// codebase's own hand-built scenes use (e.g. scenes_advanced.h's
-	// build_dielectric_medium_scene: a real surface material - glass, or
-	// here whatever the shape's own Material directive resolved to - with
-	// fog/smoke boxed inside it). constant_medium's constructor wants a
-	// scalar sigma_a/sigma_s plus a chromatic albedo tint, not pbrt's own
-	// per-channel RGB pair (see pbrt_flatten::Medium's own comment) -
-	// `luminance` (captured from build()'s own top-level scope - see its
-	// declaration above emitGeometry() for why) collapses each to a scalar,
-	// and the scattering channel ratio survives as the albedo tint. Shared
-	// across every shape kind below (sphere, disk, cylinder) that carries a
-	// `medium` field.
-	const auto addMediumIfPresent = [&](const std::shared_ptr<hittable> &shape, int mediumIndex) {
+	// MediumInterface "insideMedium" - layers a participating medium inside a shape already added to `world`, or adds a world-space medium hittable
+	// (see the comments in the body for which kinds wrap the shape and which do not).
+	void addMediumIfPresent(hittable_list &world, const std::shared_ptr<hittable> &shape, int mediumIndex) {
 		if (mediumIndex < 0 || static_cast<std::size_t>(mediumIndex) >= scene.media.size()) return;
 		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(mediumIndex)];
 		out.hasShapeMedia = true;
@@ -1442,7 +1644,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			const auto cloud = CloudMedium<double>::make(
 				md.p0[0], md.p0[1], md.p0[2], md.p1[0], md.p1[1], md.p1[2],
 				md.toMediumMat, md.toMediumTranslate,
-				/*sigma_a=*/0.0, luminance(md.sigma_s), md.g,
+				/*sigma_a=*/0.0, luminanceOf(md.sigma_s), md.g,
 				md.density, md.wispiness, md.frequency);
 			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
 			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
@@ -1489,7 +1691,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			// constructor comment) rather than deep-copied a second time.
 			GridMediumData<double> grid(
 				md.gridDensity, md.nx, md.ny, md.nz, bounds,
-				/*sa=*/0.0, luminance(md.sigma_s), md.g);
+				/*sa=*/0.0, luminanceOf(md.sigma_s), md.g);
 			const point3 world_min(md.worldMin[0], md.worldMin[1], md.worldMin[2]);
 			const point3 world_max(md.worldMax[0], md.worldMax[1], md.worldMax[2]);
 			world.add(std::make_shared<grid_medium_hittable>(
@@ -1523,299 +1725,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			// lambda returning the built hittable (or nullptr) rather than
 			// calling world.add()/return directly, so every exit path also
 			// populates nanovdbMediumCache above.
-			const std::shared_ptr<hittable> nanovdbBuilt = [&]() -> std::shared_ptr<hittable> {
-			if (md.nanovdbFilename.empty()) return nullptr;
-
-			std::vector<double> density;
-			// Kelvin per voxel, same layout/resolution as density - filled
-			// below only when md.nanovdbTemperatureGridName is non-empty
-			// (see that field's own comment); empty means "no emission".
-			std::vector<double> temperature;
-			int nx = 0, ny = 0, nz = 0;
-			double corner00[3] = {0,0,0}, cornerX[3] = {0,0,0}, cornerY[3] = {0,0,0}, cornerZ[3] = {0,0,0};
-			bool ok = false;
-			try {
-				auto handle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbGridName);
-				const auto* grid = handle.grid<float>();
-				if (!grid) {
-					// The named grid exists in the file but isn't a plain
-					// float build (Vec3f/Mask/Fp4/Fp8/Fp16/FpN/etc - this
-					// loader only reads float grids, disclosed in
-					// docs/PBRT_SUPPORT.md). Unlike a corrupt/unreadable
-					// file, readGrid() doesn't throw for this case, so
-					// without an explicit message here the medium would
-					// silently vanish with nothing in the log to explain
-					// why - the exact gap the catch block below's own
-					// "this file's one deliberate exception" comment claims
-					// is already closed.
-					std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
-							  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
-							  << "\" is not a plain float grid (only float grids are "
-								 "supported); the medium will render as empty (invisible)\n";
-				} else {
-					const auto bbox = grid->indexBBox();
-					const auto bmin = bbox.min();
-					const auto bmax = bbox.max();
-					// bmin/bmax components are int32_t (nanovdb::Coord) read
-					// straight from the file with no min<=max validation -
-					// a corrupt/adversarial file can claim any individually
-					// representable int32 pair, including a degenerate one
-					// (e.g. bmin > bmax). Subtracting in int32 itself (the
-					// prior version of this code did `bmax[0]-bmin[0]` before
-					// ever casting) is signed-overflow UB for such a pair,
-					// which could wrap to a small value that slips past the
-					// kMaxVoxelsPerAxis cap below meant to reject exactly
-					// this input - promoting to int64_t before subtracting
-					// closes that off; the true difference of two int32
-					// values always fits in int64_t, so this is exact, not
-					// just "less wrong".
-					const std::int64_t nx64 = static_cast<std::int64_t>(bmax[0]) - static_cast<std::int64_t>(bmin[0]) + 1;
-					const std::int64_t ny64 = static_cast<std::int64_t>(bmax[1]) - static_cast<std::int64_t>(bmin[1]) + 1;
-					const std::int64_t nz64 = static_cast<std::int64_t>(bmax[2]) - static_cast<std::int64_t>(bmin[2]) + 1;
-					// Sanity cap, checked BEFORE any multiplication and
-					// entirely in int64_t (so it can't itself overflow): a
-					// real .nvdb grid's active bounding box is at most a few
-					// thousand voxels per axis even for large production
-					// assets, but a corrupt or maliciously crafted file
-					// could in principle claim an extreme (still
-					// individually int32-representable) bbox - nx*ny*nz
-					// would then overflow even a 64-bit size_t computation,
-					// silently under-allocating `density` below while the
-					// bake loop still iterates the TRUE (huge) nx/ny/nz - a
-					// real heap buffer overflow, not just a slow/huge
-					// render. Capping each axis independently, before any
-					// multiplication happens, closes that off entirely
-					// (512^3 already safely fits in size_t with enormous
-					// headroom) while still being far more generous than
-					// any real or bundled test asset needs.
-					constexpr std::int64_t kMaxVoxelsPerAxis = 512;
-					if (nx64 > 0 && ny64 > 0 && nz64 > 0 &&
-						nx64 <= kMaxVoxelsPerAxis && ny64 <= kMaxVoxelsPerAxis && nz64 <= kMaxVoxelsPerAxis) {
-						nx = static_cast<int>(nx64);
-						ny = static_cast<int>(ny64);
-						nz = static_cast<int>(nz64);
-						const auto& tree = grid->tree();
-						// A cached accessor, not tree.getValue() directly -
-						// this bake loop's access pattern is spatially
-						// coherent (x fastest, matching the grid's own
-						// internal locality), so a real accessor's cached
-						// traversal state pays off here.
-						auto acc = grid->getAccessor();
-						density.resize(static_cast<std::size_t>(nx) * ny * nz);
-						for (int z = 0; z < nz; ++z)
-							for (int y = 0; y < ny; ++y)
-								for (int x = 0; x < nx; ++x) {
-									const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
-									density[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
-										static_cast<double>(acc.getValue(ijk));
-								}
-
-						// Real blackbody emission (Medium::
-						// nanovdbTemperatureGridName's own comment): a
-						// SECOND named grid in the same file, sampled at the
-						// SAME index-space voxel coordinates as density
-						// above (bmin[]+x/y/z) rather than re-deriving its
-						// own active bbox - a real .nvdb fire/smoke asset's
-						// temperature and density grids share the same
-						// active region in practice, and nanovdb's own
-						// accessor already degrades gracefully (returns the
-						// grid's background value, typically 0) for any
-						// index outside whatever active region the
-						// temperature grid actually has, so a mismatched
-						// bbox just means "no emission at the mismatched
-						// voxels" rather than a crash or garbage read.
-						if (!md.nanovdbTemperatureGridName.empty()) {
-							try {
-								auto tHandle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbTemperatureGridName);
-								const auto* tGrid = tHandle.grid<float>();
-								if (!tGrid) {
-									std::cerr << "[pbrt_cpu_builder] nanovdb medium: temperature grid \""
-											  << md.nanovdbTemperatureGridName << "\" in \"" << md.nanovdbFilename
-											  << "\" is not a plain float grid (only float grids are "
-												 "supported); blackbody emission is dropped\n";
-								} else {
-									auto tAcc = tGrid->getAccessor();
-									temperature.resize(static_cast<std::size_t>(nx) * ny * nz);
-									for (int z = 0; z < nz; ++z)
-										for (int y = 0; y < ny; ++y)
-											for (int x = 0; x < nx; ++x) {
-												const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
-												temperature[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
-													static_cast<double>(tAcc.getValue(ijk));
-											}
-								}
-							} catch (...) {
-								std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read temperature "
-											 "grid \"" << md.nanovdbTemperatureGridName << "\" from \""
-										  << md.nanovdbFilename << "\" (corrupt file or wrong gridname); "
-											 "blackbody emission is dropped\n";
-								temperature.clear();
-							}
-						}
-
-						// Reconstruct the composed (index-[0,1]-space ->
-						// world) affine map by sampling its origin + 3
-						// unit-basis corners, rather than hand-deriving/
-						// multiplying NanoVDB's own Map matrix convention
-						// together with md.nanovdbXform - 4 points fully
-						// determine any affine map, and grid->indexToWorld()
-						// already folds in the grid's own baked voxel-size/
-						// origin transform correctly regardless of what
-						// convention it uses internally.
-						pbrt_scene::Matrix4 sceneXform;
-						for (int i = 0; i < 16; ++i) sceneXform.m[i] = md.nanovdbXform[i];
-						auto mapCorner = [&](double u, double v, double w, double out[3]) {
-							const nanovdb::Vec3d idx(bmin[0] + u * nx, bmin[1] + v * ny, bmin[2] + w * nz);
-							const nanovdb::Vec3d native = grid->indexToWorld(idx);
-							pbrt_flatten::flatten_detail::transformPoint(sceneXform, native[0], native[1], native[2], out);
-						};
-						mapCorner(0, 0, 0, corner00);
-						mapCorner(1, 0, 0, cornerX);
-						mapCorner(0, 1, 0, cornerY);
-						mapCorner(0, 0, 1, cornerZ);
-						ok = true;
-					} else {
-						// Either a degenerate bbox (bmin > bmax on some axis
-						// - possible for a corrupt/adversarial file even
-						// after the int64_t-safe subtraction above, which
-						// only guarantees the VALUE is exact, not positive)
-						// or a real, oversized active region past the
-						// kMaxVoxelsPerAxis cap. Same "explain every nanovdb
-						// degradation" rationale as the grid<float>() check
-						// above and the catch block below.
-						std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
-								  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
-								  << "\" has an active bounding box of " << nx64 << "x" << ny64
-								  << "x" << nz64 << " voxels, which is degenerate or exceeds the "
-								  << kMaxVoxelsPerAxis << "-voxels-per-axis cap this loader "
-								  << "enforces; the medium will render as empty (invisible)\n";
-					}
-				}
-			} catch (...) {
-				// Corrupt file, wrong/missing grid name, or any other NanoVDB
-				// read failure - degrade the same way an empty/wrong-length
-				// uniformgrid "density" array does just above: no hittable
-				// added, an invisible medium, rather than propagating the
-				// exception. pbrt_load.h already confirmed the file EXISTS
-				// (path resolution); this catches everything path resolution
-				// can't - a truncated/non-NanoVDB file, or a gridname pbrt_
-				// flatten.h had no way to check without opening it.
-				//
-				// This file otherwise has NO console-output convention at
-				// all (every other silent-degradation branch above/below
-				// was already warned about earlier, at flatten()/pbrt_load.h
-				// time, where this codebase's real warning infrastructure
-				// lives) - this is a deliberate, disclosed exception: unlike
-				// every sibling case, THIS failure mode genuinely cannot be
-				// detected any earlier than here (opening and parsing the
-				// file is the only way to know the gridname exists or the
-				// bytes are valid NanoVDB), so without this line a scene
-				// author who typos "gridname" or ships a corrupt .nvdb gets
-				// zero indication anywhere why their medium vanished.
-				std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read grid \""
-						  << md.nanovdbGridName << "\" from \"" << md.nanovdbFilename
-						  << "\" (corrupt file, wrong gridname, or an unsupported "
-							 "NanoVDB grid type - only plain float grids are read); "
-							 "the medium will render as empty (invisible)\n";
-				ok = false;
-			}
-			if (!ok || density.empty()) return nullptr;
-
-			// world = worldFromMedium * (u,v,w) + corner00 - worldFromMedium's
-			// columns are the 3 sampled basis differences, matching
-			// pbrt_scene::Matrix4's own row-major layout exactly.
-			pbrt_scene::Matrix4 worldFromMedium;
-			for (int r = 0; r < 3; ++r) {
-				worldFromMedium.m[r * 4 + 0] = cornerX[r] - corner00[r];
-				worldFromMedium.m[r * 4 + 1] = cornerY[r] - corner00[r];
-				worldFromMedium.m[r * 4 + 2] = cornerZ[r] - corner00[r];
-				worldFromMedium.m[r * 4 + 3] = corner00[r];
-			}
-			pbrt_scene::Matrix4 mediumFromWorld;
-			if (!worldFromMedium.inverseAffine(mediumFromWorld)) return nullptr;
-
-			// World-space AABB of the unit cube [0,1]^3 (this medium's own
-			// index-space bounds) under worldFromMedium, and the world<-
-			// >medium matrix split - same shared helpers pbrt_flatten.h's
-			// own cloud/rgbgrid/uniformgrid AABB/transform block uses
-			// (pbrt_flatten::flatten_detail::aabbOfTransformedBox/
-			// splitAffine), rather than each re-deriving the "transform 8
-			// corners, take axis-aligned min/max" and "slice an affine
-			// Matrix4 into mat9+translate3" logic by hand a second time.
-			double worldMin[3], worldMax[3];
-			const double unitLo[3] = {0.0, 0.0, 0.0}, unitHi[3] = {1.0, 1.0, 1.0};
-			pbrt_flatten::flatten_detail::aabbOfTransformedBox(worldFromMedium, unitLo, unitHi, worldMin, worldMax);
-
-			double toMediumMat[9], toMediumTranslate[3];
-			pbrt_flatten::flatten_detail::splitAffine(mediumFromWorld, toMediumMat, toMediumTranslate);
-
-			// sigma_a is forced to 0 (pure scattering) UNLESS a real
-			// temperature grid was just baked above - same convention/
-			// reason as uniformgrid above otherwise (flatten() already
-			// warned if the scene gave a nonzero sigma_a with no
-			// "temperaturename"); see Medium::nanovdbTemperatureGridName's
-			// own comment for why blackbody emission needs a real sigma_a
-			// to be anything other than a physical no-op.
-			const bool hasEmission = !temperature.empty();
-			const Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
-			// std::move: `density` is a disposable local (unlike
-			// uniformgrid's own md.gridDensity above, a persistent member
-			// it can't move out of) - for a large baked grid this avoids a
-			// copy here. Not const: `grid` itself is moved into
-			// grid_medium_hittable below (that constructor's own comment)
-			// rather than deep-copied a second time - for a grid near the
-			// 512-voxel-per-axis cap (up to ~1GB of doubles) that second
-			// copy was a real, avoidable allocation spike.
-			GridMediumData<double> grid(
-				std::move(density), nx, ny, nz, bounds,
-				/*sa=*/hasEmission ? luminance(md.sigma_a) : 0.0, luminance(md.sigma_s), md.g);
-			if (hasEmission) {
-				// Per-voxel Kelvin -> RGB (pbrt_flatten::blackbodyKelvinToRGB,
-				// the same spectral pipeline resolveEmissionColor() uses for
-				// a scene's flat "blackbody L"/"I"), de-interleaved into
-				// three flat channel arrays matching GridMediumData::
-				// set_emission()'s own expected shape (mirrors
-				// RGBGridMediumData<T>::build()'s le_r/le_g/le_b split).
-				//
-				// blackbodyKelvinToRGB() is NOT cheap - it runs a real
-				// spectral integration (BlackbodySpectrum -> SpectrumToXYZ,
-				// ~1900 Blackbody()/FastExp() evaluations per call, see that
-				// function's own comment) - and a real fire/smoke grid can
-				// have tens of millions of voxels (up to the 512-per-axis
-				// cap above), most sharing very similar temperatures (or, in
-				// a sparse grid's inactive region, the exact same
-				// background value). Quantizing to 10K buckets before
-				// converting - well below anything visibly distinguishable
-				// as a colour shift - and memoizing per bucket turns what
-				// would otherwise be one full spectral bake per voxel into
-				// at most a few hundred, independent of grid size.
-				std::vector<double> le_r(temperature.size()), le_g(temperature.size()), le_b(temperature.size());
-				std::map<int, pbrt_scene::Vec3> kelvinBucketCache;
-				constexpr float kKelvinBucketSize = 10.0f;
-				for (std::size_t i = 0; i < temperature.size(); ++i) {
-					const float t = static_cast<float>(temperature[i]);
-					const int bucket = static_cast<int>(std::lround(t / kKelvinBucketSize));
-					auto [it, inserted] = kelvinBucketCache.try_emplace(bucket);
-					if (inserted) {
-						it->second = pbrt_flatten::blackbodyKelvinToRGB(bucket * kKelvinBucketSize);
-					}
-					le_r[i] = it->second.x; le_g[i] = it->second.y; le_b[i] = it->second.z;
-				}
-				grid.set_emission(std::move(le_r), std::move(le_g), std::move(le_b), md.nanovdbLeScale);
-			}
-			// Peak-memory note: `temperature` is no longer needed once le_r/
-			// le_g/le_b above are built from it - freeing it here (rather
-			// than leaving it to fall out of scope alongside density/grid
-			// much later) cuts the transient peak from ~5x a single grid
-			// array's size down to ~4x (density/grid + le_r + le_g + le_b)
-			// for a temperaturename medium near the 512-voxel-per-axis cap.
-			temperature.clear();
-			temperature.shrink_to_fit();
-			const point3 world_min(worldMin[0], worldMin[1], worldMin[2]);
-			const point3 world_max(worldMax[0], worldMax[1], worldMax[2]);
-			return std::make_shared<grid_medium_hittable>(
-				std::move(grid), color(1,1,1), md.g, world_min, world_max, toMediumMat, toMediumTranslate);
-			}();
+			const std::shared_ptr<hittable> nanovdbBuilt = bakeNanovdbMedium(md);
 			nanovdbMediumCache.emplace(mediumIndex, nanovdbBuilt);
 			if (nanovdbBuilt) world.add(nanovdbBuilt);
 			return;
@@ -1838,334 +1748,455 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 			color(md.sigma_a[0], md.sigma_a[1], md.sigma_a[2]), color(md.sigma_s[0], md.sigma_s[1], md.sigma_s[2]), md.g, Le);
 		world.add(medium);
 		if (medium->chromatic()) out.chromaticMedia.push_back(medium);
-	};
+	}
 
-	// ---- spheres ---------------------------------------------------------
-	for (const pbrt_flatten::Sphere &s : sphs) {
-		auto mat = cachedMaterial(s.material, s.areaLight);
-		std::shared_ptr<hittable> sp;
-		if (s.clipped) {
-			// Real zmin/zmax/phimax clipping - see pbrt_flatten::Sphere's
-			// own comment for why this needs the real object-to-world
-			// transform (sphere_clipped_hittable.h), unlike the plain
-			// baked center/radius path below.
-			sp = std::make_shared<sphere_clipped_hittable>(
-				s.radiusLocal, s.zMin, s.zMax, degrees_to_radians(s.phiMaxDeg), toMatrix4(s.xform), mat);
-		} else if (s.center1[0] != s.center[0] || s.center1[1] != s.center[1] ||
-				   s.center1[2] != s.center[2]) {
-			// Object motion blur (pbrt_flatten::Sphere::center1's own
-			// comment) - the existing two-centre moving constructor
-			// (sphere.h) already stores center as a ray and interpolates
-			// via center.at(r.time()) in hit(); ray.time() is sampled once
-			// per camera ray in camera.h and threaded through every bounce
-			// already, so no other CPU change is needed for this to work.
-			sp = std::make_shared<sphere>(point3(s.center[0], s.center[1], s.center[2]),
-										   point3(s.center1[0], s.center1[1], s.center1[2]),
-										   s.radius, mat);
-		} else {
-			sp = std::make_shared<sphere>(point3(s.center[0], s.center[1], s.center[2]),
-										   s.radius, mat);
+	// Triangles: one shared mesh (vertices welded) plus one `triangle` per face.
+	// trisMayHaveGpuOnlyFallback: see emitGeometry().
+	void emitTriangles(const std::vector<pbrt_flatten::Triangle> &tris, hittable_list &world, hittable_list &lights,
+					   bool trisMayHaveGpuOnlyFallback) {
+		// Triangle::gpuOnlyStaticFallback entries (a StartTime-pose duplicate of
+		// a mesh that's also in scene.animatedTriangleMeshes - see that field's
+		// own comment) exist purely so GPU's own separate builder, which has no
+		// concept of that list, doesn't lose the shape entirely. CPU gets its
+		// real motion blur from animatedTriangleMeshes instead (built by this
+		// same function's own animated-mesh call site below in
+		// pbrt_cpu_builder.h's caller), so building a second, static `triangle`
+		// hittable here too would double-render it - skipped inline below via
+		// `trisMayHaveGpuOnlyFallback` (true only for the one call site that
+		// could ever see a flagged entry) rather than a separate filtering pass
+		// + pointer vector, which would otherwise be unconditional overhead paid
+		// by every scene with mesh geometry, animated or not (a code-review pass
+		// on this feature's own commit caught that cost).
+		if (!tris.empty()) {
+			auto mesh = std::make_shared<triangle_mesh_data>();
+			std::unordered_map<VertexKey, int, detail::VertexKeyHash> seen;
+			seen.reserve(tris.size() * 3 / 2 + 16);   // ~1.5 unique vertices per triangle on a typical mesh
+
+			// A mesh either has a normal for every vertex or for none: `triangle`
+			// gates interpolation on has_normals(), which is all-or-nothing, so a
+			// partially filled list would index past the end. Same story for UV -
+			// `has_uvs()` (triangle.h) is the same all-or-nothing gate.
+			bool anyNormals = false;
+			bool anyUVs = false;
+			for (const pbrt_flatten::Triangle &t : tris) {
+				if (trisMayHaveGpuOnlyFallback && t.gpuOnlyStaticFallback) continue;
+				if (t.hasNormals) anyNormals = true;
+				if (t.hasUVs) anyUVs = true;
+			}
+
+			const auto vertexIndex = [&](const double *p, const double *n, const double *uv) {
+				const VertexKey k{p[0], p[1], p[2],
+								  n ? n[0] : 0.0, n ? n[1] : 0.0, n ? n[2] : 0.0,
+								  uv ? uv[0] : 0.0, uv ? uv[1] : 0.0};
+				auto it = seen.find(k);
+				if (it != seen.end()) return it->second;
+				const int idx = static_cast<int>(mesh->positions.size());
+				mesh->positions.push_back(point3(p[0], p[1], p[2]));
+				if (anyNormals) mesh->normals.push_back(vec3(n[0], n[1], n[2]));
+				// A triangle from a source that never threads UV (loopsubdiv/
+				// plymesh - see pbrt_flatten::Triangle::hasUVs's own comment) has
+				// no meaningful "geometric" UV to fall back to the way a face
+				// normal does - (0,0) is an arbitrary but harmless filler, same
+				// as GPU's own pre-this-fix "no data" default.
+				if (anyUVs) { mesh->uvs.push_back(uv ? uv[0] : 0.0); mesh->uvs.push_back(uv ? uv[1] : 0.0); }
+				seen.emplace(k, idx);
+				return idx;
+			};
+
+			// Indices first, so the mesh is complete before any triangle refers to
+			// it - triangle's constructor reads the positions immediately to
+			// precompute its normal and area.
+			std::vector<std::pair<int, int>> perTriangleMaterial;
+			perTriangleMaterial.reserve(tris.size());
+			for (const pbrt_flatten::Triangle &t : tris) {
+				if (trisMayHaveGpuOnlyFallback && t.gpuOnlyStaticFallback) continue;
+				// When any mesh in the scene has shading normals, a face without
+				// its own still needs one per vertex or the two arrays fall out of
+				// step. Its geometric normal is the honest answer - it renders
+				// exactly as it would have with no normals at all.
+				double gn[3] = {0, 0, 1};
+				if (anyNormals && !t.hasNormals) {
+					const double e1[3] = {t.v[3] - t.v[0], t.v[4] - t.v[1], t.v[5] - t.v[2]};
+					const double e2[3] = {t.v[6] - t.v[0], t.v[7] - t.v[1], t.v[8] - t.v[2]};
+					gn[0] = e1[1] * e2[2] - e1[2] * e2[1];
+					gn[1] = e1[2] * e2[0] - e1[0] * e2[2];
+					gn[2] = e1[0] * e2[1] - e1[1] * e2[0];
+					const double len = std::sqrt(gn[0] * gn[0] + gn[1] * gn[1] + gn[2] * gn[2]);
+					if (len > 0) { gn[0] /= len; gn[1] /= len; gn[2] /= len; }
+				}
+				const double *n0 = t.hasNormals ? &t.n[0] : gn;
+				const double *n1 = t.hasNormals ? &t.n[3] : gn;
+				const double *n2 = t.hasNormals ? &t.n[6] : gn;
+				const double *uv0 = t.hasUVs ? &t.uv[0] : nullptr;
+				const double *uv1 = t.hasUVs ? &t.uv[2] : nullptr;
+				const double *uv2 = t.hasUVs ? &t.uv[4] : nullptr;
+
+				mesh->indices.push_back(vertexIndex(&t.v[0], n0, uv0));
+				mesh->indices.push_back(vertexIndex(&t.v[3], n1, uv1));
+				mesh->indices.push_back(vertexIndex(&t.v[6], n2, uv2));
+				perTriangleMaterial.emplace_back(t.material, t.areaLight);
+			}
+			out.uniqueVertexCount += mesh->positions.size();
+
+			for (std::size_t i = 0; i < perTriangleMaterial.size(); ++i) {
+				auto mat = cachedMaterial(perTriangleMaterial[i].first,
+										  perTriangleMaterial[i].second);
+				auto tri = std::make_shared<triangle>(mesh, static_cast<int>(i), mat,
+													   alphaMaskFor(perTriangleMaterial[i].first));
+				world.add(tri);
+				if (perTriangleMaterial[i].second >= 0) lights.add(tri);
+			}
+			out.triangleCount += perTriangleMaterial.size();
 		}
-		world.add(sp);
-		if (s.areaLight >= 0) lights.add(sp);
-		// cpuMediumUnsupported (pbrt_flatten::Sphere's own comment): an open
-		// shell can't bound a participating medium correctly, on GPU now
-		// either (its own ClippedSphere branch drops the medium too) - not a
-		// CPU-only limitation anymore. flatten() already warned; here we
-		// just honor it by not wrapping this specific hittable in
-		// constant_medium.
-		if (!s.cpuMediumUnsupported) addMediumIfPresent(sp, s.medium);
-	}
-	out.sphereCount += sphs.size();
-
-	// ---- disks / cylinders -------------------------------------------------
-	// Shape "disk"/"cylinder" - unlike Sphere, these keep their CTM unbaked
-	// (see pbrt_flatten::Disk/Cylinder's own comment for why) and apply it at
-	// intersection time via disk_hittable/cylinder_hittable, the same
-	// ray-into-object-space technique transform_instance.h already uses for
-	// object instancing. Extracted to buildDisksAndCylinders() above.
-	buildDisksAndCylinders(disks, cylinders, world, lights,
-							out.diskCount, out.cylinderCount,
-							cachedMaterial, addMediumIfPresent);
-
-	// ---- cones / paraboloids -----------------------------------------------
-	// Shape "cone"/"paraboloid" - same unbaked-CTM technique as disk/cylinder
-	// above. Real AreaLightSource/MediumInterface support now (see
-	// pbrt_flatten::Cone/Paraboloid's own comment) - lights.add()/
-	// addMediumIfPresent() the identical way disk/cylinder already are.
-	// Extracted to buildConesAndParaboloids() above.
-	buildConesAndParaboloids(cones, paraboloids, world, lights,
-							  out.coneCount, out.paraboloidCount,
-							  cachedMaterial, addMediumIfPresent);
-
-	// ---- bilinear patches -------------------------------------------------
-	// Shape "bilinearmesh" - see pbrt_flatten.h's BilinearPatch comment for
-	// why only the single-patch form reaches here. bilinear_patch_hittable
-	// (scenes_advanced.h) now overrides pdf_value()/random() the same way
-	// quad does, so an emissive one is NEE-samplable, not just hittable.
-	// Extracted to buildBilinearPatches() above.
-	buildBilinearPatches(patches, world, lights, out.bilinearPatchCount, cachedMaterial);
-
-	// ---- curves ------------------------------------------------------------
-	// Shape "curve" - see pbrt_flatten::Curve's own comment for scope (degree
-	// 2/3 Bezier and cubic B-spline all convert down to cubic Bezier before
-	// reaching here, already split into independent per-segment 4-control-
-	// point Bezier curves by flatten()). One CurveShape<double> per
-	// segment, wrapped in the existing curve_shape_hittable. width0/width1 are
-	// re-lerped per segment (matching pbrt-v4's own Curve::Create,
-	// shapes.cpp:894-895 exactly: Lerp(seg/nSegments, width0,width1)) so a
-	// multi-segment strand tapers smoothly across its whole length rather than
-	// each segment re-tapering its own full width0->width1 range. Extracted
-	// to buildCurves() above.
-	buildCurves(curveDecls, world, lights, out.curveCount, cachedMaterial);
-	};
-
-
-	emitGeometry(scene.triangles, scene.spheres, scene.disks, scene.cylinders,
-				 scene.cones, scene.paraboloids,
-				 scene.bilinearPatches, scene.curves, *out.world, *out.lights,
-				 !scene.animatedTriangleMeshes.empty());
-
-	// ---- instances -------------------------------------------------------
-	// Each definition is built once, into its own BVH, and then placed by a
-	// transform per instance. That BVH is shared by every placement - which is
-	// the entire point, and the reason this cannot simply bake vertices.
-	//
-	// No light list is passed: flatten() has already moved any emissive shapes
-	// out of the group and baked them per placement into world space, because
-	// a light has to be enumerable to be sampled. Passing one here would be
-	// harmless but misleading, so it gets a scratch list that stays empty.
-	// Built once per DEFINITION, before any placement looks at them. Building
-	// inside the instance loop instead would produce one BVH per placement,
-	// which is baking with extra steps.
-	std::vector<std::shared_ptr<hittable>> groupBVHs(scene.groups.size());
-	for (std::size_t g = 0; g < scene.groups.size(); ++g) {
-		const pbrt_flatten::InstanceGroup &grp = scene.groups[g];
-		if (grp.triangles.empty() && grp.spheres.empty()) continue;
-
-		auto geometry = std::make_shared<hittable_list>();
-		hittable_list unusedLights;
-		// No InstanceGroup::bilinearPatches/disks/cylinders/cones/paraboloids/
-		// curves - object-space bilinear patches, disks, cylinders, cones,
-		// paraboloids and curves inside an instance definition are all out of
-		// scope (see flatten()'s null-bilinearPatches/disks/cylinders/cones/
-		// paraboloids/curves comments on why), so these are always empty.
-		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
-		static const std::vector<pbrt_flatten::Disk> kNoDisks;
-		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
-		static const std::vector<pbrt_flatten::Cone> kNoCones;
-		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
-		static const std::vector<pbrt_flatten::Curve> kNoCurves;
-		emitGeometry(grp.triangles, grp.spheres, kNoDisks, kNoCylinders,
-					 kNoCones, kNoParaboloids,
-					 kNoBilinearPatches, kNoCurves, *geometry, unusedLights);
-		if (!geometry->objects.empty())
-			groupBVHs[g] = std::make_shared<bvh_node>(*geometry);
 	}
 
-	for (const pbrt_flatten::Instance &inst : scene.instances) {
-		if (inst.group < 0 ||
-			static_cast<std::size_t>(inst.group) >= groupBVHs.size()) continue;
-		const std::shared_ptr<hittable> &shared =
-			groupBVHs[static_cast<std::size_t>(inst.group)];
-		if (!shared) continue;
-
-		pbrt_scene::Matrix4 m;
-		for (int k = 0; k < 16; ++k) m.m[k] = inst.xform[k];
-		out.world->add(std::make_shared<transform_instance>(shared, m));
-		++out.instanceCount;
+	void emitSpheres(const std::vector<pbrt_flatten::Sphere> &sphs, hittable_list &world, hittable_list &lights) {
+		for (const pbrt_flatten::Sphere &s : sphs) {
+			auto mat = cachedMaterial(s.material, s.areaLight);
+			std::shared_ptr<hittable> sp;
+			if (s.clipped) {
+				// Real zmin/zmax/phimax clipping - see pbrt_flatten::Sphere's
+				// own comment for why this needs the real object-to-world
+				// transform (sphere_clipped_hittable.h), unlike the plain
+				// baked center/radius path below.
+				sp = std::make_shared<sphere_clipped_hittable>(
+					s.radiusLocal, s.zMin, s.zMax, degrees_to_radians(s.phiMaxDeg), toMatrix4(s.xform), mat);
+			} else if (s.center1[0] != s.center[0] || s.center1[1] != s.center[1] ||
+					   s.center1[2] != s.center[2]) {
+				// Object motion blur (pbrt_flatten::Sphere::center1's own
+				// comment) - the existing two-centre moving constructor
+				// (sphere.h) already stores center as a ray and interpolates
+				// via center.at(r.time()) in hit(); ray.time() is sampled once
+				// per camera ray in camera.h and threaded through every bounce
+				// already, so no other CPU change is needed for this to work.
+				sp = std::make_shared<sphere>(point3(s.center[0], s.center[1], s.center[2]),
+											   point3(s.center1[0], s.center1[1], s.center1[2]),
+											   s.radius, mat);
+			} else {
+				sp = std::make_shared<sphere>(point3(s.center[0], s.center[1], s.center[2]),
+											   s.radius, mat);
+			}
+			world.add(sp);
+			if (s.areaLight >= 0) lights.add(sp);
+			// cpuMediumUnsupported (pbrt_flatten::Sphere's own comment): an open
+			// shell can't bound a participating medium correctly, on GPU now
+			// either (its own ClippedSphere branch drops the medium too) - not a
+			// CPU-only limitation anymore. flatten() already warned; here we
+			// just honor it by not wrapping this specific hittable in
+			// constant_medium.
+			if (!s.cpuMediumUnsupported) addMediumIfPresent(world, sp, s.medium);
+		}
+		out.sphereCount += sphs.size();
 	}
 
-	// ---- animated meshes --------------------------------------------------
-	// Real object motion blur (trianglemesh/plymesh/loopsubdiv) - see
-	// pbrt_flatten::AnimatedTriangleMesh's own comment. Each entry's
-	// triangles are already OBJECT space (not baked to world - that's the
-	// entire reason this list exists separately from scene.triangles), so
-	// they go through the exact same emitGeometry() reused for
-	// ObjectInstance's own object-space geometry above, into a fresh scratch
-	// hittable_list, then wrapped in animated_transform_instance (the
-	// MotionState-based sibling of transform_instance used just above,
-	// carrying a per-ray-time-resolved transform instead of one static one).
-	// No light list is passed for the same reason the ObjectInstance loop
-	// above passes a scratch one - pbrt_flatten.h already excludes an
-	// emissive mesh from ever populating this list at all (falls back to a
-	// static, StartTime-only bake instead, warned there), so passing a real
-	// one here would never receive anything, and a scratch list keeps that
-	// invariant visible rather than implying this path DOES enumerate
-	// lights when it deliberately never does.
-	if (!scene.animatedTriangleMeshes.empty()) {
-		static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
-		static const std::vector<pbrt_flatten::Disk> kNoDisks;
-		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
-		static const std::vector<pbrt_flatten::Cone> kNoCones;
-		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
-		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
-		static const std::vector<pbrt_flatten::Curve> kNoCurves;
-		for (const pbrt_flatten::AnimatedTriangleMesh &atm : scene.animatedTriangleMeshes) {
-			if (atm.triangles.empty()) continue;
+	// Emitting geometry is now done more than once - for the scene itself, and
+	// again for each instance definition, whose geometry stays in object space
+	// and is placed by a transform rather than baked. Everything below is what
+	// it always was; only its inputs and outputs became parameters.
+	void emitGeometry(const std::vector<pbrt_flatten::Triangle> &tris,
+					  const std::vector<pbrt_flatten::Sphere> &sphs,
+					  const std::vector<pbrt_flatten::Disk> &disks,
+					  const std::vector<pbrt_flatten::Cylinder> &cylinders,
+					  const std::vector<pbrt_flatten::Cone> &cones,
+					  const std::vector<pbrt_flatten::Paraboloid> &paraboloids,
+					  const std::vector<pbrt_flatten::BilinearPatch> &patches,
+					  const std::vector<pbrt_flatten::Curve> &curveDecls,
+					  hittable_list &world, hittable_list &lights,
+								  // True only for the main scene.triangles call site,
+								  // and only when the scene actually has at least one
+								  // animated mesh (Triangle::gpuOnlyStaticFallback's
+								  // own comment) - both other call sites (ObjectInstance
+								  // group definitions, the animated-mesh block itself)
+								  // structurally never contain a flagged entry, so
+								  // skipping the filtering pass entirely for them (the
+								  // default here) is a correctness no-op, not just an
+								  // optimization; see this lambda's own gpuOnlyStaticFallback
+								  // handling just below for why a real per-scene "any
+								  // flagged?" scan+allocation is otherwise unconditional
+								  // overhead paid by every scene with mesh geometry,
+								  // animated or not (a code-review pass on this feature's
+								  // own commit caught that cost).
+					  bool trisMayHaveGpuOnlyFallback = false) {
+		const auto cached = [this](int mi, int ai, bool forCurve = false) { return cachedMaterial(mi, ai, forCurve); };
+		const auto addMedium = [this, &world](const std::shared_ptr<hittable> &shape, int mediumIndex) {
+			addMediumIfPresent(world, shape, mediumIndex);
+		};
+
+		emitTriangles(tris, world, lights, trisMayHaveGpuOnlyFallback);
+
+		// ---- spheres ---------------------------------------------------------
+		emitSpheres(sphs, world, lights);
+
+		// ---- disks / cylinders -------------------------------------------------
+		// Shape "disk"/"cylinder" - unlike Sphere, these keep their CTM unbaked
+		// (see pbrt_flatten::Disk/Cylinder's own comment for why) and apply it at
+		// intersection time via disk_hittable/cylinder_hittable, the same
+		// ray-into-object-space technique transform_instance.h already uses for
+		// object instancing. Extracted to buildDisksAndCylinders() above.
+		buildDisksAndCylinders(disks, cylinders, world, lights,
+								out.diskCount, out.cylinderCount,
+								cached, addMedium);
+
+		// ---- cones / paraboloids -----------------------------------------------
+		// Shape "cone"/"paraboloid" - same unbaked-CTM technique as disk/cylinder
+		// above. Real AreaLightSource/MediumInterface support now (see
+		// pbrt_flatten::Cone/Paraboloid's own comment) - lights.add()/
+		// addMediumIfPresent() the identical way disk/cylinder already are.
+		// Extracted to buildConesAndParaboloids() above.
+		buildConesAndParaboloids(cones, paraboloids, world, lights,
+								  out.coneCount, out.paraboloidCount,
+								  cached, addMedium);
+
+		// ---- bilinear patches -------------------------------------------------
+		// Shape "bilinearmesh" - see pbrt_flatten.h's BilinearPatch comment for
+		// why only the single-patch form reaches here. bilinear_patch_hittable
+		// (scenes_advanced.h) now overrides pdf_value()/random() the same way
+		// quad does, so an emissive one is NEE-samplable, not just hittable.
+		// Extracted to buildBilinearPatches() above.
+		buildBilinearPatches(patches, world, lights, out.bilinearPatchCount, cached);
+
+		// ---- curves ------------------------------------------------------------
+		// Shape "curve" - see pbrt_flatten::Curve's own comment for scope (degree
+		// 2/3 Bezier and cubic B-spline all convert down to cubic Bezier before
+		// reaching here, already split into independent per-segment 4-control-
+		// point Bezier curves by flatten()). One CurveShape<double> per
+		// segment, wrapped in the existing curve_shape_hittable. width0/width1 are
+		// re-lerped per segment (matching pbrt-v4's own Curve::Create,
+		// shapes.cpp:894-895 exactly: Lerp(seg/nSegments, width0,width1)) so a
+		// multi-segment strand tapers smoothly across its whole length rather than
+		// each segment re-tapering its own full width0->width1 range. Extracted
+		// to buildCurves() above.
+		buildCurves(curveDecls, world, lights, out.curveCount, cached);
+	}
+
+	void emitInstances() {
+		// ---- instances -------------------------------------------------------
+		// Each definition is built once, into its own BVH, and then placed by a
+		// transform per instance. That BVH is shared by every placement - which is
+		// the entire point, and the reason this cannot simply bake vertices.
+		//
+		// No light list is passed: flatten() has already moved any emissive shapes
+		// out of the group and baked them per placement into world space, because
+		// a light has to be enumerable to be sampled. Passing one here would be
+		// harmless but misleading, so it gets a scratch list that stays empty.
+		// Built once per DEFINITION, before any placement looks at them. Building
+		// inside the instance loop instead would produce one BVH per placement,
+		// which is baking with extra steps.
+		std::vector<std::shared_ptr<hittable>> groupBVHs(scene.groups.size());
+		for (std::size_t g = 0; g < scene.groups.size(); ++g) {
+			const pbrt_flatten::InstanceGroup &grp = scene.groups[g];
+			if (grp.triangles.empty() && grp.spheres.empty()) continue;
+
 			auto geometry = std::make_shared<hittable_list>();
 			hittable_list unusedLights;
-			emitGeometry(atm.triangles, kNoSpheres, kNoDisks, kNoCylinders,
-						 kNoCones, kNoParaboloids, kNoBilinearPatches, kNoCurves,
-						 *geometry, unusedLights);
-			if (geometry->objects.empty()) continue;
-			auto objectBVH = std::make_shared<bvh_node>(*geometry);
-			pbrt_scene::Matrix4 o2w, o2wEnd;
-			for (int k = 0; k < 16; ++k) {
-				o2w.m[k]    = atm.xform[k];
-				o2wEnd.m[k] = atm.xformEnd[k];
-			}
-			out.world->add(std::make_shared<animated_transform_instance>(objectBVH, o2w, o2wEnd));
+			// No InstanceGroup::bilinearPatches/disks/cylinders/cones/paraboloids/
+			// curves - object-space bilinear patches, disks, cylinders, cones,
+			// paraboloids and curves inside an instance definition are all out of
+			// scope (see flatten()'s null-bilinearPatches/disks/cylinders/cones/
+			// paraboloids/curves comments on why), so these are always empty.
+			static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
+			static const std::vector<pbrt_flatten::Disk> kNoDisks;
+			static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+			static const std::vector<pbrt_flatten::Cone> kNoCones;
+			static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
+			static const std::vector<pbrt_flatten::Curve> kNoCurves;
+			emitGeometry(grp.triangles, grp.spheres, kNoDisks, kNoCylinders,
+						 kNoCones, kNoParaboloids,
+						 kNoBilinearPatches, kNoCurves, *geometry, unusedLights);
+			if (!geometry->objects.empty())
+				groupBVHs[g] = std::make_shared<bvh_node>(*geometry);
+		}
+
+		for (const pbrt_flatten::Instance &inst : scene.instances) {
+			if (inst.group < 0 ||
+				static_cast<std::size_t>(inst.group) >= groupBVHs.size()) continue;
+			const std::shared_ptr<hittable> &shared =
+				groupBVHs[static_cast<std::size_t>(inst.group)];
+			if (!shared) continue;
+
+			pbrt_scene::Matrix4 m;
+			for (int k = 0; k < 16; ++k) m.m[k] = inst.xform[k];
+			out.world->add(std::make_shared<transform_instance>(shared, m));
+			++out.instanceCount;
 		}
 	}
 
-	// ---- animated bilinear patches -----------------------------------------
-	// Real object motion blur (Shape "bilinearmesh") - see pbrt_flatten::
-	// AnimatedBilinearPatch's own comment. Each entry's corners are already
-	// OBJECT space, so - exactly like the animated-mesh block above - it's
-	// fed back through this SAME emitGeometry() (as a synthetic, one-entry
-	// BilinearPatch list; emitGeometry has no opinion on whether `.p` holds
-	// object- or world-space points) into a scratch hittable_list, then
-	// wrapped in animated_transform_instance. Never emissive (AnimatedBilinearPatch's
-	// own comment - flatten() excludes an emissive patch from this list
-	// entirely), so a scratch (never-populated) light list, same reasoning
-	// as the animated-mesh block above.
-	if (!scene.animatedBilinearPatches.empty()) {
-		static const std::vector<pbrt_flatten::Triangle> kNoTriangles;
-		static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
-		static const std::vector<pbrt_flatten::Disk> kNoDisks;
-		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
-		static const std::vector<pbrt_flatten::Cone> kNoCones;
-		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
-		static const std::vector<pbrt_flatten::Curve> kNoCurves;
-		for (const pbrt_flatten::AnimatedBilinearPatch &abp : scene.animatedBilinearPatches) {
-			pbrt_flatten::BilinearPatch bp;
-			for (int i = 0; i < 4; ++i) {
-				bp.p[i][0] = abp.p[i][0]; bp.p[i][1] = abp.p[i][1]; bp.p[i][2] = abp.p[i][2];
+	void emitAnimatedMeshes() {
+		// ---- animated meshes --------------------------------------------------
+		// Real object motion blur (trianglemesh/plymesh/loopsubdiv) - see
+		// pbrt_flatten::AnimatedTriangleMesh's own comment. Each entry's
+		// triangles are already OBJECT space (not baked to world - that's the
+		// entire reason this list exists separately from scene.triangles), so
+		// they go through the exact same emitGeometry() reused for
+		// ObjectInstance's own object-space geometry above, into a fresh scratch
+		// hittable_list, then wrapped in animated_transform_instance (the
+		// MotionState-based sibling of transform_instance used just above,
+		// carrying a per-ray-time-resolved transform instead of one static one).
+		// No light list is passed for the same reason the ObjectInstance loop
+		// above passes a scratch one - pbrt_flatten.h already excludes an
+		// emissive mesh from ever populating this list at all (falls back to a
+		// static, StartTime-only bake instead, warned there), so passing a real
+		// one here would never receive anything, and a scratch list keeps that
+		// invariant visible rather than implying this path DOES enumerate
+		// lights when it deliberately never does.
+		if (!scene.animatedTriangleMeshes.empty()) {
+			static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
+			static const std::vector<pbrt_flatten::Disk> kNoDisks;
+			static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+			static const std::vector<pbrt_flatten::Cone> kNoCones;
+			static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
+			static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
+			static const std::vector<pbrt_flatten::Curve> kNoCurves;
+			for (const pbrt_flatten::AnimatedTriangleMesh &atm : scene.animatedTriangleMeshes) {
+				if (atm.triangles.empty()) continue;
+				auto geometry = std::make_shared<hittable_list>();
+				hittable_list unusedLights;
+				emitGeometry(atm.triangles, kNoSpheres, kNoDisks, kNoCylinders,
+							 kNoCones, kNoParaboloids, kNoBilinearPatches, kNoCurves,
+							 *geometry, unusedLights);
+				if (geometry->objects.empty()) continue;
+				auto objectBVH = std::make_shared<bvh_node>(*geometry);
+				pbrt_scene::Matrix4 o2w, o2wEnd;
+				for (int k = 0; k < 16; ++k) {
+					o2w.m[k]    = atm.xform[k];
+					o2wEnd.m[k] = atm.xformEnd[k];
+				}
+				out.world->add(std::make_shared<animated_transform_instance>(objectBVH, o2w, o2wEnd));
 			}
-			bp.material = abp.material;
-			const std::vector<pbrt_flatten::BilinearPatch> oneBp{bp};
-			auto geometry = std::make_shared<hittable_list>();
-			hittable_list unusedLights;
-			emitGeometry(kNoTriangles, kNoSpheres, kNoDisks, kNoCylinders,
-						 kNoCones, kNoParaboloids, oneBp, kNoCurves,
-						 *geometry, unusedLights);
-			if (geometry->objects.empty()) continue;
-			pbrt_scene::Matrix4 o2w, o2wEnd;
-			for (int k = 0; k < 16; ++k) {
-				o2w.m[k]    = abp.xform[k];
-				o2wEnd.m[k] = abp.xformEnd[k];
-			}
-			out.world->add(std::make_shared<animated_transform_instance>(
-				geometry->objects[0], o2w, o2wEnd));
 		}
 	}
 
-	// ---- animated curves ----------------------------------------------------
-	// Real object motion blur (Shape "curve") - see pbrt_flatten::
-	// AnimatedCurve's own comment. Each entry's control points are already
-	// OBJECT space; unlike a single bilinear patch, a curve can have several
-	// segments, so - exactly like the animated-mesh block above - they're
-	// fed back through this SAME emitGeometry() (as a synthetic, one-entry
-	// Curve list) into a scratch hittable_list, wrapped in ONE bvh_node
-	// (matching the animated-mesh block's own reasoning: several segments
-	// sharing one xform/xformEnd pair, cheaper as one small tree than one
-	// animated_transform_instance per segment), then wrapped in
-	// animated_transform_instance. Never emissive or ribbon-type
-	// (AnimatedCurve's own comment - flatten() excludes both from this
-	// list), so a scratch light list, same reasoning as the animated-mesh
-	// block above.
-	if (!scene.animatedCurves.empty()) {
-		static const std::vector<pbrt_flatten::Triangle> kNoTriangles;
-		static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
-		static const std::vector<pbrt_flatten::Disk> kNoDisks;
-		static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
-		static const std::vector<pbrt_flatten::Cone> kNoCones;
-		static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
-		static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
-		for (const pbrt_flatten::AnimatedCurve &ac : scene.animatedCurves) {
-			pbrt_flatten::Curve c;
-			c.cp = ac.cp;
-			c.nSegments = ac.nSegments;
-			c.width0 = ac.width0;
-			c.width1 = ac.width1;
-			c.curveType = ac.curveType;
-			c.material = ac.material;
-			const std::vector<pbrt_flatten::Curve> oneCurve{std::move(c)};
-			auto geometry = std::make_shared<hittable_list>();
-			hittable_list unusedLights;
-			emitGeometry(kNoTriangles, kNoSpheres, kNoDisks, kNoCylinders,
-						 kNoCones, kNoParaboloids, kNoBilinearPatches, oneCurve,
-						 *geometry, unusedLights);
-			if (geometry->objects.empty()) continue;
-			auto objectBVH = std::make_shared<bvh_node>(*geometry);
-			pbrt_scene::Matrix4 o2w, o2wEnd;
-			for (int k = 0; k < 16; ++k) {
-				o2w.m[k]    = ac.xform[k];
-				o2wEnd.m[k] = ac.xformEnd[k];
+	void emitAnimatedBilinearPatches() {
+		// ---- animated bilinear patches -----------------------------------------
+		// Real object motion blur (Shape "bilinearmesh") - see pbrt_flatten::
+		// AnimatedBilinearPatch's own comment. Each entry's corners are already
+		// OBJECT space, so - exactly like the animated-mesh block above - it's
+		// fed back through this SAME emitGeometry() (as a synthetic, one-entry
+		// BilinearPatch list; emitGeometry has no opinion on whether `.p` holds
+		// object- or world-space points) into a scratch hittable_list, then
+		// wrapped in animated_transform_instance. Never emissive (AnimatedBilinearPatch's
+		// own comment - flatten() excludes an emissive patch from this list
+		// entirely), so a scratch (never-populated) light list, same reasoning
+		// as the animated-mesh block above.
+		if (!scene.animatedBilinearPatches.empty()) {
+			static const std::vector<pbrt_flatten::Triangle> kNoTriangles;
+			static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
+			static const std::vector<pbrt_flatten::Disk> kNoDisks;
+			static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+			static const std::vector<pbrt_flatten::Cone> kNoCones;
+			static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
+			static const std::vector<pbrt_flatten::Curve> kNoCurves;
+			for (const pbrt_flatten::AnimatedBilinearPatch &abp : scene.animatedBilinearPatches) {
+				pbrt_flatten::BilinearPatch bp;
+				for (int i = 0; i < 4; ++i) {
+					bp.p[i][0] = abp.p[i][0]; bp.p[i][1] = abp.p[i][1]; bp.p[i][2] = abp.p[i][2];
+				}
+				bp.material = abp.material;
+				const std::vector<pbrt_flatten::BilinearPatch> oneBp{bp};
+				auto geometry = std::make_shared<hittable_list>();
+				hittable_list unusedLights;
+				emitGeometry(kNoTriangles, kNoSpheres, kNoDisks, kNoCylinders,
+							 kNoCones, kNoParaboloids, oneBp, kNoCurves,
+							 *geometry, unusedLights);
+				if (geometry->objects.empty()) continue;
+				pbrt_scene::Matrix4 o2w, o2wEnd;
+				for (int k = 0; k < 16; ++k) {
+					o2w.m[k]    = abp.xform[k];
+					o2wEnd.m[k] = abp.xformEnd[k];
+				}
+				out.world->add(std::make_shared<animated_transform_instance>(
+					geometry->objects[0], o2w, o2wEnd));
 			}
-			out.world->add(std::make_shared<animated_transform_instance>(objectBVH, o2w, o2wEnd));
 		}
 	}
 
-	// A flat list would make every ray test every primitive; these scenes are
-	// the reason the BVH/kd-tree exists. scene.acceleratorType/
-	// acceleratorSplitMethod are already fully resolved by flatten() (falls
-	// back to "bvh"/"sah" for anything unrecognized, or combined with
-	// object motion blur - see FlatScene::acceleratorType's own comment) -
-	// kd_tree_hittable.h's KdTree<double,...> wrapper for "kdtree"; for
-	// "bvh", bvh_node (real SAH, this project's pre-existing default) for
-	// "sah", bvh_aggregate_hittable.h's BvhTree<double,...> wrapper for an
-	// explicit "middle"/"equal"/"hlbvh". All produce the same converged
-	// image over the same primitives - this only changes build strategy/
-	// acceleration structure, not rendering behavior.
-	if (!out.world->objects.empty()) {
-		auto accelerated = std::make_shared<hittable_list>();
-		if (scene.acceleratorType == "kdtree") {
-			accelerated->add(std::make_shared<kd_tree_hittable>(*out.world, scene.acceleratorKdParams));
-		} else if (scene.acceleratorSplitMethod == "middle") {
-			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
-				*out.world, BvhSplitMethod::Middle, scene.acceleratorMaxNodePrims));
-		} else if (scene.acceleratorSplitMethod == "equal") {
-			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
-				*out.world, BvhSplitMethod::EqualCounts, scene.acceleratorMaxNodePrims));
-		} else if (scene.acceleratorSplitMethod == "hlbvh") {
-			accelerated->add(std::make_shared<bvh_aggregate_hittable>(
-				*out.world, BvhSplitMethod::HLBVH, scene.acceleratorMaxNodePrims));
-		} else {
-			accelerated->add(std::make_shared<bvh_node>(*out.world));
+	void emitAnimatedCurves() {
+		// ---- animated curves ----------------------------------------------------
+		// Real object motion blur (Shape "curve") - see pbrt_flatten::
+		// AnimatedCurve's own comment. Each entry's control points are already
+		// OBJECT space; unlike a single bilinear patch, a curve can have several
+		// segments, so - exactly like the animated-mesh block above - they're
+		// fed back through this SAME emitGeometry() (as a synthetic, one-entry
+		// Curve list) into a scratch hittable_list, wrapped in ONE bvh_node
+		// (matching the animated-mesh block's own reasoning: several segments
+		// sharing one xform/xformEnd pair, cheaper as one small tree than one
+		// animated_transform_instance per segment), then wrapped in
+		// animated_transform_instance. Never emissive or ribbon-type
+		// (AnimatedCurve's own comment - flatten() excludes both from this
+		// list), so a scratch light list, same reasoning as the animated-mesh
+		// block above.
+		if (!scene.animatedCurves.empty()) {
+			static const std::vector<pbrt_flatten::Triangle> kNoTriangles;
+			static const std::vector<pbrt_flatten::Sphere> kNoSpheres;
+			static const std::vector<pbrt_flatten::Disk> kNoDisks;
+			static const std::vector<pbrt_flatten::Cylinder> kNoCylinders;
+			static const std::vector<pbrt_flatten::Cone> kNoCones;
+			static const std::vector<pbrt_flatten::Paraboloid> kNoParaboloids;
+			static const std::vector<pbrt_flatten::BilinearPatch> kNoBilinearPatches;
+			for (const pbrt_flatten::AnimatedCurve &ac : scene.animatedCurves) {
+				pbrt_flatten::Curve c;
+				c.cp = ac.cp;
+				c.nSegments = ac.nSegments;
+				c.width0 = ac.width0;
+				c.width1 = ac.width1;
+				c.curveType = ac.curveType;
+				c.material = ac.material;
+				const std::vector<pbrt_flatten::Curve> oneCurve{std::move(c)};
+				auto geometry = std::make_shared<hittable_list>();
+				hittable_list unusedLights;
+				emitGeometry(kNoTriangles, kNoSpheres, kNoDisks, kNoCylinders,
+							 kNoCones, kNoParaboloids, kNoBilinearPatches, oneCurve,
+							 *geometry, unusedLights);
+				if (geometry->objects.empty()) continue;
+				auto objectBVH = std::make_shared<bvh_node>(*geometry);
+				pbrt_scene::Matrix4 o2w, o2wEnd;
+				for (int k = 0; k < 16; ++k) {
+					o2w.m[k]    = ac.xform[k];
+					o2wEnd.m[k] = ac.xformEnd[k];
+				}
+				out.world->add(std::make_shared<animated_transform_instance>(objectBVH, o2w, o2wEnd));
+			}
 		}
-		out.world = accelerated;
 	}
 
-	// ---- infinite/sky light ------------------------------------------------
-	// Image-based when pbrt_load::loadFile() successfully decoded one
-	// (imageWidth/imageHeight > 0 - see FlatScene::InfiniteLight's comment on
-	// why the decode happens there and not here or in flatten()). Falls back
-	// to the scene's constant L otherwise - either it never named an image,
-	// or naming one failed to resolve/decode (a warning was already recorded
-	// for that case). Extracted to buildSkyOrPortal() above.
-	buildSkyOrPortal(scene, out);
+	void accelerate() {
+		// A flat list would make every ray test every primitive; these scenes are
+		// the reason the BVH/kd-tree exists. scene.acceleratorType/
+		// acceleratorSplitMethod are already fully resolved by flatten() (falls
+		// back to "bvh"/"sah" for anything unrecognized, or combined with
+		// object motion blur - see FlatScene::acceleratorType's own comment) -
+		// kd_tree_hittable.h's KdTree<double,...> wrapper for "kdtree"; for
+		// "bvh", bvh_node (real SAH, this project's pre-existing default) for
+		// "sah", bvh_aggregate_hittable.h's BvhTree<double,...> wrapper for an
+		// explicit "middle"/"equal"/"hlbvh". All produce the same converged
+		// image over the same primitives - this only changes build strategy/
+		// acceleration structure, not rendering behavior.
+		if (!out.world->objects.empty()) {
+			auto accelerated = std::make_shared<hittable_list>();
+			if (scene.acceleratorType == "kdtree") {
+				accelerated->add(std::make_shared<kd_tree_hittable>(*out.world, scene.acceleratorKdParams));
+			} else if (scene.acceleratorSplitMethod == "middle") {
+				accelerated->add(std::make_shared<bvh_aggregate_hittable>(
+					*out.world, BvhSplitMethod::Middle, scene.acceleratorMaxNodePrims));
+			} else if (scene.acceleratorSplitMethod == "equal") {
+				accelerated->add(std::make_shared<bvh_aggregate_hittable>(
+					*out.world, BvhSplitMethod::EqualCounts, scene.acceleratorMaxNodePrims));
+			} else if (scene.acceleratorSplitMethod == "hlbvh") {
+				accelerated->add(std::make_shared<bvh_aggregate_hittable>(
+					*out.world, BvhSplitMethod::HLBVH, scene.acceleratorMaxNodePrims));
+			} else {
+				accelerated->add(std::make_shared<bvh_node>(*out.world));
+			}
+			out.world = accelerated;
+		}
+	}
+};
 
-	// ---- camera medium ------------------------------------------------------
-	// pbrt-v4's own "camera medium" (FlatScene::cameraMediumIndex's own
-	// comment) - already resolved by flatten() to a valid homogeneous-only,
-	// no-per-shape-medium-conflict index, or -1 if none/unsupported (both
-	// scope cuts already warned about there) - this is just the same
-	// Medium-struct-to-runtime-object construction addMediumIfPresent()
-	// above does for a per-shape medium, minus the boundary shape. Extracted
-	// to buildCameraMedium() above.
-	buildCameraMedium(scene, out, luminance);
+} // namespace scene_builder_impl
 
-	// ---- punctual (delta) lights -------------------------------------------
-	// LightSource point/spot/distant/goniometric/projection - see
-	// pbrt_flatten::PunctualLight's own comment for why this is a bridging
-	// job onto punctual_light_objects.h's existing constructors, already
-	// proven by this codebase's own C2-C6 showcase scenes, rather than new
-	// rendering math. Extracted to buildPunctualLights() above.
-	buildPunctualLights(scene, out);
-
-	return out;
+// Turns flattened geometry into a BVH-accelerated world plus the light list the integrator samples (see scene_builder_impl::CpuSceneBuilder).
+inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
+	return scene_builder_impl::CpuSceneBuilder(scene).run();
 }
 
 } // namespace pbrt_cpu
