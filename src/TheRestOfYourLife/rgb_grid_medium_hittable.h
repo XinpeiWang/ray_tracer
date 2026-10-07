@@ -154,7 +154,11 @@ class rgb_grid_medium_hittable : public hittable, public event_medium {
             double px = mox + tt*mdx, py = moy + tt*mdy, pz = moz + tt*mdz;
             double sa[3], ss[3], le[3];
             grid.sample_point(px, py, pz, sa, ss, le);
-            double sigma_t_local = std::max({ sa[0]+ss[0], sa[1]+ss[1], sa[2]+ss[2] });
+            // One colour channel's grey medium when a non-default integrator renders it a channel at a time (g_scalar_medium_channel):
+            // thinning against the shared majorant with that channel's extinction, and an albedo that keeps the absorption (sa/st).
+            const int channel = g_scalar_medium_channel.load(std::memory_order_relaxed);
+            double sigma_t_local = channel >= 0 ? sa[channel] + ss[channel]
+                                                : std::max({ sa[0]+ss[0], sa[1]+ss[1], sa[2]+ss[2] });
 
             if (random_double() < sigma_t_local / seg_sigma_maj) {
                 rec.t = tt / len;
@@ -164,6 +168,10 @@ class rgb_grid_medium_hittable : public hittable, public event_medium {
 
                 double maxc = std::max({ ss[0], ss[1], ss[2], 1e-6 });
                 color albedo(ss[0]/maxc, ss[1]/maxc, ss[2]/maxc);
+                if (channel >= 0) {
+                    const double a = sigma_t_local > 1e-9 ? ss[channel] / sigma_t_local : 0.0;
+                    albedo = color(a, a, a);
+                }
                 // Real per-voxel "rgb Le"/"float Lescale" (pbrt-v4's own
                 // RGBGridMedium::LeGrid/LeScale) - le[] is already the
                 // fully-resolved (Le_scale-multiplied) emission at this
@@ -179,7 +187,8 @@ class rgb_grid_medium_hittable : public hittable, public event_medium {
                 // probability weighting for volumetric emission).
                 color emission(0, 0, 0);
                 for (int c = 0; c < 3; ++c) {
-                    double sigma_t_c = sa[c] + ss[c];
+                    const int cc = channel >= 0 ? channel : c;
+                    double sigma_t_c = sa[cc] + ss[cc];
                     // `> 1e-9`, not constant_medium.h's plain `> 0` for the
                     // analogous homogeneous-medium divide guard (that
                     // file's own hg_phase_material-constructing
@@ -197,7 +206,7 @@ class rgb_grid_medium_hittable : public hittable, public event_medium {
                     // inconsistency; kept apart since they guard against
                     // different failure modes (exact-zero vs. near-zero
                     // interpolation noise).
-                    if (sigma_t_c > 1e-9) emission[c] = le[c] * (sa[c] / sigma_t_c);
+                    if (sigma_t_c > 1e-9) emission[c] = le[c] * (sa[cc] / sigma_t_c);
                 }
                 rec.mat = make_shared<hg_phase_material>(albedo, phase_g,
                     [this](const ray& sr, double t_max) { return shadow_transmittance_impl(sr, t_max); },

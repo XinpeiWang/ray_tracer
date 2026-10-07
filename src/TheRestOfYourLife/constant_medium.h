@@ -25,6 +25,7 @@
 #include "texture.h"
 #include "../shared/volume_scattering.h"
 #include "pdf.h"
+#include <atomic>
 #include <functional>
 
 
@@ -140,6 +141,9 @@ class hg_phase_material : public material {
         return true;
     }
 
+    // The single-scattering albedo of an ordinary (non-per-channel) collision: what BDPT-family integrators multiply the phase function by.
+    color single_scattering_albedo() const { return albedo; }
+
     double scattering_pdf(const ray& r_in, const hit_record& /*rec*/,
                           const ray& scattered) const override {
         vec3 wo = unit_vector(-r_in.direction());
@@ -198,6 +202,36 @@ inline void collapse_homogeneous_medium(const HomogeneousMediumData<double>& med
 // medium must not also report collisions through hittable::hit(). Every other integrator (BDPT/MLT/SPPM) leaves it false and sees the
 // scalar-extinction model hit() has always implemented.
 inline thread_local bool g_chromatic_media_integrator_managed = false;
+
+// Which colour channel the scalar medium model currently stands for. -1 (the default) is the model hit() has always had: one extinction, the
+// luminance of sigma_t, and a tint albedo. BDPT/MLT/SPPM and the debug integrators cannot sample a per-channel extinction themselves (a free flight
+// has no way to return the pass-through weight of a flight that did not collide, and their strategy weights are built from path pdfs), but a GREY
+// medium is exact in the scalar model, so for a scene with a chromatic medium they render three passes, pass c with the medium replaced by the grey
+// one of channel c (sigma_a_c, sigma_s_c), and keep channel c of pass c (render_per_channel_media(), camera.h). 0..2 selects that grey medium. Set
+// only between renders, never while worker threads are running.
+inline std::atomic<int> g_scalar_medium_channel{-1};
+
+// Runs `render_once(std::vector<double>& rgb)` (one full frame, width*height*3 interleaved) once, or - when the scene has a medium whose extinction
+// differs between colour channels (`chromatic`) - three times with g_scalar_medium_channel = 0, 1, 2 and assembles the frame from channel c of
+// pass c. Unbiased per channel because everything else in a scene is channel-independent and a grey medium is exact in the scalar model; costs three
+// renders. The caller owns the sample budget: each pass gets the full one.
+template <class RenderFn>
+inline void render_per_channel_media(bool chromatic, std::vector<double>& out_rgb, RenderFn&& render_once) {
+    if (!chromatic) {
+        render_once(out_rgb);
+        return;
+    }
+    struct Reset { ~Reset() { g_scalar_medium_channel.store(-1, std::memory_order_relaxed); } } reset;
+    std::vector<double> combined;
+    for (int c = 0; c < 3; ++c) {
+        g_scalar_medium_channel.store(c, std::memory_order_relaxed);
+        std::vector<double> pass;
+        render_once(pass);
+        if (combined.empty()) combined.assign(pass.size(), 0.0);
+        for (size_t i = static_cast<size_t>(c); i < pass.size() && i < combined.size(); i += 3) combined[i] = pass[i];
+    }
+    out_rgb = std::move(combined);
+}
 
 // ---------------------------------------------------------------------------
 // constant_medium
@@ -295,6 +329,17 @@ class constant_medium : public hittable, public event_medium {
         med_rgb = HomogeneousMediumData<double>(sigma_a.x(), sigma_a.y(), sigma_a.z(),
                                                 sigma_s.x(), sigma_s.y(), sigma_s.z(), g);
         chromatic_ = med_rgb.is_chromatic();
+        if (chromatic_) {
+            // The grey medium of each channel, for the one-channel passes of the non-default integrators (g_scalar_medium_channel).
+            for (int c = 0; c < 3; ++c) {
+                med_ch_[c] = HomogeneousMediumData<double>(sigma_a[c], sigma_s[c], g);
+                color ch_albedo, ch_emission;
+                collapse_homogeneous_medium(med_ch_[c], color(1, 1, 1), Le, ch_albedo, ch_emission);
+                phase_ch_[c] = make_shared<hg_phase_material>(ch_albedo, g,
+                    [this](const ray& r, double t_max) { return shadow_transmittance_impl(r, t_max); },
+                    ch_emission);
+            }
+        }
     }
 
     // ---- per-channel extinction, sampled by the integrator ----------------------------------------------------------------
@@ -419,7 +464,8 @@ class constant_medium : public hittable, public event_medium {
 
         // pbrt-v4 delta-tracking free-path sample: t = -log(1-u) / sigma_t
         // med.sample_free_path(u) returns this value directly.
-        double hit_distance = med.sample_free_path(random_double());
+        const int channel = scalar_channel();
+        double hit_distance = (channel >= 0 ? med_ch_[channel] : med).sample_free_path(random_double());
 
         if (hit_distance > distance_inside)
             return false;
@@ -429,7 +475,7 @@ class constant_medium : public hittable, public event_medium {
 
         rec.normal    = vec3(1, 0, 0);  // arbitrary (volume has no surface normal)
         rec.front_face = true;
-        rec.mat       = phase_mat;
+        rec.mat       = channel >= 0 ? phase_ch_[channel] : phase_mat;
 
         return true;
     }
@@ -439,13 +485,20 @@ class constant_medium : public hittable, public event_medium {
     // pbrt-v4 HomogeneousMedium: Tr(t) = exp(-sigma_t * t), averaged over RGB.
     color transmittance(double t) const {
         double Tr_r, Tr_g, Tr_b;
-        med.transmittance(t, Tr_r, Tr_g, Tr_b);
+        const int channel = scalar_channel();
+        (channel >= 0 ? med_ch_[channel] : med).transmittance(t, Tr_r, Tr_g, Tr_b);
         return color(Tr_r, Tr_g, Tr_b);
     }
 
     aabb bounding_box() const override { return boundary->bounding_box(); }
 
   private:
+    // The channel whose grey medium the scalar model stands for right now (g_scalar_medium_channel), -1 for the luminance model. Only a
+    // chromatic medium has per-channel models; a grey one is the same in every channel.
+    int scalar_channel() const {
+        return chromatic_ ? g_scalar_medium_channel.load(std::memory_order_relaxed) : -1;
+    }
+
     // Deterministic Beer-Lambert transmittance for a shadow ray's
     // traversal of THIS medium's boundary, bounded by t_max (the shadow
     // ray's real target distance, e.g. a punctual light) - same rec1/rec2
@@ -484,6 +537,8 @@ class constant_medium : public hittable, public event_medium {
     shared_ptr<hittable>         boundary;
     HomogeneousMediumData<double> med;       // the scalar model hit() and the other integrators use
     HomogeneousMediumData<double> med_rgb;   // the real per-channel model (only set by the RGB constructor)
+    HomogeneousMediumData<double> med_ch_[3];     // grey medium of each channel (chromatic media only; g_scalar_medium_channel)
+    shared_ptr<hg_phase_material> phase_ch_[3];
     bool                          chromatic_ = false;
     color                         Le_raw_{0, 0, 0};   // MakeNamedMedium's raw Le, weighted per collision by sample_event()
     shared_ptr<hg_phase_material> phase_mat;

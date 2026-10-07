@@ -12,22 +12,152 @@
 #include <array>
 #include <fstream>
 
-// BDPT, MLT and SPPM draw a medium event from constant_medium::hit() - one luminance extinction - so a chromatic medium renders attenuated
-// by the grey average there (the chromatic absorber reads 0.47 in every channel under --bdpt, --mlt and --sppm instead of 0.82/0.45/0.17). They
-// say so instead of silently greying it: the warning names the scene and the integrator, and a grey medium or a medium-free scene gets none.
+// A scene whose participating medium has a different extinction per colour channel names itself when an integrator that renders it as three
+// one-channel passes is asked for it (the render takes three times as long); a grey medium or a medium-free scene gets no note.
 TEST(ChromaticMediaIntegratorWarningTest, NamesChromaticMediaAndOnlyThose) {
 	const auto warn = [](const char* stem, const char* flags) {
 		const SceneDescriptor* s = find_example_scene(stem);
 		return s ? chromatic_media_integrator_warning(*s, stem, flags) : std::string("<scene missing>");
 	};
-	for (const char* stem : {"chromatic-absorber", "chromatic-camera-medium-absorber", "chromatic-camera-medium", "dielectric-medium-showcase"}) {
+	for (const char* stem : {"chromatic-absorber", "chromatic-fog-room", "dielectric-medium-showcase"}) {
 		const std::string w = warn(stem, "--bdpt/--mlt");
 		EXPECT_NE(w.find("extinction differs between colour channels"), std::string::npos) << stem << ": " << w;
 		EXPECT_NE(w.find(stem), std::string::npos) << stem << " should be named";
 		EXPECT_NE(w.find("--bdpt/--mlt"), std::string::npos) << stem;
+		EXPECT_NE(w.find("three passes"), std::string::npos) << stem;
 	}
 	for (const char* stem : {"fog-furnace", "absorbing-fog", "camera-medium-absorbing", "flush-ceiling-light"})
 		EXPECT_EQ(warn(stem, "--sppm"), "") << stem << " has no chromatic medium";
+}
+
+// --sppm has no volume model (pbrt-v4's SPPM has none either), so it says so for any scene with a participating medium, grey or not.
+TEST(ChromaticMediaIntegratorWarningTest, SppmNamesEverySceneWithAMedium) {
+	const auto warn = [](const char* stem) {
+		const SceneDescriptor* s = find_example_scene(stem);
+		return s ? sppm_media_warning(*s, stem) : std::string("<scene missing>");
+	};
+	for (const char* stem : {"fog-furnace", "chromatic-fog-room", "absorbing-fog"}) {
+		const std::string w = warn(stem);
+		EXPECT_NE(w.find("no volume model"), std::string::npos) << stem << ": " << w;
+		EXPECT_NE(w.find(stem), std::string::npos) << stem << " should be named";
+	}
+	for (const char* stem : {"flush-ceiling-light", "bdpt-box-room"})
+		EXPECT_EQ(warn(stem), "") << stem << " has no medium";
+}
+
+// Per-channel means of a linear EXR; false if unreadable.
+static bool loadChannelMeans(const std::string& path, double mean[3]) {
+	int w = 0, h = 0;
+	std::vector<float> rgb;
+	if (!loadLinearRgbPixels(path, w, h, rgb) || w <= 0 || h <= 0) return false;
+	for (int c = 0; c < 3; ++c) mean[c] = 0.0;
+	for (size_t i = 0; i < rgb.size(); i += 3)
+		for (int c = 0; c < 3; ++c) mean[c] += rgb[i + c];
+	for (int c = 0; c < 3; ++c) mean[c] /= static_cast<double>(w) * h;
+	return true;
+}
+
+// Renders `stem` with one CPU integrator ("path", "bdpt", "mlt", "sppm", "simplepath") and returns its per-channel linear means.
+static bool renderChannelMeans(const char* integrator, const char* stem, int depth, double mean[3]) {
+	const SceneDescriptor* s = find_example_scene(stem);
+	if (!s) return false;
+	const std::string out = std::string("pbrt_agree_chroma_") + integrator + "_" + stem + ".exr";
+	const std::string name = integrator;
+	int rc = -1;
+	if (name == "path") rc = cpu_render_main(48, 48, 256, depth, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0);
+	else if (name == "bdpt") rc = cpu_render_main_bdpt(48, 48, 256, depth, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0);
+	else if (name == "mlt") rc = cpu_render_main_mlt(48, 48, 200000, 8000000, depth, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0);
+	else if (name == "sppm") rc = cpu_render_main_sppm(32, 32, 60, 20000, depth, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0);
+	else if (name == "simplepath") rc = cpu_render_main_simplepath(48, 48, 256, depth, 1, 1, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0, 0);
+	const bool ok = rc == 0 && loadChannelMeans(out, mean);
+	std::remove(out.c_str());
+	return ok;
+}
+
+// A pure absorber thicker in blue than in red, seen end-on under a uniform sky: each channel is exp(-sigma * chord) (0.819, 0.449, 0.165; chord 1.9945).
+// BDPT, MLT, SPPM and --simplepath used to read the grey luminance extinction, 0.47, in every channel.
+TEST(ChromaticMediaPerChannelTest, AbsorberFollowsBeerLambertUnderEveryIntegrator) {
+	if (!find_example_scene("chromatic-absorber")) GTEST_SKIP() << "chromatic-absorber.pbrt was not discovered - is pbrt_scenes/ present?";
+	const double sigma[3] = {0.1, 0.4, 0.9};
+	for (const char* integrator : {"bdpt", "simplepath", "sppm", "mlt"}) {
+		double m[3] = {0, 0, 0};
+		ASSERT_TRUE(renderChannelMeans(integrator, "chromatic-absorber", 4, m)) << integrator;
+		for (int c = 0; c < 3; ++c) {
+			const double expected = std::exp(-sigma[c] * 1.9945);
+			std::printf("[chroma] absorber %s ch%d: %.4f (closed form %.4f)\n", integrator, c, m[c], expected);
+			EXPECT_NEAR(m[c], expected, 0.03 * expected) << integrator << " channel " << c;
+		}
+	}
+}
+
+// A fog that scatters without absorbing, differently per colour, is invisible under a uniform sky in every channel.
+TEST(ChromaticMediaPerChannelTest, FogFurnaceStaysInvisibleUnderEveryIntegrator) {
+	if (!find_example_scene("chromatic-fog-furnace")) GTEST_SKIP() << "chromatic-fog-furnace.pbrt was not discovered - is pbrt_scenes/ present?";
+	for (const char* integrator : {"bdpt", "simplepath", "mlt"}) {
+		double m[3] = {0, 0, 0};
+		ASSERT_TRUE(renderChannelMeans(integrator, "chromatic-fog-furnace", 24, m)) << integrator;
+		for (int c = 0; c < 3; ++c) {
+			std::printf("[chroma] furnace %s ch%d: %.4f (1 expected)\n", integrator, c, m[c]);
+			EXPECT_NEAR(m[c], 1.0, 0.03) << integrator << " channel " << c;
+		}
+	}
+}
+
+// A scattering fog (grey, sigma_s = 1 over a unit sphere, albedo 1) under a uniform sky (0.6, 0.7, 0.9) is invisible: every pixel reads the sky. BDPT, MLT
+// and --simplepath read 0.59x of it: a medium-scatter point was handled as a surface with an invented normal, so every phase-function sample was
+// multiplied by a cosine against that normal and the half of the sphere below it was discarded. A medium vertex has no normal (pbrt's MediumInteraction
+// has n = 0) and no cosine anywhere; the adapter now hands BDPT a zero normal and the bridge evaluates albedo * phase there.
+TEST(ChromaticMediaPerChannelTest, GreyFogFurnaceStaysInvisibleUnderBdptMltAndSimplePath) {
+	if (!find_example_scene("fog-furnace")) GTEST_SKIP() << "fog-furnace.pbrt was not discovered - is pbrt_scenes/ present?";
+	const double sky[3] = {0.6, 0.7, 0.9};
+	for (const char* integrator : {"bdpt", "simplepath", "mlt"}) {
+		double m[3] = {0, 0, 0};
+		ASSERT_TRUE(renderChannelMeans(integrator, "fog-furnace", 24, m)) << integrator;
+		for (int c = 0; c < 3; ++c) {
+			std::printf("[chroma] grey fog furnace %s ch%d: %.4f (%.2f expected)\n", integrator, c, m[c], sky[c]);
+			EXPECT_NEAR(m[c], sky[c], 0.03 * sky[c]) << integrator << " channel " << c;
+		}
+	}
+}
+
+// Absorbing heterogeneous RGB grid (MakeNamedMedium "rgbgrid"): per-channel Beer-Lambert through the grid, and a scattering-only grid invisible.
+TEST(ChromaticMediaPerChannelTest, RgbGridFollowsClosedFormsUnderBdpt) {
+	if (find_example_scene("chromatic-rgbgrid-absorber")) {
+		const double sigma[3] = {0.1, 0.4, 0.9};
+		double m[3] = {0, 0, 0};
+		ASSERT_TRUE(renderChannelMeans("bdpt", "chromatic-rgbgrid-absorber", 4, m));
+		const double depth = 1.9945 * 0.875;
+		for (int c = 0; c < 3; ++c) {
+			const double expected = std::exp(-sigma[c] * depth);
+			std::printf("[chroma] rgbgrid absorber bdpt ch%d: %.4f (closed form %.4f)\n", c, m[c], expected);
+			EXPECT_NEAR(m[c], expected, 0.05 * expected) << "channel " << c;
+		}
+	}
+	if (find_example_scene("chromatic-rgbgrid-furnace")) {
+		double m[3] = {0, 0, 0};
+		ASSERT_TRUE(renderChannelMeans("bdpt", "chromatic-rgbgrid-furnace", 24, m));
+		for (int c = 0; c < 3; ++c) {
+			std::printf("[chroma] rgbgrid furnace bdpt ch%d: %.4f (1 expected)\n", c, m[c]);
+			EXPECT_NEAR(m[c], 1.0, 0.04) << "channel " << c;
+		}
+	}
+}
+
+// A lit room around a fog ball that absorbs and scatters differently per channel: BDPT and MLT against the path tracer, channel by channel.
+TEST(ChromaticMediaPerChannelTest, LitRoomAgreesWithPathTracerPerChannel) {
+	if (!find_example_scene("chromatic-fog-room")) GTEST_SKIP() << "chromatic-fog-room.pbrt was not discovered - is pbrt_scenes/ present?";
+	double ref[3] = {0, 0, 0};
+	ASSERT_TRUE(renderChannelMeans("path", "chromatic-fog-room", 6, ref));
+	for (int c = 0; c < 3; ++c) ASSERT_GT(ref[c], 0.01) << "channel " << c;
+	struct Case { const char* integrator; double tol; };
+	for (const Case& k : {Case{"bdpt", 0.04}, Case{"mlt", 0.06}}) {
+		double m[3] = {0, 0, 0};
+		ASSERT_TRUE(renderChannelMeans(k.integrator, "chromatic-fog-room", 6, m)) << k.integrator;
+		for (int c = 0; c < 3; ++c) {
+			std::printf("[chroma] fog room %s ch%d: %.4f path %.4f (%.1f%%)\n", k.integrator, c, m[c], ref[c], 100.0 * m[c] / ref[c]);
+			EXPECT_NEAR(m[c], ref[c], k.tol * ref[c]) << k.integrator << " channel " << c;
+		}
+	}
 }
 
 // BDPT and MLT must agree with the path tracer on a distant light. They built a distant light as a surface vertex at an invented point in

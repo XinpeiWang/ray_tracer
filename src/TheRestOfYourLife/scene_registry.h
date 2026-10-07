@@ -179,6 +179,8 @@ struct SceneDescriptor {
     // The scene's per-shape homogeneous media with per-channel extinction, for camera::ray_color() to sample (pbrt_cpu_builder.h's
     // BuildResult::chromaticMedia). Empty for hand-built scenes and for every grey-medium scene. LAST, like the field above.
     std::function<std::vector<std::shared_ptr<event_medium>>()> build_shape_media;
+    // True when any shape of the scene carries a participating medium, grey or not (BuildResult::hasShapeMedia). LAST, like the fields above.
+    std::function<bool()> build_has_shape_media;
 
     // A CURATED (not derived from the .pbrt file - see the comment below on
     // why not) flat multiplier auto-applied to the Render Options tab's
@@ -224,21 +226,27 @@ struct SceneDescriptor {
     bool is_pbrt_backed = false;
 };
 
-// The warning a non-default integrator prints for a scene with a participating medium whose extinction differs between colour channels,
-// or "" when there is none. BDPT/MLT/SPPM draw a medium event from constant_medium::hit() (one extinction, the luminance of sigma_t, with the
-// colour only in the albedo): a free flight cannot carry the per-channel pass-through weight of the default path tracer (camera::ray_color(),
-// constant_medium::sample_event()), and their strategy weights are built from path pdfs that a per-channel mixture would change, so such a
-// medium renders attenuated by the grey luminance extinction there. `flags` names the integrator, e.g. "--bdpt/--mlt".
+// The note a non-default integrator prints for a scene with a participating medium whose extinction differs between colour channels, or "" when
+// there is none. BDPT/MLT/SPPM draw a medium event from constant_medium::hit() (one extinction, with the colour only in the albedo): a free flight
+// cannot carry the per-channel pass-through weight of the default path tracer (camera::ray_color(), constant_medium::sample_event()), and their
+// strategy weights are built from path pdfs that a per-channel mixture would change. A grey medium is exact in that model, so such a scene is
+// rendered as three passes, each with the grey medium of one colour channel, keeping that channel (render_per_channel_media(), constant_medium.h);
+// the note says so because the render takes three times as long. `flags` names the integrator, e.g. "--bdpt/--mlt".
 inline std::string chromatic_media_integrator_warning(const SceneDescriptor& d, const std::string& scene_id, const std::string& flags) {
-    bool chromatic = d.build_shape_media && !d.build_shape_media().empty();
-    if (!chromatic && d.build_camera_medium) {
-        const auto cm = d.build_camera_medium();
-        chromatic = cm && cm->chromatic();
-    }
-    if (!chromatic) return "";
-    return "Warning: scene '" + scene_id + "' has a participating medium whose extinction differs between colour channels, which "
-           + flags + " model with a single (luminance) extinction and a tint albedo - a medium thicker in one channel than another renders "
-           "attenuated by the grey average instead of per channel; use the default path tracer if the colour of the medium matters for this render.\n";
+    if (!(d.build_shape_media && !d.build_shape_media().empty())) return "";
+    return "Note: scene '" + scene_id + "' has a participating medium whose extinction differs between colour channels; " + flags
+           + " render it as three passes (one per colour channel, each with that channel's grey medium), so it takes about three times as long "
+           "as a grey medium would.\n";
+}
+
+// The warning --sppm prints for a scene with a participating medium: SPPM has no volume model (pbrt-v4's SPPMIntegrator has none either - its camera and
+// photon walks never sample a medium). Here a medium collision is handled as a scatter on a surface, so a medium that only absorbs attenuates correctly
+// but scattering inside one is not rendered correctly (a grey fog furnace reads ~0.6 of the sky instead of 1). "" for a medium-free scene.
+inline std::string sppm_media_warning(const SceneDescriptor& d, const std::string& scene_id) {
+    if (!(d.build_has_shape_media && d.build_has_shape_media())) return "";
+    return "Warning: scene '" + scene_id + "' has a participating medium, which --sppm has no volume model for (pbrt-v4's SPPM has none either): it "
+           "treats a medium collision as a scatter on a surface, so a medium that only absorbs attenuates correctly but scattering inside one "
+           "renders too dark; use --bdpt, --mlt or the default path tracer for fog.\n";
 }
 
 // paths() is defined at the bottom of this file; forward-declared here so a
@@ -419,6 +427,10 @@ namespace pbrt_scene_registry {
         s.build_shape_media = [ensure]() -> std::vector<std::shared_ptr<event_medium>> {
             pbrt_cpu::BuildResult& b = ensure();
             return b.chromaticMedia;
+        };
+        s.build_has_shape_media = [ensure]() -> bool {
+            pbrt_cpu::BuildResult& b = ensure();
+            return b.hasShapeMedia;
         };
 
         // CameraConfig cannot express an up vector, but pbrt's LookAt can,

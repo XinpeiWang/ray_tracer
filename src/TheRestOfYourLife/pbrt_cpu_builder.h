@@ -669,6 +669,8 @@ struct BuildResult {
 	// samples these itself against the nearest surface (constant_medium::sample_event()); the same objects are in the world, where their
 	// hit() reports nothing while that integrator runs. Empty for every grey-medium scene.
 	std::vector<std::shared_ptr<event_medium>> chromaticMedia;
+	// True when any shape carries a participating medium (grey or not). SPPM, which has no volume model, says so for these scenes.
+	bool hasShapeMedia = false;
 	std::size_t triangleCount = 0;
 	std::size_t sphereCount = 0;
 	std::size_t diskCount = 0;
@@ -1420,6 +1422,7 @@ inline BuildResult build(const pbrt_flatten::FlatScene &scene) {
 	const auto addMediumIfPresent = [&](const std::shared_ptr<hittable> &shape, int mediumIndex) {
 		if (mediumIndex < 0 || static_cast<std::size_t>(mediumIndex) >= scene.media.size()) return;
 		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(mediumIndex)];
+		out.hasShapeMedia = true;
 
 		// cloud/rgbgrid: real heterogeneous media (src/shared/cloud_medium.h,
 		// src/shared/rgb_grid_medium.h), wrapped in the SAME CPU hittables
