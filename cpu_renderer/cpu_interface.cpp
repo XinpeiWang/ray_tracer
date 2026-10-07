@@ -967,20 +967,10 @@ extern "C" int cpu_scene_is_pbrt_backed_by_id(const char* scene_id) {
 extern "C" int cpu_register_scene_file(const char* path, char* id_out, int id_out_size) {
 	if (!path || !id_out || id_out_size < 2) return 1;
 	id_out[0] = '\0';
-	static bool registry_built = false;
-	if (!registry_built) {
-		pbrt_discover::extraSceneFiles().emplace_back(path);
-		registry_built = true;
-	} else {
-		// A second file in one process cannot be added to a registry that is already built.
-		bool known = false;
-		for (const auto& kv : pbrt_scene_registry::paths()) {
-			std::error_code ec;
-			if (std::filesystem::equivalent(kv.second, path, ec) && !ec) known = true;
-		}
-		if (!known) return 2;
-	}
+	const bool built_before = scene_registry_built();
+	if (!built_before) pbrt_discover::extraSceneFiles().emplace_back(path);
 	get_scene_registry();
+	// A file the registry already lists (named twice, or found by the scan of pbrt_scenes/) has its id whether or not it was too late to add it.
 	for (const auto& kv : pbrt_scene_registry::paths()) {
 		std::error_code ec;
 		if (std::filesystem::equivalent(kv.second, path, ec) && !ec) {
@@ -988,7 +978,7 @@ extern "C" int cpu_register_scene_file(const char* path, char* id_out, int id_ou
 			return 0;
 		}
 	}
-	return 3;
+	return built_before ? 2 : 3;
 }
 
 extern "C" const char* cpu_scene_name_by_id(const char* scene_id) {

@@ -65,6 +65,7 @@ signals:
 
 protected:
 	void paintEvent(QPaintEvent *) override;
+	void resizeEvent(QResizeEvent *e) override;
 	void mousePressEvent(QMouseEvent *e) override;
 	void mouseMoveEvent(QMouseEvent *e) override;
 	void mouseReleaseEvent(QMouseEvent *e) override;
@@ -91,6 +92,7 @@ private:
 	double m_cu = 0.0, m_cv = 2.0;   // the (u, v) point at the middle of the widget
 	bool m_snap = true;
 	bool m_panning = false;
+	bool m_userView = false;         // the user has zoomed or panned, so a resize keeps the view instead of re-framing the scene
 	bool m_dragging = false;
 	Hit m_drag;
 	QPointF m_dragOffsetUV;          // from the pointer to the dragged item's position, in view units
@@ -171,7 +173,7 @@ private:
 	void addVec3(QFormLayout *f, const QString &label, const std::function<scene_doc::Float3 *()> &ref, double step);
 	void addColor(QFormLayout *f, const QString &label, const std::function<scene_doc::Rgb *()> &ref);
 	void addBool(QFormLayout *f, const QString &label, const std::function<bool *()> &ref, bool rebuildAfter = false);
-	void addText(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, bool refreshList);
+	void addText(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref);
 	void addFile(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, const QString &filter);
 	void inspectCamera(QFormLayout *f);
 	void inspectObject(QFormLayout *f, int i);

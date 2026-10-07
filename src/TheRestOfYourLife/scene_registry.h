@@ -1033,8 +1033,16 @@ inline std::map<std::string, std::string>& paths() {
 } // namespace pbrt_scene_registry
 
 // The full registry: built-in scenes, then whatever was found on disk.
+// True once get_scene_registry() has started building the registry; after that, scene files named by the user can no longer be added to it
+// (see cpu_register_scene_file()).
+inline bool& scene_registry_built() {
+    static bool built = false;
+    return built;
+}
+
 inline const std::vector<SceneDescriptor>& get_scene_registry() {
     static const std::vector<SceneDescriptor> registry = []() {
+        scene_registry_built() = true;
         std::vector<SceneDescriptor> all = get_builtin_scene_registry();
         pbrt_scene_registry::append(all);
         return all;

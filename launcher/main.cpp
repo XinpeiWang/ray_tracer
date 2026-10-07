@@ -373,7 +373,8 @@ int main(int argc, char** argv) {
 	std::string scene_id    = args.scene_id;
 	if (!args.scene_file.empty()) {
 		// A .pbrt file named instead of a scene id: give it an id, before anything below touches the scene registry.
-		if (!std::filesystem::exists(args.scene_file)) {
+		std::error_code exists_ec;  // the throwing overload would abort on a path the OS rejects
+		if (!std::filesystem::exists(args.scene_file, exists_ec)) {
 			std::cerr << "Scene file not found: " << args.scene_file << std::endl;
 			return EXIT_FAILURE;
 		}
