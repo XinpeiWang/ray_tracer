@@ -369,8 +369,10 @@ void MainWindow::showAboutDialog() {
 		// the Qt GUI shells out to the CLI rather than linking
 		// cpu_renderer.lib directly, so there's no live count to read here.
 		// Keep this in sync by hand whenever scene_registry_tests.cpp's own
-		// builtin_scene_count()/kGuiSceneCount assertions change.
-		"<p>151 scenes, a wide BxDF library, multiple light and camera types, "
+		// builtin_scene_count()/kGuiSceneCount assertions change, or a file
+		// is added to or removed from pbrt_scenes/.
+		"<p>151 built-in scenes plus 177 bundled pbrt example scenes, a wide "
+		"BxDF library, multiple light and camera types, "
 		"triangle-mesh and texture support, BVH acceleration, volumetrics, and "
 		"a choice of integrators alongside standard path tracing - SPPM photon "
 		"mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, "

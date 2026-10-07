@@ -85,6 +85,14 @@ QString sceneName(const QString& scene_id);
 // src/shared/scene_descriptor.h; the GUI groups its scene list by this.
 QString sceneCategory(const QString& scene_id);
 
+// The text to SHOW for a category / performance hint. sceneCategory() and
+// ScenePerformance values are canonical English identifiers (they are compared,
+// stored as tab data and used as keys), so translation happens only at the
+// point of display. A value with no entry - a category added to the registry
+// later - is shown as is.
+QString displayCategory(const QString& category);
+QString displayPerformance(const QString& performance);
+
 // scene_id's short description, or "" if not loaded/found.
 QString sceneDescription(const QString& scene_id);
 

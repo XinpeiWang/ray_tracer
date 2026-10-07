@@ -158,6 +158,39 @@ QString sceneCategory(const QString& scene_id) {
 	return QString::fromUtf8(handle().categoryFn(scene_id.toUtf8().constData()));
 }
 
+QString displayCategory(const QString& category) {
+	// The literals below exist for lupdate; the lookup passes the canonical name through translate().
+	static const char *const kNames[] = {
+		QT_TRANSLATE_NOOP("SceneCategory", "Basics"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Materials"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Lights"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Cameras"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Volumes"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Geometry"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Models"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Large Scenes"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Education"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Textures"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Custom Scenes"),
+	};
+	for (const char *name : kNames)
+		if (category == QLatin1String(name)) return QCoreApplication::translate("SceneCategory", name);
+	return category;
+}
+
+QString displayPerformance(const QString& performance) {
+	static const char *const kNames[] = {
+		QT_TRANSLATE_NOOP("ScenePerformance", "Fast"),
+		QT_TRANSLATE_NOOP("ScenePerformance", "Medium"),
+		QT_TRANSLATE_NOOP("ScenePerformance", "Slow"),
+		QT_TRANSLATE_NOOP("ScenePerformance", "Very Slow"),
+		QT_TRANSLATE_NOOP("ScenePerformance", "Unknown"),
+	};
+	for (const char *name : kNames)
+		if (performance == QLatin1String(name)) return QCoreApplication::translate("ScenePerformance", name);
+	return performance;
+}
+
 QString sceneDescription(const QString& scene_id) {
 	if (!ensureLoaded()) return QString();
 	return QString::fromUtf8(handle().descriptionFn(scene_id.toUtf8().constData()));

@@ -76,6 +76,10 @@ QString resolveLanguageCode(const QString &code) {
 } // namespace
 
 QString MainWindow::loadSavedLanguageCode() {
+	// Self-test only: the self-test runs in a throwaway settings domain that is wiped at startup, so a language
+	// cannot be preset there. RT_GUI_SELFTEST_LANGUAGE=es|fr|ja|zh_CN lets scripts check a translated UI.
+	if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST") && qEnvironmentVariableIsSet("RT_GUI_SELFTEST_LANGUAGE"))
+		return qEnvironmentVariable("RT_GUI_SELFTEST_LANGUAGE");
 	QSettings settings(settings_keys::kOrg, settings_keys::kApp);
 	return settings.value(settings_keys::kLanguageKey, QStringLiteral("en")).toString();
 }

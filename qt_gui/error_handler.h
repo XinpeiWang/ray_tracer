@@ -1,6 +1,7 @@
 #ifndef QT_ERROR_HANDLER_H
 #define QT_ERROR_HANDLER_H
 
+#include <QCoreApplication>
 #include <QString>
 #include <QMap>
 #include <QStringList>
@@ -89,16 +90,16 @@ inline QString gpuSupportedSceneList(bool useMetal = false) {
 
 // Get user-friendly error title
 inline QString getErrorTitle(int errorCode) {
-	static const QMap<int, QString> titles = {
+	static const QMap<int, const char *> titles = {
 		// Success
-		{SUCCESS, "Success"},
+		{SUCCESS, QT_TRANSLATE_NOOP("ErrorHandler", "Success")},
 
 		// General errors (1-99)
-		{ERR_UNKNOWN, "Unknown Error"},
-		{ERR_INVALID_ARGUMENTS, "Invalid Arguments"},
-		{ERR_FILE_NOT_FOUND, "File Not Found"},
-		{ERR_FILE_READ_FAILED, "File Read Failed"},
-		{ERR_FILE_WRITE_FAILED, "File Write Failed"},
+		{ERR_UNKNOWN, QT_TRANSLATE_NOOP("ErrorHandler", "Unknown Error")},
+		{ERR_INVALID_ARGUMENTS, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Arguments")},
+		{ERR_FILE_NOT_FOUND, QT_TRANSLATE_NOOP("ErrorHandler", "File Not Found")},
+		{ERR_FILE_READ_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "File Read Failed")},
+		{ERR_FILE_WRITE_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "File Write Failed")},
 		// ERR_FILE_COPY_FAILED: kept for numeric-code stability (a script
 		// checking the CLI's exit code shouldn't have code 6 silently
 		// change meaning), but no code path returns it anymore - the
@@ -106,54 +107,54 @@ inline QString getErrorTitle(int errorCode) {
 		// (see docs/ERROR_CODE_REFERENCE.md's own entry for the full story;
 		// a total CPU write failure now returns ERR_FILE_WRITE_FAILED
 		// above instead).
-		{ERR_FILE_COPY_FAILED, "File Copy Failed"},
-		{ERR_DIRECTORY_CREATE_FAILED, "Directory Creation Failed"},
-		{ERR_INVALID_DIMENSIONS, "Invalid Image Dimensions"},
-		{ERR_INVALID_SAMPLE_COUNT, "Invalid Sample Count"},
-		{ERR_INVALID_MAX_DEPTH, "Invalid Ray Depth"},
-		{ERR_INVALID_SCENE_ID, "Invalid Scene ID"},
-		{ERR_INVALID_CAMERA_POSITION, "Invalid Camera Position"},
-		{ERR_OUTPUT_PATH_INVALID, "Invalid Output Path"},
-		{ERR_VIDEO_ASSEMBLY_FAILED, "Video Assembly Failed"},
+		{ERR_FILE_COPY_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "File Copy Failed")},
+		{ERR_DIRECTORY_CREATE_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Directory Creation Failed")},
+		{ERR_INVALID_DIMENSIONS, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Image Dimensions")},
+		{ERR_INVALID_SAMPLE_COUNT, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Sample Count")},
+		{ERR_INVALID_MAX_DEPTH, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Ray Depth")},
+		{ERR_INVALID_SCENE_ID, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Scene ID")},
+		{ERR_INVALID_CAMERA_POSITION, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Camera Position")},
+		{ERR_OUTPUT_PATH_INVALID, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Output Path")},
+		{ERR_VIDEO_ASSEMBLY_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Video Assembly Failed")},
 
 		// CPU errors (100-199)
-		{ERR_CPU_SCENE_BUILD_FAILED, "Scene Build Failed (CPU)"},
-		{ERR_CPU_SCENE_EMPTY, "Scene is Empty (CPU)"},
-		{ERR_CPU_CAMERA_INIT_FAILED, "Camera Initialization Failed (CPU)"},
-		{ERR_CPU_RENDER_FAILED, "Rendering Failed (CPU)"},
-		{ERR_CPU_THREAD_FAILED, "Thread Error (CPU)"},
-		{ERR_CPU_MEMORY_ALLOCATION, "Out of Memory (CPU)"},
-		{ERR_CPU_BVH_BUILD_FAILED, "BVH Build Failed (CPU)"},
-		{ERR_CPU_TEXTURE_LOAD_FAILED, "Texture Load Failed (CPU)"},
-		{ERR_CPU_LIGHTS_EMPTY, "No Lights in Scene (CPU)"},
-		{ERR_CPU_MATERIAL_INVALID, "Invalid Material (CPU)"},
+		{ERR_CPU_SCENE_BUILD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Scene Build Failed (CPU)")},
+		{ERR_CPU_SCENE_EMPTY, QT_TRANSLATE_NOOP("ErrorHandler", "Scene is Empty (CPU)")},
+		{ERR_CPU_CAMERA_INIT_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Camera Initialization Failed (CPU)")},
+		{ERR_CPU_RENDER_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Rendering Failed (CPU)")},
+		{ERR_CPU_THREAD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Thread Error (CPU)")},
+		{ERR_CPU_MEMORY_ALLOCATION, QT_TRANSLATE_NOOP("ErrorHandler", "Out of Memory (CPU)")},
+		{ERR_CPU_BVH_BUILD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "BVH Build Failed (CPU)")},
+		{ERR_CPU_TEXTURE_LOAD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Texture Load Failed (CPU)")},
+		{ERR_CPU_LIGHTS_EMPTY, QT_TRANSLATE_NOOP("ErrorHandler", "No Lights in Scene (CPU)")},
+		{ERR_CPU_MATERIAL_INVALID, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid Material (CPU)")},
 
 		// GPU errors (200-299)
-		{ERR_GPU_NO_DEVICE, "No GPU Found"},
-		{ERR_GPU_DEVICE_INIT_FAILED, "GPU Initialization Failed"},
-		{ERR_GPU_MEMORY_ALLOCATION, "GPU Out of Memory"},
-		{ERR_GPU_MEMORY_COPY_FAILED, "GPU Memory Copy Failed"},
-		{ERR_GPU_KERNEL_LAUNCH_FAILED, "GPU Kernel Launch Failed"},
-		{ERR_GPU_KERNEL_EXECUTION_FAILED, "GPU Kernel Execution Failed"},
-		{ERR_GPU_SCENE_SERIALIZATION_FAILED, "GPU Scene Serialization Failed"},
-		{ERR_GPU_DEVICE_SYNCHRONIZATION_FAILED, "GPU Synchronization Failed"},
-		{ERR_GPU_OUT_OF_MEMORY, "GPU Out of Memory"},
-		{ERR_GPU_INVALID_CONFIGURATION, "Invalid GPU Configuration"},
-		{ERR_GPU_TEXTURE_BINDING_FAILED, "GPU Texture Binding Failed"},
-		{ERR_GPU_UNSUPPORTED_SCENE, "Scene Not Supported on GPU"},
-		{ERR_GPU_SCENE_BUILD_FAILED, "Scene Build Failed (GPU)"},
-		{ERR_GPU_RENDER_FAILED, "Rendering Failed (GPU)"},
-		{ERR_GPU_EXCEPTION, "Exception During Rendering (GPU)"},
-		{ERR_GPU_UNKNOWN_ERROR, "Unknown Error (GPU)"},
+		{ERR_GPU_NO_DEVICE, QT_TRANSLATE_NOOP("ErrorHandler", "No GPU Found")},
+		{ERR_GPU_DEVICE_INIT_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Initialization Failed")},
+		{ERR_GPU_MEMORY_ALLOCATION, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Out of Memory")},
+		{ERR_GPU_MEMORY_COPY_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Memory Copy Failed")},
+		{ERR_GPU_KERNEL_LAUNCH_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Kernel Launch Failed")},
+		{ERR_GPU_KERNEL_EXECUTION_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Kernel Execution Failed")},
+		{ERR_GPU_SCENE_SERIALIZATION_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Scene Serialization Failed")},
+		{ERR_GPU_DEVICE_SYNCHRONIZATION_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Synchronization Failed")},
+		{ERR_GPU_OUT_OF_MEMORY, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Out of Memory")},
+		{ERR_GPU_INVALID_CONFIGURATION, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid GPU Configuration")},
+		{ERR_GPU_TEXTURE_BINDING_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "GPU Texture Binding Failed")},
+		{ERR_GPU_UNSUPPORTED_SCENE, QT_TRANSLATE_NOOP("ErrorHandler", "Scene Not Supported on GPU")},
+		{ERR_GPU_SCENE_BUILD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Scene Build Failed (GPU)")},
+		{ERR_GPU_RENDER_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Rendering Failed (GPU)")},
+		{ERR_GPU_EXCEPTION, QT_TRANSLATE_NOOP("ErrorHandler", "Exception During Rendering (GPU)")},
+		{ERR_GPU_UNKNOWN_ERROR, QT_TRANSLATE_NOOP("ErrorHandler", "Unknown Error (GPU)")},
 
 		// User action
-		{999, "Cancelled by User"}
+		{999, QT_TRANSLATE_NOOP("ErrorHandler", "Cancelled by User")}
 	};
 
 	if (titles.contains(errorCode)) {
-		return titles[errorCode];
+		return QCoreApplication::translate("ErrorHandler", titles[errorCode]);
 	}
-	return QString("Error Code %1").arg(errorCode);
+	return QCoreApplication::translate("ErrorHandler", "Error Code %1").arg(errorCode);
 }
 
 // Get detailed error message. useMetal: same meaning as getTroubleshootingHint()'s
@@ -165,43 +166,43 @@ inline QString getErrorMessage(int errorCode, bool useMetal = false) {
 	// Scene count grows over time, so this one is built from the live scene
 	// table instead of living in the static map below.
 	if (errorCode == 11)
-		return QString("Scene ID must be a valid scene identifier (e.g. \"A1\"). Check the scene selector.");
+		return QCoreApplication::translate("ErrorHandler", "Scene ID must be a valid scene identifier (e.g. \"A1\"). Check the scene selector.");
 	if (errorCode == ERR_GPU_NO_DEVICE) {
-		return useMetal ? QString("No usable Metal GPU was found on this Mac.")
-			: QString("No CUDA-capable GPU was detected.");
+		return useMetal ? QCoreApplication::translate("ErrorHandler", "No usable Metal GPU was found on this Mac.")
+			: QCoreApplication::translate("ErrorHandler", "No CUDA-capable GPU was detected.");
 	}
 
-	static const QMap<int, QString> messages = {
-		{SUCCESS, "Render completed successfully."},
-		{ERR_UNKNOWN, "An unknown error occurred during rendering."},
-		{ERR_INVALID_ARGUMENTS, "Invalid command-line arguments were provided to the renderer."},
-		{ERR_FILE_NOT_FOUND, "A required file could not be found."},
-		{ERR_FILE_WRITE_FAILED, "Failed to write the output image file."},
-		{ERR_INVALID_DIMENSIONS, "Image dimensions must be positive integers (recommended: 400-1920)."},
-		{ERR_INVALID_SAMPLE_COUNT, "Samples per pixel must be greater than 0 (recommended: 10-500)."},
-		{ERR_INVALID_MAX_DEPTH, "Maximum ray depth must be greater than 0 (recommended: 10-100)."},
-		{ERR_VIDEO_ASSEMBLY_FAILED, "Frames rendered successfully, but assembling them into a video with ffmpeg failed."},
-		{ERR_CPU_SCENE_BUILD_FAILED, "Failed to construct the scene geometry."},
-		{ERR_CPU_SCENE_EMPTY, "The scene contains no objects to render."},
-		{ERR_CPU_RENDER_FAILED, "An error occurred while rendering the image."},
-		{ERR_CPU_MEMORY_ALLOCATION, "The system ran out of memory during rendering."},
-		{ERR_CPU_TEXTURE_LOAD_FAILED, "Failed to load texture file (e.g., earthmap.jpg for Earth scene)."},
+	static const QMap<int, const char *> messages = {
+		{SUCCESS, QT_TRANSLATE_NOOP("ErrorHandler", "Render completed successfully.")},
+		{ERR_UNKNOWN, QT_TRANSLATE_NOOP("ErrorHandler", "An unknown error occurred during rendering.")},
+		{ERR_INVALID_ARGUMENTS, QT_TRANSLATE_NOOP("ErrorHandler", "Invalid command-line arguments were provided to the renderer.")},
+		{ERR_FILE_NOT_FOUND, QT_TRANSLATE_NOOP("ErrorHandler", "A required file could not be found.")},
+		{ERR_FILE_WRITE_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Failed to write the output image file.")},
+		{ERR_INVALID_DIMENSIONS, QT_TRANSLATE_NOOP("ErrorHandler", "Image dimensions must be positive integers (recommended: 400-1920).")},
+		{ERR_INVALID_SAMPLE_COUNT, QT_TRANSLATE_NOOP("ErrorHandler", "Samples per pixel must be greater than 0 (recommended: 10-500).")},
+		{ERR_INVALID_MAX_DEPTH, QT_TRANSLATE_NOOP("ErrorHandler", "Maximum ray depth must be greater than 0 (recommended: 10-100).")},
+		{ERR_VIDEO_ASSEMBLY_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Frames rendered successfully, but assembling them into a video with ffmpeg failed.")},
+		{ERR_CPU_SCENE_BUILD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Failed to construct the scene geometry.")},
+		{ERR_CPU_SCENE_EMPTY, QT_TRANSLATE_NOOP("ErrorHandler", "The scene contains no objects to render.")},
+		{ERR_CPU_RENDER_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "An error occurred while rendering the image.")},
+		{ERR_CPU_MEMORY_ALLOCATION, QT_TRANSLATE_NOOP("ErrorHandler", "The system ran out of memory during rendering.")},
+		{ERR_CPU_TEXTURE_LOAD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Failed to load texture file (e.g., earthmap.jpg for Earth scene).")},
 		// ERR_GPU_NO_DEVICE is NOT here - handled above, before this map,
 		// since its text is backend-dependent (see this function's own
 		// header comment).
-		{ERR_GPU_MEMORY_ALLOCATION, "The GPU ran out of memory."},
-		{ERR_GPU_KERNEL_LAUNCH_FAILED, "Failed to launch GPU rendering kernel."},
-		{ERR_GPU_OUT_OF_MEMORY, "GPU memory allocation failed."},
-		{ERR_GPU_UNSUPPORTED_SCENE, "This scene is not supported on GPU. Please use CPU mode."},
-		{ERR_GPU_SCENE_BUILD_FAILED, "Failed to construct the scene geometry on GPU."},
-		{ERR_GPU_RENDER_FAILED, "An error occurred while rendering the image on GPU."},
-		{ERR_GPU_EXCEPTION, "An exception was thrown while rendering on GPU."},
-		{ERR_GPU_UNKNOWN_ERROR, "An unknown error occurred while rendering on GPU."},
-		{999, "The render was cancelled by the user."}
+		{ERR_GPU_MEMORY_ALLOCATION, QT_TRANSLATE_NOOP("ErrorHandler", "The GPU ran out of memory.")},
+		{ERR_GPU_KERNEL_LAUNCH_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Failed to launch GPU rendering kernel.")},
+		{ERR_GPU_OUT_OF_MEMORY, QT_TRANSLATE_NOOP("ErrorHandler", "GPU memory allocation failed.")},
+		{ERR_GPU_UNSUPPORTED_SCENE, QT_TRANSLATE_NOOP("ErrorHandler", "This scene is not supported on GPU. Please use CPU mode.")},
+		{ERR_GPU_SCENE_BUILD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "Failed to construct the scene geometry on GPU.")},
+		{ERR_GPU_RENDER_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "An error occurred while rendering the image on GPU.")},
+		{ERR_GPU_EXCEPTION, QT_TRANSLATE_NOOP("ErrorHandler", "An exception was thrown while rendering on GPU.")},
+		{ERR_GPU_UNKNOWN_ERROR, QT_TRANSLATE_NOOP("ErrorHandler", "An unknown error occurred while rendering on GPU.")},
+		{999, QT_TRANSLATE_NOOP("ErrorHandler", "The render was cancelled by the user.")}
 	};
 
 	if (messages.contains(errorCode)) {
-		return messages[errorCode];
+		return QCoreApplication::translate("ErrorHandler", messages[errorCode]);
 	}
 	// Not overridden here - use the canonical text rather than inventing a
 	// generic string, so a code added to error_codes.h is described properly
@@ -211,7 +212,15 @@ inline QString getErrorMessage(int errorCode, bool useMetal = false) {
 	// would always "succeed" and mask this file's own wording.
 	if (::has_error_message(errorCode))
 		return fromStd(::get_error_message(errorCode));
-	return QString("An error occurred with code %1.").arg(errorCode);
+	return QCoreApplication::translate("ErrorHandler", "An error occurred with code %1.").arg(errorCode);
+}
+
+// The fallback hint when a code has neither an override nor a canonical one.
+// Callers compare against this to avoid printing the same generic line twice,
+// so they must call here rather than restate the English text: once it is
+// translated, a literal comparison would silently stop matching.
+inline QString genericHint() {
+	return QCoreApplication::translate("ErrorHandler", "Check the Log Output tab for detailed error information.");
 }
 
 // Get troubleshooting hint. useMetal: which GPU backend the failed render
@@ -224,27 +233,27 @@ inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 	// scenes are GPU-supported), so they're built here instead of hardcoded
 	// in the static map below.
 	if (errorCode == 11) {
-		return QString("• Check the Scene dropdown in the Settings tab for a valid scene id\n"
+		return QCoreApplication::translate("ErrorHandler", "• Check the Scene dropdown in the Settings tab for a valid scene id\n"
 			"• Use CPU renderer for scenes that are not GPU-supported");
 	}
 	if (errorCode == 211) {
-		return QString("• GPU supports scenes: %1\n"
+		return QCoreApplication::translate("ErrorHandler", "• GPU supports scenes: %1\n"
 			"• Switch to CPU mode for all other scenes\n"
 			"• CPU mode supports all %2 scenes")
 			.arg(gpuSupportedSceneList(useMetal)).arg(sceneCount());
 	}
 	if (errorCode == ERR_GPU_NO_DEVICE) {
 		return useMetal
-			? QString("• No usable Metal GPU found on this Mac\n"
+			? QCoreApplication::translate("ErrorHandler", "• No usable Metal GPU found on this Mac\n"
 				"• Switch to CPU mode in the renderer settings\n"
 				"• CPU mode works on all systems")
-			: QString("• No CUDA-capable GPU found\n"
+			: QCoreApplication::translate("ErrorHandler", "• No CUDA-capable GPU found\n"
 				"• Switch to CPU mode in the renderer settings\n"
 				"• CPU mode works on all systems");
 	}
 
 	if (errorCode == ERR_FILE_WRITE_FAILED) {
-		QString hint = QString("• Check that the output directory exists and is writable\n"
+		QString hint = QCoreApplication::translate("ErrorHandler", "• Check that the output directory exists and is writable\n"
 			"• Make sure you have enough disk space\n"
 			"• Try closing any programs that might be using the output file");
 #ifdef Q_OS_WIN
@@ -252,7 +261,7 @@ inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 		// the generic list above points at this - it was found via Defender's
 		// event log, not from this dialog, when every default GUI render into
 		// Pictures failed with only the three bullets above to go on.
-		hint += QString("\n• Windows Security's \"Controlled folder access\" blocks apps it doesn't "
+		hint += QCoreApplication::translate("ErrorHandler", "\n• Windows Security's \"Controlled folder access\" blocks apps it doesn't "
 			"recognize from writing to protected folders (Pictures, Documents, Desktop). "
 			"Either choose a different Output Path, or allow RayTracerGUI.exe and ray_tracer.exe "
 			"under Virus & threat protection > Ransomware protection > Controlled folder access "
@@ -261,60 +270,60 @@ inline QString getTroubleshootingHint(int errorCode, bool useMetal = false) {
 		return hint;
 	}
 
-	static const QMap<int, QString> hints = {
-		{ERR_VIDEO_ASSEMBLY_FAILED, "• Install ffmpeg from https://ffmpeg.org/download.html and add it to your PATH\n"
+	static const QMap<int, const char *> hints = {
+		{ERR_VIDEO_ASSEMBLY_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "• Install ffmpeg from https://ffmpeg.org/download.html and add it to your PATH\n"
 			 "• Check the render log above for the exact ffmpeg command and error output\n"
-			 "• Rendered frames are kept in output/frames/ - you can assemble the video manually"},
+			 "• Rendered frames are kept in output/frames/ - you can assemble the video manually")},
 
-		{ERR_INVALID_DIMENSIONS, "• Try common resolutions: 800×800, 1920×1080\n"
-			"• Width and height must be positive numbers"},
+		{ERR_INVALID_DIMENSIONS, QT_TRANSLATE_NOOP("ErrorHandler", "• Try common resolutions: 800×800, 1920×1080\n"
+			"• Width and height must be positive numbers")},
 
-		{ERR_INVALID_SAMPLE_COUNT, "• For quick previews, use 10-50 samples\n"
+		{ERR_INVALID_SAMPLE_COUNT, QT_TRANSLATE_NOOP("ErrorHandler", "• For quick previews, use 10-50 samples\n"
 			"• For final renders, use 100-500 samples\n"
-			"• More samples = better quality but slower"},
+			"• More samples = better quality but slower")},
 
-		{ERR_CPU_SCENE_BUILD_FAILED, "• Some scenes require texture files (e.g., earthmap.jpg)\n"
-			 "• Make sure all required files are in the correct location"},
+		{ERR_CPU_SCENE_BUILD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "• Some scenes require texture files (e.g., earthmap.jpg)\n"
+			 "• Make sure all required files are in the correct location")},
 
-		{ERR_CPU_MEMORY_ALLOCATION, "• Try reducing image resolution (e.g., 800×800 instead of 1920×1080)\n"
+		{ERR_CPU_MEMORY_ALLOCATION, QT_TRANSLATE_NOOP("ErrorHandler", "• Try reducing image resolution (e.g., 800×800 instead of 1920×1080)\n"
 			  "• Try reducing samples per pixel (e.g., 50 instead of 500)\n"
-			  "• Close other memory-intensive applications"},
+			  "• Close other memory-intensive applications")},
 
-		{ERR_CPU_TEXTURE_LOAD_FAILED, "• For the Earth scene, make sure earthmap.jpg is in the correct folder\n"
-			  "• Check that texture files are not corrupted"},
+		{ERR_CPU_TEXTURE_LOAD_FAILED, QT_TRANSLATE_NOOP("ErrorHandler", "• For the Earth scene, make sure earthmap.jpg is in the correct folder\n"
+			  "• Check that texture files are not corrupted")},
 
 		// ERR_GPU_NO_DEVICE is NOT here - handled above, before this map,
 		// since its text is backend-dependent (see this function's own
 		// header comment).
 
-		{ERR_GPU_MEMORY_ALLOCATION, "• Try reducing image resolution\n"
+		{ERR_GPU_MEMORY_ALLOCATION, QT_TRANSLATE_NOOP("ErrorHandler", "• Try reducing image resolution\n"
 			  "• Try reducing samples per pixel\n"
-			  "• Switch to CPU mode if GPU memory is limited"},
+			  "• Switch to CPU mode if GPU memory is limited")},
 
-		{ERR_GPU_OUT_OF_MEMORY, "• GPU ran out of memory\n"
+		{ERR_GPU_OUT_OF_MEMORY, QT_TRANSLATE_NOOP("ErrorHandler", "• GPU ran out of memory\n"
 			  "• Try smaller resolution (e.g., 800×800)\n"
 			  "• Try fewer samples (e.g., 50)\n"
-			  "• Switch to CPU mode for large scenes"}
+			  "• Switch to CPU mode for large scenes")}
 	};
 
 	if (hints.contains(errorCode)) {
-		return hints[errorCode];
+		return QCoreApplication::translate("ErrorHandler", hints[errorCode]);
 	}
 	// Same idea as getErrorMessage(), including why the has_* predicate is
 	// needed rather than an emptiness check.
 	if (::has_troubleshooting_hint(errorCode))
 		return fromStd(::get_troubleshooting_hint(errorCode));
-	return "Check the Log Output tab for detailed error information.";
+	return genericHint();
 }
 
 // Get error category name
 inline QString getCategoryName(int errorCode) {
-	if (errorCode == 0) return "Success";
-	if (errorCode >= 1 && errorCode <= 99) return "General";
-	if (errorCode >= 100 && errorCode <= 199) return "CPU Renderer";
-	if (errorCode >= 200 && errorCode <= 299) return "GPU Renderer";
-	if (errorCode == 999) return "User Action";
-	return "Unknown";
+	if (errorCode == 0) return QCoreApplication::translate("ErrorHandler", "Success");
+	if (errorCode >= 1 && errorCode <= 99) return QCoreApplication::translate("ErrorHandler", "General");
+	if (errorCode >= 100 && errorCode <= 199) return QCoreApplication::translate("ErrorHandler", "CPU Renderer");
+	if (errorCode >= 200 && errorCode <= 299) return QCoreApplication::translate("ErrorHandler", "GPU Renderer");
+	if (errorCode == 999) return QCoreApplication::translate("ErrorHandler", "User Action");
+	return QCoreApplication::translate("ErrorHandler", "Unknown");
 }
 
 } // namespace ErrorHandler

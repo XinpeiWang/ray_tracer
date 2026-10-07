@@ -121,7 +121,7 @@ void MainWindow::onRenderClicked() {
 	// guard, captureRenderJob() below would read an empty scene id and
 	// enqueue a render with no scene specified at all.
 	if (!m_sceneCombo || m_sceneCombo->currentIndex() < 0) {
-		setStatusWarning("Can't start a render - no scene is selected (try clearing the search box).");
+		setStatusWarning(tr("Can't start a render - no scene is selected (try clearing the search box)."));
 		return;
 	}
 
@@ -633,7 +633,7 @@ QStringList MainWindow::eligibleThumbnailIds(const QString &category) const {
 // cooperate with those at all, only avoid running alongside them.
 void MainWindow::onGenerateThumbnailsClicked() {
 	if (m_isRendering || !m_renderQueue.isEmpty()) {
-		setStatusWarning("Can't generate thumbnails while a render is in progress or queued.");
+		setStatusWarning(tr("Can't generate thumbnails while a render is in progress or queued."));
 		return;
 	}
 	if (m_thumbnailGenerator && m_thumbnailGenerator->isRunning()) return;
@@ -1085,7 +1085,7 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 #endif
 
 	QString infoText = tr("<b>Description:</b> %1<br>").arg(meta->description);
-	infoText += tr("<b>Performance:</b> %1<br>").arg(meta->performance);
+	infoText += tr("<b>Performance:</b> %1<br>").arg(SceneMetadataClient::displayPerformance(meta->performance));
 	infoText += tr("<b>Recommended SPP:</b> %1<br>").arg(meta->recommendedSpp);
 	infoText += tr("<b>GPU Support:</b> %1<br>").arg(gpuSupported ? tr("Yes") : tr("CPU only"));
 	// These two warnings are the only coloured text in the label, so they take
@@ -1445,6 +1445,11 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	// oppositely - a plain Stop pauses the queue, an Abandon skips ahead.
 	const bool abandonedByUser = !success && message.contains("abandoned by user", Qt::CaseInsensitive);
 	const bool userEndedWithoutFailure = stoppedByUser || abandonedByUser;
+	// The two user-ended messages are matched by their English text above and
+	// in notifyRenderFinished(), so RenderController keeps them canonical and
+	// the translation happens only here, for display.
+	const QString shownMessage = stoppedByUser ? tr("Render stopped by user")
+		: abandonedByUser ? tr("Render abandoned by user") : message;
 
 	// A failed render leaves the taskbar button red so the outcome is visible
 	// without switching to the window; anything else clears it. Leaving a
@@ -1456,7 +1461,7 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		// A finished bar keeps its fill and turns green rather than resetting -
 		// the outcome stays visible after the fact (Qt Creator's behaviour).
 		setProgressResultState("success");
-		m_statusLabel->setText(tr("✅ %1 - Total time: %2 seconds").arg(message).arg(totalTime, 0, 'f', 2));
+		m_statusLabel->setText(tr("✅ %1 - Total time: %2 seconds").arg(shownMessage).arg(totalTime, 0, 'f', 2));
 
 		if (finishedJob.videoMode) {
 			onLogMessage(tr("Video frames rendered successfully. Starting video assembly..."));
@@ -1537,12 +1542,12 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 		} else {
 			setProgressResultState("error");
 		}
-		m_statusLabel->setText(tr("❌ %1").arg(message));
+		m_statusLabel->setText(tr("❌ %1").arg(shownMessage));
 
 		// Only show error popup for actual failures, not for user-stopped/
 		// abandoned renders.
 		if (!userEndedWithoutFailure) {
-			QMessageBox::critical(this, tr("Render Failed"), message);
+			QMessageBox::critical(this, tr("Render Failed"), shownMessage);
 		}
 	}
 
