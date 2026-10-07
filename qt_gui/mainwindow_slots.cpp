@@ -9,6 +9,9 @@
 #include <QApplication>
 #include <QFileDialog>
 #include <QMessageBox>
+#include <QFileInfo>
+#include <QLocale>
+#include <QProgressDialog>
 #include <QProcess>
 #include <QDir>
 #include <QTimer>
@@ -1064,6 +1067,8 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 	if (index < 0) return;
 	const QString scene_id = m_sceneCombo->itemData(index).toString();
 	updateSceneTechInfoIcon(scene_id);
+	m_downloadableAssetJobs.clear();
+	if (m_downloadAssetsButton) m_downloadAssetsButton->setVisible(false);
 
 	SceneMetadataClient::SceneMetadata local;
 	const SceneMetadataClient::SceneMetadata* meta = resolveSceneMeta(preloaded, scene_id, local);
@@ -1099,6 +1104,21 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 		// folder in while the app is open and re-select the scene to see it clear.
 		const SceneMetadataClient::MissingAssets missing = SceneMetadataClient::missingAssets(scene_id);
 		const QString folder = QDir::toNativeSeparators(missing.folder).toHtmlEscaped();
+		// Which of the missing files this project can fetch for the user (the manifest's statue meshes).
+		if (missing.any && m_downloadAssetsButton) {
+			const QString appDir = QCoreApplication::applicationDirPath();
+			const asset_downloader::Manifest &manifest = asset_downloader::builtInManifest();
+			for (const QString &path : missing.missingPaths) {
+				if (const asset_downloader::Entry *e = manifest.find(appDir, path)) m_downloadableAssetJobs.append({*e, QDir::cleanPath(path)});
+			}
+			if (!m_downloadableAssetJobs.isEmpty()) {
+				qint64 bytes = 0;
+				for (const auto &j : m_downloadableAssetJobs) bytes += j.entry.size;
+				m_downloadAssetsButton->setText(tr("Download %n missing file(s) (%1)", "", m_downloadableAssetJobs.size())
+					.arg(QLocale().formattedDataSize(bytes, 1)));
+				m_downloadAssetsButton->setVisible(true);
+			}
+		}
 		if (missing.any && missing.referenced == 0) {
 			// The scene's own .pbrt is absent (a scene from a collection that has not been downloaded).
 			infoText += tr("<br><b style='color: %1;'>&#9888; This scene's file was not found: %2</b>"
@@ -2206,4 +2226,81 @@ void MainWindow::assembleVideoAutomatically(const QString &baseOutputPath, const
 	if (m_previewTabIndex >= 0) m_tabWidget->setCurrentIndex(m_previewTabIndex);
 
 	onLogMessage(tr("Playing video inline: %1").arg(videoPath));
+}
+
+// ---------------------------------------------------------------------------
+// "Download missing files" (asset_downloader.h). The button appears under the scene info when the selected
+// scene is missing files this project hosts; clicking it asks, downloads with a cancellable progress dialog, and
+// re-checks the scene so the warning clears.
+// ---------------------------------------------------------------------------
+
+void MainWindow::onDownloadMissingAssetsClicked() {
+	startAssetDownload(m_downloadableAssetJobs, /*confirm=*/true);
+}
+
+void MainWindow::startAssetDownload(const QList<asset_downloader::Job> &jobs, bool confirm,
+									std::function<void(bool, const QString &)> onDone) {
+	if (jobs.isEmpty() || (m_assetDownloader && m_assetDownloader->isRunning())) return;
+
+	qint64 bytes = 0;
+	for (const auto &j : jobs) bytes += j.entry.size;
+	const QString source = QUrl(asset_downloader::builtInManifest().baseUrl).host();
+
+	if (confirm) {
+		QStringList names;
+		for (int i = 0; i < jobs.size() && i < 8; ++i) names << QFileInfo(jobs[i].destination).fileName();
+		if (jobs.size() > 8) names << tr("… and %n more", "", jobs.size() - 8);
+		const auto answer = QMessageBox::question(this, tr("Download missing files"),
+			tr("Download %n file(s) (%1) from %2?\n\n%3\n\nThey will be saved in:\n%4", "", jobs.size())
+				.arg(QLocale().formattedDataSize(bytes, 1), source, names.join(QStringLiteral("\n")),
+					 QDir::toNativeSeparators(QFileInfo(jobs.first().destination).absolutePath())),
+			QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
+		if (answer != QMessageBox::Yes) return;
+	}
+
+	if (!m_assetDownloader) m_assetDownloader = new asset_downloader::Downloader(asset_downloader::builtInManifest(), this);
+
+	QProgressDialog *dialog = nullptr;
+	if (confirm) {
+		dialog = new QProgressDialog(tr("Downloading…"), tr("Cancel"), 0, 100, this);
+		dialog->setWindowTitle(tr("Download missing files"));
+		dialog->setWindowModality(Qt::WindowModal);
+		dialog->setMinimumDuration(0);
+		dialog->setAutoClose(false);
+		dialog->setAutoReset(false);
+		dialog->setValue(0);
+		connect(dialog, &QProgressDialog::canceled, m_assetDownloader, &asset_downloader::Downloader::cancel);
+	}
+
+	// One-shot connections: the Downloader outlives this call, so they must not pile up across clicks.
+	auto *progressConn = new QMetaObject::Connection;
+	auto *doneConn = new QMetaObject::Connection;
+	*progressConn = connect(m_assetDownloader, &asset_downloader::Downloader::progress, this,
+		[dialog](qint64 received, qint64 total, const QString &file) {
+			if (!dialog || total <= 0) return;
+			dialog->setLabelText(tr("Downloading %1…").arg(file));
+			dialog->setValue(static_cast<int>(received * 100 / total));
+		});
+	*doneConn = connect(m_assetDownloader, &asset_downloader::Downloader::finished, this,
+		[this, dialog, progressConn, doneConn, onDone](bool ok, const QString &error, int filesDone) {
+			disconnect(*progressConn);
+			disconnect(*doneConn);
+			delete progressConn;
+			delete doneConn;
+			if (dialog) {
+				dialog->close();
+				dialog->deleteLater();
+			}
+			if (ok) {
+				onLogMessage(tr("Downloaded %n file(s).", "", filesDone));
+			} else {
+				onLogMessage(tr("Download failed: %1").arg(error));
+				if (dialog) QMessageBox::warning(this, tr("Download missing files"), error);
+			}
+			refreshSceneInfoLabel();   // the warning clears (or shrinks) now that the files are there
+			if (onDone) onDone(ok, error);
+		});
+	onLogMessage(tr("Downloading %n file(s) (%1) from %2…", "", jobs.size())
+		.arg(QLocale().formattedDataSize(bytes, 1), source));
+	m_assetDownloader->start(jobs);
 }

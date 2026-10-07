@@ -467,3 +467,6 @@ gpu/optix/.cudadeps/
 pbrt_agree_*.exr
 pbrt_chroma_*.exr
 baselines/
+
+# The GUI's list of files it may download (scripts/update_asset_manifest.sh) - compiled into the app, so it must be tracked.
+!qt_gui/downloadable_assets.txt

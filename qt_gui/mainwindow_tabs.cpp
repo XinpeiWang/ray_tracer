@@ -608,6 +608,11 @@ void MainWindow::createSettingsTab() {
 	m_sceneInfoLabel->setObjectName("sceneInfo");
 	sceneGroupLayout->addWidget(m_sceneInfoLabel);
 
+	m_downloadAssetsButton = new QPushButton(basicTab);
+	m_downloadAssetsButton->setVisible(false);   // refreshSceneInfoLabel() shows it when there is something to fetch
+	connect(m_downloadAssetsButton, &QPushButton::clicked, this, &MainWindow::onDownloadMissingAssetsClicked);
+	sceneGroupLayout->addWidget(m_downloadAssetsButton);
+
 	// Rendering-technique icon: same look as every other info icon, but its
 	// tooltip is rewritten per scene by refreshSceneInfoLabel() rather than
 	// fixed at construction - see scene_technique_notes.h. The placeholder

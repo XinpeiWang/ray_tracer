@@ -27,6 +27,8 @@ struct Result {
 	// Referenced paths (as written in the scene) that could not be found. Deduplicated, in
 	// the order first met. When the scene file itself is missing this holds just that path.
 	std::vector<std::string> missing;
+	// The same files as absolute, normalised paths - where each one has to be placed. Parallel to `missing`.
+	std::vector<std::string> missingPaths;
 	// Distinct files the scene refers to, found or not (the scene file itself not counted).
 	int referenced = 0;
 	// Absolute, normalised directory of the first missing file - where the user should put
@@ -142,6 +144,7 @@ inline Result check(const std::string &scenePath) {
 	std::string text;
 	if (!detail::readText(scene, text)) {
 		r.missing.push_back(scenePath);
+		r.missingPaths.push_back(std::filesystem::absolute(scene, ec).lexically_normal().string());
 		r.folder = std::filesystem::absolute(sceneDir, ec).lexically_normal().string();
 		return r;
 	}
@@ -150,7 +153,9 @@ inline Result check(const std::string &scenePath) {
 	std::vector<std::filesystem::path> missingDirs;
 	const auto noteMissing = [&](const std::string &name) {
 		r.missing.push_back(name);
-		missingDirs.push_back(std::filesystem::absolute((sceneDir / name).parent_path(), ec).lexically_normal());
+		const std::filesystem::path full = std::filesystem::absolute(sceneDir / name, ec).lexically_normal();
+		r.missingPaths.push_back(full.string());
+		missingDirs.push_back(full.parent_path());
 	};
 	std::vector<std::string> pendingTexts{std::move(text)};
 	// Includes are followed a few levels (a scene commonly splits geometry into

@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QComboBox>
 #include <QFile>
+#include <QFileInfo>
 #include <QPixmap>
 #include <QPainter>
 #include <QList>
@@ -66,14 +67,37 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		return;
 	}
 
+	// RT_GUI_SELFTEST=download RT_GUI_SELFTEST_SCENE=<id>: selects the scene, runs the "Download missing files" action
+	// without dialogs (point RT_ASSET_BASE_URL at a local server to avoid the network), and checks the files arrived and
+	// the scene no longer reports them missing. Exit 0 on success.
+	if (mode == "download") {
+		selectSceneById(qEnvironmentVariable("RT_GUI_SELFTEST_SCENE"));
+		const QList<asset_downloader::Job> jobs = m_downloadableAssetJobs;
+		log(QString("scene=%1, %2 downloadable missing file(s), button visible: %3")
+			.arg(m_sceneCombo->currentData().toString()).arg(jobs.size()).arg(m_downloadAssetsButton && !m_downloadAssetsButton->isHidden()));
+		if (jobs.isEmpty()) { log("RESULT: FAIL (nothing to download for this scene)"); QApplication::exit(1); return; }
+		QTimer::singleShot(120000, this, [log]() { log("RESULT: FAIL (timed out)"); QApplication::exit(1); });
+		startAssetDownload(jobs, false, [this, jobs, log](bool ok, const QString &error) {
+			bool allThere = ok;
+			for (const auto &j : jobs) allThere = allThere && QFileInfo(j.destination).size() == j.entry.size;
+			const bool stillMissing = SceneMetadataClient::missingAssets(m_sceneCombo->currentData().toString()).any;
+			log(QString("download ok=%1 error=\"%2\" files-present=%3 scene-still-reports-missing=%4").arg(ok).arg(error).arg(allThere).arg(stillMissing));
+			log(allThere && !stillMissing ? "RESULT: OK" : "RESULT: FAIL");
+			QApplication::exit(allThere && !stillMissing ? 0 : 1);
+		});
+		return;
+	}
+
 	if (mode == "ui") {
 		// RT_GUI_SELFTEST_SCENE=<id> selects that scene first, so the scene info (including the
 		// missing-files warning) can be checked; its text is logged as well as pictured.
 		const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
-		if (!sceneOverride.isEmpty()) selectSceneById(sceneOverride);
+		if (!sceneOverride.isEmpty()) {
+			selectSceneById(sceneOverride);
+			resize(1100, 900);   // large enough to see the scene group, including the download button
+		}
 		log(QString("scene info: %1").arg(m_sceneInfoLabel ? m_sceneInfoLabel->text() : QString()));
-		shot("ui");
-		QApplication::exit(0);
+		QTimer::singleShot(600, this, [shot]() { shot("ui"); QApplication::exit(0); });
 		return;
 	}
 
