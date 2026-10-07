@@ -230,8 +230,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
         // own comment. Same signed-lobe-pick shape as the block above.
         if (pbrtEnvMapWidth > 0u) {
             float pbrtEnvPdfSolidAngle;
-            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
-                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+            float3 pbrtEnvWi = pbrtEnvSampleDirection(uniforms, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, pbrtEnvMapWidth, pbrtEnvMapHeight, hitPoint,
                                                            randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
             float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
             if (pbrtEnvCosSurface != 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
@@ -246,8 +245,7 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                     traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
-                    float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
-                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float3 pbrtEnvRadianceSample = pbrtEnvLeAt(uniforms, pbrtEnvConditionalCDF, pbrtEnvTexture, textureSampler, hitPoint, pbrtEnvWi);
                     float pbrtEnvPdfBsdf = diffuseTransmissionPdf(pbrtEnvCosSurface, pr, pt);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
@@ -525,8 +523,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
         // own comment.
         if (pbrtEnvMapWidth > 0u) {
             float pbrtEnvPdfSolidAngle;
-            float3 pbrtEnvWi = sampleEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
-                                                           int(pbrtEnvMapWidth), int(pbrtEnvMapHeight),
+            float3 pbrtEnvWi = pbrtEnvSampleDirection(uniforms, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, pbrtEnvMapWidth, pbrtEnvMapHeight, hitPoint,
                                                            randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
             float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
             if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
@@ -538,8 +535,7 @@ inline bool shadeLambertian(TriangleMaterial mat, float3 albedo, float3 hitPoint
                 intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
                     traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
                 if (pbrtEnvShadowResult.type == intersection_type::none) {
-                    float2 pbrtEnvUV = envMapUV(pbrtEnvWi);
-                    float3 pbrtEnvRadianceSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float3 pbrtEnvRadianceSample = pbrtEnvLeAt(uniforms, pbrtEnvConditionalCDF, pbrtEnvTexture, textureSampler, hitPoint, pbrtEnvWi);
                     float pbrtEnvPdfBsdf = lambertianPdf(pbrtEnvCosSurface);
                     float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle)
                         / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);

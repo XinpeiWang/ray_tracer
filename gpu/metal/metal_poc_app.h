@@ -305,6 +305,18 @@ struct MetalPocApp {
     int pbrtEnvImageWidth = 0;
     int pbrtEnvImageHeight = 0;
 
+    // Set by loadPbrtScene() for an image infinite light with a portal[4] window (pbrt-v4's PortalImageInfiniteLight). Mutually exclusive with
+    // havePbrtImageEnvLight: the plain environment texture/CDFs are not built for it. The three arrays come from a real host-side
+    // PortalImageInfiniteLightData (exactly what the CPU builds), uploaded into the pbrtEnv buffers - see portalSampleLi() in metal_poc_sampling.metal.
+    bool havePbrtPortalLight = false;
+    std::vector<float> pbrtPortalRectified;   // w*h*3, scale NOT applied
+    std::vector<float> pbrtPortalDistFunc;    // w*h
+    std::vector<float> pbrtPortalSatSum;      // w*h (float here; the CPU keeps double)
+    int pbrtPortalWidth = 0, pbrtPortalHeight = 0;
+    float pbrtPortalScale = 1.0f;
+    float3 pbrtPortalFrameX{1, 0, 0}, pbrtPortalFrameY{0, 1, 0}, pbrtPortalFrameZ{0, 0, 1};
+    float3 pbrtPortalP0{0, 0, 0}, pbrtPortalP2{0, 0, 0};
+
     // Set by loadPbrtScene() for the FIRST pbrt-loaded goniometric/
     // projection light that names a real profile/slide image and
     // successfully decodes (section 98) - unlike infinite light's own
@@ -490,7 +502,7 @@ struct MetalPocApp {
         const PbrtMaterialForFn& materialFor);
     void loadPbrtPunctualLights(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld, float sceneScale);
     void loadPbrtMedium(const pbrt_flatten::FlatScene& scene, float sceneScale);
-    void loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene);
+    void loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld);
     void loadPbrtCamera(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
         float3 bboxCenter, float sceneScale, float3 sceneOffset);
     // A HAND-AUTHORED (no pbrt file at all) scene, dispatched by scene_id -

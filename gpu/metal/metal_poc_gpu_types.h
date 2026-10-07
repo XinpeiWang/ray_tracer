@@ -212,6 +212,15 @@ struct Uniforms {
     uint32_t liveWorldPos = 0;   // see metal_poc_types.metal
     float adaptiveThreshold = 0.01f;   // see metal_poc_types.metal
     int32_t cameraGlassPrim = 0;       // 1 + primitive index, 0 none; see metal_poc_types.metal
+    uint32_t pbrtHasPortalLight = 0;   // see metal_poc_types.metal
+    uint32_t pbrtPortalWidth = 0;
+    uint32_t pbrtPortalHeight = 0;
+    float pbrtPortalScale = 1.0f;
+    PackedFloat3 portalFrameX{1, 0, 0};
+    PackedFloat3 portalFrameY{0, 1, 0};
+    PackedFloat3 portalFrameZ{0, 0, 1};
+    PackedFloat3 portalP0{0, 0, 0};
+    PackedFloat3 portalP2{0, 0, 0};
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single

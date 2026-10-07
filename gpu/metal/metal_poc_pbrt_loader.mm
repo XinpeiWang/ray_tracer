@@ -16,6 +16,7 @@
 #include "../../src/shared/curve_tessellate.h"
 #include "../../src/shared/srgb_decode.h"
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
+#include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
 #include <cstring>
 #include <array>
 #include <map>
@@ -937,7 +938,7 @@ void MetalPocApp::loadPbrtScene() {
     loadPbrtPunctualLights(scene, toWorld, sceneScale);
     loadPbrtMedium(scene, sceneScale);
     pbrtMaxComponentValue = (float)scene.maxComponentValue;
-    loadPbrtInfiniteLight(scene);
+    loadPbrtInfiniteLight(scene, toWorld);
     loadPbrtCamera(scene, toWorld, bboxCenter, sceneScale, sceneOffset);
 
     fprintf(stderr, "loadPbrtScene: loaded %s (%zu triangles, %zu spheres, %zu area lights)\n",
@@ -2122,8 +2123,44 @@ void MetalPocApp::loadPbrtMedium(const pbrt_flatten::FlatScene& scene, float sce
 // cosine-weighted (or the material's own specular/GGX) BSDF sampling is
 // already optimal for a constant-radiance background, which is exactly why
 // no material function has a "pbrtEnvColor NEE" block anywhere.
-void MetalPocApp::loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene) {
+void MetalPocApp::loadPbrtInfiniteLight(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld) {
     if (scene.infiniteLight.present) {
+        if (scene.infiniteLight.hasPortal) {
+            // pbrt-v4 portal (windowed) infinite light. Same host recipe as the OptiX builder (gpu/optix/pbrt_gpu_builder.h): a real
+            // PortalImageInfiniteLightData does the equal-area rectification and builds the summed-area table, and the shader reads those
+            // arrays back. With no usable image the light fails CLOSED (no light at all), like the CPU - never an unwindowed sky.
+            if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0 && !scene.infiniteLight.imagePixels.empty()) {
+                std::array<Vec3<double>, 4> corners;
+                for (int i = 0; i < 4; ++i)
+                    corners[i] = Vec3<double>(scene.infiniteLight.portal[i*3+0], scene.infiniteLight.portal[i*3+1], scene.infiniteLight.portal[i*3+2]);
+                PortalImageInfiniteLightData<double> portalData(scene.infiniteLight.imagePixels.data(), scene.infiniteLight.imageWidth,
+                                                                 scene.infiniteLight.imageHeight, scene.infiniteLight.scale, corners);
+                havePbrtPortalLight = true;
+                pbrtPortalWidth = portalData.width();
+                pbrtPortalHeight = portalData.height();
+                pbrtPortalScale = (float)portalData.scale();
+                pbrtPortalRectified = portalData.rectified();
+                const Array2D<float>& func = portalData.distribution().func();
+                pbrtPortalDistFunc.assign(func.data().begin(), func.data().end());
+                const std::vector<double>& sat = portalData.distribution().sat().sum().data();
+                pbrtPortalSatSum.assign(sat.begin(), sat.end());
+                // Frame::FromXY(p03, p01) as the CPU class builds it (nx = p03, nz = normalize(cross(nx, p01)), ny = cross(nz, nx)).
+                const auto p01 = pil_detail::normalize(pil_detail::sub(corners[1], corners[0]));
+                const auto nx = pil_detail::normalize(pil_detail::sub(corners[3], corners[0]));
+                const auto nz = pil_detail::normalize(pil_detail::cross(nx, p01));
+                const auto ny = pil_detail::cross(nz, nx);
+                pbrtPortalFrameX = float3{(float)nx.x, (float)nx.y, (float)nx.z};
+                pbrtPortalFrameY = float3{(float)ny.x, (float)ny.y, (float)ny.z};
+                pbrtPortalFrameZ = float3{(float)nz.x, (float)nz.y, (float)nz.z};
+                // The window's position matters (it is seen from each shading point), and loadPbrtScene() rescales/recentres/offsets all geometry
+                // into Metal world space - so the corners go through the same transform. The frame is a direction, untouched by it.
+                pbrtPortalP0 = toWorld(float3{(float)corners[0].x, (float)corners[0].y, (float)corners[0].z});
+                pbrtPortalP2 = toWorld(float3{(float)corners[2].x, (float)corners[2].y, (float)corners[2].z});
+                fprintf(stderr, "loadPbrtScene: portal infinite light found (%dx%d, scale=%.3g)\n", pbrtPortalWidth, pbrtPortalHeight, pbrtPortalScale);
+            } else {
+                fprintf(stderr, "loadPbrtScene: portal infinite light has no usable image; no environment light is added (the CPU does the same)\n");
+            }
+        } else
         if (scene.infiniteLight.imageWidth > 0 && scene.infiniteLight.imageHeight > 0 &&
             !scene.infiniteLight.imagePixels.empty()) {
             havePbrtImageEnvLight = true;

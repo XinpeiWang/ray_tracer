@@ -878,13 +878,12 @@ kernel void primaryRayKernel(
                     // pbrtEnvTexture directly via pbrtEnvMapWidth, so a
                     // BSDF-sampled ray escaping toward it needs the same
                     // double-count protection.
-                    float2 pbrtEnvUV = envMapUV(normalize(rayDir));
-                    float3 pbrtEnvColorSample = pbrtEnvTexture.sample(textureSampler, pbrtEnvUV).rgb;
+                    float3 pbrtEnvColorSample = pbrtEnvLeAt(uniforms, pbrtEnvConditionalCDF, pbrtEnvTexture, textureSampler, rayOrigin, normalize(rayDir));
                     float pbrtEnvMissWeight = 1.0;
                     if (!specularBounce && uniforms.pbrtEnvMapWidth > 0u) {
-                        float pdfPbrtEnv = pdfEnvironmentDirection(pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
-                                                                    int(uniforms.pbrtEnvMapWidth), int(uniforms.pbrtEnvMapHeight),
-                                                                    normalize(rayDir));
+                        float pdfPbrtEnv = pbrtEnvPdfAt(uniforms, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
+                                                        uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
+                                                        rayOrigin, normalize(rayDir));
                         pbrtEnvMissWeight = (bsdfPdf * bsdfPdf) / (bsdfPdf * bsdfPdf + pdfPbrtEnv * pdfPbrtEnv);
                     }
                     radiance += throughput * pbrtEnvColorSample * pbrtEnvMissWeight;

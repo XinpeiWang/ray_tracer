@@ -334,6 +334,17 @@ struct Uniforms {
     // 1 + the primitive index of the OUTERMOST glass sphere that bounds a medium and contains the camera (a "world haze" shell), or 0 for none (so zero-initialised Uniforms mean none). A path then
     // starts inside that medium instead of entering it by refraction, and returns to it on leaving a nested glass-medium sphere.
     int cameraGlassPrim;
+    // pbrt-v4 portal (windowed) infinite light (see portalSampleLi() in metal_poc_sampling.metal). 1 = the pbrt scene's image infinite light has a portal[4] window; its
+    // data then rides in the pbrtEnv buffers instead of the plain environment distribution. Frame = the portal quad's orthonormal frame, P0/P2 its diagonal corners.
+    uint pbrtHasPortalLight;
+    uint pbrtPortalWidth;
+    uint pbrtPortalHeight;
+    float pbrtPortalScale;
+    packed_float3 portalFrameX;
+    packed_float3 portalFrameY;
+    packed_float3 portalFrameZ;
+    packed_float3 portalP0;
+    packed_float3 portalP2;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/

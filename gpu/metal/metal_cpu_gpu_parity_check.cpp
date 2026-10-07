@@ -331,24 +331,21 @@ float regional_tolerance_for(float wholeImageTolerance) {
 // as "known gap" rather than "FAIL" below; still informational-only
 // either way (METAL_PARITY_STRICT doesn't distinguish the two - both
 // count as "not a clean pass" if that's ever enabled).
-const char* const kKnownGapScenes[] = {
-	// C17 (Portal Light): a REAL Metal gap. portal-light.pbrt uses the bundled generated
-	// portal-light-sky.exr; the CPU honours pbrt-v4's portal restriction (sky only through the window, as seen
-	// from the ray origin) and Metal never reads portal[4], so it lights the open room as an ordinary
-	// environment map: ~2.5x brighter (cpu 0.077, metal 0.192). Port portal_image_infinite_light.h to MSL to close it.
-	"C17",
-};
+// Currently EMPTY: portal-light (C17), the last entry, passes since Metal gained the portal restriction. Entries are nullptr-terminated so the
+// arrays stay valid when empty.
+const char* const kKnownGapScenes[] = {nullptr};
 
-// By id, plus by pbrt file for the same scene under its Custom Scenes (K) id - K ids shift whenever a .pbrt is added, so
-// an id alone would let the second entry for portal-light.pbrt show up as an un-triaged FAIL.
-const char* const kKnownGapFiles[] = {"portal-light.pbrt"};
+// By id, plus by pbrt file for a scene that also appears under its Custom Scenes (K) id - K ids shift whenever a .pbrt is added, so an id
+// alone would let the second entry show up as an un-triaged FAIL.
+const char* const kKnownGapFiles[] = {nullptr};
 
 bool is_known_gap_scene(const std::string& id) {
-	for (const char* known : kKnownGapScenes) if (id == known) return true;
+	for (const char* known : kKnownGapScenes) if (known && id == known) return true;
 	const char* p = cpu_scene_pbrt_path_by_id(id.c_str());
 	if (!p || !p[0]) return false;
 	const std::string path(p);
 	for (const char* n : kKnownGapFiles) {
+		if (!n) continue;
 		const std::string name(n);
 		if (path.size() >= name.size() && path.compare(path.size() - name.size(), name.size(), name) == 0) return true;
 	}
