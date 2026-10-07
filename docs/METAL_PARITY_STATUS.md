@@ -95,21 +95,16 @@ materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D check
 
 ## Known gaps (`kKnownGapScenes`)
 
-| scene(s) | cause | notes |
-|---|---|---|
-| C17 | missing asset | `sssdragon/textures/small_rural_road_equiarea.exr` is not in the repo; both backends fall back differently. |
+(none - `kKnownGapScenes` is empty. C17, the portal-light scene, used to be listed here for a missing sky image; it now uses a generated in-repo sky and passes.)
 
 Smaller approximations not covered by a scene: shadow rays use shutter time 0 (a moving sphere casts its
 shadow at its start position); the layered shaders use one roughness for both interfaces; a marble reflectance on a
 *coated diffuse* material renders flat; animated (motion-blurred) bilinear patches and curves are dropped;
-scenes that need external meshes beyond the Models set (Sponza, Bistro, the large environments) were never run on Metal.
+the large third-party scenes (Sponza, Bistro, the H-family environments, the pbrt-v4 folders) are not in the parity sweep: they are not in a checkout, and the GUI fetches them on demand ("Download missing files"). Barcelona Pavilion loads from its downloaded files but expands (through its instances) to about 97M triangles, which exceeds the GPU's acceleration-structure memory.
 
 ## Packaging note (macOS)
 
-`scripts/build_and_deploy_macos.sh` builds everything as the architecture of the installed `qmake`. The Qt install on
-the dev Mac is x86_64-only, so releases are x86_64 (Rosetta). If the shell is native arm64, run the script as
-`export PATH=$HOME/Qt/bin:$PATH; arch -x86_64 bash scripts/build_and_deploy_macos.sh` (the script now builds into per-architecture directories, `build_macos_x86_64/` and `qt_gui/build_macos_x86_64/`, so it never clobbers a native `build_macos/` and a re-run is incremental; no manual clearing needed anymore), or the link used to fail on mixed
-architectures.
+`scripts/build_and_deploy_macos.sh [--arch native|arm64|x86_64|universal]` builds the whole app for one architecture choice (the default is this Mac's own CPU) and hands it to both CMake and qmake, since the GUI and `scene_metadata.dylib` must match or the GUI's `dlopen` fails. Qt 6 official installs are universal, so `--arch universal` (arm64 + x86_64 in every binary, one dmg for every Mac, about 4 minutes) works with no extra install; an earlier version took the first architecture `lipo -archs qmake` listed (x86_64) and so shipped Rosetta-only builds although Qt was universal all along. Build directories are per choice (`build_macos_arm64/`, `build_macos_universal/`, and `qt_gui/build_macos_<choice>/`), so a re-run is incremental and nothing is wiped. The root `CMakeLists.txt` also defaults `CMAKE_OSX_ARCHITECTURES` to the real CPU: an Intel-built `cmake` under Rosetta used to make every development build x86_64 too. On a native arm64 build the strict ctest still passes with the committed golden snapshot (123 s versus 126 s under Rosetta: the CPU reference renders are not the bottleneck the arch would change).
 
 ## pbrt example (K) family - not in the default sweep
 
@@ -130,7 +125,7 @@ OptiX; the grid also reads zero beyond its outermost voxel centres, and no longe
 | K87 (= infinite-light-image) | infinite-light-image | passes | fixed on both sides (see "Image sky orientation" below): the CPU sky light read the image upside down in `Le()` against its own importance-sampling table, and Metal used a vertically flipped, azimuth-mirrored mapping of its own. Both now put image row 0 straight up, like the OptiX backends. The 4x4 test image still differs a little: the CPU reads it nearest-neighbour (a hard blue/black horizon stripe), Metal filters bilinearly. |
 
 **Image sky orientation (fixed 2026-10-06).** `sky_light::Le()` (the CPU) used to look the image up through `hdr_image_texture::value()`, which flips v, so straight up read the BOTTOM row while the importance-sampling table (`sample_Le`, `pdf_Li`) put row 0 at +y: light was sampled from one half of the sky and looked up in the other, and an image sky displayed upside down. The OptiX `gpu_sky_Le()` mirrored the quirk on purpose. All three now read row 0 at +y (`u = atan2(-z, x) / 2pi`, `v = theta / pi`); Metal had a third convention (`equirectangularUV()`: v = 1 at +y, longitude mirrored and shifted), so its environment lookups, importance-sampling inverse and pdf now go through `envMapUV()`. Every image-sky scene (C1, I3, K87 and the hand-written environment scenes) changes on CPU and OptiX; `SkyLightTest.LeReadsTheSameRowThePdfTableUses` guards it. The OptiX change is untested on this Mac (no CUDA). Metal-compatible scenes (`RT_GUI_SELFTEST=livepreview_sweep`, launched from "/"):
-283 start with a well-lit picture; 9 (H13-H21) need external scene assets that are not bundled; the rest are dark by design (a sphere on
+283 start with a well-lit picture; 9 (H13-H21) need external scene assets that are not bundled (the GUI downloads them); the rest are dark by design (a sphere on
 a black background, light-only tests) and show the same lit fraction as the standalone Metal renderer.
 
 Rough glass bounding a medium (E12, `rough-dielectric-medium.pbrt`) now matches the CPU to about 1% (0.1130 vs 0.1128, rows within 5% at 3000 spp): the glass takes direct-light samples like any other vertex, and adaptive sampling no longer freezes its rare-light pixels. The earlier note that K146 (a lamp inside a rough glass sphere) was noise-limited was the same adaptive-sampling bias: it now passes (0.8246 vs 0.8246).

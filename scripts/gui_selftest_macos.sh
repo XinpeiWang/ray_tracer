@@ -30,7 +30,10 @@ FAKE_HOME="$(mktemp -d /tmp/gui_selftest_home.XXXXXX)"; mkdir -p "$FAKE_HOME/Pic
 mkdir -p "$OUT"
 
 ARCH_PREFIX=()
-if [[ "$(file "$EXE" | grep -o 'x86_64\|arm64' | head -1)" == "x86_64" && "$(uname -m)" != "x86_64" ]]; then ARCH_PREFIX=(arch -x86_64); fi
+# An x86_64-only build on an Apple-silicon Mac needs Rosetta (`arch -x86_64`); an arm64 or universal build runs natively. The
+# CPU, not `uname -m`, says whether this is Apple silicon (`uname -m` says x86_64 under Rosetta).
+EXE_ARCHS="$(lipo -archs "$EXE" 2>/dev/null)"
+if [[ " $EXE_ARCHS " != *" arm64 "* && "$(sysctl -n hw.optional.arm64 2>/dev/null)" == "1" ]]; then ARCH_PREFIX=(arch -x86_64); fi
 
 run_mode() {   # mode, wait-seconds
 	local mode="$1" wait_s="$2" prefix="$OUT/$1"
@@ -38,7 +41,7 @@ run_mode() {   # mode, wait-seconds
 	# cwd "/" on purpose: that is where a Finder/Dock launch starts (Live Preview runs inside this process, so it must find its
 	# scene files without help from the working directory - the bug a launch from inside the bundle used to hide).
 	( cd / && HOME="$FAKE_HOME" CFFIXED_USER_HOME="$FAKE_HOME" QT_QPA_PLATFORM=offscreen QT_QPA_PLATFORM_PLUGIN_PATH="$PLUGINS" \
-	    RT_GUI_SELFTEST="$mode" RT_GUI_SELFTEST_OUT="$prefix" "${ARCH_PREFIX[@]}" "$EXE" > "$prefix.stdout" 2>&1 ) &
+	    RT_GUI_SELFTEST="$mode" RT_GUI_SELFTEST_OUT="$prefix" ${ARCH_PREFIX[@]+"${ARCH_PREFIX[@]}"} "$EXE" > "$prefix.stdout" 2>&1 ) &
 	local pid=$! waited=0
 	while kill -0 "$pid" 2>/dev/null && (( waited < wait_s )); do sleep 1; waited=$((waited + 1)); done
 	if kill -0 "$pid" 2>/dev/null; then kill "$pid" 2>/dev/null; wait "$pid" 2>/dev/null; echo "FAIL [$mode]: still running after ${wait_s}s (hung)"; return 1; fi

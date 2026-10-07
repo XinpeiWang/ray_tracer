@@ -71,7 +71,7 @@ The portable version includes:
 
 See [INSTALL.md](INSTALL.md) for detailed usage instructions.
 
-**macOS:** a `RayTracerGUI.dmg` (Metal GPU rendering and Live Preview included; the current build is x86_64 and runs on Apple Silicon under Rosetta) is built by `scripts/build_and_deploy_macos.sh` — see [macOS](#macos). It is not code-signed, so on first launch right-click the app → **Open**.
+**macOS:** a `RayTracerGUI.dmg` (Metal GPU rendering and Live Preview included; native on Apple silicon; `--arch universal` builds one dmg for Apple-silicon and Intel Macs) is built by `scripts/build_and_deploy_macos.sh` — see [macOS](#macos). It is not code-signed, so on first launch right-click the app → **Open**.
 
 ## 🔨 Building from Source
 
@@ -274,9 +274,11 @@ dropdown also offers **GPU (Metal)**.
 (does all of the above, then runs `macdeployqt` to bundle Qt's frameworks and
 produce a distributable disk image):
 ```bash
-./scripts/build_and_deploy_macos.sh
-# ./scripts/build_and_deploy_macos.sh --skip-dmg   # .app only, no .dmg
+./scripts/build_and_deploy_macos.sh                        # this Mac's own CPU (arm64 on Apple silicon)
+./scripts/build_and_deploy_macos.sh --arch universal       # arm64 + x86_64 in one dmg (about twice the build time)
+# ./scripts/build_and_deploy_macos.sh --skip-dmg            # .app only, no .dmg
 ```
+The script builds for the architecture(s) you ask for and checks that your Qt install has them (an official Qt 6 install is universal, so `--arch universal` works out of the box). A plain `cmake -B build` also builds for the Mac's real CPU even when `cmake` itself is an Intel binary running under Rosetta; pass `-DCMAKE_OSX_ARCHITECTURES=x86_64` to force an Intel build.
 Output lands in `RayTracer_Package_macOS/` (`RayTracerGUI.app` and
 `RayTracerGUI.dmg`). **Scenes that need external mesh/texture files
 (`requires_files=true` in `scene_registry.h` — Sponza, Bistro, every
@@ -287,11 +289,7 @@ an installer questionable regardless of size. Every scene that doesn't
 require external files (Basics/Materials/Lights/Cameras/Volumes/Geometry/Textures —
 most of the registry, all procedurally generated) works from the installed
 app with no extra setup, as do the bundled `pbrt_scenes/` examples (category
-K) that don't reference a missing mesh/texture. To also render the external-asset scenes after
-installing, copy this repo's `models/` directory into the installed app:
-```bash
-cp -R /path/to/ray_tracer/models "/Applications/RayTracerGUI.app/Contents/MacOS/models"
-```
+K) that don't reference a missing mesh/texture. For the external-asset scenes, select the scene and press **Download missing files** (see above); you can also copy files into the installed app's `Contents/MacOS/models/` by hand.
 
 The `.app`/`.dmg` are **not code-signed or notarized** (that needs an Apple
 Developer account this project doesn't have) — macOS Gatekeeper will refuse
@@ -837,7 +835,7 @@ Being upfront about what's incomplete rather than overselling:
 - [ ] GPU implementation of BDPT/MLT
 - [ ] Broader GPU SPPM scene support
 - [ ] Real curve/strand geometry for scene B11's hair fibers (matching scene F4's approach)
-- [ ] Native Apple Silicon (arm64) GUI build — the current `.app`/`.dmg` is x86_64 and runs under Rosetta
+- [x] Native Apple Silicon (arm64) GUI build — `scripts/build_and_deploy_macos.sh` builds native arm64 by default and `--arch universal` builds arm64 + x86_64
 - [ ] Linux support (likely a small extension of the same CMake/POSIX groundwork the macOS port added)
 
 ## 🤝 Contributing
