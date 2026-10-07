@@ -552,7 +552,8 @@ if(RT_BUILD_METAL)
         gpu/metal/metal_poc_shader_tests_materials.mm
         gpu/metal/metal_poc_shader_tests_media.mm
         gpu/metal/metal_poc_shader_tests_lights.mm
-        gpu/metal/metal_poc_shader_tests_hair.mm)
+        gpu/metal/metal_poc_shader_tests_hair.mm
+        gpu/metal/metal_poc_shader_tests_layout.mm)
     target_compile_definitions(metal_poc_shader_tests PRIVATE
         RT_METAL_SHADER_DIR="${CMAKE_CURRENT_SOURCE_DIR}/gpu/metal")
     target_link_libraries(metal_poc_shader_tests PRIVATE

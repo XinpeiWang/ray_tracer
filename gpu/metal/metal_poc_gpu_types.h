@@ -20,6 +20,7 @@
 #include <simd/simd.h>
 
 #include "metal_poc_host_math.h"
+#include "metal_poc_material_ids.metal"   // METAL_MAT_* - the materialType names, also the first file of the shader source
 // RealisticCamera<T> (D4/D8, section 157) - a portable, host-only
 // precompute class (CPU_GPU-tagged but its own constructor/exit-pupil-
 // bounding never runs device-side anywhere in this project), the EXACT

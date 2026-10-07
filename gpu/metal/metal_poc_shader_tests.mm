@@ -95,6 +95,7 @@ int main() {
         testAtan2Zero(device, library, queue);
         testShadeDielectric(device, library, queue);
         testShadeThinDielectric(device, library, queue);
+        g_failures += testStructLayouts(device, library, queue);
 
         if (g_failures > 0) {
             fprintf(stderr, "FAIL: %d check(s) failed\n", g_failures);

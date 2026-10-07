@@ -560,24 +560,24 @@ kernel void primaryRayKernel(
             // At the emission-only step a bounded medium (sphere/cylinder) cannot be scattered in, so the path just ends there; the light seen
             // through it by this one last ray is dropped (an approximation limited to the very last vertex).
             if (lastBounce && result.type == intersection_type::bounding_box &&
-                ((result.geometry_id == 0u && sphereMaterials[result.primitive_id].materialType >= 28u && sphereMaterials[result.primitive_id].materialType <= 30u) ||
-                 (result.geometry_id == 2u && cylinderMaterials[result.primitive_id].materialType == 28u))) break;
+                ((result.geometry_id == 0u && sphereMaterials[result.primitive_id].materialType >= METAL_MAT_MEDIUM_HOMOGENEOUS && sphereMaterials[result.primitive_id].materialType <= METAL_MAT_MEDIUM_RGB_GRID) ||
+                 (result.geometry_id == 2u && cylinderMaterials[result.primitive_id].materialType == METAL_MAT_MEDIUM_HOMOGENEOUS))) break;
             if (result.type == intersection_type::bounding_box && result.geometry_id == 0u) {
                 uint mediumPrimId = result.primitive_id;
                 TriangleMaterial mediumMat = sphereMaterials[mediumPrimId];
-                if (mediumMat.materialType == 28u) {
+                if (mediumMat.materialType == METAL_MAT_MEDIUM_HOMOGENEOUS) {
                     shadeHomogeneousMediumSphere(mediumMat, mediumPrimId, result.distance,
                         spheres, shutterT, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
                         isect, accelStructure, functionTable, shadowSpherePayload,
                         rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                         scatteredInMedium, passedThroughMediumSphere);
-                } else if (mediumMat.materialType == 29u) {
+                } else if (mediumMat.materialType == METAL_MAT_MEDIUM_HETEROGENEOUS) {
                     shadeCloudMediumSphere(mediumMat, result.distance,
                         cloudMediums, lights, uniforms, pbrtAreaLightTexture, textureSampler,
                         isect, accelStructure, functionTable, shadowSpherePayload,
                         rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                         scatteredInMedium, passedThroughMediumSphere);
-                } else if (mediumMat.materialType == 30u) {
+                } else if (mediumMat.materialType == METAL_MAT_MEDIUM_RGB_GRID) {
                     shadeRgbGridMediumSphere(mediumMat, result.distance,
                         rgbGridMediums, rgbGridData, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
                         isect, accelStructure, functionTable, shadowSpherePayload,
@@ -585,7 +585,7 @@ kernel void primaryRayKernel(
                         scatteredInMedium, passedThroughMediumSphere);
                 }
             } else if (result.type == intersection_type::bounding_box && result.geometry_id == 2u &&
-                       cylinderMaterials[result.primitive_id].materialType == 28u) {
+                       cylinderMaterials[result.primitive_id].materialType == METAL_MAT_MEDIUM_HOMOGENEOUS) {
                 // A tube bounding a homogeneous medium (Shape "cylinder" + MediumInterface).
                 shadeHomogeneousMediumCylinder(cylinderMaterials[result.primitive_id], cylinders[result.primitive_id],
                     lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
@@ -1035,11 +1035,11 @@ kernel void primaryRayKernel(
                 }
             }
             CENSUS_PUSH(mat.materialType);
-            if (mat.materialType == 7u && !isSphere && !isDisk && !isSuzanneInstance) {
+            if (mat.materialType == METAL_MAT_BUMP_LAMBERTIAN && !isSphere && !isDisk && !isSuzanneInstance) {
                 float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 float3 tangent = tangentFor(primId, vertices, uvs);
                 facingNormal = proceduralBumpNormal(facingNormal, tangent, bumpUV, mat.roughness);
-            } else if (mat.materialType == 21u) {
+            } else if (mat.materialType == METAL_MAT_NORMAL_MAPPED_LAMBERTIAN) {
                 // materialType 21 (checker-driven normal-mapped
                 // Lambertian, B12's own sphere) - matches CPU's own
                 // `normal_map_material` (a DIRECT tangent-space-normal
@@ -1085,7 +1085,7 @@ kernel void primaryRayKernel(
             // centre-relative) normal gives a texture-space coordinate
             // for free, no real UV parameterization needed.
             float3 albedo;
-            if (mat.materialType == 3u) {
+            if (mat.materialType == METAL_MAT_TEXTURED_LAMBERTIAN) {
                 // isSphere: NOT a plain equirectangularUV(normal) call -
                 // this project's own CPU get_sphere_uv() (sphere.h) uses
                 // phi=atan2(-p.z,p.x)+pi, whereas equirectangularUV() uses
@@ -1105,7 +1105,7 @@ kernel void primaryRayKernel(
                 float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
                                       : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 albedo = earthTexture.sample(textureSampler, uv).rgb;
-            } else if (mat.materialType == 6u) {
+            } else if (mat.materialType == METAL_MAT_CHECKER_LAMBERTIAN) {
                 // Procedural checker (Lambertian, same BSDF/NEE code path
                 // as 0/3 below - only where albedo comes from differs):
                 // `color` is the tile-A colour; tile B is a fixed
@@ -1119,7 +1119,7 @@ kernel void primaryRayKernel(
                 // near-miss caught before it shipped, not a hypothetical.
                 float2 uv = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 albedo = checkerColor(uv, 8.0, float3(mat.color), float3(mat.color) * 0.15);
-            } else if (mat.materialType == 16u) {
+            } else if (mat.materialType == METAL_MAT_CHECKER3D_LAMBERTIAN) {
                 // Real 3D world-space checker (see checker3DColor()'s own
                 // declaration comment) - `color`/`transmitColor` hold the
                 // two REAL, independent tile colours (unlike materialType
@@ -1134,7 +1134,7 @@ kernel void primaryRayKernel(
                 // checker_texture's `inv_scale` construction parameter,
                 // section 121).
                 albedo = checker3DColor(hitPoint, mat.roughness, float3(mat.color), float3(mat.transmitColor));
-            } else if (mat.materialType == 17u) {
+            } else if (mat.materialType == METAL_MAT_MARBLE_LAMBERTIAN) {
                 // Real Perlin-noise "marble" (see turbulenceSimple()'s
                 // own declaration comment) - matches CPU's own
                 // noise_texture::value() exactly: grey (0.5,0.5,0.5)
@@ -1149,7 +1149,7 @@ kernel void primaryRayKernel(
                 // sphere with no real UV parameterization.
                 float marble = 1.0 + sin(mat.roughness * hitPoint.z + 10.0 * turbulenceSimple(hitPoint, 0.5, 7));
                 albedo = float3(0.5, 0.5, 0.5) * marble;
-            } else if (mat.materialType == 25u) {
+            } else if (mat.materialType == METAL_MAT_TEXTURE_FAMILY) {
                 // A pbrt-v4 "checkerboard" Texture bound to a Diffuse
                 // material's own "reflectance" (B22, section 162) -
                 // pbrt-v4's real UV-space 2D checkerboard (NOT this
@@ -1244,7 +1244,7 @@ kernel void primaryRayKernel(
                 float parity = fmod(tile.x + tile.y, 2.0);
                 albedo = (abs(parity) < 0.5) ? float3(mat.color) : float3(mat.transmitColor);
                 }
-            } else if (mat.materialType == 26u || mat.materialType == 27u) {
+            } else if (mat.materialType == METAL_MAT_IMAGE_LAMBERTIAN || mat.materialType == METAL_MAT_IMAGE_CLEARCOAT) {
                 // A pbrt-v4 Diffuse (26) or CoatedDiffuse (27, J1,
                 // section 172) material's own "texture reflectance"
                 // bound to a bare "imagemap" Texture (F5/F9, section
@@ -1280,7 +1280,7 @@ kernel void primaryRayKernel(
                 float2 uv = isSphere ? equirectangularUV(float3(normal.x, normal.y, -normal.z))
                                       : texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 albedo = pbrtDiffuseTexture.sample(textureSampler, float2(uv.x, 1.0 - uv.y)).rgb * mat.roughness;
-            } else if (mat.materialType == 12u && mat.conductorK.y > 8.5) {
+            } else if (mat.materialType == METAL_MAT_DIFFUSE_TRANSMISSION && mat.conductorK.y > 8.5) {
                 // DiffuseTransmission with image-textured reflectance (diffuse slot) and/or transmittance
                 // (second slot) - J2. conductorK.x = 1 when reflectance is an image, conductorK.z = 1 when
                 // transmittance is; otherwise the flat colour in color / transmitColor is used. The shade
@@ -1341,10 +1341,10 @@ kernel void primaryRayKernel(
                 // pattern's own tile-B fraction, mirroring AreaLight's
                 // `patternTileB`.
                 float3 hitEmission = float3(mat.emission);
-                if (mat.materialType == 10u) {
+                if (mat.materialType == METAL_MAT_PATTERNED_EMISSIVE) {
                     float2 patUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                     hitEmission = checkerColor(patUV, 6.0, hitEmission, hitEmission * mat.roughness);
-                } else if (mat.materialType == 15u) {
+                } else if (mat.materialType == METAL_MAT_IMAGE_EMISSIVE) {
                     // Real image-based AreaLightSource (section 105) -
                     // same UV lookup as materialType 10's own checker
                     // pattern (a direct hit needs THIS hit's own
@@ -1427,21 +1427,21 @@ kernel void primaryRayKernel(
             // Emission-only step done (the emissive hit above, or the sky on a miss): no light sampling, no scattering.
             if (lastBounce) break;
 
-            if (mat.materialType == 2u) {
+            if (mat.materialType == METAL_MAT_DIELECTRIC) {
                 if (!shadeDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                       rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
-            } else if (mat.materialType == 22u) {
+            } else if (mat.materialType == METAL_MAT_DISPERSIVE_DIELECTRIC) {
                 if (!shadeDispersiveDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                       rayDir, rayOrigin, throughput, specularBounce, rngState, rgbChannel)) break;
-            } else if (mat.materialType == 5u) {
+            } else if (mat.materialType == METAL_MAT_ROUGH_DIELECTRIC) {
                 if (!shadeRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                            uniforms, lights, pbrtAreaLightTexture, textureSampler,
                                            isect, accelStructure, functionTable,
                                            rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 23u) {
+            } else if (mat.materialType == METAL_MAT_DISPERSIVE_ROUGH_DIELECTRIC) {
                 if (!shadeDispersiveRoughDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                            rayDir, rayOrigin, throughput, specularBounce, rngState, rgbChannel)) break;
-            } else if (mat.materialType == 4u || mat.materialType == 9u) {
+            } else if (mat.materialType == METAL_MAT_ROUGH_CONDUCTOR || mat.materialType == METAL_MAT_CHECKER_ROUGH_CONDUCTOR) {
                 if (!shadeConductor(mat, hitPoint, normal, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1450,12 +1450,12 @@ kernel void primaryRayKernel(
                                      earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 1u) {
+            } else if (mat.materialType == METAL_MAT_MIRROR) {
                 if (!shadeMirror(albedo, hitPoint, facingNormal, rayDir, rayOrigin, throughput, specularBounce)) break;
-            } else if (mat.materialType == 11u) {
+            } else if (mat.materialType == METAL_MAT_THIN_DIELECTRIC) {
                 if (!shadeThinDielectric(mat, hitPoint, normal, facingNormal,
                                           rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
-            } else if (mat.materialType == 8u || mat.materialType == 27u) {
+            } else if (mat.materialType == METAL_MAT_CLEARCOAT || mat.materialType == METAL_MAT_IMAGE_CLEARCOAT) {
                 // materialType 27 (J1, section 172): the SAME clearcoat
                 // shading materialType 8 already uses, just with `albedo`
                 // (computed above) sourced from a real per-hit texture
@@ -1470,7 +1470,7 @@ kernel void primaryRayKernel(
                                      earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 12u) {
+            } else if (mat.materialType == METAL_MAT_DIFFUSE_TRANSMISSION) {
                 if (!shadeDiffuseTransmission(mat, albedo, hitPoint, facingNormal, uniforms,
                                                lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                                envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1478,7 +1478,7 @@ kernel void primaryRayKernel(
                                                earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                                isect, accelStructure, functionTable,
                                                rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 13u) {
+            } else if (mat.materialType == METAL_MAT_OREN_NAYAR) {
                 if (!shadeOrenNayar(mat, albedo, hitPoint, facingNormal, uniforms,
                                      lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                      envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1486,7 +1486,7 @@ kernel void primaryRayKernel(
                                      earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                      isect, accelStructure, functionTable,
                                      rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 14u) {
+            } else if (mat.materialType == METAL_MAT_VELVET) {
                 if (!shadeVelvet(mat, albedo, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1494,10 +1494,10 @@ kernel void primaryRayKernel(
                                   earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 24u) {
+            } else if (mat.materialType == METAL_MAT_PRINCIPLED) {
                 if (!shadePrincipled(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
-            } else if (mat.materialType == 32u) {
+            } else if (mat.materialType == METAL_MAT_MEASURED) {
                 if (!shadeMeasured(mat, hitPoint, facingNormal, uniforms, rgbGridData,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1505,11 +1505,11 @@ kernel void primaryRayKernel(
                                   earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 31u) {
+            } else if (mat.materialType == METAL_MAT_HAIR) {
                 pathTouchedHair = true;
                 if (!shadeHair(mat, hitPoint, facingNormal,
                                   rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
-            } else if (mat.materialType == 18u) {
+            } else if (mat.materialType == METAL_MAT_NORMALIZED_FRESNEL) {
                 if (!shadeNormalizedFresnel(mat, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1517,7 +1517,7 @@ kernel void primaryRayKernel(
                                   earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 19u) {
+            } else if (mat.materialType == METAL_MAT_COATED_DIFFUSE) {
                 if (!shadeCoatedDiffuse(mat, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1525,7 +1525,7 @@ kernel void primaryRayKernel(
                                   earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                                   isect, accelStructure, functionTable,
                                   rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) break;
-            } else if (mat.materialType == 20u) {
+            } else if (mat.materialType == METAL_MAT_COATED_CONDUCTOR) {
                 if (!shadeCoatedConductor(mat, hitPoint, facingNormal, uniforms,
                                   lights, pointLights, directionalLights, projectionLights, goniometricLights,
                                   envMarginalCDF, envConditionalCDF, uniforms.envMapWidth, uniforms.envMapHeight,
@@ -1548,7 +1548,7 @@ kernel void primaryRayKernel(
                 // reflection inside, and a thin dielectric passing straight through). `normal` is the sphere's
                 // outward normal here.
                 if (isSphere && mat.conductorK.y > 0.5 &&
-                    (mat.materialType == 2u || mat.materialType == 5u || mat.materialType == 11u)) {
+                    (mat.materialType == METAL_MAT_DIELECTRIC || mat.materialType == METAL_MAT_ROUGH_DIELECTRIC || mat.materialType == METAL_MAT_THIN_DIELECTRIC)) {
                     const bool wasInGlass = inGlass;
                     inGlass = dot(rayDir, normal) < 0.0;
                     // Leaving a glass-medium sphere that sits INSIDE the camera's world-haze shell puts the path back in that shell's medium.

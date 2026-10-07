@@ -19,7 +19,7 @@
 // metal_poc_shader_tests.mm's own compile-time-vs-runtime comment), not
 // as separate translation units the linker joins later. So this split
 // does NOT give each piece its own real compilation unit the way the
-// `.mm` split did - every caller must still read all 8 files and
+// `.mm` split did - every caller must still read all the files and
 // concatenate them into ONE string, in this exact order, before handing
 // it to Metal. This header exists so that "read this list of files, in
 // this order" is written down ONCE, not duplicated (and potentially
@@ -31,6 +31,7 @@
 
 inline const char* const* metalShaderFileNames(int* outCount) {
     static const char* const kFiles[] = {
+        "metal_poc_material_ids.metal",   // materialType names (METAL_MAT_*), shared with the host: must come first
         "metal_poc_types.metal",
         "metal_poc_sampling.metal",
         "metal_poc_layered_bxdf.metal",

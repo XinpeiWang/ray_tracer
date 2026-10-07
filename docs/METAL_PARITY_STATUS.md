@@ -67,6 +67,8 @@ The standard sweep (what CI/ctest runs): 56 scenes, all pass. All 24 Models
 scenes with assets present match CPU (23 pass, 1 marginal). CI skips the test, non-fatally, on a runner
 whose Metal device cannot do hardware ray tracing, so the gate really protects a developer Mac.
 
+**Host/shader contracts.** Two things that used to be held together only by comments are now checked. (1) `materialType` values have names, `METAL_MAT_*`, in `gpu/metal/metal_poc_material_ids.metal` - one file that the host #includes and that is also the first file of the concatenated shader source, so the loader and the kernel cannot disagree about what "25" means (the numbering is Metal's own; OptiX has a separate enum). (2) `metal_poc_shader_tests` asks the shader for its `sizeof`/`alignof` of every struct the host mirrors by hand (`Uniforms`, `TriangleMaterial`, the media, light, lens structs) and the byte offset of the last 17 `Uniforms` fields, and compares them with the host's (`test_structLayouts`, `metal_poc_shader_tests_layout.mm`): adding a field on one side only, or in a different place, fails that test instead of shifting every later field. Keep the probe lists in step when you add a mirrored struct.
+
 ## What the Metal loader supports
 
 Shapes: triangle meshes, spheres, disks, cylinders; **bilinear patches, cones, paraboloids and curves are
