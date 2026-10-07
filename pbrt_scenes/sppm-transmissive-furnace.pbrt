@@ -1,0 +1,28 @@
+# sppm-transmissive-furnace.pbrt -- a diffuse-transmission shell (R = 0.2, T = 0.6) filling the view inside a closed emissive cube; SPPM must agree with the path tracer.
+#
+# The closed form of the shell under a uniform surround is 0.65 (see diffuse-transmission-furnace.pbrt). SPPM started every scene with a gather radius of 10
+# world units, which spans this whole 8-unit room: the photon estimate then averages photons from all over the scene and the radius takes thousands of
+# iterations to shrink - SPPM read 0.30 after 100 iterations and 0.47 after 1600 against the path tracer's 0.65. The radius now starts at 2% of the scene's
+# bounding radius (never above 10, so a 555-unit Cornell box is unchanged).
+
+LookAt  0 0 3.5    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 30 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  AreaLightSource "diffuse" "rgb L" [ 1 1 1 ] "bool twosided" true
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -4 -4 -4   4 -4 -4   4 4 -4   -4 4 -4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -4 -4 4   -4 4 4   4 4 4   4 -4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -4 -4 -4   -4 4 -4   -4 4 4   -4 -4 4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ 4 -4 -4   4 -4 4   4 4 4   4 4 -4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -4 -4 -4   -4 -4 4   4 -4 4   4 -4 -4 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ] "point3 P" [ -4 4 -4   4 4 -4   4 4 4   -4 4 4 ]
+AttributeEnd
+
+Material "diffusetransmission" "rgb reflectance" [ 0.2 0.2 0.2 ] "rgb transmittance" [ 0.6 0.6 0.6 ]
+Shape "sphere" "float radius" [ 1 ]
