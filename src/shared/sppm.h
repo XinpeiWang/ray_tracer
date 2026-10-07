@@ -429,6 +429,11 @@ void SPPMPhotonPass(std::vector<SPPMPixel<T>>& pixels,
 				break;
 			if (pdf <= T(0)) break;
 
+			// A photon carries importance: its throughput uses the adjoint BSDF value, the one for light flowing from hit.wo's side to new_dir's side
+			// (for a refraction f is not symmetric - see bdpt_detail::bsdf_f_light()). Specular samples keep the f_val/pdf pair the scene engineered.
+			if (!is_spec)
+				bdpt_detail::bsdf_f_light(scene, hit.bsdf_id, hit.wo, new_dir, hit.shading_n, f_val, 0);
+
 			T cosI = std::abs(new_dir[0]*hit.shading_n[0] +
 							  new_dir[1]*hit.shading_n[1] +
 							  new_dir[2]*hit.shading_n[2]);
