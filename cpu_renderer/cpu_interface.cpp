@@ -801,9 +801,21 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		std::cout << "[cpu_interface] Starting SPPM render (" << iterations << " iterations x " << photons << " photons)..." << std::endl;
 		SPPMSceneAdapter adapter(world, lights, cam);
 		std::vector<double> out_rgb;
+		// The photon gather radius starts at 2% of the scene's bounding radius, never more than the 10 units every scene used to start with (a Cornell
+		// box, 555 across, comes out at ~10 and renders exactly as before). A fixed 10 covers a whole 10-unit room: the estimate then averages photons from
+		// all over the scene, and the radius takes thousands of iterations to shrink - a diffuse-transmission shell in an emissive cube read 0.30 against a
+		// closed form of 0.65 after 100 iterations, 0.47 after 1600.
+		double initialRadius = 10.0;
+		{
+			const aabb box = world.bounding_box();
+			const double dx = box.x.max - box.x.min, dy = box.y.max - box.y.min, dz = box.z.max - box.z.min;
+			const double sceneRadius = 0.5 * std::sqrt(dx * dx + dy * dy + dz * dz);
+			if (std::isfinite(sceneRadius) && sceneRadius > 0.0) initialRadius = std::min(10.0, std::max(1e-4, 0.02 * sceneRadius));
+		}
+		std::cout << "[cpu_interface] SPPM initial radius: " << initialRadius << std::endl;
 		sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
 								   iterations, photons, max_depth,
-								   /*initialRadius=*/10.0, out_rgb,
+								   initialRadius, out_rgb,
 								   cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
 
 		if (is_exr_output_path(output_path)) {

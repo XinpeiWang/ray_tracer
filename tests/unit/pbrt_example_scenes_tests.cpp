@@ -578,6 +578,26 @@ TEST(PbrtBackendAgreementTest, BdptSkyLitRoughGlassSphereAgreesWithPathTracer) {
 	expectBdptAgreesWithPathTracer("bdpt-sky-rough-glass", 6, 0.012);
 }
 
+// SPPM against the path tracer on a scene smaller than its old fixed gather radius of 10 world units. That radius spans this whole 8-unit room, so the photon
+// estimate averaged photons from all over it and the shrinking radius needed thousands of iterations to recover (0.30 after 100 iterations, 0.47 after 1600,
+// against 0.65). The radius now starts at 2% of the scene's bounding radius (never above 10). See pbrt_scenes/sppm-transmissive-furnace.pbrt.
+TEST(PbrtBackendAgreementTest, SppmInASmallSceneAgreesWithPathTracer) {
+	const SceneDescriptor* s = find_example_scene("sppm-transmissive-furnace");
+	if (!s) GTEST_SKIP() << "sppm-transmissive-furnace.pbrt was not discovered - is pbrt_scenes/ present?";
+	const std::string pathOut = "pbrt_agree_sppm_path.exr", sppmOut = "pbrt_agree_sppm_sppm.exr";
+	double pathMean = 0.0, sppmMean = 0.0;
+	ASSERT_EQ(cpu_render_main(32, 32, 256, 30, pathOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(pathOut, pathMean));
+	ASSERT_EQ(cpu_render_main_sppm(32, 32, 100, 20000, 30, sppmOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(sppmOut, sppmMean));
+	std::remove(pathOut.c_str());
+	std::remove(sppmOut.c_str());
+	std::printf("[agree] sppm-transmissive-furnace: path %.4f  sppm %.4f (%.1f%%)\n", pathMean, sppmMean, 100.0 * sppmMean / pathMean);
+	ASSERT_GT(pathMean, 0.3);
+	EXPECT_GT(sppmMean, 0.95 * pathMean) << "SPPM too dark vs the path tracer";
+	EXPECT_LT(sppmMean, 1.05 * pathMean) << "SPPM too bright vs the path tracer";
+}
+
 // A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
 // every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU
 // backends, and of BDPT - which a path-tracer-vs-BDPT comparison alone could not, since the two could be wrong together.
