@@ -44,6 +44,10 @@ Manifest parseManifest(const QString &text) {
 	return m;
 }
 
+QString userAssetRoot() {
+	return qEnvironmentVariable("RAY_TRACER_USER_ASSETS");
+}
+
 const Manifest &builtInManifest() {
 	static const Manifest manifest = []() {
 		QFile f(QStringLiteral(":/assets/downloadable_assets.txt"));
@@ -94,8 +98,7 @@ void Downloader::startNext() {
 	QDir().mkpath(QFileInfo(job.destination).absolutePath());
 	m_file = std::make_unique<QFile>(job.destination + QStringLiteral(".part"));
 	if (!m_file->open(QIODevice::WriteOnly | QIODevice::Truncate)) {
-		finishWith(false, tr("Cannot write to %1: %2\n\nIf the application is in a read-only location, move it to a "
-							 "folder you can write to (for example Applications) and try again.")
+		finishWith(false, tr("Cannot write to %1: %2\n\nCheck that you have permission to write there and that the disk is not full.")
 							  .arg(QDir::toNativeSeparators(QFileInfo(job.destination).absolutePath()), m_file->errorString()));
 		return;
 	}

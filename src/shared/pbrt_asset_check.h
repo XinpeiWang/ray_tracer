@@ -14,6 +14,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -22,6 +23,25 @@
 #include <vector>
 
 namespace pbrt_asset_check {
+
+// Files fetched at run time (the GUI's "Download missing files") cannot always go next to the application - it may be on
+// a read-only disk image or in a protected folder - so they go to a per-user folder whose layout mirrors the application
+// folder (models/x.obj under it stands in for models/x.obj next to the app). The GUI exports its location as
+// RAY_TRACER_USER_ASSETS; every process it starts, and the renderer libraries it loads, then look there as a fallback.
+inline std::string userAssetRoot() {
+	const char *root = std::getenv("RAY_TRACER_USER_ASSETS");
+	return root ? std::string(root) : std::string();
+}
+
+// Where `want` - a path as a scene wrote it, relative to `sceneDir` - would be under the user asset root, or "" if there
+// is no root or the path does not resolve to somewhere inside the application folder (absolute, or climbs out of it).
+inline std::string userAssetPath(const std::filesystem::path &sceneDir, const std::string &want) {
+	const std::string root = userAssetRoot();
+	if (root.empty()) return std::string();
+	const std::filesystem::path p = (sceneDir / want).lexically_normal();
+	if (p.empty() || p.is_absolute() || *p.begin() == "..") return std::string();
+	return (std::filesystem::path(root) / p).string();
+}
 
 struct Result {
 	// Referenced paths (as written in the scene) that could not be found. Deduplicated, in
@@ -116,6 +136,8 @@ inline bool resolves(const std::filesystem::path &sceneDir, const std::string &w
 	// Not named `near`: that is a macro in the Windows headers (windef.h), which turns this declaration into a syntax error under MSVC.
 	const std::filesystem::path inSceneDir = sceneDir / want;
 	if (existsFile(inSceneDir) || existsFile(want)) return true;
+	const std::string inUserRoot = userAssetPath(sceneDir, want);
+	if (!inUserRoot.empty() && (existsFile(inUserRoot) || (mayBeGz && existsFile(inUserRoot + ".gz")))) return true;
 	if (mayBeGz) return existsFile(inSceneDir.string() + ".gz") || existsFile(want + ".gz");
 	return false;
 }
