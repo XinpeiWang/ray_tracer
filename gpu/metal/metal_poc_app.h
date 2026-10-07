@@ -477,6 +477,19 @@ struct MetalPocApp {
     // not where any result actually lives.
     using PbrtToWorldFn = std::function<float3(float3)>;
     using PbrtMaterialForFn = std::function<TriangleMaterial(int)>;
+    // pbrt material -> TriangleMaterial (metal_poc_pbrt_materials.mm); PbrtMaterialMapState carries the per-scene inputs and caches.
+    // What mapPbrtMaterial() needs besides the material itself: the scene (a Mix material names two others by index), the scene-rescale
+    // transform (procedural textures keyed on the pbrt-world hit point fold it in), and two per-scene caches.
+    struct PbrtMaterialMapState {
+        const pbrt_flatten::FlatScene& scene;
+        float sceneScale;
+        float3 bboxCenter;
+        float3 sceneOffset;
+        std::unordered_set<std::string> warnedUnsupportedMaterialKinds;
+        std::unordered_map<std::string, int> measuredTableCache;   // resolved .bsdf path -> descriptor index in rgbGridData, or -1
+    };
+    TriangleMaterial mapPbrtMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth);
+    TriangleMaterial mapPbrtDiffuseMaterial(const pbrt_flatten::Material& m, float sceneScale, float3 bboxCenter, float3 sceneOffset);
     // Area lights ("single quad, 2 triangles" shape only) - populates
     // `lights`, and the two out-params the very next phase
     // (loadPbrtRemainingTriangles) needs: which triangles this phase

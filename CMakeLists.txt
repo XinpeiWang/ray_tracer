@@ -389,6 +389,7 @@ if(RT_BUILD_METAL)
         # "Stage 2.5" block grew past a third of it, same pure-code-motion
         # precedent as the other metal_poc_*.mm splits.
         gpu/metal/metal_poc_pbrt_loader.mm
+        gpu/metal/metal_poc_pbrt_materials.mm
         # Stage 3 (GPU buffer/acceleration-structure upload) and Stage 4
         # (shader compile + dispatch + readback) - split out of
         # metal_poc.mm once that pair grew past ~1200 combined lines,
