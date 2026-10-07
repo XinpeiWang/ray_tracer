@@ -111,9 +111,10 @@ inline void scanText(const std::string &text, std::vector<std::string> &files,
 inline std::string fileOf(const std::string &want) { return want.substr(0, want.find('#')); }
 
 inline bool resolves(const std::filesystem::path &sceneDir, const std::string &want, bool mayBeGz) {
-	const std::filesystem::path near = sceneDir / want;
-	if (existsFile(near) || existsFile(want)) return true;
-	if (mayBeGz) return existsFile(near.string() + ".gz") || existsFile(want + ".gz");
+	// Not named `near`: that is a macro in the Windows headers (windef.h), which turns this declaration into a syntax error under MSVC.
+	const std::filesystem::path inSceneDir = sceneDir / want;
+	if (existsFile(inSceneDir) || existsFile(want)) return true;
+	if (mayBeGz) return existsFile(inSceneDir.string() + ".gz") || existsFile(want + ".gz");
 	return false;
 }
 
