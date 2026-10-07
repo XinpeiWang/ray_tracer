@@ -1,0 +1,19 @@
+# bdpt-sky-rough-glass.pbrt -- a rough glass sphere filling the view under a uniform white sky; BDPT/MLT must agree with the path tracer.
+#
+# A sky (like a distant light) is an infinite-light vertex with no position. BDPTVertex::PDF() derived the direction toward such a `prev` vertex from its
+# zeroed position, i.e. toward the world origin, so the reverse density of the first surface vertex of a light subpath was wrong in every MIS weight that
+# asks for it (s = 1 and 2 against s >= 3). Light entering a transmissive object makes those strategies matter: BDPT read +8% here at three bounces,
+# +14% on a diffuse-transmission shell (diffuse-transmission-furnace.pbrt), growing with the index of refraction.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 14 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+Material "dielectric" "float eta" [ 1.5 ] "float roughness" [ 0.5 ]
+Shape "sphere" "float radius" [ 1 ]

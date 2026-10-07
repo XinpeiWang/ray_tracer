@@ -559,6 +559,25 @@ TEST(PbrtBackendAgreementTest, DiffuseTransmissionShellReadsOnlyItsReflectionAtD
 	expectChannelMeans("diffuse-transmission-furnace", 256, 1, expected, 0.01, 0.02);
 }
 
+// A sky is an infinite-light vertex with no position; BDPTVertex::PDF() derived the direction toward such a `prev` vertex from its zeroed position (toward the
+// world origin), so the MIS weights of s = 1 and 2 against s >= 3 were wrong whenever light entered a transmissive object from a sky: a diffuse-transmission
+// shell read +14% at depth 3 and a rough glass sphere +8%. Both have an independent answer here (a closed form; the path tracer).
+TEST(PbrtBackendAgreementTest, BdptSkyLitDiffuseTransmissionShellHasItsClosedForm) {
+	const SceneDescriptor* s = find_example_scene("diffuse-transmission-furnace");
+	if (!s) GTEST_SKIP() << "diffuse-transmission-furnace.pbrt was not discovered - is pbrt_scenes/ present?";
+	const std::string out = "pbrt_agree_dtf_bdpt.exr";
+	double bdptMean = 0.0;
+	ASSERT_EQ(cpu_render_main_bdpt(48, 48, 512, 4, out.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(out, bdptMean));
+	std::remove(out.c_str());
+	std::printf("[furnace] diffuse-transmission-furnace depth 4: bdpt %.4f (closed form 0.6464)\n", bdptMean);
+	EXPECT_NEAR(bdptMean, 0.6464, 0.01 * 0.6464);
+}
+
+TEST(PbrtBackendAgreementTest, BdptSkyLitRoughGlassSphereAgreesWithPathTracer) {
+	expectBdptAgreesWithPathTracer("bdpt-sky-rough-glass", 6, 0.012);
+}
+
 // A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
 // every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU
 // backends, and of BDPT - which a path-tracer-vs-BDPT comparison alone could not, since the two could be wrong together.

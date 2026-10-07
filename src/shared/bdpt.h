@@ -519,14 +519,20 @@ struct BDPTVertex {
 			bdpt_detail::norm3(wn);
 		}
 
-		// `prev` is always a real, positioned vertex in practice - an
-		// infinite-light vertex can only ever be lightVerts[0] (the first
-		// vertex of a light subpath), which never has a `prev` of its own.
+		// `prev` can be an infinite-light vertex: lightVerts[0] of a sky/distant light is the `prev` of lightVerts[1], and the MIS weights ask for
+		// lightVerts[1]'s density with exactly that pair (qs->PDF(qsMinus, ...)). Such a vertex has no position (p() is zeroed), so the direction
+		// toward it is its stored arrival direction - from the real vertex it was captured against toward the light. Deriving it from prev->p() - p()
+		// pointed at the world origin instead, and every strategy whose weight involves that density (s = 1 and 2 against s >= 3 with a sky or
+		// distant light) read 8-25% off: a diffuse-transmission shell under a uniform sky 14% bright at depth 3.
 		T wp[3] = {T(0),T(0),T(0)};
 		if (prev) {
-			wp[0]=prev->p()[0]-p()[0]; wp[1]=prev->p()[1]-p()[1]; wp[2]=prev->p()[2]-p()[2];
-			if (bdpt_detail::len2_3(wp) == T(0)) return T(0);
-			bdpt_detail::norm3(wp);
+			if (prev->IsInfiniteLight()) {
+				wp[0]=prev->ei.dir[0]; wp[1]=prev->ei.dir[1]; wp[2]=prev->ei.dir[2];
+			} else {
+				wp[0]=prev->p()[0]-p()[0]; wp[1]=prev->p()[1]-p()[1]; wp[2]=prev->p()[2]-p()[2];
+				if (bdpt_detail::len2_3(wp) == T(0)) return T(0);
+				bdpt_detail::norm3(wp);
+			}
 		}
 
 		T pdf_dir = T(0);
