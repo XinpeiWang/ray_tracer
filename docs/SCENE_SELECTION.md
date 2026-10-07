@@ -39,7 +39,7 @@ The category letters, in GUI tab order:
 | H | Large Scenes | Full textured environments |
 | I | Education | Curated demos of specific Render Options tab controls (Sampler, Spectral rendering, Exposure, Tone mapping, Integrator) |
 | J | Textures | Texture-system demos (encoding/wrap/invert, procedural texture classes, nested texture references) - split out of Materials once it grew past 25 scenes mixing both concerns |
-| K | Custom Scenes | Loaded live from `.pbrt` files on disk (`pbrt_scenes/`) - ships with 177 bundled examples; drop in more and they appear without a rebuild |
+| K | Custom Scenes | Loaded live from `.pbrt` files on disk (`pbrt_scenes/`) - ships with 170+ bundled examples; drop in more and they appear without a rebuild |
 
 The full, authoritative scene table (id, name, description, performance
 hint, recommended SPP, GPU compatibility, camera) lives in

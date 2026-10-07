@@ -1,6 +1,6 @@
 # Ray Tracer
 
-A physically-based renderer with parallel **CPU**, **GPU (OptiX)** (Windows + NVIDIA) and **GPU (Metal)** (macOS) implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 151 built-in scenes plus 177 bundled pbrt example scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
+A physically-based renderer with parallel **CPU**, **GPU (OptiX)** (Windows + NVIDIA) and **GPU (Metal)** (macOS) implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 151 built-in scenes plus over 170 bundled pbrt example scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)
@@ -42,7 +42,7 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 ### Core Rendering
 - ✅ **Path tracing** with next-event estimation and multiple importance sampling (power heuristic)
 - ✅ **BVH acceleration** on both CPU and GPU (SAH-based CPU BVH; OptiX's native BVH/GAS on GPU) — not a linear scan
-- ✅ **151 built-in scenes plus 177 bundled pbrt example scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`, `K42`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
+- ✅ **151 built-in scenes plus over 170 bundled pbrt example scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`, `K42`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
 - ✅ **Real triangle meshes**: OBJ loading with BVH, per-face `.mtl` materials, and real `map_Kd` image-texture sampling (not just flat colors) on both CPU and GPU
 - ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — CPU-verified broadly, GPU-verified on one reference scene (see [Known Limitations](#-known-limitations))
 - ✅ **Bidirectional Path Tracing (BDPT) and Metropolis Light Transport (MLT)**, additional alternative integrators (CPU-only, `--bdpt`/`--mlt`) for scenes with difficult light transport
@@ -417,7 +417,7 @@ Both formats are generated after each render completes.
 
 ## 🖼️ Scenes
 
-151 built-in scenes plus 177 bundled pbrt example scenes, identified by a
+151 built-in scenes plus over 170 bundled pbrt example scenes, identified by a
 category letter + number (e.g. `A1`, `B10`, `G25`, `K42`) rather than a flat
 integer, selected via the CLI's scene-id argument or the GUI's scene
 dropdown. Categories: **A** Basics (the book progression), **B** Materials,
@@ -426,7 +426,7 @@ dropdown. Categories: **A** Basics (the book progression), **B** Materials,
 San Miguel, and dozens more), **H** Large Scenes ("movie-level" fully
 textured environments), **I** Education (curated demos of specific
 render-option controls), **J** Textures (texture-system demos), **K** Custom
-Scenes (loaded live from the `.pbrt` files in `pbrt_scenes/` - the 177
+Scenes (loaded live from the `.pbrt` files in `pbrt_scenes/` - the more than 170
 bundled examples, plus anything you drop in, no code changes or rebuild
 needed; see [`pbrt_scenes/README.md`](pbrt_scenes/README.md)). Every scene
 renders on the CPU renderer; the GUI's scene info shows which ones the GPU
@@ -580,7 +580,7 @@ ray_tracer/
 │
 ├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
 ├── images/                        # Texture images used by the built-in scenes (earth map, normal/bump maps)
-├── pbrt_scenes/                   # The 177 bundled .pbrt example scenes (category K) - add your own here
+├── pbrt_scenes/                   # The 170+ bundled .pbrt example scenes (category K) - add your own here
 ├── resources/                     # Application icon and Windows resource files
 │
 ├── tests/                         # Google Test suite (4,300+ tests, growing)
