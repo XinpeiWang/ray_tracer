@@ -36,6 +36,7 @@
 #include "measured_bxdf_loader.h"
 
 #include "../external/stb_image.h"
+#include "stb_load_large.h"   // stbi_loadf_from_memory_large: also loads images whose float buffer exceeds stb's 2 GB limit
 #include "../external/tinyexr.h"
 
 namespace pbrt_load {
@@ -258,7 +259,7 @@ inline bool decodeInfiniteLightImage(const std::string &filename, const std::str
 	// Everything else goes through stb_image's own HDR path (Radiance
 	// .hdr/.pic - the same decoder rtw_image's filename constructor uses).
 	int w = 0, h = 0, channels = 0;
-	float *pixels = stbi_loadf_from_memory(
+	float *pixels = stbi_loadf_from_memory_large(
 		reinterpret_cast<const unsigned char *>(bytes.data()),
 		static_cast<int>(bytes.size()), &w, &h, &channels, 3);
 	if (!pixels || w <= 0 || h <= 0) {

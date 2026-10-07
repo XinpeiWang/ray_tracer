@@ -17,6 +17,7 @@
 
 #define STBI_FAILURE_USERMSG
 #include "../external/stb_image.h"
+#include "../shared/stb_load_large.h"   // stbi_loadf_large: also loads images whose float buffer exceeds stb's 2 GB limit
 
 #ifndef STBI_FREE
 #define STBI_FREE(p) free(p)
@@ -181,7 +182,7 @@ class rtw_image {
         // an HDR source is already linear and is left alone, and any other gamma keeps stb's power law.
         const bool exact_srgb = (gamma_ == kDefaultGamma) && !stbi_is_hdr(filename.c_str());
         stbi_ldr_to_hdr_gamma(exact_srgb ? 1.0f : gamma_);
-        fdata = stbi_loadf(filename.c_str(), &image_width, &image_height, &n, bytes_per_pixel);
+        fdata = stbi_loadf_large(filename.c_str(), &image_width, &image_height, &n, bytes_per_pixel, exact_srgb ? 1.0f : gamma_);
         stbi_ldr_to_hdr_gamma(kDefaultGamma);
         if (fdata == nullptr) return false;
         if (exact_srgb) {

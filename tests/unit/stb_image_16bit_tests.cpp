@@ -11,6 +11,7 @@
 #include <gtest/gtest.h>
 
 #include "../../src/external/stb_image.h"
+#include "../../src/shared/stb_load_large.h"
 
 #define MINIZ_NO_ZLIB_COMPATIBLE_NAMES
 #include "../../src/external/miniz.h"
@@ -83,4 +84,46 @@ TEST(StbImage16BitTest, A16BitPngDecodesToFloatLikeTheTextureLoaderExpects) {
 	EXPECT_GT(px[0], 0.0f);
 	EXPECT_LT(px[17], 1.0f);
 	stbi_image_free(px);
+}
+
+// --- stb_load_large.h: the fallback for images whose float buffer exceeds stb's 2 GB limit -------------------------------------------------
+// The limit itself cannot be reached in a unit test (it needs a 3 GB buffer), so this checks what the fallback computes: decoding 8-bit and
+// converting must equal what stbi_loadf produces for the same bytes, for every channel count and gamma the call sites use.
+
+namespace {
+void expectFallbackMatchesStbiLoadf(int reqComp, float gamma) {
+	const std::string png = make16BitPng(3, 2);
+	const auto *bytes = reinterpret_cast<const unsigned char *>(png.data());
+	const int len = static_cast<int>(png.size());
+	stbi_ldr_to_hdr_gamma(gamma);
+	int w = 0, h = 0, c = 0;
+	float *expected = stbi_loadf_from_memory(bytes, len, &w, &h, &c, reqComp);
+	stbi_ldr_to_hdr_gamma(2.2f);   // stb's default; the global must not leak into other tests
+	ASSERT_NE(expected, nullptr) << stbi_failure_reason();
+	int w2 = 0, h2 = 0, c2 = 0;
+	float *got = stbi_loadf_via_8bit_from_memory(bytes, len, &w2, &h2, &c2, reqComp, gamma);
+	ASSERT_NE(got, nullptr);
+	EXPECT_EQ(w2, w);
+	EXPECT_EQ(h2, h);
+	EXPECT_EQ(c2, c);
+	for (int i = 0; i < w * h * reqComp; ++i) EXPECT_NEAR(got[i], expected[i], 1e-6f) << "value " << i << " (channels " << reqComp << ", gamma " << gamma << ")";
+	stbi_image_free(expected);
+	stbi_image_free(got);
+}
+}  // namespace
+
+TEST(StbLoadLargeTest, TheEightBitFallbackMatchesStbiLoadfForRgbAtStbsDefaultGamma) { expectFallbackMatchesStbiLoadf(3, 2.2f); }
+TEST(StbLoadLargeTest, TheEightBitFallbackMatchesStbiLoadfForRgbWithGammaOne) { expectFallbackMatchesStbiLoadf(3, 1.0f); }
+TEST(StbLoadLargeTest, TheEightBitFallbackKeepsAlphaLinear) { expectFallbackMatchesStbiLoadf(4, 2.2f); }
+
+TEST(StbLoadLargeTest, ThePublicEntryPointsLoadWhenStbCanAndRefuseWhatIsNotAnImage) {
+	const std::string png = make16BitPng(3, 2);
+	int w = 0, h = 0, c = 0;
+	float *p = stbi_loadf_from_memory_large(reinterpret_cast<const unsigned char *>(png.data()), static_cast<int>(png.size()), &w, &h, &c, 3);
+	ASSERT_NE(p, nullptr);
+	EXPECT_EQ(w, 3);
+	stbi_image_free(p);
+	const unsigned char junk[16] = {1, 2, 3};
+	EXPECT_EQ(stbi_loadf_from_memory_large(junk, sizeof(junk), &w, &h, &c, 3), nullptr);
+	EXPECT_EQ(stbi_loadf_large("/nonexistent/definitely-not-here.png", &w, &h, &c, 3), nullptr);
 }
