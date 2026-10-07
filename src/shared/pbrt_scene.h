@@ -247,6 +247,10 @@ struct MaterialDecl {
 	std::string name;    // empty for an unnamed `Material` directive
 	std::string type;    // "diffuse", "conductor", "coateddiffuse", ...
 	ParamList params;
+	// True while this entry is only a placeholder made by a NamedMaterial that came BEFORE its MakeNamedMaterial (pbrt-v4 allows that: named
+	// materials are resolved after the whole file is read). MakeNamedMaterial fills it in; one still set at the end of the file is an error.
+	bool forwardRef = false;
+	int forwardLine = 0;
 };
 
 struct TextureDecl {
@@ -759,6 +763,8 @@ public:
 			}
 			if (!dispatch()) return result_;
 		}
+		for (const MaterialDecl &mat : s_.materials)
+			if (mat.forwardRef) return fail(mat.forwardLine, "NamedMaterial '" + mat.name + "' was never declared");
 		result_.ok = true;
 		result_.scene = s_;
 		return result_;
@@ -1173,6 +1179,15 @@ private:
 			}
 			m.params = readParams();
 			if (d == "MakeNamedMaterial") m.type = m.params.getString("type", "diffuse");
+			if (d == "MakeNamedMaterial") {
+				for (std::size_t i = 0; i < s_.materials.size(); ++i) {
+					if (s_.materials[i].forwardRef && s_.materials[i].name == m.name) {
+						s_.materials[i] = m;   // the placeholder a NamedMaterial left for it; shapes that used it already point here
+						gs_.materialIndex = static_cast<int>(i);
+						return true;
+					}
+				}
+			}
 			s_.materials.push_back(m);
 			gs_.materialIndex = static_cast<int>(s_.materials.size()) - 1;
 			return true;
@@ -1185,8 +1200,16 @@ private:
 			int found = -1;
 			for (std::size_t i = 0; i < s_.materials.size(); ++i)
 				if (s_.materials[i].name == want) found = static_cast<int>(i);
-			if (found < 0)
-				return (result_ = fail(line, "NamedMaterial '" + want + "' was never declared")), false;
+			if (found < 0) {
+				// Used before it is made: keep a placeholder so shapes can point at it, and let the later MakeNamedMaterial fill it in.
+				MaterialDecl placeholder;
+				placeholder.name = want;
+				placeholder.type = "diffuse";
+				placeholder.forwardRef = true;
+				placeholder.forwardLine = line;
+				s_.materials.push_back(placeholder);
+				found = static_cast<int>(s_.materials.size()) - 1;
+			}
 			gs_.materialIndex = found;
 			return true;
 		}

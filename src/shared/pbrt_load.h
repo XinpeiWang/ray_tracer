@@ -71,8 +71,20 @@ inline std::string join(const std::string &dir, const std::string &path) {
 	return (dir.empty() || isAbsolute(path)) ? path : dir + path;
 }
 
+// The path a file can actually be opened at: `path` itself, or - for a relative path - the same path under the per-user asset folder
+// (pbrt_asset_check.h userAssetRoot()), where "Download missing files" puts what it fetches. Empty if neither exists. Every read in this
+// loader goes through here, so a scene file, its Includes, textures, meshes and data files all resolve there the same way.
+inline std::string locateFile(const std::string &path) {
+	{ std::ifstream in(path, std::ios::binary); if (in) return path; }
+	const std::string alt = pbrt_asset_check::userAssetPath(std::string(), path);
+	if (!alt.empty()) { std::ifstream in(alt, std::ios::binary); if (in) return alt; }
+	return std::string();
+}
+
 inline bool readFile(const std::string &path, std::string &out) {
-	std::ifstream in(path, std::ios::binary);
+	const std::string located = locateFile(path);
+	if (located.empty()) return false;
+	std::ifstream in(located, std::ios::binary);
 	if (!in) return false;
 	std::ostringstream ss;
 	ss << in.rdbuf();
@@ -81,8 +93,7 @@ inline bool readFile(const std::string &path, std::string &out) {
 }
 
 inline bool fileExists(const std::string &path) {
-	std::ifstream in(path, std::ios::binary);
-	return static_cast<bool>(in);
+	return !locateFile(path).empty();
 }
 
 // Resolves `want` the same scene-directory-first, then as-given way as
@@ -93,10 +104,9 @@ inline bool fileExists(const std::string &path) {
 // first just to be handed back to another reader. Empty return means
 // neither location has the file.
 inline std::string resolveExistingPath(const std::string &sceneDir, const std::string &want) {
-	const std::string nearScene = join(sceneDir, want);
-	if (fileExists(nearScene)) return nearScene;
-	if (fileExists(want)) return want;
-	return std::string();
+	const std::string nearScene = locateFile(join(sceneDir, want));
+	if (!nearScene.empty()) return nearScene;
+	return locateFile(want);
 }
 
 inline bool endsWithCaseInsensitive(const std::string &path, const std::string &ext) {
@@ -399,6 +409,18 @@ inline LoadResult loadFile(const std::string &path,
 		r.scene = pbrt_flatten::flatten(parsed.scene, meshes);
 	}
 	r.ok = true;
+
+	// A Shape naming "file.obj#group" is reported missing by flatten() whenever the mesh callback fails - including when the FILE exists but has no
+	// such group (a newer upstream copy of an OBJ that dropped or renamed a material). That is not a missing file: it keeps its warning but must
+	// not count as one, or a scene fetched by "Download missing files" would be refused over a group name.
+	{
+		std::vector<std::string> reallyMissing;
+		for (const std::string &f : r.scene.missingFiles) {
+			const std::string base = f.substr(0, f.find('#'));
+			if (detail::locateFile(detail::join(sceneDir, base)).empty() && detail::locateFile(base).empty()) reallyMissing.push_back(f);
+		}
+		r.scene.missingFiles = std::move(reallyMissing);
+	}
 
 	// Every mesh the scene referenced was unreadable and there is no other geometry:
 	// rendering it would produce a black or sky-only image and report success, which is

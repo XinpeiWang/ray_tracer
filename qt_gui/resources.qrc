@@ -5,6 +5,7 @@
          since the files already live in an icons/ directory. -->
     <qresource prefix="/">
         <file alias="assets/downloadable_assets.txt">downloadable_assets.txt</file>
+        <file alias="assets/scene_packs.txt">scene_packs.txt</file>
         <file>icons/render.svg</file>
         <file>icons/stop.svg</file>
         <file>icons/pause.svg</file>
