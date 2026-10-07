@@ -302,6 +302,12 @@ cmake --build . --config Release
 ctest -C Release --output-on-failure
 ```
 
+The same target builds on **macOS** (about 3,570 tests, ~17 s to run; the OptiX/CUDA-dependent files and the few that call the renderer libraries directly are not part of it, see the comment at the top of `tests/CMakeLists.txt`):
+```bash
+cmake -S tests -B build_tests -DCMAKE_BUILD_TYPE=Release && cmake --build build_tests -j8 --target unit_tests
+(cd build_tests && ctest --output-on-failure)   # or run from the repo root: build_tests/unit_tests
+```
+
 #### Option C: Run the pre-built test binary directly
 ```cmd
 bin\Release\ray_tracer_tests.exe

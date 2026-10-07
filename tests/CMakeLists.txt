@@ -16,6 +16,42 @@ set(COMMON_INCLUDES ${CMAKE_SOURCE_DIR}/../src ${CMAKE_SOURCE_DIR}/../src/TheRes
 add_compile_definitions(_USE_MATH_DEFINES NOMINMAX _CRT_SECURE_NO_WARNINGS)
 
 add_executable(unit_tests
+    # Registered in a later pass (they existed on disk but were never built by this target); each compiles without the
+    # OptiX/CUDA headers or the cpu_renderer/optix_renderer libraries. The 20 files that need the OptiX/CUDA headers (pbrt_gpu_*, sppm_gpu_*, wavefront_{nrc,restir,svgf,upscale}_*,
+    # pbrt_alpha_cutout, quad_light_estimator_bias, shadow_ray),
+    # plus energy_conservation_tests, gpu_render_tests, interface_tests, pbrt_example_scenes_tests and scene_registry_tests (they call the renderers' C entry points, so they need those libraries linked) stay out, for the reason documented on pbrt_flatten_tests above.
+    unit/accelerator_override_tests.cpp
+    unit/adaptive_sampling_tests.cpp
+    unit/area_light_sampling_tests.cpp
+    unit/bilinear_patch_hittable_tests.cpp
+    unit/camera_math_tests.cpp
+    unit/camera_path_tests.cpp
+    unit/curve_shape_tests.cpp
+    unit/curve_tessellate_tests.cpp
+    unit/error_codes_tests.cpp
+    unit/exr_writer_tests.cpp
+    unit/gzip_inflate_tests.cpp
+    unit/hair_precision_tests.cpp
+    unit/launcher_args_accelerator_tests.cpp
+    unit/launcher_args_adaptive_tests.cpp
+    unit/launcher_args_bdpt_mlt_tests.cpp
+    unit/launcher_args_denoise_blend_tests.cpp
+    unit/launcher_args_lightsampler_tests.cpp
+    unit/launcher_args_time_limit_tests.cpp
+    unit/light_sampler_resolution_tests.cpp
+    unit/mtl_material_tests.cpp
+    unit/obj_negative_indices_tests.cpp
+    unit/palette_data_tests.cpp
+    unit/palette_file_tests.cpp
+    unit/ply_mesh_tests.cpp
+    unit/render_output_parser_tests.cpp
+    unit/restir_tests.cpp
+    unit/sampler_kind_tests.cpp
+    unit/scatter_record_transmission_tests.cpp
+    unit/sphere_cone_sampling_tests.cpp
+    unit/spherical_rectangle_adjudication_tests.cpp
+    unit/transform_instance_tests.cpp
+    unit/wavefront_temporal_upscale_math_tests.cpp
     unit/animated_transform_tests.cpp
     unit/anisotropic_ggx_tests.cpp
     unit/area_lights_tests.cpp
@@ -166,6 +202,9 @@ add_executable(unit_tests
     # mz_compressBound/mz_uncompress - same pairing cpu_renderer.vcxproj
     # already builds tinyexr_impl.cpp alongside.
     ${CMAKE_SOURCE_DIR}/../src/external/miniz.c
+    # The Qt-free palette parser/data the GUI's theme system is built on (palette_data_tests/palette_file_tests).
+    ${CMAKE_SOURCE_DIR}/../qt_gui/palette_data.cpp
+    ${CMAKE_SOURCE_DIR}/../qt_gui/palette_file.cpp
     unit/rng_tests.cpp
     unit/sample_function_tests.cpp
     unit/sampled_grid_tests.cpp
