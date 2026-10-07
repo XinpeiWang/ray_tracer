@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # infinite-light-image.pbrt -- exercises an IMAGE-based "infinite" light
 # (as opposed to infinite-light.pbrt's own constant-colour "rgb L" case) -
 # reuses uv-checker.bmp (already bundled for texture tests elsewhere in

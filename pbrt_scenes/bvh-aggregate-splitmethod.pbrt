@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bvh-aggregate-splitmethod.pbrt -- exercises the Accelerator "bvh"
 # "string splitmethod" directive (BvhAggregate wiring, pbrt_flatten.h's
 # FlatScene::acceleratorSplitMethod, real Accelerator::SplitMethod dispatch

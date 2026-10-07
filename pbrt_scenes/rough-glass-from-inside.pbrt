@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # rough-glass-from-inside.pbrt -- the camera sits INSIDE a big rough glass sphere and looks at its far wall, with a lamp
 # straight outside the wall. Every pixel is an interior vertex where the ray leaves the glass.
 #

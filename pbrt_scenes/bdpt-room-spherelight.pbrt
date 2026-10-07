@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bdpt-room-spherelight.pbrt -- a small spherical area light at the centre of a closed diffuse sphere; BDPT and the path tracer must agree.
 #
 # BDPT's light sampling drew a point uniformly over the whole sphere's surface but divided by the sphere's visible-cone density (hittable::pdf_value),

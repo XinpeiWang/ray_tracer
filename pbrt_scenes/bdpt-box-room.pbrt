@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bdpt-box-room.pbrt -- a closed white box lit by one large plate light that the camera sees the edge of: BDPT and the path tracer must agree at any depth.
 #
 # Two BDPT defects showed up only here. (1) The random walk never set the endpoint's pdfRev (pbrt's RandomWalk does), so for every strategy with

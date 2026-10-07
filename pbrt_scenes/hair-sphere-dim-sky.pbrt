@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # hair-sphere-dim-sky.pbrt -- regression scene for the GPU backends lacking the CPU's path-throughput ceiling.
 #
 # One closed hair-material sphere under a dim uniform sky. HairBxDF's sample weight (f / pdf) averages ~4, and

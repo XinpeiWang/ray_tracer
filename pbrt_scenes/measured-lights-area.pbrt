@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # measured-lights-area.pbrt -- measured-lights.pbrt without the point light: the small area light alone.
 #
 # This is the scene whose mean the BSDF-sampling-only estimator could get right (a delta light is invisible to it): that estimator converged

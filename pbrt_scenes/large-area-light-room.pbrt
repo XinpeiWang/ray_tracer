@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # large-area-light-room.pbrt -- regression scene for the GPU wavefront backend's missing BSDF-hit MIS.
 #
 # A closed 5-unit room of bright (0.8) diffuse walls lit by one 4.6x4.6 ceiling light that covers most of the

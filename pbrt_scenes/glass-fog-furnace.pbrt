@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # glass-fog-furnace.pbrt -- a non-absorbing fog sphere inside a real glass shell (eta 1.5), under a uniform sky.
 #
 # pbrt-v4 makes every surface that has a material opaque to NEE shadow rays (VolPathIntegrator::SampleLd), glass

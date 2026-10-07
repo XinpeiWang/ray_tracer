@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # emissive-octahedron-furnace.pbrt -- regression scene for GPU shadow rays treating emissive triangles as
 # transparent: a small two-sided octahedron light (8 emissive triangles, L = 30, half-diagonal 0.3) at the
 # centre of a closed diffuse sphere (radius 5, albedo 0.6).

@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # flush-ceiling-light.pbrt -- regression scene for a GPU shadow-ray bug: a closed 5-unit room lit only by a
 # 1x1 ceiling light that sits 0.005 units below the ceiling, the way a lamp fixture does.
 #

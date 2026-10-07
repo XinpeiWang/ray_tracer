@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # chromatic-camera-medium-absorber.pbrt -- the camera sits inside a pure absorber that is thicker in blue than in red.
 #
 # The pbrt-v4 "camera medium": a MediumInterface declared before the Camera directive fills all of space around the camera. A

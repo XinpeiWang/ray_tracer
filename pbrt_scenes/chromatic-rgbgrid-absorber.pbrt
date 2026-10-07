@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # chromatic-rgbgrid-absorber.pbrt -- a 2x2x2 RGB voxel grid that only absorbs, thicker in blue than in red.
 #
 # The grid holds the same sigma_a = (0.1, 0.4, 0.9) in every voxel (sigma_s = 0), spanning the cube [-1,1]^3, seen end-on under a uniform sky

@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # chromatic-absorber.pbrt -- a pure absorber that is thicker in blue than in red, seen end-on under a uniform sky.
 #
 # sigma_a = (0.1, 0.4, 0.9) per unit length, no scattering, a unit sphere bounded with Material "interface". The camera looks

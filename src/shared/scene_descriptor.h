@@ -271,14 +271,18 @@ namespace SceneCategories {
     // that a "user" made them (a git-tracked, bundled pbrt_scenes/*.pbrt
     // example is just as "yours" as anything in the other categories).
     constexpr const char* CustomScenes = "Custom Scenes";
+    // The scenes this project's own tests render: closed-form furnaces, light-transport probes, one-feature fixtures. They live in pbrt_scenes/ and
+    // are worth browsing (each isolates one thing), but they are not demos, so they stay out of the user-facing tabs above. A scene file puts itself
+    // here with a "# @rt-category Test Scenes" line in its header. Last in kAll so that no earlier category's id letter moves.
+    constexpr const char* Tests = "Test Scenes";
 
     // Display order for the GUI's category tabs. Education and Textures sit
     // after the other compiled-in categories and before CustomScenes, which
-    // stays last so the built-in tabs never shift position when a scene
-    // folder appears.
+    // comes next so the built-in tabs never shift position when a scene
+    // folder appears; Test Scenes, also filled from disk, is last.
     constexpr const char* kAll[] = {
         Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene,
-        Education, Textures, CustomScenes
+        Education, Textures, CustomScenes, Tests
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
 

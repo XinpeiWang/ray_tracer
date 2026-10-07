@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # fog-furnace.pbrt -- a non-absorbing fog sphere under a uniform sky, bounded the pbrt-v4 way with
 # Material "interface" (the shape has no BSDF of its own; the ray passes straight through).
 #
