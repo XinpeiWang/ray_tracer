@@ -15,7 +15,9 @@
  * check is opt-in (RT_GALLERY_CPU=1). Several registry entries are twins of one pbrt file (a curated H entry and its auto-discovered
  * K entry): only the first is rendered. RT_SKIP_GALLERY=1 skips the whole suite.
  *
- * Do not run RT_GALLERY_ALL=1 RT_GALLERY_CPU=1 in one process: the CPU and GPU copies of several multi-million-triangle scenes accumulate
+ * The GPU side is safe in one process: scene_builder.cpp keeps only the two most recent pbrt scenes (it used to keep every one, 1-2 GB each, and the
+ * 354-scene run reached 25 GB; with RT_GALLERY_ALL=1 it now peaks at ~10 GB). The CPU side is not: do not run RT_GALLERY_ALL=1 RT_GALLERY_CPU=1 in one
+ * process, as the CPU and GPU copies of several multi-million-triangle scenes accumulate
  * (private memory reached 16 GB after six of them on a 32 GB machine) and from about the tenth large scene on every render fails with
  * "out of memory" / "bad allocation". scripts/run_gallery_isolated.ps1 runs each scene in a fresh process instead.
  *
