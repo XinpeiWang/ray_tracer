@@ -20,6 +20,33 @@ Rendered with this project: 720 x 720, 2048 samples per pixel, max depth 12, the
 | <img src="docs/gallery/B7-coated-conductor.jpg" width="260"><br>**Coated conductor (B7)**<br>pbrt-v4 layered BxDF: lacquered gold<br>22 s | <img src="docs/gallery/D1-depth-of-field.jpg" width="260"><br>**Depth of field (D1)**<br>thin-lens camera<br>3 s | <img src="docs/gallery/F4-curve-fibers.jpg" width="260"><br>**Curve fibres (F4)**<br>real Bezier strand geometry<br>10 s |
 | <img src="docs/gallery/G12-trophy-room.jpg" width="260"><br>**Trophy room (G12)**<br>four meshes, mixed materials<br>4 s | <img src="docs/gallery/B3-rough-glass.jpg" width="260"><br>**Rough glass (B3)**<br>GGX rough dielectric<br>7 s | <img src="docs/gallery/B13-wax-and-jade.jpg" width="260"><br>**Wax and jade (B13)**<br>subsurface-like translucency<br>10 s |
 
+## ✅ How the renders are checked
+
+A rendering bug is quiet: the picture still looks plausible while being 20% too dark. So the test suite checks absolute numbers, not only that the backends agree with each other.
+
+- **Closed forms.** Furnace scenes (a diffuse sphere under a white sky must read its albedo), a closed diffuse-transmission shell (0.2, 0.56, 0.632, 0.6464 ... 0.65), per-channel Beer-Lambert absorbers, and a point light over a plate are read by the CPU, both OptiX backends and the alternative integrators.
+- **Cross-checks.** The CPU path tracer against the two OptiX backends and Metal, and BDPT, MLT, SPPM and the debug integrators against the path tracer, on purpose-built scenes.
+- **pbrt-v4 as the reference.** Where behaviour is in doubt, the pbrt-v4 source is read, and an independent script (`scripts/pbrt_rough_glass_reference.py`) provides a path-level reference for rough glass.
+- **Over 5,000 automated tests**, under ten minutes on a desktop GPU. [`docs/PBRT_SUPPORT.md`](docs/PBRT_SUPPORT.md) lists, feature by feature and backend by backend, what is supported and how closely it matches.
+
+How this found more than a dozen bugs that a plain backend-versus-backend comparison could not see: [Closed forms found the bugs](docs/CLOSED_FORMS_FOUND_THE_BUGS.md).
+
+## ⚡ Try it in a few minutes, no NVIDIA GPU needed
+
+The CPU renderer is a complete renderer and builds with plain CMake and a C++17 compiler (on Windows, Visual Studio with the C++ workload). No CUDA, OptiX or Qt is needed:
+
+```bash
+git clone --depth 1 https://github.com/XinpeiWang/ray_tracer
+cd ray_tracer
+cmake -S . -B build
+cmake --build build --config Release --target ray_tracer
+# run from the repository root, so the scenes and textures are found:
+build/Release/ray_tracer --cpu --output cornell.png 400 128 8 A1      # Windows (Visual Studio generator)
+build/ray_tracer          --cpu --output cornell.png 400 128 8 A1      # macOS and other single-config generators
+```
+
+That renders the Cornell box (A1) at 400 px with 128 samples per pixel and depth 8: about 5 seconds on a 16-core desktop CPU (the build took under a minute). The arguments are `[width] [samples] [max depth] [scene id]`; `--gpu` on a build without GPU support falls back to the CPU with a warning. Add `-DRT_BUILD_GPU=ON` (Windows with CUDA and OptiX) or `-DRT_BUILD_METAL=ON` (macOS) to the first `cmake` line for the GPU backends, or use the portable release below.
+
 ## 📦 Download & Use (No Build Required!)
 
 **Want to try it without building?** Download the portable release:
