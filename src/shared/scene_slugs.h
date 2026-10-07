@@ -36,6 +36,40 @@ inline std::string slugify(const std::string& text) {
     return out.empty() ? std::string("scene") : out;
 }
 
+// A readable name for a file's stem, for scenes that have no title of their own: "bdpt-box-room" -> "BDPT Box Room", "cornell_dof" -> "Cornell DoF".
+// Words split on hyphen, underscore, dot and space; known acronyms keep their capitals and small joining words stay lower case.
+inline std::string prettyName(const std::string& stem) {
+    static const struct { const char* lower; const char* shown; } kSpecial[] = {
+        {"bdpt", "BDPT"}, {"mlt", "MLT"}, {"sppm", "SPPM"}, {"rgb", "RGB"}, {"dof", "DoF"}, {"hdri", "HDRI"}, {"hdr", "HDR"}, {"pbrt", "pbrt"},
+        {"gpu", "GPU"}, {"cpu", "CPU"}, {"brdf", "BRDF"}, {"bsdf", "BSDF"}, {"nee", "NEE"}, {"mis", "MIS"}, {"ior", "IOR"}, {"uv", "UV"},
+        {"ply", "PLY"}, {"ao", "AO"}, {"vdb", "VDB"}, {"nanovdb", "NanoVDB"}, {"vw", "VW"}, {"obj", "OBJ"}};
+    static const char* const kSmall[] = {"a", "an", "and", "at", "for", "from", "in", "of", "on", "the", "to", "with"};
+    std::string out, word;
+    bool first = true;
+    auto flush = [&]() {
+        if (word.empty()) return;
+        std::string shown;
+        for (const auto& sp : kSpecial)
+            if (word == sp.lower) shown = sp.shown;
+        if (shown.empty()) {
+            bool joiner = false;
+            for (const char* w : kSmall) joiner = joiner || word == w;
+            shown = word;
+            if (!(joiner && !first) && std::isalpha(static_cast<unsigned char>(shown[0]))) shown[0] = static_cast<char>(std::toupper(static_cast<unsigned char>(shown[0])));
+        }
+        if (!out.empty()) out += ' ';
+        out += shown;
+        word.clear();
+        first = false;
+    };
+    for (unsigned char c : stem) {
+        if (c == '-' || c == '_' || c == '.' || c == ' ') flush();
+        else word += static_cast<char>(std::tolower(c));
+    }
+    flush();
+    return out.empty() ? stem : out;
+}
+
 // The base slug, or base-2, base-3, ...: the first one not already in the taken set (it is added to the set).
 inline std::string uniqueSlug(const std::string& base, std::set<std::string>& taken) {
     std::string slug = base;

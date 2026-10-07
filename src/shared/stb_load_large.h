@@ -49,7 +49,12 @@ inline float *stbi_loadf_from_memory_large(const stbi_uc *buffer, int len, int *
 
 inline float *stbi_loadf_large(const char *filename, int *x, int *y, int *comp, int reqComp, float ldrGamma = 2.2f) {
 	if (float *p = stbi_loadf(filename, x, y, comp, reqComp)) return p;
+#ifdef _WIN32
+	std::FILE *f = nullptr;   // MSVC rejects fopen (C4996)
+	if (fopen_s(&f, filename, "rb") != 0) f = nullptr;
+#else
 	std::FILE *f = std::fopen(filename, "rb");
+#endif
 	if (!f) return nullptr;
 	std::vector<stbi_uc> bytes;
 	unsigned char chunk[1 << 16];

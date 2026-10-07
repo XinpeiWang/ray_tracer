@@ -872,6 +872,18 @@ namespace pbrt_scene_registry {
 
 std::map<std::string, std::string>& paths();   // defined below, used by append()
 
+// The name shown for a scene found on disk: the title the Scene Builder saved in it, else its file name made readable ("bdpt-box-room" -> "BDPT Box
+// Room"). A scene in a downloaded collection's own folder is shown as "<Folder>: <Scene>", since "Frame 25" alone says nothing.
+inline std::string displayNameFor(const pbrt_discover::Discovered& d) {
+    if (!d.title.empty()) return d.title;
+    const std::string pretty = scene_slugs::prettyName(d.name);
+    if (d.nested) {
+        const std::string folder = std::filesystem::path(d.path).parent_path().filename().string();
+        if (!folder.empty()) return scene_slugs::prettyName(folder) + ": " + pretty;
+    }
+    return pretty;
+}
+
 inline void append(std::vector<SceneDescriptor>& registry) {
     std::vector<pbrt_discover::Discovered> found = pbrt_discover::scanDefaultPaths();
 
@@ -945,7 +957,7 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             continue;
         }
 
-        names.push_back(d.name);
+        names.push_back(displayNameFor(d));
         descriptions.push_back(
             "Loaded from " + d.path + " (pbrt-v4 scene). Camera, resolution and "
             "sample count come from the file itself; geometry is read on first "
@@ -1079,6 +1091,15 @@ inline const SceneDescriptor* find_scene(const std::string& key) {
         if (s.id == key) return &s;
     for (const auto& s : registry)
         if (!s.slug.empty() && s.slug == key) return &s;
+    return nullptr;
+}
+
+// The scene loaded from the .pbrt file whose name (without the extension) is `stem` - however the scene is listed (a curated entry, a file found in
+// pbrt_scenes/, or both) - or nullptr. Tests use it to find a scene by the file it is made from.
+inline const SceneDescriptor* find_scene_by_file_stem(const std::string& stem) {
+    (void)get_scene_registry();   // paths() is filled as a side effect of building the registry
+    for (const auto& [id, path] : pbrt_scene_registry::paths())
+        if (std::filesystem::path(path).stem().string() == stem) return find_scene(id);
     return nullptr;
 }
 

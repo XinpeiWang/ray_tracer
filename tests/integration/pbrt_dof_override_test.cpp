@@ -30,13 +30,7 @@ extern "C" {
 
 namespace {
 
-const SceneDescriptor* find_example_scene(const char* stem) {
-	for (const auto& s : get_scene_registry()) {
-		if (s.category == SceneCategories::CustomScenes && s.name && std::string(s.name) == stem)
-			return &s;
-	}
-	return nullptr;
-}
+const SceneDescriptor* find_example_scene(const char* stem) { return find_scene_by_file_stem(stem); }
 
 bool isZeroDisk(const GpuCameraParams& extra) {
 	return extra.defocus_disk_u.x == 0.0f && extra.defocus_disk_u.y == 0.0f && extra.defocus_disk_u.z == 0.0f &&
