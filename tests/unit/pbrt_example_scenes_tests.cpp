@@ -622,6 +622,64 @@ TEST(PbrtBackendAgreementTest, SppmDiskAndCylinderLightsAgreeWithPathTracer) {
 	EXPECT_LT(sppmMean, 1.05 * pathMean) << "SPPM too bright vs the path tracer";
 }
 
+// BDPT and the debug integrators used to shoot every camera ray through a uniform box pixel, while the path tracer importance-samples the film position through
+// the scene's reconstruction filter (the default Gaussian is wider than a pixel). Same scene, same expectation, but a hard-edged emitter seen directly came out
+// as crisp pixels in BDPT and as a soft, wider edge in the path tracer. The camera-path estimate of BDPT and of --simplepath/--randomwalk/--ao is now averaged
+// with the filter weights too (pbrt-v4's own GetCameraSample); light-tracing splats and MLT stay unfiltered, as in pbrt-v4. The window is the light of the
+// Cornell box and its edge, where the two differ by ~25% when one is filtered and the other is not and by noise (a few %) when both are.
+static bool loadLinearRgbPixels(const std::string& path, int& w, int& h, std::vector<float>& rgb) {
+	float* rgba = nullptr;
+	const char* err = nullptr;
+	if (LoadEXR(&rgba, &w, &h, path.c_str(), &err) != TINYEXR_SUCCESS) {
+		if (err) FreeEXRErrorMessage(err);
+		return false;
+	}
+	rgb.resize(static_cast<size_t>(w) * h * 3);
+	for (int i = 0; i < w * h; ++i)
+		for (int c = 0; c < 3; ++c) rgb[3 * static_cast<size_t>(i) + c] = std::isfinite(rgba[4 * i + c]) ? rgba[4 * i + c] : 0.0f;
+	free(rgba);
+	return true;
+}
+
+TEST(PbrtBackendAgreementTest, BdptAndSimplePathFilterTheirCameraRaysLikeThePathTracer) {
+	const SceneDescriptor* s = find_example_scene("cornell-box-native");
+	if (!s) GTEST_SKIP() << "cornell-box-native.pbrt was not discovered - is pbrt_scenes/ present?";
+	const int N = 64, kDepth = 1, kSpp = 512;   // depth 1: the visible light plus direct light; no indirect noise
+	int w = 0, h = 0;
+	std::vector<float> path, bdpt, simple;
+	const std::string a = "pbrt_agree_filter_path.exr", b = "pbrt_agree_filter_bdpt.exr", c = "pbrt_agree_filter_simple.exr";
+	ASSERT_EQ(cpu_render_main(N, N, kSpp, kDepth, a.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_EQ(cpu_render_main_bdpt(N, N, kSpp, kDepth, b.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_EQ(cpu_render_main_simplepath(N, N, kSpp, kDepth, 1, 1, c.c_str(), s->id.c_str(), 0.0, 0.0, 0.0, 0), 0);
+	ASSERT_TRUE(loadLinearRgbPixels(a, w, h, path));
+	ASSERT_TRUE(loadLinearRgbPixels(b, w, h, bdpt));
+	ASSERT_TRUE(loadLinearRgbPixels(c, w, h, simple));
+	std::remove(a.c_str());
+	std::remove(b.c_str());
+	std::remove(c.c_str());
+	// The light is near the top of the frame; take the window around it from the path tracer's own brightest pixel.
+	int by = 0, bx = 0;
+	float best = -1.0f;
+	for (int y = 0; y < h; ++y)
+		for (int x = 0; x < w; ++x) {
+			const float v = path[3 * (static_cast<size_t>(y) * w + x) + 1];
+			if (v > best) { best = v; by = y; bx = x; }
+		}
+	double sumPath = 0.0, diffBdpt = 0.0, diffSimple = 0.0;
+	for (int y = std::max(0, by - 6); y <= std::min(h - 1, by + 6); ++y)
+		for (int x = std::max(0, bx - 10); x <= std::min(w - 1, bx + 10); ++x) {
+			const size_t i = 3 * (static_cast<size_t>(y) * w + x) + 1;
+			sumPath += path[i];
+			diffBdpt += std::fabs(path[i] - bdpt[i]);
+			diffSimple += std::fabs(path[i] - simple[i]);
+		}
+	ASSERT_GT(sumPath, 1.0);
+	std::printf("[agree] filter window around the light: bdpt differs from the path tracer by %.1f%%, simplepath by %.1f%%\n",
+	            100.0 * diffBdpt / sumPath, 100.0 * diffSimple / sumPath);
+	EXPECT_LT(diffBdpt / sumPath, 0.10) << "BDPT's light edge does not match the path tracer's filtered one";
+	EXPECT_LT(diffSimple / sumPath, 0.10) << "--simplepath's light edge does not match the path tracer's filtered one";
+}
+
 // A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
 // every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU
 // backends, and of BDPT - which a path-tracer-vs-BDPT comparison alone could not, since the two could be wrong together.

@@ -1225,6 +1225,16 @@ class camera {
         return get_ray(i, j, s_i, s_j, offset);
     }
 
+    // A camera ray for pixel (i, j) whose film position is importance-sampled through the scene's reconstruction filter (the same FilterSampler render()
+    // uses): u0, u1 are uniform [0,1) and `filter_weight` receives that sample's filter weight (pbrt-v4 CameraSample::filterWeight; the pixel value is
+    // sum(weight * L) / sum(weight)). For the integrators that do not run render()'s own loop (BDPT, the debug integrators), so their camera-path estimates
+    // are filtered like the path tracer's instead of box-sampled. Requires initialize() to have run.
+    ray get_filtered_ray(int i, int j, double u0, double u1, double& filter_weight) const {
+        const FilterSample<double> fs = filterSampler_->sample(u0, u1);
+        filter_weight = fs.weight;
+        return get_ray(i, j, 0, 0, vec3(fs.p_x, fs.p_y, 0));
+    }
+
     // Overload accepting a pre-computed sub-pixel offset (avoids double Halton evaluation
     // when the caller already has the offset for filter weight computation).
     // out_camera_weight, if non-null, receives the camera's exposure weight for this

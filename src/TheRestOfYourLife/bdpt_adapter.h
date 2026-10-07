@@ -1274,6 +1274,19 @@ class BDPTSceneAdapter {
 		return true;
 	}
 
+	// Camera ray for pixel (ix, iy) with the film position importance-sampled through the scene's reconstruction filter (u0, u1 uniform [0,1)); `weight` is
+	// that sample's filter weight. See camera::get_filtered_ray(). The camera-subpath estimate of BDPT and the debug integrators is averaged with these weights,
+	// as pbrt-v4 does; light-tracing (t == 1) splats and MLT remain unfiltered, also as in pbrt-v4.
+	bool PixelToRayFiltered(int ix, int iy, double u0, double u1, double cam_p[3], double ray_d[3], double cam_n[3], double& weight) const {
+		ray r = cam_.get_filtered_ray(ix, iy, u0, u1, weight);
+		cam_p[0] = r.origin().x(); cam_p[1] = r.origin().y(); cam_p[2] = r.origin().z();
+		vec3 d = unit_vector(r.direction());
+		ray_d[0] = d.x(); ray_d[1] = d.y(); ray_d[2] = d.z();
+		vec3 fwd = unit_vector(cam_.lookat - cam_.lookfrom);
+		cam_n[0] = fwd.x(); cam_n[1] = fwd.y(); cam_n[2] = fwd.z();
+		return true;
+	}
+
 	// mlt.h's own required extension beyond bdpt.h's concept (its file
 	// header: "Luminance of a spectral RGB triple (scalar importance
 	// measure)") -- standard Rec. 709 relative luminance, matching
