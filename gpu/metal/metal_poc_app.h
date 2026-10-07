@@ -153,6 +153,9 @@ struct MetalPocApp {
     // nothing else to draw (pbrt_load::LoadResult::missingFiles). metal_render_main() turns it
     // into ERR_FILE_NOT_FOUND instead of rendering the empty room and reporting success.
     std::string pbrtMissingAssetsError;
+    // True for a scene flagged requires_files (set from the registry by the caller): any unreadable mesh is then fatal,
+    // not just "every mesh". See SceneDescriptor::missing_meshes_error.
+    bool pbrtRequireAllMeshes = false;
     // Optional 9th positional CLI arg (see parseArgsAndCreateDevice()'s own
     // argv[8] handling) - a scene_id one of buildHandAuthoredScene()'s own
     // real cases covers (section 116, docs/METAL_GPU_FEASIBILITY.md), for a

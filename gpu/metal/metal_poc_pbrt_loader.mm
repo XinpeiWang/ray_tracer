@@ -243,6 +243,11 @@ void MetalPocApp::loadPbrtScene() {
         if (!result.missingFiles.empty()) pbrtMissingAssetsError = result.error;
         return;
     }
+    if (pbrtRequireAllMeshes && !result.scene.missingFiles.empty()) {
+        pbrtMissingAssetsError = pbrt_load::detail::missingMeshesMessage(pbrtScenePath, result.scene.missingFiles, false);
+        fprintf(stderr, "loadPbrtScene: %s\n", pbrtMissingAssetsError.c_str());
+        return;
+    }
     pbrtTriangleFiberTangent.clear();
     if (const size_t added = tessellateUnsupportedShapes(result.scene, pbrtTriangleFiberTangent))
         fprintf(stderr, "loadPbrtScene: tessellated bilinear patch/cone/paraboloid/curve shapes into %zu triangle(s)\n", added);

@@ -659,3 +659,11 @@ TEST_F(TempTree, AssetCheckCountsAFileInTheUserAssetRootAsPresent) {
 	EXPECT_TRUE(pbrt_asset_check::check("scene.pbrt").missing.empty());
 }
 #endif
+
+TEST_F(TempTree, PartialMissingMeshMessageSaysPartAndNotNothing) {
+	// The wording used when a scene that needs its files loads but some are absent (callers decide whether that is fatal).
+	const std::string msg = pbrt_load::detail::missingMeshesMessage("scene.pbrt", {"models/a.obj#x", "models/a.obj#y"}, false);
+	EXPECT_NE(msg.find("models/a.obj"), std::string::npos) << msg;
+	EXPECT_NE(msg.find("missing part of the scene"), std::string::npos) << msg;
+	EXPECT_EQ(msg.find("nothing to render"), std::string::npos) << msg;
+}

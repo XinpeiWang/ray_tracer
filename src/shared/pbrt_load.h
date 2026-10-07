@@ -265,7 +265,8 @@ inline bool decodeInfiniteLightImage(const std::string &filename, const std::str
 // files, deduplicated and capped so a scene with thousands of shapes still gives a
 // readable line, and says where they were looked for.
 inline std::string missingMeshesMessage(const std::string &scenePath,
-										const std::vector<std::string> &missing) {
+										const std::vector<std::string> &missing,
+										bool everyShapeSkipped = true) {
 	std::vector<std::string> unique;
 	for (const std::string &f : missing) {
 		// "model.obj#group" names one group of a file: the file is what to install.
@@ -279,8 +280,10 @@ inline std::string missingMeshesMessage(const std::string &scenePath,
 		names += unique[i];
 	}
 	if (unique.size() > kShown) names += " (+" + std::to_string(unique.size() - kShown) + " more)";
-	return scenePath + ": nothing to render - every mesh file this scene needs could not be read, so all of its "
-		"shapes were skipped. Missing: " + names + ". They were looked for next to the scene file and relative "
+	const std::string what = everyShapeSkipped
+		? ": nothing to render - every mesh file this scene needs could not be read, so all of its shapes were skipped."
+		: ": some mesh files this scene needs could not be read, so the picture would be missing part of the scene.";
+	return scenePath + what + " Missing: " + names + ". They were looked for next to the scene file and relative "
 		"to the working directory; install the scene's assets (the GUI's \"Requires External Files\" tab lists "
 		"which scenes need them) and render again.";
 }
