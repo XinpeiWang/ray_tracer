@@ -803,11 +803,9 @@ Contributions are welcome! Areas for improvement:
 
 ## 📝 License
 
-This project is inspired by and includes code from the "Ray Tracing in One Weekend" series, which is licensed under CC0 1.0 Universal (public domain). Material/light/camera algorithms are original implementations informed by the publicly available pbrt-v4 book text.
+The original code in this repository is released under the **[MIT licence](LICENSE)**.
 
-GPU implementation and project structure are original work.
-
-See individual source files for specific attributions, and the [Mesh & Texture Credits](#mesh--texture-credits) section above for external asset licensing.
+It also contains code that comes from other projects, which keeps its own licence: ported and adapted code from **pbrt-v4** (Apache-2.0; many files under `src/shared/` carry the attribution header), the first scenes and classes of the "Ray Tracing in One Weekend" series (CC0), NanoVDB (Apache-2.0), tinyexr (BSD-3-Clause), stb (public domain) and miniz (public domain). Meshes, textures and scenes keep the licences of their sources and are **not** covered by the MIT licence. Everything, with the exact terms, is listed in **[THIRD_PARTY_NOTICES.md](THIRD_PARTY_NOTICES.md)**; see also the [Mesh & Texture Credits](#mesh--texture-credits) section above.
 
 ## 👤 Author
 

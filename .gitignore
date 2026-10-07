@@ -179,6 +179,9 @@ RayTracer_Package/tls/
 # Keep example/reference images if needed
 !docs/*.png
 !docs/*.jpg
+# The README gallery (docs/gallery/): a few small renders, not generated test output.
+!docs/gallery/*.png
+!docs/gallery/*.jpg
 
 # ...and real texture assets under images/ (e.g. earthmap.jpg for scenes
 # 3/8) - same reasoning as models/*.obj above: the broad *.jpg/*.png rules
@@ -440,6 +443,8 @@ tests/build_test/dda_mini.cpp
 !scripts/*.py
 total.txt
 *.txt
+# Licence texts under licenses/ are real files, not stray logs.
+!licenses/*.txt
 # CMakeLists.txt files are real, hand-written build files, not stray logs -
 # the blanket *.txt rule above was catching them incidentally (confirmed:
 # tests/CMakeLists.txt was already untracked because of this, despite being
