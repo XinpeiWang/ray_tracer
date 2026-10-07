@@ -64,10 +64,10 @@ library from a directory without scenes.)
   frames and checks that the picture is not black, that two frames with the same camera differ (the seed changes), that moving the
   camera changes the picture, that the output is finite, that every returned world position projects through the returned camera basis
   back onto its own pixel (the relation the GUI's reprojection relies on), and that an aperture override changes the picture.
-* `scripts/gui_selftest_macos.sh [App.app]` smoke-tests the real GUI, headless (Qt `offscreen`, a throwaway HOME): the Output Mode
+* `python3 scripts/gui_selftest.py [App.app] --live-preview` (on a Mac also `scripts/gui_selftest_macos.sh [App.app]`, a wrapper for it; the same script runs on Windows against `RayTracerGUI.exe`, without `--live-preview` where there is no GPU) smoke-tests the real GUI, headless (Qt `offscreen`, a throwaway HOME): the Output Mode
   list must contain an enabled "Live Preview (interactive)", and starting it must produce frames (>20 in 10 s) that change when
   the camera is orbited, that the picture fills the tile, and that switching depth of field on changes it; it also logs how close the
-  tile is to the settled picture 8 frames after a camera move (reprojection keeps it close). It saves screenshots of the app's own window. The hook behind it is `RT_GUI_SELFTEST=<ui|livepreview|options>`
+  tile is to the settled picture 8 frames after a camera move (reprojection keeps it close). It saves screenshots of the app's own window. The hook behind it is `RT_GUI_SELFTEST=<ui|livepreview|options|builder|diagnostics|download>`
   (`qt_gui/mainwindow_selftest.cpp`), a no-op unless that variable is set. Do NOT run the app without the throwaway HOME from a
   tool: macOS asks for permission to read ~/Pictures and an unanswered prompt blocks startup with no visible window.
 * `build/metal_live_bench [scene] [w] [h] [spp] [frames]` drives the live API with an orbiting camera, prints frame times and writes PNGs.

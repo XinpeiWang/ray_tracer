@@ -211,3 +211,65 @@ jobs:
             fi
             exit $rc
           fi
+
+  qt-gui:
+    # The Qt GUI was compiled in no CI job at all: a break there (a Qt API a newer or older Qt changed, a source file added to one platform's
+    # build list but not the other) showed up only when somebody built it by hand. This builds the real GUI project with the Qt version the
+    # project pins (6.11.1, see qt_gui/QT6_INSTALLATION_GUIDE.md) on both desktop platforms, and runs the QtTest for the two "Download missing
+    # files" back ends (qt_gui/tests/downloader_tests.cpp), which serve their own files from a local socket and need no network.
+    # It does not run the GUI (no GPU, no renderer libraries on a runner); scripts/gui_selftest.py does that on a developer machine.
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: macos-14
+            qt_arch: ""
+          - os: windows-latest
+            qt_arch: win64_msvc2022_64
+    runs-on: ${{ matrix.os }}
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+          arch: ${{ matrix.qt_arch }}
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Set up the MSVC environment (Windows)
+        if: runner.os == 'Windows'
+        uses: ilammy/msvc-dev-cmd@v1
+
+      - name: Build and run the downloader tests (macOS)
+        if: runner.os == 'macOS'
+        working-directory: qt_gui/tests
+        run: |
+          qmake downloader_tests.pro CONFIG+=release
+          make -j4
+          make check
+
+      - name: Build and run the downloader tests (Windows)
+        if: runner.os == 'Windows'
+        working-directory: qt_gui/tests
+        shell: cmd
+        run: |
+          qmake downloader_tests.pro CONFIG-=debug_and_release CONFIG+=release || exit /b 1
+          nmake || exit /b 1
+          nmake check || exit /b 1
+
+      - name: Build the GUI (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          mkdir -p build_gui && cd build_gui
+          qmake ../qt_gui/RayTracerGUI.pro CONFIG+=release
+          make -j4
+
+      - name: Build the GUI (Windows)
+        if: runner.os == 'Windows'
+        shell: cmd
+        run: |
+          mkdir build_gui && cd build_gui
+          qmake ..\qt_gui\RayTracerGUI.pro CONFIG-=debug_and_release CONFIG+=release || exit /b 1
+          nmake || exit /b 1
