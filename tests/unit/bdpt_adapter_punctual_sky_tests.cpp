@@ -124,7 +124,9 @@ TEST(BDPTAdapterPunctualSky, DistantLightIsSampledAsDelta) {
 	BDPTLightSample<double> ls{};
 	ASSERT_TRUE(adapter.SampleLight(random_double(), kRefP, ls));
 	EXPECT_TRUE(ls.is_delta);
-	EXPECT_FALSE(ls.is_infinite);
+	// A distant light is an INFINITE delta-direction light, as pbrt-v4 classifies it (bdpt_adapter.h SampleLight(), commit 1d559d1b);
+	// this used to assert false, from before the light-subpath side agreed.
+	EXPECT_TRUE(ls.is_infinite);
 	// distant_light_obj::sample_direct()'s wi is the constructor's own
 	// `dir` argument unchanged (DistantLightData::sample_wi() returns
 	// dir_x/y/z as-is - see punctual_lights.h) - no position dependence.
@@ -135,7 +137,7 @@ TEST(BDPTAdapterPunctualSky, DistantLightIsSampledAsDelta) {
 	BDPTLightLeSample<double> les{};
 	ASSERT_TRUE(adapter.SampleLightLe(0.0, nullptr, nullptr, les));
 	EXPECT_TRUE(les.is_delta_dir);
-	EXPECT_FALSE(les.is_infinite);
+	EXPECT_TRUE(les.is_infinite);
 	EXPECT_DOUBLE_EQ(les.pdf_dir, 1.0);
 	EXPECT_GT(les.pdf_pos, 0.0);
 	// The emitted photon travels the OPPOSITE way from "toward the light"
