@@ -38,6 +38,7 @@ add_executable(unit_tests
     unit/launcher_args_denoise_blend_tests.cpp
     unit/launcher_args_lightsampler_tests.cpp
     unit/launcher_args_time_limit_tests.cpp
+    unit/launcher_args_scene_file_tests.cpp
     unit/light_sampler_resolution_tests.cpp
     unit/mtl_material_tests.cpp
     unit/obj_negative_indices_tests.cpp
@@ -282,6 +283,7 @@ endif()
 # tests/ray_tracer_tests.vcxproj. Run it from the repository root: the tests find pbrt_scenes/ by a relative path.
 add_executable(cpu_integrator_tests
     unit/cpu_integrator_agreement_tests.cpp
+    unit/scene_builder_tests.cpp
     ${CMAKE_SOURCE_DIR}/../cpu_renderer/cpu_interface.cpp
     ${CMAKE_SOURCE_DIR}/../cpu_renderer/cpu_interface_bdpt.cpp
     ${CMAKE_SOURCE_DIR}/../src/data/rgb_spectrum_table_data.cpp

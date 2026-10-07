@@ -102,6 +102,9 @@ struct Discovered {
 	// directory instead. scene_registry.h uses this - not a per-file guess -
 	// to set SceneDescriptor::requires_files.
 	bool nested = false;
+	// True for a file the user named explicitly (ray_tracer.exe ... path/to/scene.pbrt, the GUI's Scene Builder) rather than one found by scanning a
+	// scene directory. Such a scene is numbered after every scanned one, so naming a file never shifts the id of a scene that scanning finds.
+	bool userFile = false;
 };
 
 namespace detail {
@@ -351,12 +354,31 @@ inline std::vector<std::string> defaultSearchPaths() {
 // The first search path that exists and holds at least one .pbrt wins. An
 // empty directory is skipped rather than accepted, so a stray empty
 // pbrt_scenes/ beside the executable cannot mask a real collection further up.
+// Scene files the user named directly (see Discovered::userFile). Filled by cpu_register_scene_file() before the scene registry is first built.
+inline std::vector<std::string> &extraSceneFiles() {
+	static std::vector<std::string> files;
+	return files;
+}
+
 inline std::vector<Discovered> scanDefaultPaths() {
+	std::vector<Discovered> found;
 	for (const std::string &dir : defaultSearchPaths()) {
-		std::vector<Discovered> found = scanDirectory(dir);
-		if (!found.empty()) return found;
+		found = scanDirectory(dir);
+		if (!found.empty()) break;
 	}
-	return {};
+	for (const std::string &path : extraSceneFiles()) {
+		// A file the scan already found (the user named a scene from pbrt_scenes/) keeps its scanned entry.
+		bool already = false;
+		for (const Discovered &d : found) {
+			std::error_code ec;
+			if (std::filesystem::equivalent(d.path, path, ec) && !ec) { already = true; break; }
+		}
+		if (already) continue;
+		Discovered d = describeFile(path);
+		d.userFile = true;
+		found.push_back(d);
+	}
+	return found;
 }
 
 } // namespace pbrt_discover

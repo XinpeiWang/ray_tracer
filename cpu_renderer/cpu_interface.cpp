@@ -962,6 +962,35 @@ extern "C" int cpu_scene_is_pbrt_backed_by_id(const char* scene_id) {
 	return s->is_pbrt_backed ? 1 : 0;
 }
 
+// Makes a .pbrt file the user named directly (not one found in pbrt_scenes/) renderable by id. The registry is built once, the first time anything asks for
+// it, so this has to run before that; once it has been built the file cannot be added. See pbrt_discover::Discovered::userFile.
+extern "C" int cpu_register_scene_file(const char* path, char* id_out, int id_out_size) {
+	if (!path || !id_out || id_out_size < 2) return 1;
+	id_out[0] = '\0';
+	static bool registry_built = false;
+	if (!registry_built) {
+		pbrt_discover::extraSceneFiles().emplace_back(path);
+		registry_built = true;
+	} else {
+		// A second file in one process cannot be added to a registry that is already built.
+		bool known = false;
+		for (const auto& kv : pbrt_scene_registry::paths()) {
+			std::error_code ec;
+			if (std::filesystem::equivalent(kv.second, path, ec) && !ec) known = true;
+		}
+		if (!known) return 2;
+	}
+	get_scene_registry();
+	for (const auto& kv : pbrt_scene_registry::paths()) {
+		std::error_code ec;
+		if (std::filesystem::equivalent(kv.second, path, ec) && !ec) {
+			std::snprintf(id_out, static_cast<size_t>(id_out_size), "%s", kv.first.c_str());
+			return 0;
+		}
+	}
+	return 3;
+}
+
 extern "C" const char* cpu_scene_name_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->name : "";

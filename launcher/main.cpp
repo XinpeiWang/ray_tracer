@@ -371,6 +371,23 @@ int main(int argc, char** argv) {
 	int  samples_per_pixel  = args.samples_per_pixel;
 	int  max_ray_depth      = args.max_ray_depth;
 	std::string scene_id    = args.scene_id;
+	if (!args.scene_file.empty()) {
+		// A .pbrt file named instead of a scene id: give it an id, before anything below touches the scene registry.
+		if (!std::filesystem::exists(args.scene_file)) {
+			std::cerr << "Scene file not found: " << args.scene_file << std::endl;
+			return EXIT_FAILURE;
+		}
+		char file_scene_id[32] = {};
+		const int reg = cpu_register_scene_file(args.scene_file.c_str(), file_scene_id, static_cast<int>(sizeof file_scene_id));
+		if (reg != 0) {
+			std::cerr << "Cannot render " << args.scene_file << ": "
+					  << (reg == 3 ? "it could not be read as a pbrt-v4 scene (see the message above)" : "the scene list was already built")
+					  << std::endl;
+			return EXIT_FAILURE;
+		}
+		scene_id = file_scene_id;
+		std::cout << "Scene file " << args.scene_file << " is scene " << scene_id << std::endl;
+	}
 	// Set once, here, before any entry point's first scene lookup - see
 	// accelerator_override.h's own comment for why this needs to be a
 	// process-global rather than threaded through RenderOptions (BDPT/MLT/

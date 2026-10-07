@@ -474,6 +474,11 @@ int cpu_scene_camera_is_animated_by_id(const char* scene_id);
 /// @return 1 if pbrt-backed, 0 if not (including if scene_id isn't found)
 int cpu_scene_is_pbrt_backed_by_id(const char* scene_id);
 
+/// Makes a .pbrt file named directly by the user renderable by id (the scene id is written to id_out). Must be called before anything else touches the
+/// scene registry in this process, which is built once.
+/// @return 0 on success; 1 bad arguments; 2 the registry was already built without this file; 3 the file could not be read as a scene (its error is on stderr)
+int cpu_register_scene_file(const char* path, char* id_out, int id_out_size);
+
 /// Whether this scene's CameraConfig.mode is CameraMode::UserControlled
 /// (the Cornell-box family's kCornellBoxCamera, and any pbrt-backed scene
 /// explicitly migrated with that mode - see build_curated_pbrt_scene_
