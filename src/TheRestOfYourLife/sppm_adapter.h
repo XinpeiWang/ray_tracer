@@ -34,6 +34,7 @@
 #include "pdf.h"
 #include "onb.h"
 #include "quad.h"
+#include "disk_cylinder_hittable.h"
 #include "sphere.h"
 #include "sphere_clipped_hittable.h"
 #include "camera.h"
@@ -480,6 +481,8 @@ class SPPMSceneAdapter {
 		if (auto s = std::dynamic_pointer_cast<sphere>(h)) return s->get_material();
 		if (auto sc = std::dynamic_pointer_cast<sphere_clipped_hittable>(h)) return sc->get_material();
 		if (auto t = std::dynamic_pointer_cast<triangle>(h)) return t->get_material();
+		if (auto d = std::dynamic_pointer_cast<disk_hittable>(h)) return d->get_material();
+		if (auto c = std::dynamic_pointer_cast<cylinder_hittable>(h)) return c->get_material();
 		return nullptr;
 	}
 
