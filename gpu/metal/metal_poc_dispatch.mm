@@ -16,7 +16,8 @@
 // compileShaderAndDispatch() is now a short driver over named stages (dsLoadShaderLibrary, dsBuildPipeline, dsCreateRenderTargets,
 // dsUploadTextures, dsUploadSamplingTables, dsFillUniforms, dsCheckResources, dsMakeRenderFrame): it had grown back to one ~1,080-line
 // function. The stage bodies are the original code, moved unchanged; what they hand to each other lives in DispatchState below, and each
-// stage reads it through references of the same names. Renders are byte-identical to before the split.#import <Metal/Metal.h>
+// stage reads it through references of the same names. Renders are byte-identical to before the split.
+#import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 #include <algorithm>
 #include "metal_poc_app.h"
