@@ -163,15 +163,14 @@ bool MetalPocApp::parseArgsAndCreateDevice(int argc, const char** argv) {
 }
 
 // --- Stage 2: build the scene's own host-side data ----------------------
-void MetalPocApp::buildScene() {
-    startGgxEnergyTableBuild();
+// The Cornell-style room: floor, ceiling, back wall, side walls and the small material-test panels (bump, glass pane, leaf).
+void MetalPocApp::buildDemoRoomWalls(const float3& white) {
     // --- Scene: a Cornell-box-like room, world units ~[-1,1] --------
     // Matches this project's CPU Cornell box in spirit (floor/ceiling/
     // back wall + coloured side walls + an object), not in exact
     // dimensions - this POC's scene is entirely separate authored data,
     // not a shared asset with cpu_renderer/.
 
-    const float3 white{0.73f, 0.73f, 0.73f};
     const float3 red{0.65f, 0.05f, 0.05f};
     const float3 green{0.12f, 0.45f, 0.15f};
 
@@ -261,6 +260,10 @@ void MetalPocApp::buildScene() {
             /*emission=*/simd::make_float3(0, 0, 0), /*lightId=*/-1,
             /*roughness=*/0.0f, /*ior=*/1.0f,
             /*transmitColor=*/float3{0.18f, 0.6f, 0.1f});
+}
+
+// The two real OBJ models (Suzanne, instanced twice with different transforms; the textured cow Spot).
+void MetalPocApp::loadDemoMeshes(const float3& white) {
     // Suzanne (Blender's monkey mascot, models/suzanne.obj - a real
     // mesh, 500 faces) replaces the earlier flat tilted-quad "mirror
     // test object": mirror MATERIAL coverage is already proven (the
@@ -326,6 +329,10 @@ void MetalPocApp::buildScene() {
         fprintf(stderr, "Continuing without Spot - check RT_MODELS_DIR / models/spot.obj.\n");
     }
 
+}
+
+// The ceiling area lights (geometry and light entries kept in sync by addAreaLight).
+void MetalPocApp::addDemoAreaLights(const float3& white) {
     // Area lights: real geometry, hanging just under the ceiling
     // (y=0.98, not y=1 itself - avoids z-fighting/coplanar overlap
     // with the ceiling's own quad above), facing straight down. Two
@@ -408,39 +415,10 @@ void MetalPocApp::buildScene() {
                      /*emission=*/coolAreaLightColor,
                      /*patternTileB=*/0.4f, /*patternScale=*/6.0f);
     }
-    // Real pbrt scene loading (see loadPbrtScene()'s own comment):
-    // ADDITIVE, not a replacement for the hardcoded room above - its own
-    // geometry gets recentred/rescaled/offset well clear of this room's
-    // own [-1,1] region (loadPbrtScene()'s own bounding-box normalization
-    // step), so the two coexist without visually interfering, without
-    // needing to conditionally skip building any of buildGPUResources()'s
-    // existing per-geometry-type acceleration structures/buffers (which
-    // assume every one of these vectors is always non-empty - true
-    // before this, and still true now). MUST run before
-    // buildPowerLightSampler() just below (which needs the FULL, final
-    // light list - the same reason every addAreaLight() call above also
-    // precedes it) - a first version called this after that build call
-    // instead, and every light this function adds silently became
-    // unreachable by NEE (see buildPowerLightSampler()'s own call site
-    // history for the full story).
-    if (skipDemoRoom) {
-        // Room walls, Spot, and both Suzanne instances: gone before the pbrt triangles are appended.
-        verts.clear(); normals.clear(); uvs.clear(); materials.clear();
-        suzanneVerts.clear(); suzanneNormals.clear(); suzanneUVs.clear(); suzanneMaterials.clear();
-    }
-    if (!pbrtScenePath.empty()) loadPbrtScene();
-    // Same ADDITIVE reasoning as loadPbrtScene() just above (its own
-    // comment) - mutually exclusive with it in practice (metal_render_main()
-    // only ever sets one of pbrtScenePath/handAuthoredSceneId), but if both
-    // were somehow set, both would just coexist harmlessly the same way a
-    // pbrt scene and this hardcoded room already do.
+}
 
-    // Builds each light's own pmf/aliasProb/aliasIndex in place - see
-    // buildPowerLightSampler()'s own comment. Must run after every
-    // addAreaLight() call above (needs the full, final light list) and
-    // before `lights` gets uploaded to the GPU buffer below.
-    buildPowerLightSampler(lights, logPowerLightSamplerLine);
-
+// The hand-placed spheres (custom bounding-box primitives), inserted at the front so pbrt-loaded ones keep their indices.
+void MetalPocApp::addDemoSpheres() {
     // Two spheres, both custom (non-triangle) primitives via a shared
     // bounding-box acceleration structure + intersection function
     // (metal_poc.metal's sphereIntersectionFunction indexes into
@@ -604,6 +582,10 @@ void MetalPocApp::buildScene() {
         sphereMaterials.erase(sphereMaterials.begin(), sphereMaterials.begin() + (sphereMaterials.size() - pbrtSpheresBefore));
     }
 
+}
+
+// The wall-mounted mirror disk.
+void MetalPocApp::addDemoDisks() {
     // A wall-mounted mirror disk (materialType 1) - a second, distinct
     // custom-primitive SHAPE, not just another sphere. Every custom
     // primitive so far (however many) has gone through the SAME
@@ -634,6 +616,10 @@ void MetalPocApp::buildScene() {
         diskMaterials.erase(diskMaterials.begin(), diskMaterials.begin() + (diskMaterials.size() - pbrtDisksBefore));
     }
 
+}
+
+// Point, spot, directional, projection and goniometric lights (skipped when isolating pbrt lighting).
+void MetalPocApp::addDemoDeltaLights() {
     // A true delta point light - genuinely different from every
     // AreaLight above (zero area, hard-edged shadows, no NEE/MIS
     // weighting needed at all - see metal_poc.metal's own PointLight
@@ -770,6 +756,50 @@ void MetalPocApp::buildScene() {
         buildGoniometricProfileImage(goniometricImageSize, /*cosCutoff=*/cosf(35.0f * (float)M_PI / 180.0f),
                                       /*ringFrequency=*/25.0f);
 
+}
+
+void MetalPocApp::buildScene() {
+    startGgxEnergyTableBuild();
+    const float3 white{0.73f, 0.73f, 0.73f};
+    buildDemoRoomWalls(white);
+    loadDemoMeshes(white);
+    addDemoAreaLights(white);
+    // Real pbrt scene loading (see loadPbrtScene()'s own comment):
+    // ADDITIVE, not a replacement for the hardcoded room above - its own
+    // geometry gets recentred/rescaled/offset well clear of this room's
+    // own [-1,1] region (loadPbrtScene()'s own bounding-box normalization
+    // step), so the two coexist without visually interfering, without
+    // needing to conditionally skip building any of buildGPUResources()'s
+    // existing per-geometry-type acceleration structures/buffers (which
+    // assume every one of these vectors is always non-empty - true
+    // before this, and still true now). MUST run before
+    // buildPowerLightSampler() just below (which needs the FULL, final
+    // light list - the same reason every addAreaLight() call above also
+    // precedes it) - a first version called this after that build call
+    // instead, and every light this function adds silently became
+    // unreachable by NEE (see buildPowerLightSampler()'s own call site
+    // history for the full story).
+    if (skipDemoRoom) {
+        // Room walls, Spot, and both Suzanne instances: gone before the pbrt triangles are appended.
+        verts.clear(); normals.clear(); uvs.clear(); materials.clear();
+        suzanneVerts.clear(); suzanneNormals.clear(); suzanneUVs.clear(); suzanneMaterials.clear();
+    }
+    if (!pbrtScenePath.empty()) loadPbrtScene();
+    // Same ADDITIVE reasoning as loadPbrtScene() just above (its own
+    // comment) - mutually exclusive with it in practice (metal_render_main()
+    // only ever sets one of pbrtScenePath/handAuthoredSceneId), but if both
+    // were somehow set, both would just coexist harmlessly the same way a
+    // pbrt scene and this hardcoded room already do.
+
+    // Builds each light's own pmf/aliasProb/aliasIndex in place - see
+    // buildPowerLightSampler()'s own comment. Must run after every
+    // addAreaLight() call above (needs the full, final light list) and
+    // before `lights` gets uploaded to the GPU buffer below.
+    buildPowerLightSampler(lights, logPowerLightSamplerLine);
+
+    addDemoSpheres();
+    addDemoDisks();
+    addDemoDeltaLights();
     // (Real pbrt scene loading, when pbrtScenePath is set, now happens
     // EARLIER - see the loadPbrtScene() call right before
     // buildPowerLightSampler() above, not here. A first version called

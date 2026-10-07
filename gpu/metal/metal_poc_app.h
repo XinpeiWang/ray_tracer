@@ -453,6 +453,13 @@ struct MetalPocApp {
 
     bool parseArgsAndCreateDevice(int argc, const char** argv);
     void buildScene();
+    // The stages of buildScene() (metal_poc.mm): the hand-built demo room, in the order it is assembled.
+    void buildDemoRoomWalls(const float3& white);
+    void loadDemoMeshes(const float3& white);
+    void addDemoAreaLights(const float3& white);
+    void addDemoSpheres();
+    void addDemoDisks();
+    void addDemoDeltaLights();
     // See its own comment (defined just above buildScene()) - loads a
     // real .pbrt file's geometry/materials/lights/camera into the SAME
     // vectors buildScene()'s own hardcoded room uses. Only called from
