@@ -99,11 +99,8 @@ jobs:
     # natively) and so catches a macOS-only break - a header that only compiles with MSVC, a path assumption, an Apple clang diagnostic - that the
     # Windows job cannot. Same two executables, same cwd rule (the repo root, so pbrt_scenes/ resolves). Pinned to macos-14 like metal-poc.
     runs-on: macos-14
-    env:
-      # Several tests build scratch folders under $TEMP (set on Windows, not on macOS); without it they would litter the repo root.
-      TEMP: ${{ runner.temp }}
     steps:
-      - uses: actions/checkout
+      - uses: actions/checkout@v4
 
       - name: Set up ccache
         uses: hendrikmuhs/ccache-action@v1.2
@@ -124,10 +121,16 @@ jobs:
 
       - name: Run unit_tests
         # From the repo root, not tests/ - see the Windows job's own comment on why (fixtures under pbrt_scenes/ are found relative to the cwd).
+        # TEMP: several tests build scratch folders under $TEMP (set on Windows, not on macOS); without it they would litter the repo root. The `runner`
+        # context is not available at job level, so it is set on the steps that run tests.
+        env:
+          TEMP: ${{ runner.temp }}
         run: build_tests/unit_tests --gtest_color=yes
 
       - name: Run CPU integrator agreement tests
         timeout-minutes: 20
+        env:
+          TEMP: ${{ runner.temp }}
         run: build_tests/cpu_integrator_tests --gtest_color=yes
 
   metal-poc:
