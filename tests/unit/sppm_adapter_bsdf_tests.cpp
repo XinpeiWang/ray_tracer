@@ -30,6 +30,9 @@
 #include "sppm_adapter.h"
 #include <cmath>
 #include <functional>
+#include <sstream>
+#include <iostream>
+#include <mutex>
 #include <fstream>
 #include <random>
 
@@ -657,4 +660,28 @@ TEST(SppmBsdfRoughDielectric, PdfFromTheFarSideEqualsTheSameQueryMadeFromThatSid
 		const double wi[3] = { s * std::cos(a), s * std::sin(a), c };
 		EXPECT_DOUBLE_EQ(sppm_bsdf_pdf(ctx, wo_below, wi, n), sppm_bsdf_pdf(flipped, wo_below, wi, n_flipped));
 	}
+}
+
+
+// The BSDF bridge (BDPT, MLT, SPPM and the debug integrators) has no BSSRDF transport: a Subsurface material renders as the smooth glass of its entry interface.
+// The adapters say so once, the first time one is hit, instead of leaving the image quietly different from the path tracer's.
+TEST(SubsurfaceUnsupportedWarning, IsPrintedOncePerFlagAndNamesTheMaterial) {
+	std::ostringstream captured;
+	std::streambuf* old = std::cerr.rdbuf(captured.rdbuf());
+	std::once_flag flag;
+	for (int i = 0; i < 5; ++i) warn_subsurface_unsupported_once(flag);
+	std::cerr.rdbuf(old);
+	const std::string text = captured.str();
+	EXPECT_NE(text.find("Subsurface material"), std::string::npos) << text;
+	EXPECT_NE(text.find("--bdpt"), std::string::npos) << text;
+	EXPECT_EQ(text.find("Warning:", text.find("Warning:") + 1), std::string::npos) << "printed more than once: " << text;
+}
+
+TEST(SubsurfaceUnsupportedWarning, OnlyASubsurfaceMaterialReportsAsSubsurface) {
+	hit_record rec;
+	EXPECT_EQ(lambertian(color(0.5, 0.5, 0.5)).as_subsurface(rec), nullptr);
+	EXPECT_EQ(dielectric(1.5).as_subsurface(rec), nullptr);
+	const double sigma_a[3] = {0.1, 0.1, 0.1}, sigma_s[3] = {1.0, 1.0, 1.0};
+	subsurface sss(1.33, sigma_a, sigma_s, 0.0);
+	EXPECT_EQ(sss.as_subsurface(rec), &sss);
 }
