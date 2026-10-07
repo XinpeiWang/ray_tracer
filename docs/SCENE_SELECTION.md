@@ -95,7 +95,7 @@ Any `.pbrt` file placed in `pbrt_scenes/` (or in the folder named by the `RAY_TR
 2. Add a `SceneNames::` constant in `src/shared/scene_descriptor.h` (the name says what the scene shows, not how it is stored).
 3. Add its row to `src/shared/scene_slugs.h` (`kBuiltin`): the name that will not change.
 4. Add a `build_curated_pbrt_scene_descriptor(...)` row in `src/TheRestOfYourLife/scene_registry_data.h`: id, name, category, description, performance, file.
-5. Add its technique note to `qt_gui/scene_technique_notes.h`, keyed by the name.
+5. Add its technique note to `qt_gui/scene_technique_notes.h`, keyed by the name. The notes are translated GUI text, so they stay in the GUI rather than in the (Qt-free) registry; `RT_GUI_SELFTEST=scenekeys` (see `qt_gui/mainwindow_selftest.cpp`) fails when a self-contained scene has no note or a note belongs to no scene.
 6. Update the pinned counts in `tests/unit/scene_registry_tests.cpp`; the slug-table and name tests fail until steps 3 and 2 are done.
 
 A test fixture needs none of this: give the file the tags above and it is listed.

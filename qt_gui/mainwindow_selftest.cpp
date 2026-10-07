@@ -181,6 +181,21 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			slugs.insert(s);
 		}
 		check(bad == 0, QString("%1 scenes: every slug is unique and resolves back to its id (%2 bad)").arg(count).arg(bad));
+		// The technique notes (scene_technique_notes.h, translated GUI text, so kept out of the Qt-free registry) and the registry must describe the
+		// same scenes: every self-contained built-in scene has a note, and every note belongs to one.
+		QSet<QString> expected, missingNote, staleNote;
+		for (int i = 0; i < count; ++i) {
+			const QString id = SceneMetadataClient::sceneIdAtIndex(i);
+			const QString category = SceneMetadataClient::sceneCategory(id);
+			if (category == "Custom Scenes" || category == "Test Scenes" || SceneMetadataClient::sceneRequiresFiles(id)) continue;
+			expected.insert(SceneMetadataClient::sceneSlug(id));
+		}
+		for (const QString &slug : expected)
+			if (!scene_technique_notes::notes().contains(slug)) missingNote.insert(slug);
+		for (auto it = scene_technique_notes::notes().constBegin(); it != scene_technique_notes::notes().constEnd(); ++it)
+			if (!expected.contains(it.key())) staleNote.insert(it.key());
+		check(missingNote.isEmpty(), QString("%1 self-contained scenes, %2 notes: missing a note: %3").arg(expected.size()).arg(scene_technique_notes::notes().size()).arg(QStringList(missingNote.begin(), missingNote.end()).join(", ")));
+		check(staleNote.isEmpty(), "notes for no self-contained scene: " + QStringList(staleNote.begin(), staleNote.end()).join(", "));
 		log(ok ? "RESULT: OK" : "RESULT: FAIL");
 		QApplication::exit(ok ? 0 : 1);
 		return;
