@@ -160,6 +160,31 @@ class disk_hittable : public hittable {
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
 	}
 
+	// Area-uniform sample of the disk's surface, for light EMISSION (BDPT/MLT light subpaths, photon tracing) - independent of any reference point, unlike
+	// random(). Samples the annulus and the arc properly (radius from the area CDF, angle over phi_max); the shared DiskShape::sample() follows pbrt-v4 in
+	// scaling a full-disk sample by the outer radius, which ignores inner_r and phi_max while area() does not. pdf_pos is 1 / (world area): the world area
+	// is the object-space area times the square of the transform's scale (exact for the similarity transforms the NEE sampling above already assumes).
+	// Resolves against the starting transform only, like random()/pdf_value().
+	bool sample_area(double u1, double u2, AreaLightSample& out) const override {
+		if (!motion_.startValid()) return false;
+		using namespace affine_transform;
+		const double ro = shape_.outer_r, ri = shape_.inner_r;
+		const double area_obj = 0.5 * shape_.phi_max * (ro * ro - ri * ri);
+		if (!(area_obj > 0.0)) return false;
+		const double r = std::sqrt(ri * ri + u1 * (ro * ro - ri * ri));
+		const double phi = u2 * shape_.phi_max;
+		const point3 p_obj(r * std::cos(phi), r * std::sin(phi), shape_.height);
+		const double scale = apply_vector(motion_.o2wStart(), vec3(1, 0, 0)).length();
+		out.p = apply_point(motion_.o2wStart(), p_obj);
+		vec3 n = apply_normal(motion_.w2oStart(), vec3(0, 0, 1));
+		const double len = n.length();
+		out.n = len > 0.0 ? n / len : vec3(0, 0, 1);
+		out.u = u2;
+		out.v = (ro > ri) ? (ro - r) / (ro - ri) : 0.0;
+		out.pdf_pos = 1.0 / (area_obj * scale * scale);
+		return true;
+	}
+
 	shared_ptr<material> get_material() const { return mat_; }
 
   private:
@@ -242,6 +267,27 @@ class cylinder_hittable : public hittable {
 		const vec3 dir_obj = apply_vector(motion_.w2oStart(), direction);
 		const SamplingContext<double> ctx{ctx_obj.x(), ctx_obj.y(), ctx_obj.z(), 0, 0, 0};
 		return shape_.pdf_from(ctx, dir_obj.x(), dir_obj.y(), dir_obj.z());
+	}
+
+	// Area-uniform sample of the cylinder's lateral surface, for light EMISSION - see disk_hittable::sample_area(). The normal points outward (away from
+	// the axis), the side a one-sided emitter radiates from.
+	bool sample_area(double u1, double u2, AreaLightSample& out) const override {
+		if (!motion_.startValid()) return false;
+		using namespace affine_transform;
+		const double R = shape_.radius, h = shape_.z_max - shape_.z_min;
+		const double area_obj = h * R * shape_.phi_max;
+		if (!(area_obj > 0.0)) return false;
+		const double z = shape_.z_min + u1 * h, phi = u2 * shape_.phi_max;
+		const double cx = std::cos(phi), cy = std::sin(phi);
+		const double scale = apply_vector(motion_.o2wStart(), vec3(1, 0, 0)).length();
+		out.p = apply_point(motion_.o2wStart(), point3(R * cx, R * cy, z));
+		vec3 n = apply_normal(motion_.w2oStart(), vec3(cx, cy, 0.0));
+		const double len = n.length();
+		out.n = len > 0.0 ? n / len : vec3(cx, cy, 0.0);
+		out.u = u2;
+		out.v = u1;
+		out.pdf_pos = 1.0 / (area_obj * scale * scale);
+		return true;
 	}
 
 	shared_ptr<material> get_material() const { return mat_; }

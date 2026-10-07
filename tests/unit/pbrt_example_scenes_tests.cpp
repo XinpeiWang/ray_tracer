@@ -598,6 +598,30 @@ TEST(PbrtBackendAgreementTest, SppmInASmallSceneAgreesWithPathTracer) {
 	EXPECT_LT(sppmMean, 1.05 * pathMean) << "SPPM too bright vs the path tracer";
 }
 
+// Disk and cylinder emitters (Shape "disk"/"cylinder" with an AreaLightSource). BDPT, MLT and SPPM build their light list from shapes that can sample their
+// own surface (sample_area()) and whose material they can read; the disk and cylinder had neither, so a scene lit only by them rendered with no light at all
+// under --bdpt/--mlt/--sppm (0.001 of the path tracer's brightness on the lit surfaces). See pbrt_scenes/disk-cylinder-light.pbrt.
+TEST(PbrtBackendAgreementTest, BdptDiskAndCylinderLightsAgreeWithPathTracer) {
+	expectBdptAgreesWithPathTracer("disk-cylinder-light", 3, 0.02);
+}
+
+TEST(PbrtBackendAgreementTest, SppmDiskAndCylinderLightsAgreeWithPathTracer) {
+	const SceneDescriptor* s = find_example_scene("disk-cylinder-light");
+	if (!s) GTEST_SKIP() << "disk-cylinder-light.pbrt was not discovered - is pbrt_scenes/ present?";
+	const std::string pathOut = "pbrt_agree_dcl_path.exr", sppmOut = "pbrt_agree_dcl_sppm.exr";
+	double pathMean = 0.0, sppmMean = 0.0;
+	ASSERT_EQ(cpu_render_main(48, 48, 256, 4, pathOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(pathOut, pathMean));
+	ASSERT_EQ(cpu_render_main_sppm(48, 48, 60, 20000, 4, sppmOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(sppmOut, sppmMean));
+	std::remove(pathOut.c_str());
+	std::remove(sppmOut.c_str());
+	std::printf("[agree] disk-cylinder-light: path %.4f  sppm %.4f (%.1f%%)\n", pathMean, sppmMean, 100.0 * sppmMean / pathMean);
+	ASSERT_GT(pathMean, 0.1);
+	EXPECT_GT(sppmMean, 0.95 * pathMean) << "SPPM too dark vs the path tracer";
+	EXPECT_LT(sppmMean, 1.05 * pathMean) << "SPPM too bright vs the path tracer";
+}
+
 // A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
 // every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU
 // backends, and of BDPT - which a path-tracer-vs-BDPT comparison alone could not, since the two could be wrong together.

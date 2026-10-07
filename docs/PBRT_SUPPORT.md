@@ -301,10 +301,16 @@ loader and no longer match the code:
   and to SPPM's photon-emission pass (`sppm_adapter.h`'s identical filter) -
   a --bdpt/--mlt render of such a scene shows zero contribution from that
   light, and SPPM gets direct lighting from it but no caustic/photon
-  contribution. This is not a new limitation specific to Cone/Paraboloid -
-  `disk_hittable`/`cylinder_hittable` have had the identical gap since
-  their own AreaLightSource support landed - but it now applies to two more
-  shapes. **GPU (both backends) does not support either shape at all** - a scene
+  contribution. `disk_hittable`/`cylinder_hittable` had the identical gap
+  until they gained `sample_area()` (area-uniform over the annulus/arc and
+  the lateral surface, `pdf_pos` = 1 / world area) and both adapters learned
+  to read their material (`hittable_material()`): a scene lit by them rendered
+  with no light at all under `--bdpt`/`--mlt`/`--sppm` (0.001 of the path
+  tracer on the lit surfaces) and now agrees with it (`disk-cylinder-light.pbrt`,
+  BDPT/MLT/SPPM/`--simplepath` within ~1%). Cone and paraboloid emitters
+  remain invisible there. `--lightpath` reads -3% on the lit surfaces and +12%
+  on the directly visible cylinder (its direct-visibility formula, pbrt's own,
+  converts through the shape's `pdf_value()`; not investigated). **GPU (both backends) does not support either shape at all** - a scene
   using one warns at load time and the shape is silently absent from the
   GPU render (`scene_builder.cpp`), matching how this loader already handles
   every other CPU-only shape gap. One ray direction exactly on the
