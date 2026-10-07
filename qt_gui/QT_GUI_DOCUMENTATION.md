@@ -31,6 +31,8 @@ qt_gui/
 │                                       #   Neural Temporal Upscale, DOF override - split from
 │                                       #   mainwindow_tabs_render.cpp)
 ├── mainwindow_tabs_output.cpp         # Progress, Log Output, Diagnostics tabs
+├── scene_builder_widget.h/.cpp        # Scene Builder tab (layout view, properties, preview); the scene model
+│                                       #   and pbrt writer are src/shared/scene_document.h
 ├── realtime_preview_session.h/.cpp    # Live preview session management
 ├── cross_abi_library.h                # Cross-ABI shared-library loading helper
 ├── mainwindow_actions.cpp             # Menu actions

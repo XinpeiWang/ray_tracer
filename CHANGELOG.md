@@ -6,6 +6,11 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 
 ## Unreleased
 
+### New
+
+* **Scene Builder** (GUI tab): build a scene from shapes, materials and lights, drag things around in a layout view, preview it, and save an ordinary `.pbrt` file. [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
+* The command line takes a `.pbrt` path where a scene id goes (`ray_tracer.exe --cpu 800 64 8 my-scene.pbrt`) and `--height N` for a non-square picture.
+
 ### Rendering correctness
 
 * **Path tracers add the last continuation ray.** The CPU and both OptiX backends stopped one segment early, so the emission or sky seen by the last

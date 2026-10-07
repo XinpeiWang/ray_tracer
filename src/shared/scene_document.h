@@ -21,6 +21,7 @@
 #include <algorithm>
 #include <cctype>
 #include <cmath>
+#include <cstdio>
 #include <cstdlib>
 #include <iomanip>
 #include <locale>
@@ -725,8 +726,8 @@ inline std::string toPbrt(const Document& d) {
 	if (c.lensRadius > 0.0) os << " \"float lensradius\" [ " << detail::num(c.lensRadius) << " ] \"float focaldistance\" [ " << detail::num(c.focusDistance) << " ]";
 	os << "\n";
 	os << "Film \"rgb\" \"integer xresolution\" [ " << d.render.width << " ] \"integer yresolution\" [ " << d.render.height << " ]\n";
-	os << "Sampler \"halton\" \"integer pixelsamples\" [ " << d.render.samples << " ]\n";
-	os << "Integrator \"path\" \"integer maxdepth\" [ " << d.render.maxDepth << " ]\n\n";
+	os << "Sampler \"sobol\" \"integer pixelsamples\" [ " << d.render.samples << " ]\n";
+	os << "Integrator \"volpath\" \"integer maxdepth\" [ " << d.render.maxDepth << " ]\n\n";
 	os << "WorldBegin\n\n";
 
 	for (const Light& l : d.lights) {
