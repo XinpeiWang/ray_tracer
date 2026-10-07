@@ -670,7 +670,17 @@ void OptiXRenderer::enableWavefront(bool enable, const std::string& ptxPath) {
 // for wavefrontTracer_.
 // ============================================================================
 bool OptiXRenderer::ensureSPPMTracer(const std::string& ptxPath) {
-	if (sppmTracer_) return true;
+	if (sppmTracer_) {
+		// The tracer outlives a scene change (the renderer is reused), but its SBT does not: it has one hit-group record per present geometry type. Rendering
+		// a quad scene after a sphere-only one with the old table was an unspecified launch failure that left the CUDA context unusable.
+		if (sppmTracer_->sbtFits(numSpheres_, numQuads_)) return true;
+		if (!sppmTracer_->buildSBT(numSpheres_, numQuads_)) {
+			std::cerr << "[OptiXRenderer] SPPMPathTracer::buildSBT failed\n";
+			sppmTracer_.reset();
+			return false;
+		}
+		return true;
+	}
 
 	sppmTracer_ = std::make_unique<optix_renderer::SPPMPathTracer>();
 	if (!ptxPath.empty()) sppmTracer_->setPTXPath(ptxPath);
@@ -703,6 +713,7 @@ bool OptiXRenderer::renderSPPMTrivial(unsigned int width, unsigned int height,
                                        const GpuCameraParams& camera, float* outputFramebuffer,
                                        unsigned int maxDepth, const std::string& ptxPath) {
 	if (!ensureSPPMTracer(ptxPath)) return false;
+	sppmTracer_->setTextures(d_textures_, d_texturePixels_);
 
 	return sppmTracer_->renderTrivial(
 		static_cast<int>(width), static_cast<int>(height), camera, outputFramebuffer,
@@ -717,6 +728,7 @@ bool OptiXRenderer::renderSPPM(unsigned int width, unsigned int height,
                                 const GpuCameraParams& camera, float* outputFramebuffer,
                                 const std::string& ptxPath) {
 	if (!ensureSPPMTracer(ptxPath)) return false;
+	sppmTracer_->setTextures(d_textures_, d_texturePixels_);
 
 	return sppmTracer_->render(
 		static_cast<int>(width), static_cast<int>(height), nIterations, nPhotons,

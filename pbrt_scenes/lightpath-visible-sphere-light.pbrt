@@ -1,0 +1,17 @@
+# lightpath-visible-sphere-light.pbrt -- a unit sphere that is itself the picture, lit by nothing else: --lightpath, --bdpt and the path tracer must read the same.
+#
+# The only light is the emitter the camera looks at, so the frame mean is L times the area it covers - the path tracer sees it directly, --lightpath only through its
+# direct light-to-camera splat. The sphere is the case that read wrong: --lightpath divided the direct light-to-camera splat by the sphere's own PDF_Li (a visible-cone density) while the emission point had been drawn uniformly over the whole surface, so the visible sphere read 0.42x.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt 0 0 6  0 0 0  0 1 0
+Camera "perspective" "float fov" [ 30 ]
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 16 ]
+WorldBegin
+
+AttributeBegin
+  AreaLightSource "diffuse" "rgb L" [ 4 4 4 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd

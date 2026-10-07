@@ -48,6 +48,16 @@ public:
 	// allocates/exposes the per-pixel SPPMPixelGPU buffer (d_pixels_) so a
 	// later sub-phase can extend this into the real iteration loop without
 	// re-deriving the buffer-sizing logic.
+	// The renderer's texture table and shared pixel buffer (OptiXRenderer::d_textures_/d_texturePixels_), uploaded once at buildScene(); zero when the scene has
+	// none. Call before render()/renderTrivial().
+	// True when the shader binding table built by the last buildSBT() fits a scene with these primitive counts. The table holds one hit-group record per
+	// PRESENT geometry type, so a scene with a different mix of spheres/quads (a sphere-only scene, then one with a quad) needs a rebuild.
+	bool sbtFits(unsigned int numSpheres, unsigned int numQuads) const {
+		return (numSpheres_ > 0) == (numSpheres > 0) && (numQuads_ > 0) == (numQuads > 0);
+	}
+
+	void setTextures(CUdeviceptr d_textures, CUdeviceptr d_texturePixels) { d_textures_ = d_textures; d_texturePixels_ = d_texturePixels; }
+
 	bool renderTrivial(int width, int height, const GpuCameraParams& camera,
 	                    float* outputFramebuffer, OptixTraversableHandle gasHandle,
 	                    CUdeviceptr d_materials, CUdeviceptr d_spheres, CUdeviceptr d_quads,
@@ -81,6 +91,9 @@ private:
 	// table sizing exactly. Buffers persist across iterations; only
 	// reallocated when numPixels changes.
 	bool ensureBuffers(size_t numPixels);
+
+	CUdeviceptr d_textures_ = 0;        ///< see setTextures()
+	CUdeviceptr d_texturePixels_ = 0;
 
 	OptixDeviceContext context_ = nullptr;
 	cudaStream_t       stream_  = nullptr;

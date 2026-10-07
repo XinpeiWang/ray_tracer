@@ -44,6 +44,7 @@ struct SPPMPixelGPU {
 	float3 vp_wo;             // outgoing direction (toward camera/prior bounce)
 	float3 vp_n;              // shading normal at the visible point
 	float3 vp_beta;           // path throughput at the visible point
+	float3 vp_albedo;         // diffuse colour at the visible point (the texture, when the material has one), for a Lambertian gather
 	int    vp_materialIdx;    // index into SPPMLaunchParams::materials
 	bool   vp_valid;          // false if this pixel's camera ray never reached
 	                          // a non-delta hit this iteration (escaped, hit a
@@ -155,6 +156,10 @@ struct SPPMLaunchParams {
 	unsigned int  numQuads;
 	MaterialData* materials;
 	unsigned int  numMaterials;
+	// Texture table and its shared pixel buffer (OptiXRenderer's d_textures_/d_texturePixels_): a Lambertian material with textureIdx >= 0 takes its
+	// colour from here. Null when the scene has no textures.
+	const TextureData*     textures;
+	const unsigned char*   texturePixels;
 
 	// Area-light sampling (power-weighted alias table, same device data
 	// OptiXRenderer::buildScene() already uploads for the regular path

@@ -604,8 +604,14 @@ class BDPTSceneAdapter {
 	// computed by SampleLightEmission() above into surface_hit.area_Le
 	// (this codebase's diffuse_light emission has no view-angle dependence,
 	// matching SurfaceLe()'s own "wo unused" convention).
-	void LightSurfaceLe(const BDPTHit<double>& light_hit, const double* /*wi_to_camera*/, double out[3]) const {
+	void LightSurfaceLe(const BDPTHit<double>& light_hit, const double* wi_to_camera, double out[3]) const {
 		out[0] = light_hit.area_Le[0]; out[1] = light_hit.area_Le[1]; out[2] = light_hit.area_Le[2];
+		// A one-sided light does not shine toward a camera behind its surface (diffuse_light::emitted()'s own front-face gate).
+		const int id = light_hit.light_id;
+		if (id >= 0 && id < nEmitters_ && !emitter_dl_[id]->is_two_sided() &&
+		    wi_to_camera[0]*light_hit.geo_n[0] + wi_to_camera[1]*light_hit.geo_n[1] + wi_to_camera[2]*light_hit.geo_n[2] <= 0.0) {
+			out[0] = out[1] = out[2] = 0.0;
+		}
 	}
 
 	// pbrt-v4's light.PDF_Li(pLens, -wi) -- the solid-angle density of

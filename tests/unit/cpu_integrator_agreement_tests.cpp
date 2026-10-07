@@ -348,6 +348,23 @@ static double renderMeanWith(const char* integrator, const SceneDescriptor* s, i
 	return mean;
 }
 
+// --lightpath sees a directly visible emitter only through its light-to-camera splat. It divided that splat by the emitter's own PDF_Li, which for a sphere (the
+// visible-cone density) or a cylinder is not the density the emission point was drawn with (uniform over the surface): a visible sphere light read 0.42x of the path
+// tracer and a cylinder 0.52x, while a quad's or disk's PDF_Li happens to coincide, so only those two looked right. Each of the four emitters is the whole picture of
+// its own scene, so the frame mean is L times the area it covers.
+TEST(PbrtBackendAgreementTest, LightPathSeesAVisibleEmitterOfEveryShapeLikeThePathTracer) {
+	for (const char* shape : {"quad", "sphere", "cylinder", "disk"}) {
+		const std::string stem = std::string("lightpath-visible-") + shape + "-light";
+		const SceneDescriptor* s = find_example_scene(stem.c_str());
+		if (!s) { ADD_FAILURE() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?"; continue; }
+		const double path = renderMeanWith("path", s, 4, 64);
+		const double light = renderMeanWith("lightpath", s, 4, 1024);
+		std::printf("[lightpath] %s: path %.4f  lightpath %.4f (%.1f%%)\n", shape, path, light, 100.0 * light / path);
+		ASSERT_GT(path, 0.1) << shape;
+		EXPECT_NEAR(light, path, 0.03 * path) << shape;
+	}
+}
+
 TEST(PbrtBackendAgreementTest, SimplePathHasTheInterreflectionFurnaceClosedForm) {
 	const SceneDescriptor* s = find_example_scene("bdpt-room-furnace");
 	if (!s) GTEST_SKIP() << "bdpt-room-furnace.pbrt was not discovered - is pbrt_scenes/ present?";
