@@ -365,9 +365,12 @@ class BDPTSceneAdapter {
 
 		int pool_idx = push_context(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat, rec.front_face });
 
+		// A medium-scatter point is not a surface: a zero normal makes BDPTVertex::IsOnSurface() false (pbrt's MediumInteraction has n = 0), so no
+		// geometry or throughput cosine is applied there and the phase function (BSDFf below) carries the whole scattering.
+		const bool onSurface = !sppm_is_medium_scatter(rec.mat.get());
 		for (int c = 0; c < 3; ++c) hit.p[c] = rec.p[c];
-		for (int c = 0; c < 3; ++c) hit.geo_n[c] = rec.normal[c];       // no separate geometric normal in this codebase
-		for (int c = 0; c < 3; ++c) hit.shading_n[c] = rec.normal[c];
+		for (int c = 0; c < 3; ++c) hit.geo_n[c] = onSurface ? rec.normal[c] : 0.0;       // no separate geometric normal in this codebase
+		for (int c = 0; c < 3; ++c) hit.shading_n[c] = onSurface ? rec.normal[c] : 0.0;
 		vec3 wo = unit_vector(-r.direction());
 		hit.wo[0] = wo.x(); hit.wo[1] = wo.y(); hit.wo[2] = wo.z();
 		hit.uv[0] = rec.u; hit.uv[1] = rec.v;

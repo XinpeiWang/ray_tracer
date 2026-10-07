@@ -36,6 +36,7 @@
 // needed, since SPPM has no MIS between BSDF-sampling and NEE strategies).
 //==============================================================================================
 
+#include "constant_medium.h"
 #include "hittable.h"
 #include "material.h"
 #include "pdf.h"
@@ -255,6 +256,22 @@ inline void sppm_bsdf_f(const SPPMShadingContext& ctx, const double wo[3], const
                          const double n[3], double out[3]) {
 	out[0] = out[1] = out[2] = 0.0;
 	if (!ctx.mat) return;
+
+	// A participating-medium scatter point the caller declared surface-less (a zero normal: BDPT/MLT and the debug integrators) is not a surface: f is
+	// the single-scattering albedo times the Henyey-Greenstein phase function over the whole sphere, with no cosine and no hemisphere test, and nothing
+	// multiplies a cosine on top. The generic path below would test wi against that zero normal and return 0, and divide by a cosine that does not
+	// belong to a medium. (SPPM still hands such a point a placeholder normal and keeps the generic path; its density estimate has no volume model.)
+	if (n[0]*n[0] + n[1]*n[1] + n[2]*n[2] < 0.5 && ctx.mat->is_medium_scatter()) {
+		if (auto ph = dynamic_cast<const hg_phase_material*>(ctx.mat.get())) {
+			const ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
+			const ray fake_scattered(ctx.p, vec3(wi[0], wi[1], wi[2]));
+			const double phase = ph->scattering_pdf(fake_in, hit_record(), fake_scattered);
+			const color a = ph->single_scattering_albedo();
+			out[0] = a.x() * phase; out[1] = a.y() * phase; out[2] = a.z() * phase;
+			return;
+		}
+	}
+
 	double cos_wi = wi[0]*n[0] + wi[1]*n[1] + wi[2]*n[2];
 
 	if (auto dt = dynamic_cast<const diffuse_transmission*>(ctx.mat.get())) {

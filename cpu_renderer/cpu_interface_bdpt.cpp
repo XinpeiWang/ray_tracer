@@ -138,6 +138,10 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	}
 	if (scene_desc->build_punct)
 		out_cam.punct_lights = scene_desc->build_punct();
+	// Not read by these integrators; it tells each *_render_core() whether the scene has a medium whose extinction differs between colour
+	// channels, which it renders as three one-channel passes (render_per_channel_media(), constant_medium.h).
+	if (scene_desc->build_shape_media)
+		out_cam.shape_media = scene_desc->build_shape_media();
 	// out_cam.camera_medium is deliberately NOT wired here either, same
 	// "warn rather than silently drop" precedent as the portal-light case
 	// just above - see camera::camera_medium's own comment (camera.h) for
@@ -149,7 +153,7 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 		             "tracer instead if the ambient fog matters for this render.\n";
 	}
 
-	// Per-channel extinction is the default path tracer's only (see chromatic_media_integrator_warning()).
+	// Per-channel extinction is rendered as three one-channel passes here (see chromatic_media_integrator_warning()).
 	std::cerr << chromatic_media_integrator_warning(*scene_desc, scene_id, "--bdpt/--mlt");
 
 	return scene_desc;
@@ -183,8 +187,10 @@ int bdpt_render_core(const hittable_list& world, camera& cam,
 			             "success." << std::endl;
 		}
 		std::vector<double> out_rgb;
-		bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, out_rgb,
-		                          cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		render_per_channel_media(!cam.shape_media.empty(), out_rgb, [&](std::vector<double>& pass_rgb) {
+			bdpt_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, bdpt_max_depth, pass_rgb,
+			                          cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		});
 
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
@@ -243,10 +249,12 @@ int mlt_render_core(const hittable_list& world, camera& cam,
 			             "success." << std::endl;
 		}
 		std::vector<double> out_rgb;
-		mlt_render_with_adapter(adapter, cam.image_width, cam.image_height,
-		                         mlt_bootstrap, mlt_mutations, mlt_max_depth,
-		                         kSigma, kLargeStepProb, out_rgb,
-		                         cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		render_per_channel_media(!cam.shape_media.empty(), out_rgb, [&](std::vector<double>& pass_rgb) {
+			mlt_render_with_adapter(adapter, cam.image_width, cam.image_height,
+			                         mlt_bootstrap, mlt_mutations, mlt_max_depth,
+			                         kSigma, kLargeStepProb, pass_rgb,
+			                         cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		});
 
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
@@ -286,8 +294,10 @@ int randomwalk_render_core(const hittable_list& world, camera& cam, int spp, int
 		std::cout << "[TECH] Integrator: RandomWalk (pbrt-v4 reference, unbiased, no NEE/MIS)" << std::endl;
 		BDPTSceneAdapter adapter(world, cam);
 		std::vector<double> out_rgb;
-		randomwalk_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb,
-		                                cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		render_per_channel_media(!cam.shape_media.empty(), out_rgb, [&](std::vector<double>& pass_rgb) {
+			randomwalk_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, pass_rgb,
+			                                cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		});
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
@@ -357,9 +367,11 @@ int simplepath_render_core(const hittable_list& world, camera& cam, int spp, int
 			             "report success." << std::endl;
 		}
 		std::vector<double> out_rgb;
-		simplepath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth,
-		                                sample_lights, sample_bsdf, out_rgb,
-		                                cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		render_per_channel_media(!cam.shape_media.empty(), out_rgb, [&](std::vector<double>& pass_rgb) {
+			simplepath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth,
+			                                sample_lights, sample_bsdf, pass_rgb,
+			                                cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		});
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {
@@ -429,8 +441,10 @@ int lightpath_render_core(const hittable_list& world, camera& cam, int spp, int 
 			             "entirely black even though it will report success." << std::endl;
 		}
 		std::vector<double> out_rgb;
-		lightpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, out_rgb,
-		                               cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		render_per_channel_media(!cam.shape_media.empty(), out_rgb, [&](std::vector<double>& pass_rgb) {
+			lightpath_render_with_adapter(adapter, cam.image_width, cam.image_height, spp, max_depth, pass_rgb,
+			                               cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		});
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
 			if (!bdpt_write_exr(output_path, cam.image_width, cam.image_height, out_rgb, exr_error)) {

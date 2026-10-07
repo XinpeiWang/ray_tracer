@@ -199,6 +199,13 @@ template<typename T>
 inline T absdot3(const T a[3], const T b[3]) {
 	return std::abs(dot3(a,b));
 }
+// A surface has a unit normal; a participating-medium scatter point has none (the adapter hands BDPT a zero normal for it, as pbrt's MediumInteraction
+// has n = 0). Every cosine in the estimator belongs to a surface only: a medium vertex scatters through a phase function over the whole sphere.
+template<typename T>
+inline bool has_surface_normal(const T n[3]) { return len2_3(n) > T(0.5); }
+// |cos(w, n)| at a surface, 1 at a medium vertex.
+template<typename T>
+inline T abs_cos_or_one(const T w[3], const T n[3]) { return has_surface_normal(n) ? absdot3(w, n) : T(1); }
 
 // The BSDF value for light flowing from the `wo` side to the `wi` side at a LIGHT-subpath vertex (pbrt's TransportMode::Importance). A scene whose
 // f is not symmetric (a refracting dielectric) provides BSDFfAdjoint(); every other scene's BSDFf already is the adjoint, so it is the fallback.
@@ -356,7 +363,7 @@ struct BDPTVertex {
 			T inv_dist2 = T(1) / dist2;
 			T dn[3] = { dp[0], dp[1], dp[2] };
 			bdpt_detail::norm3(dn);
-			pdfA *= bdpt_detail::absdot3(hit.geo_n, dn) * inv_dist2;
+			pdfA *= bdpt_detail::abs_cos_or_one(dn, hit.geo_n) * inv_dist2;
 		}
 		v.pdfFwd = pdfA;
 		std::memcpy(v.si.p,        hit.p,        3*sizeof(T));
@@ -814,8 +821,7 @@ int BDPTRandomWalk(const T ray_o[3], const T ray_d[3],
 		if (!camera_mode && !is_specular)
 			bdpt_detail::bsdf_f_light(scene, hit.bsdf_id, wo, new_dir, hit.shading_n, f_val, 0);
 
-		T cos_theta = std::abs(
-			new_dir[0]*hit.shading_n[0] + new_dir[1]*hit.shading_n[1] + new_dir[2]*hit.shading_n[2]);
+		const T cos_theta = bdpt_detail::abs_cos_or_one(new_dir, hit.shading_n);
 
 		// Update throughput
 		beta[0] *= f_val[0] * cos_theta / pdf_bsdf;
@@ -988,7 +994,7 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 				T f_pt[3];
 				pt.template f<Scene>(sampled, scene, f_pt);
 
-				T cos_pt = bdpt_detail::absdot3(ls.wi, pt.ns());
+				T cos_pt = bdpt_detail::abs_cos_or_one(ls.wi, pt.ns());
 
 				L[0] = pt.beta[0] * f_pt[0] * Le_scaled[0] * cos_pt;
 				L[1] = pt.beta[1] * f_pt[1] * Le_scaled[1] * cos_pt;
@@ -1045,7 +1051,7 @@ void BDPTConnect(BDPTVertex<T>* lightVerts, BDPTVertex<T>* cameraVerts,
 				T f_qs[3];
 				qs.template fLight<Scene>(sampled, scene, f_qs);
 
-				T cos_qs = bdpt_detail::absdot3(wi, qs.ns());
+				T cos_qs = bdpt_detail::abs_cos_or_one(wi, qs.ns());
 				L[0] = qs.beta[0] * f_qs[0] * Le_cam[0] * cos_qs;
 				L[1] = qs.beta[1] * f_qs[1] * Le_cam[1] * cos_qs;
 				L[2] = qs.beta[2] * f_qs[2] * Le_cam[2] * cos_qs;

@@ -650,7 +650,8 @@ class BDPTCosineBsdfView {
 
   private:
 	static void scale_by_cos(const double wi[3], const double n[3], double f[3]) {
-		const double c = std::abs(wi[0] * n[0] + wi[1] * n[1] + wi[2] * n[2]);
+		// A medium-scatter point has a zero normal and no cosine (see BDPTSceneAdapter::Intersect()).
+		const double c = bdpt_detail::abs_cos_or_one(wi, n);
 		f[0] *= c; f[1] *= c; f[2] *= c;
 	}
 	const BDPTSceneAdapter& a_;

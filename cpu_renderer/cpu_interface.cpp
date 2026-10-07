@@ -775,8 +775,12 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 						 "--sppm - the scene will render without it; use the default path tracer "
 						 "instead if the ambient fog matters for this render.\n";
 		}
-		// Per-channel extinction is the default path tracer's only (see chromatic_media_integrator_warning()).
+		// Per-channel extinction is rendered as three one-channel passes under --sppm (see chromatic_media_integrator_warning()); shape_media is
+		// not read by SPPM, only checked below to decide that.
+		if (scene_desc->build_shape_media)
+			cam.shape_media = scene_desc->build_shape_media();
 		std::cerr << chromatic_media_integrator_warning(*scene_desc, scene_id, "--sppm");
+		std::cerr << sppm_media_warning(*scene_desc, scene_id);
 		if (scene_desc->setup_camera)
 			scene_desc->setup_camera(cam);
 
@@ -799,7 +803,6 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		std::cout << "[TECH] ─────────────────────────────────────────────────────" << std::endl;
 
 		std::cout << "[cpu_interface] Starting SPPM render (" << iterations << " iterations x " << photons << " photons)..." << std::endl;
-		SPPMSceneAdapter adapter(world, lights, cam);
 		std::vector<double> out_rgb;
 		// The photon gather radius starts at 2% of the scene's bounding radius, never more than the 10 units every scene used to start with (a Cornell
 		// box, 555 across, comes out at ~10 and renders exactly as before). A fixed 10 covers a whole 10-unit room: the estimate then averages photons from
@@ -813,10 +816,13 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 			if (std::isfinite(sceneRadius) && sceneRadius > 0.0) initialRadius = std::min(10.0, std::max(1e-4, 0.02 * sceneRadius));
 		}
 		std::cout << "[cpu_interface] SPPM initial radius: " << initialRadius << std::endl;
-		sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
-								   iterations, photons, max_depth,
-								   initialRadius, out_rgb,
-								   cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		render_per_channel_media(!cam.shape_media.empty(), out_rgb, [&](std::vector<double>& pass_rgb) {
+			SPPMSceneAdapter adapter(world, lights, cam);
+			sppm_render_with_adapter(adapter, cam.image_width, cam.image_height,
+									   iterations, photons, max_depth,
+									   initialRadius, pass_rgb,
+									   cam.crop_x0, cam.crop_x1, cam.crop_y0, cam.crop_y1);
+		});
 
 		if (is_exr_output_path(output_path)) {
 			std::string exr_error;
