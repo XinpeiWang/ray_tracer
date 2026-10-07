@@ -17,6 +17,7 @@
 
 #include "../shared/accelerator_override.h"
 #include "../shared/scene_descriptor.h"
+#include "../shared/scene_slugs.h"
 #include "scenes.h"
 #include "cornell_box_scene.h"
 #include "sky_light.h"
@@ -37,6 +38,7 @@
 #include <vector>
 #include <string>
 #include <memory>
+#include <set>
 
 // Whether the camera lookfrom is overridden by the user (cam_x/y/z params)
 enum class CameraMode { Fixed, UserControlled };
@@ -235,6 +237,11 @@ struct SceneDescriptor {
     // fragility reasoning as every other field added here after the
     // struct's own initial fields.
     bool is_pbrt_backed = false;
+
+    // The scene's durable key (src/shared/scene_slugs.h): "cornell-box", or a .pbrt file's name. Unlike `id` it does not move when a category is added
+    // or a file is added to pbrt_scenes/, so anything saved or typed by a person should use it. find_scene() accepts it, and the id, everywhere.
+    // LAST, like the fields above it (the built-in entries use positional initialisation).
+    std::string slug;
 };
 
 // The note a non-default integrator prints for a scene with a participating medium whose extinction differs between colour channels, or "" when
@@ -924,6 +931,10 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     for (const SceneDescriptor& b : get_builtin_scene_registry())
         legacy_id = std::max(legacy_id, b.legacy_id + 1);
     int user_number = 1;
+    // Every slug already taken (the built-in scenes'), so a file's slug never clashes with one.
+    std::set<std::string> takenSlugs;
+    for (const SceneDescriptor& existing : registry)
+        if (!existing.slug.empty()) takenSlugs.insert(existing.slug);
     for (const pbrt_discover::Discovered& d : found) {
         // A file that will not even parse its header is skipped rather than
         // listed: offering a scene that cannot possibly render is worse than
@@ -948,6 +959,16 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         s.id = std::string(1, SceneCategories::letter_for_category(SceneCategories::CustomScenes))
              + std::to_string(user_number++);
         s.legacy_id = legacy_id++;
+        // A file's slug is its name (a scene in a downloaded collection's own folder is prefixed with that folder, since "frame25" alone says nothing);
+        // unlike the id it does not depend on which other files are present.
+        {
+            std::string base = d.name;
+            if (d.nested) {
+                const std::string folder = std::filesystem::path(d.path).parent_path().filename().string();
+                if (!folder.empty()) base = folder + "-" + d.name;
+            }
+            s.slug = scene_slugs::uniqueSlug(scene_slugs::slugify(base), takenSlugs);
+        }
         s.name = names.back().c_str();
         s.category = SceneCategories::CustomScenes;
         s.description = descriptions.back().c_str();
@@ -1044,16 +1065,20 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
     static const std::vector<SceneDescriptor> registry = []() {
         scene_registry_built() = true;
         std::vector<SceneDescriptor> all = get_builtin_scene_registry();
+        for (SceneDescriptor& s : all) s.slug = scene_slugs::builtinSlugForId(s.id);
         pbrt_scene_registry::append(all);
         return all;
     }();
     return registry;
 }
 
-// Lookup by id -- returns nullptr if not found
-inline const SceneDescriptor* find_scene(const std::string& id) {
-    for (const auto& s : get_scene_registry())
-        if (s.id == id) return &s;
+// Lookup by id ("B10") or by slug ("rough-glass") -- returns nullptr if not found. The two kinds of key cannot collide: an id is upper case, a slug is not.
+inline const SceneDescriptor* find_scene(const std::string& key) {
+    const auto& registry = get_scene_registry();
+    for (const auto& s : registry)
+        if (s.id == key) return &s;
+    for (const auto& s : registry)
+        if (!s.slug.empty() && s.slug == key) return &s;
     return nullptr;
 }
 

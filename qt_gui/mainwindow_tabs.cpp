@@ -216,7 +216,8 @@ void MainWindow::populateSceneViews(const QString &category) {
 
 QString MainWindow::thumbnailCachePath(const QString &sceneId) const {
 	const QString dir = QStandardPaths::writableLocation(QStandardPaths::CacheLocation) + "/thumbnails";
-	return QDir(dir).filePath(sceneId + ".png");
+	// Keyed by slug: an id such as "K37" names a different scene once a file is added to pbrt_scenes/, which would show the wrong picture.
+	return QDir(dir).filePath(SceneMetadataClient::sceneSlug(sceneId) + ".png");
 }
 
 // Drives the availability tab, category tab, and m_sceneCombo to the scene

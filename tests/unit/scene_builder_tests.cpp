@@ -361,6 +361,7 @@ bool renderWithLauncher(const std::string& launcher, const std::string& sceneTex
 	std::remove(scenePath.c_str());
 	std::remove(outPath.c_str());
 	std::remove((std::string("scene_builder_render_") + tag + ".log").c_str());
+	std::remove((outPath + ".run_marker.txt").c_str());  // the launcher drops a marker beside its output
 	return ok;
 }
 

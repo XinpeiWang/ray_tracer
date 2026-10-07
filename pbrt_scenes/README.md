@@ -1,15 +1,15 @@
 # Custom scenes
 
 Any `.pbrt` file placed directly in this folder appears in the renderer as a
-scene, in the CLI (`--scene <id>`) and in the GUI's **Custom Scenes** tab, with
-no rebuild.
+scene, in the CLI (by its file name: `ray_tracer.exe --cpu 400 64 8 my-scene`, or by
+the file's path) and in the GUI's **Custom Scenes** tab, with no rebuild.
 
 Point the renderer at a different folder with the `RAY_TRACER_PBRT_DIR`
 environment variable — useful for a scene collection you keep outside this
 repository:
 
 ```bash
-RAY_TRACER_PBRT_DIR=D:/pbrt-v4-scenes/killeroo ./ray_tracer.exe --scene 65
+RAY_TRACER_PBRT_DIR=D:/pbrt-v4-scenes/killeroo ./ray_tracer.exe --cpu 400 64 8 killeroo
 ```
 
 ## What is read, and when
@@ -23,12 +23,18 @@ That is also why a scene's reported performance is "Unknown": nothing in a
 pbrt header says whether the world behind it holds three triangles or ten
 million.
 
-## Ids
+## Names and ids
 
-Loaded scenes are numbered after the built-in ones, in filename order. Adding a
-file that sorts earlier therefore shifts the ids of the ones after it — if you
-script against scene numbers, prefix your filenames (`10-crown.pbrt`) so the
-order is yours to control.
+A scene is named by its file name without the extension, lower-cased with hyphens:
+`My Scene.pbrt` is `my-scene`. That name is the scene's durable key: it is what the
+command line, the recent-renders list and the thumbnail cache use, and it does not
+change when you add or remove other files. A scene from a collection in its own
+sub-folder is prefixed with that folder (`killeroo/frame25.pbrt` is `killeroo-frame25`);
+if two files would get the same name the later one gets `-2`.
+
+Each scene also has a short id (`K37`), numbered in filename order after the built-in
+ones, and the id is accepted anywhere a name is. But adding a file that sorts earlier
+shifts the ids of the ones after it, so scripts should use the name.
 
 ## Supported subset
 

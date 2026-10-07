@@ -1473,6 +1473,29 @@ int main(int argc, char** argv) {
 		scene_id = file_scene_id;
 		std::cout << "Scene file " << args.scene_file << " is scene " << scene_id << std::endl;
 	}
+	{
+		// A scene may be named by its slug ("cornell-box") or its id ("A1"); everything below works with the id.
+		char resolved_id[32] = {};
+		if (cpu_resolve_scene_id(scene_id.c_str(), resolved_id, static_cast<int>(sizeof resolved_id))) {
+			if (scene_id != resolved_id) {
+				std::cout << "Scene " << scene_id << " is " << resolved_id << std::endl;
+				scene_id = resolved_id;
+			}
+		} else {
+			// Unknown: say which scenes it might have meant (the render below then fails with the usual error).
+			std::vector<std::string> near_slugs;
+			for (int i = 0, n = cpu_scene_count(); i < n && near_slugs.size() < 5; ++i) {
+				const std::string slug = cpu_scene_slug_by_id(cpu_scene_id(i));
+				if (!slug.empty() && (slug.find(scene_id) != std::string::npos || scene_id.find(slug) != std::string::npos)) near_slugs.push_back(slug);
+			}
+			std::cerr << "Unknown scene \"" << scene_id << "\"." << std::endl;
+			if (!near_slugs.empty()) {
+				std::cerr << "Did you mean:";
+				for (const std::string& slug : near_slugs) std::cerr << " " << slug;
+				std::cerr << std::endl;
+			}
+		}
+	}
 	// Set once, here, before any entry point's first scene lookup - see
 	// accelerator_override.h's own comment for why this needs to be a
 	// process-global rather than threaded through RenderOptions (BDPT/MLT/

@@ -123,6 +123,22 @@ SCENE_METADATA_API const char* scene_metadata_name(const char* scene_id) {
 	}
 }
 
+SCENE_METADATA_API const char* scene_metadata_slug(const char* scene_id) {
+	try {
+		return cpu_scene_slug_by_id(scene_id);
+	} catch (...) {
+		return "";
+	}
+}
+
+SCENE_METADATA_API const char* scene_metadata_id_for_key(const char* key) {
+	try {
+		return cpu_scene_id_for_key(key);
+	} catch (...) {
+		return "";
+	}
+}
+
 SCENE_METADATA_API const char* scene_metadata_category(const char* scene_id) {
 	try {
 		return cpu_scene_category_by_id(scene_id);

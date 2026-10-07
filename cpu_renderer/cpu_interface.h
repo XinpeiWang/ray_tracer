@@ -474,6 +474,16 @@ int cpu_scene_camera_is_animated_by_id(const char* scene_id);
 /// @return 1 if pbrt-backed, 0 if not (including if scene_id isn't found)
 int cpu_scene_is_pbrt_backed_by_id(const char* scene_id);
 
+/// The scene's slug (its durable key, see src/shared/scene_slugs.h); "" for an unknown scene.
+const char* cpu_scene_slug_by_id(const char* scene_id);
+
+/// The id of the scene a key (an id or a slug) names; "" for an unknown key.
+const char* cpu_scene_id_for_key(const char* key);
+
+/// Resolves a scene key - an id ("B10") or a slug ("rough-glass", see src/shared/scene_slugs.h) - to the scene's id.
+/// @return 1 and the id in id_out, or 0 (id_out empty) for an unknown key
+int cpu_resolve_scene_id(const char* key, char* id_out, int id_out_size);
+
 /// Makes a .pbrt file named directly by the user renderable by id (the scene id is written to id_out). Must be called before anything else touches the
 /// scene registry in this process, which is built once.
 /// @return 0 on success; 1 bad arguments; 2 the registry was already built without this file; 3 the file could not be read as a scene (its error is on stderr)

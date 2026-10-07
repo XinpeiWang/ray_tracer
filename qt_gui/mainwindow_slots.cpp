@@ -307,7 +307,8 @@ RenderJob MainWindow::captureRenderJob() {
 		QString ext = isVideoMode() ? "ppm" : (prevInfo.suffix().isEmpty() ? "png" : prevInfo.suffix());
 		QString base = isVideoMode() ? "video" : "render";
 		QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss_zzz");
-		QString newName = QString("%1_%2_%3.%4").arg(base, job.sceneId, timestamp, ext);
+		// The scene's slug, not its id: it stays the same scene when the registry changes, and has no underscore to confuse recent_renders.cpp's parsing.
+		QString newName = QString("%1_%2_%3.%4").arg(base, SceneMetadataClient::sceneSlug(job.sceneId), timestamp, ext);
 		m_outputPathEdit->setText(QDir::toNativeSeparators(dir + "/" + newName));
 	}
 	job.outputPath = m_outputPathEdit->text();

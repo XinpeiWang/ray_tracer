@@ -45,7 +45,7 @@ build/Release/ray_tracer --cpu --output cornell.png 400 128 8 A1      # Windows 
 build/ray_tracer          --cpu --output cornell.png 400 128 8 A1      # macOS and other single-config generators
 ```
 
-That renders the Cornell box (A1) at 400 px with 128 samples per pixel and depth 8: about 5 seconds on a 16-core desktop CPU (the build took under a minute). The arguments are `[width] [samples] [max depth] [scene id]`; `--gpu` on a build without GPU support falls back to the CPU with a warning. Add `-DRT_BUILD_GPU=ON` (Windows with CUDA and OptiX) or `-DRT_BUILD_METAL=ON` (macOS) to the first `cmake` line for the GPU backends, or use the portable release below.
+That renders the Cornell box (A1) at 400 px with 128 samples per pixel and depth 8: about 5 seconds on a 16-core desktop CPU (the build took under a minute). The arguments are `[width] [samples] [max depth] [scene]`, where the scene is a name such as `cornell-box`, an id such as `A1`, or the path of a `.pbrt` file; `--gpu` on a build without GPU support falls back to the CPU with a warning. Add `-DRT_BUILD_GPU=ON` (Windows with CUDA and OptiX) or `-DRT_BUILD_METAL=ON` (macOS) to the first `cmake` line for the GPU backends, or use the portable release below.
 
 ## 🧱 Build your own scene
 

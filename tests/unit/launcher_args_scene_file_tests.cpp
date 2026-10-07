@@ -65,3 +65,23 @@ TEST(LauncherArgsHeight, ABadHeightFallsBackToSquare) {
 	ASSERT_TRUE(parse({"--height", "-5", "320"}, args));
 	EXPECT_EQ(args.image_height, 320);
 }
+
+TEST(LauncherArgsSceneName, ASlugIsAcceptedAsTheScene) {
+	LaunchArgs args;
+	ASSERT_TRUE(parse({"400", "16", "4", "cornell-box"}, args));
+	EXPECT_EQ(args.scene_id, "cornell-box");
+	EXPECT_TRUE(args.scene_file.empty());
+}
+
+TEST(LauncherArgsSceneName, ASlugWithDigitsAndHyphensIsAccepted) {
+	LaunchArgs args;
+	ASSERT_TRUE(parse({"400", "16", "4", "dragon-10"}, args));
+	EXPECT_EQ(args.scene_id, "dragon-10");
+}
+
+TEST(LauncherArgsSceneName, MalformedNamesAreStillRejected) {
+	LaunchArgs args;
+	EXPECT_FALSE(parse({"400", "16", "4", "Cornell Box"}, args));
+	EXPECT_FALSE(parse({"400", "16", "4", "bad_name"}, args));
+	EXPECT_FALSE(parse({"400", "16", "4", "-x"}, args));
+}
