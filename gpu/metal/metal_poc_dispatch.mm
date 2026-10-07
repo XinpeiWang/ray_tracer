@@ -12,7 +12,11 @@
 // since "upload the data" and "compile+dispatch+read back" are two
 // genuinely different concerns that happen to run back to back, not one
 // oversized stage that was arbitrarily cut in half.
-#import <Metal/Metal.h>
+//
+// compileShaderAndDispatch() is now a short driver over named stages (dsLoadShaderLibrary, dsBuildPipeline, dsCreateRenderTargets,
+// dsUploadTextures, dsUploadSamplingTables, dsFillUniforms, dsCheckResources, dsMakeRenderFrame): it had grown back to one ~1,080-line
+// function. The stage bodies are the original code, moved unchanged; what they hand to each other lives in DispatchState below, and each
+// stage reads it through references of the same names. Renders are byte-identical to before the split.#import <Metal/Metal.h>
 #import <Foundation/Foundation.h>
 #include <algorithm>
 #include "metal_poc_app.h"
@@ -52,8 +56,42 @@ static void checkGpuResource(id resource, const char* name, id<MTLDevice> device
     }
 }
 
-// --- Stage 4: compile the shader, dispatch the render, read back -------
-bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
+
+// Everything the stages below hand to each other. compileShaderAndDispatch() used to be one ~1,080-line function whose locals these were;
+// each stage now reads the ones it needs through references of the same name (so the stage bodies are the original code, unchanged) and
+// leaves the ones it creates here. The frame lambda built by the last stage copies what it needs, as it always did.
+struct MetalPocApp::DispatchState {
+    NSError* error = nil;   // stage A
+    id<MTLLibrary> library;   // stage A
+    id<MTLComputePipelineState> pipeline;   // stage B
+    id<MTLIntersectionFunctionTable> functionTable;   // stage B
+    id<MTLTexture> outTexture;   // stage C
+    bool censusOn = false;   // stage C
+    id<MTLTexture> censusTexture;   // stage C
+    id<MTLTexture> worldPosTexture;   // stage C
+    id<MTLTexture> earthTexture;   // stage D
+    id<MTLTexture> pbrtEnvTexture;   // stage D
+    id<MTLTexture> pbrtGoniometricTexture;   // stage D
+    id<MTLTexture> pbrtProjectionTexture;   // stage D
+    id<MTLTexture> pbrtAreaLightTexture;   // stage D
+    id<MTLTexture> pbrtDiffuseTexture;   // stage D
+    id<MTLTexture> pbrtTransmitTexture;   // stage D
+    EnvDistribution2D envDist;   // stage D
+    uint32_t envMapWidth = 0;   // stage D2
+    uint32_t envMapHeight = 0;   // stage D2
+    id<MTLBuffer> envMarginalCDFBuffer;   // stage D2
+    id<MTLBuffer> envConditionalCDFBuffer;   // stage D2
+    uint32_t pbrtEnvMapWidth = 0;   // stage D2
+    uint32_t pbrtEnvMapHeight = 0;   // stage D2
+    id<MTLBuffer> pbrtEnvMarginalCDFBuffer;   // stage D2
+    id<MTLBuffer> pbrtEnvConditionalCDFBuffer;   // stage D2
+    GGXEnergyTable ggxEnergyTable;   // stage D2
+    id<MTLBuffer> ggxEnergyTableBuffer;   // stage D2
+    id<MTLBuffer> uniformBuffer;   // stage E
+};
+
+// Stage A: Concatenates the shader source files and compiles them into the Metal library.
+bool MetalPocApp::dsLoadShaderLibrary(DispatchState& s) {
     // --- Compile the shader library from source at runtime ---------
     NSError* error = nil;
     // Three DIRECTORY candidates, tried in priority order (unchanged from
@@ -130,6 +168,15 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         fprintf(stderr, "Shader compile failed: %s\n", error.localizedDescription.UTF8String);
         return false;
     }
+    s.error = error;
+    s.library = library;
+    return true;
+}
+
+// Stage B: Looks up the kernel and the intersection functions, builds the compute pipeline that links them, and fills the intersection function table.
+bool MetalPocApp::dsBuildPipeline(DispatchState& s) {
+    auto& error = s.error;
+    auto& library = s.library;
     id<MTLFunction> kernelFn = [library newFunctionWithName:@"primaryRayKernel"];
     id<MTLFunction> sphereIntersectFn = [library newFunctionWithName:@"sphereIntersectionFunction"];
     id<MTLFunction> diskIntersectFn = [library newFunctionWithName:@"diskIntersectionFunction"];
@@ -219,6 +266,13 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     // cylinderIntersectionFunction likewise needs cylinderMaterials to recognise a medium-bounding tube for shadow rays.
     [functionTable setBuffer:cylinderMaterialBuffer offset:0 atIndex:4];
 
+    s.pipeline = pipeline;
+    s.functionTable = functionTable;
+    return true;
+}
+
+// Stage C: The output texture, plus the optional census and live-preview world-position textures.
+bool MetalPocApp::dsCreateRenderTargets(DispatchState& s) {
     // --- Output texture + uniforms ----------------------------------
     MTLTextureDescriptor* texDesc = [MTLTextureDescriptor
         texture2DDescriptorWithPixelFormat:MTLPixelFormatRGBA32Float
@@ -240,6 +294,15 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     worldPosDesc.storageMode = MTLStorageModeShared;
     id<MTLTexture> worldPosTexture = [device newTextureWithDescriptor:worldPosDesc];
 
+    s.outTexture = outTexture;
+    s.censusOn = censusOn;
+    s.censusTexture = censusTexture;
+    s.worldPosTexture = worldPosTexture;
+    return true;
+}
+
+// Stage D: Textures: the earth image (and the environment distribution built from it) and the pbrt environment, goniometric, projection, area-light, diffuse and transmit images.
+bool MetalPocApp::dsUploadTextures(DispatchState& s) {
     // --- Earth texture (the back wall's materialType=3 source) -----
     // stb_image decodes straight to interleaved 8-bit RGBA regardless
     // of the source JPEG's channel count (the 4th `desiredChannels`
@@ -485,7 +548,20 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         [pbrtTransmitTexture replaceRegion:MTLRegionMake2D(0, 0, tw, th) mipmapLevel:0
             withBytes:trgba.data() bytesPerRow:(NSUInteger)tw * 4 * sizeof(float)];
     }
+    s.earthTexture = earthTexture;
+    s.pbrtEnvTexture = pbrtEnvTexture;
+    s.pbrtGoniometricTexture = pbrtGoniometricTexture;
+    s.pbrtProjectionTexture = pbrtProjectionTexture;
+    s.pbrtAreaLightTexture = pbrtAreaLightTexture;
+    s.pbrtDiffuseTexture = pbrtDiffuseTexture;
+    s.pbrtTransmitTexture = pbrtTransmitTexture;
+    s.envDist = envDist;
+    return true;
+}
 
+// Stage D2: The sampling tables the shader reads: environment CDFs (plain and pbrt, incl. the portal light) and the GGX energy table.
+bool MetalPocApp::dsUploadSamplingTables(DispatchState& s) {
+    auto& envDist = s.envDist;
     // envMarginalCDF/envConditionalCDF buffers - a real (non-empty)
     // envDist above uploads its own arrays directly; the fallback case
     // (missing JPEG) still needs SOME buffer bound at these indices
@@ -568,7 +644,27 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     GGXEnergyTable ggxEnergyTable = takeGgxEnergyTable();
     id<MTLBuffer> ggxEnergyTableBuffer = [device newBufferWithBytes:ggxEnergyTable.E.data()
         length:ggxEnergyTable.E.size() * sizeof(float) options:MTLResourceStorageModeShared];
+    s.envMapWidth = envMapWidth;
+    s.envMapHeight = envMapHeight;
+    s.envMarginalCDFBuffer = envMarginalCDFBuffer;
+    s.envConditionalCDFBuffer = envConditionalCDFBuffer;
+    s.pbrtEnvMapWidth = pbrtEnvMapWidth;
+    s.pbrtEnvMapHeight = pbrtEnvMapHeight;
+    s.pbrtEnvMarginalCDFBuffer = pbrtEnvMarginalCDFBuffer;
+    s.pbrtEnvConditionalCDFBuffer = pbrtEnvConditionalCDFBuffer;
+    s.ggxEnergyTable = ggxEnergyTable;
+    s.ggxEnergyTableBuffer = ggxEnergyTableBuffer;
+    return true;
+}
 
+// Stage E: Fills the Uniforms (camera, lights, media, filter, options) and uploads them.
+bool MetalPocApp::dsFillUniforms(DispatchState& s, int argc, const char** argv) {
+    auto& censusOn = s.censusOn;
+    auto& envMapWidth = s.envMapWidth;
+    auto& envMapHeight = s.envMapHeight;
+    auto& pbrtEnvMapWidth = s.pbrtEnvMapWidth;
+    auto& pbrtEnvMapHeight = s.pbrtEnvMapHeight;
+    auto& ggxEnergyTable = s.ggxEnergyTable;
     const uint32_t samplesPerPixel = (argc > 4) ? (uint32_t)atoi(argv[4]) : 64;
     const uint32_t maxDepth = (argc > 5) ? (uint32_t)atoi(argv[5]) : 8;
     fprintf(stderr, "Samples/pixel: %u, max depth: %u\n", samplesPerPixel, maxDepth);
@@ -842,7 +938,26 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     }
 
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
+    s.uniformBuffer = uniformBuffer;
+    return true;
+}
 
+// Stage F: Fails loudly if any buffer or texture the encoder binds could not be allocated.
+bool MetalPocApp::dsCheckResources(DispatchState& s) {
+    auto& outTexture = s.outTexture;
+    auto& earthTexture = s.earthTexture;
+    auto& pbrtEnvTexture = s.pbrtEnvTexture;
+    auto& pbrtGoniometricTexture = s.pbrtGoniometricTexture;
+    auto& pbrtProjectionTexture = s.pbrtProjectionTexture;
+    auto& pbrtAreaLightTexture = s.pbrtAreaLightTexture;
+    auto& pbrtDiffuseTexture = s.pbrtDiffuseTexture;
+    auto& pbrtTransmitTexture = s.pbrtTransmitTexture;
+    auto& envMarginalCDFBuffer = s.envMarginalCDFBuffer;
+    auto& envConditionalCDFBuffer = s.envConditionalCDFBuffer;
+    auto& pbrtEnvMarginalCDFBuffer = s.pbrtEnvMarginalCDFBuffer;
+    auto& pbrtEnvConditionalCDFBuffer = s.pbrtEnvConditionalCDFBuffer;
+    auto& ggxEnergyTableBuffer = s.ggxEnergyTableBuffer;
+    auto& uniformBuffer = s.uniformBuffer;
     // Checked once, here, right before they're all bound below - see
     // checkGpuResource()'s own comment for why this one spot (not each
     // allocation call site above) and why the AS-only scratch/geometry
@@ -887,7 +1002,31 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     checkGpuResource(pbrtDiffuseTexture, "pbrtDiffuseTexture", device, &anyResourceFailed);
     checkGpuResource(pbrtTransmitTexture, "pbrtTransmitTexture", device, &anyResourceFailed);
     if (anyResourceFailed) return false;
+    return true;
+}
 
+// Stage G: Builds the re-runnable per-frame dispatch (row bands, read-back, crop). It owns copies of every GPU resource it needs.
+std::function<bool(const std::function<void(Uniforms&)>&)> MetalPocApp::dsMakeRenderFrame(DispatchState& s) {
+    auto& error = s.error;
+    auto& pipeline = s.pipeline;
+    auto& functionTable = s.functionTable;
+    auto& outTexture = s.outTexture;
+    auto& censusOn = s.censusOn;
+    auto& censusTexture = s.censusTexture;
+    auto& worldPosTexture = s.worldPosTexture;
+    auto& earthTexture = s.earthTexture;
+    auto& pbrtEnvTexture = s.pbrtEnvTexture;
+    auto& pbrtGoniometricTexture = s.pbrtGoniometricTexture;
+    auto& pbrtProjectionTexture = s.pbrtProjectionTexture;
+    auto& pbrtAreaLightTexture = s.pbrtAreaLightTexture;
+    auto& pbrtDiffuseTexture = s.pbrtDiffuseTexture;
+    auto& pbrtTransmitTexture = s.pbrtTransmitTexture;
+    auto& envMarginalCDFBuffer = s.envMarginalCDFBuffer;
+    auto& envConditionalCDFBuffer = s.envConditionalCDFBuffer;
+    auto& pbrtEnvMarginalCDFBuffer = s.pbrtEnvMarginalCDFBuffer;
+    auto& pbrtEnvConditionalCDFBuffer = s.pbrtEnvConditionalCDFBuffer;
+    auto& ggxEnergyTableBuffer = s.ggxEnergyTableBuffer;
+    auto& uniformBuffer = s.uniformBuffer;
     // --- Dispatch, one horizontal row-band at a time ------------------
     // A single dispatchThreads: covering the whole image (this loop's
     // own precedent, before row bands existed at all) gives the host
@@ -1127,6 +1266,20 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
     }
         return true;
     };
+    return renderFrame;
+}
+
+// --- Stage 4: compile the shader, dispatch the render, read back -------
+bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
+    DispatchState s;
+    if (!dsLoadShaderLibrary(s)) return false;
+    if (!dsBuildPipeline(s)) return false;
+    if (!dsCreateRenderTargets(s)) return false;
+    if (!dsUploadTextures(s)) return false;
+    if (!dsUploadSamplingTables(s)) return false;
+    if (!dsFillUniforms(s, argc, argv)) return false;
+    if (!dsCheckResources(s)) return false;
+    auto renderFrame = dsMakeRenderFrame(s);
     // Live Preview session: keep the re-runnable dispatch (it owns every GPU resource it needs) for later frames; the
     // caller updates the camera/seed/sample-count uniforms through `tweak` before each one.
     if (liveSession) liveRender = renderFrame;
