@@ -99,6 +99,7 @@ std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int h
     app.isolatePbrtLighting = true;
     app.skipDemoRoom = true;
     app.liveSession = true;
+    app.pbrtRequireAllMeshes = cpu_scene_requires_files_by_id(sceneId) != 0;
     app.buildScene();
     if (!app.pbrtMissingAssetsError.empty()) { fail(app.pbrtMissingAssetsError); return nullptr; }
     if (!app.havePbrtCamera) { fail("the pbrt scene failed to load (see the loader's message above)"); return nullptr; }

@@ -120,6 +120,11 @@ struct SceneDescriptor {
     // files. Callers turn it into ERR_FILE_NOT_FOUND instead of rendering an empty scene and
     // reporting success. Left null for scenes that cannot fail this way.
     std::function<std::string()>                         missing_assets_error;
+    // Valid only after build_world(), like missing_assets_error. Non-empty when ANY mesh the pbrt file names could not be
+    // read, even if other geometry survived. A scene flagged requires_files treats that as fatal (check_scene_assets): its
+    // files are its subject (the statue in a statue scene), so a picture without them is not a result. Scenes not flagged
+    // keep the lenient warn-and-continue behaviour.
+    std::function<std::string()>                         missing_meshes_error;
     std::function<std::shared_ptr<sky_light>()>          build_sky;      // nullptr = flat bg
     std::function<std::shared_ptr<punctual_light_list>()> build_punct;   // nullptr = none
     std::function<void(camera_t&)>                       setup_camera;   // nullptr = default perspective
@@ -273,6 +278,7 @@ namespace pbrt_scene_registry {
         bool attempted = false;
         pbrt_cpu::BuildResult built;
         std::string missingAssetsError;   // see SceneDescriptor::missing_assets_error
+        std::string missingMeshesError;   // see SceneDescriptor::missing_meshes_error
     };
 
     // Wires every field of `s` that must be derived from - and stay
@@ -344,6 +350,8 @@ namespace pbrt_scene_registry {
                 } else {
                     for (const pbrt_scene::Warning& w : r.scene.warnings)
                         std::cerr << "warning: " << path << ": " << w.message << "\n";
+                    if (!r.scene.missingFiles.empty())
+                        state->missingMeshesError = pbrt_load::detail::missingMeshesMessage(path, r.scene.missingFiles, false);
                     state->built = pbrt_cpu::build(r.scene);
                     // Worth printing rather than inferring from the
                     // picture: instanced geometry that failed to be placed
@@ -403,6 +411,7 @@ namespace pbrt_scene_registry {
             return b.lights ? *b.lights : hittable_list{};
         };
         s.missing_assets_error = [state]() { return state->missingAssetsError; };
+        s.missing_meshes_error = [state]() { return state->missingMeshesError; };
         // nullptr (flat background) unless the scene declared its own
         // LightSource "infinite" - see pbrt_cpu_builder.h's build() for how
         // b.sky gets populated (constant-colour form now; image-backed form
@@ -1031,11 +1040,20 @@ inline const SceneDescriptor* find_scene(const std::string& id) {
 // instead of producing an empty image and reporting success; otherwise returns SUCCESS. The
 // explanation itself was already printed by the load (see below).
 inline int check_scene_assets(const SceneDescriptor& scene) {
-    if (!scene.missing_assets_error) return SUCCESS;
-    if (scene.missing_assets_error().empty()) return SUCCESS;
-    // No message printed here: the load itself already reported it (the registry prints "error: ..."
-    // when the loader fails), and a second copy only clutters the log.
-    return ERR_FILE_NOT_FOUND;
+    if (scene.missing_assets_error && !scene.missing_assets_error().empty()) {
+        // No message printed here: the load itself already reported it (the registry prints "error: ..."
+        // when the loader fails), and a second copy only clutters the log.
+        return ERR_FILE_NOT_FOUND;
+    }
+    // Some meshes missing but the scene still loaded: fatal only for a scene that is about those files.
+    if (scene.requires_files && scene.missing_meshes_error) {
+        const std::string msg = scene.missing_meshes_error();
+        if (!msg.empty()) {
+            std::cerr << "error: " << msg << std::endl;
+            return ERR_FILE_NOT_FOUND;
+        }
+    }
+    return SUCCESS;
 }
 
 inline int scene_count() {

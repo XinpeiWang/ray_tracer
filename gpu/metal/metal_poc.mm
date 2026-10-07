@@ -1035,6 +1035,7 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
                 app.cropX0 = b.x0; app.cropX1 = b.x1; app.cropY0 = b.y0; app.cropY1 = b.y1;
             }
         }
+        app.pbrtRequireAllMeshes = cpu_scene_requires_files_by_id(scene_id) != 0;
         app.buildScene();
         // loadPbrtScene() already printed the explanation (naming the missing files).
         if (!app.pbrtMissingAssetsError.empty()) return ERR_FILE_NOT_FOUND;
