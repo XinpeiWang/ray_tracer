@@ -928,6 +928,16 @@ struct MetalPocApp {
     void applyCameraLookAt(double cam_x, double cam_y, double cam_z, bool hasLookAt, double look_x, double look_y, double look_z);
     bool buildGPUResources();
     bool compileShaderAndDispatch(int argc, const char** argv);
+    // The stages compileShaderAndDispatch() runs in order (metal_poc_dispatch.mm); DispatchState carries what they hand to each other.
+    struct DispatchState;
+    bool dsLoadShaderLibrary(DispatchState& s);
+    bool dsBuildPipeline(DispatchState& s);
+    bool dsCreateRenderTargets(DispatchState& s);
+    bool dsUploadTextures(DispatchState& s);
+    bool dsUploadSamplingTables(DispatchState& s);
+    bool dsFillUniforms(DispatchState& s, int argc, const char** argv);
+    bool dsCheckResources(DispatchState& s);
+    std::function<bool(const std::function<void(Uniforms&)>&)> dsMakeRenderFrame(DispatchState& s);
 
     // --- Live Preview session (gpu/metal/metal_live_preview.mm) -----------------------------------------------
     // When set before compileShaderAndDispatch(), that call also keeps its per-frame dispatch in `liveRender`: calling
