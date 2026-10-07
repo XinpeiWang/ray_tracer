@@ -112,6 +112,7 @@
 #include <string>
 #include <vector>
 #include <algorithm>
+#include <chrono>
 #include <numeric>
 #include <map>
 #include <mach-o/dyld.h>
@@ -464,8 +465,15 @@ MPImage render_cpu_once(const SceneDescriptor& s, int spp) {
 
 MPImage render_metal_once(const SceneDescriptor& s, int spp) {
 	const std::string fn = "mcparity_" + s.id + "_metal.exr";
+	RenderOptions opts = parity_options();
+	// METAL_PARITY_ADAPTIVE=1 turns Metal's adaptive sampling on (off by default, as on the CPU) - only for measuring what it saves.
+	if (std::getenv("METAL_PARITY_ADAPTIVE")) opts.adaptive_sampling = true;
+	const auto t0 = std::chrono::steady_clock::now();
 	metal_render_main(kWidth, kHeight, spp, kDepth, fn.c_str(), s.id.c_str(),
-	                   s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z, /*force_camera_override=*/0, parity_options());
+	                   s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z, /*force_camera_override=*/0, opts);
+	// METAL_PARITY_TIMING=1 prints the Metal render's wall time (scene load + shader compile + render + write) per scene.
+	if (std::getenv("METAL_PARITY_TIMING"))
+		fprintf(stderr, "[mcparity-time] %s metal %.3f s (%d spp)\n", s.id.c_str(), std::chrono::duration<double>(std::chrono::steady_clock::now() - t0).count(), spp);
 	MPImage img = mp_load_exr(fn.c_str());
 	if (!std::getenv("METAL_PARITY_KEEP")) std::remove(fn.c_str());  // METAL_PARITY_KEEP=1 keeps the EXRs for inspection
 	return img;
