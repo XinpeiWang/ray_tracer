@@ -680,6 +680,35 @@ TEST(PbrtBackendAgreementTest, BdptAndSimplePathFilterTheirCameraRaysLikeThePath
 	EXPECT_LT(diffSimple / sumPath, 0.10) << "--simplepath's light edge does not match the path tracer's filtered one";
 }
 
+// MLT has no estimator of its own beyond the Markov chain over BDPT's path space, so it inherits every defect in BDPT's strategy weights and bridge; it had no test
+// of its own. Averaged over seeds it agrees with the path tracer to ~0.5% on every scene checked (a single run scatters by about +/-1%, which is where an earlier
+// "MLT reads 1.5% low" came from - it was noise, not a bias), so the bound here is loose enough for one seed and still catches a defect like the BDPT ones fixed
+// above (those read 0.78x-1.1x).
+static void expectMltAgreesWithPathTracer(const char* stem, int depth, double tol) {
+	const SceneDescriptor* s = find_example_scene(stem);
+	if (!s) GTEST_SKIP() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?";
+	const std::string pathOut = std::string("pbrt_agree_mlt_") + stem + "_path.exr", mltOut = std::string("pbrt_agree_mlt_") + stem + "_mlt.exr";
+	double pathMean = 0.0, mltMean = 0.0;
+	ASSERT_EQ(cpu_render_main(48, 48, 256, depth, pathOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(pathOut, pathMean));
+	ASSERT_EQ(cpu_render_main_mlt(48, 48, 200000, 8000000, depth, mltOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(mltOut, mltMean));
+	std::remove(pathOut.c_str());
+	std::remove(mltOut.c_str());
+	std::printf("[agree] %s depth %d: path %.4f  mlt %.4f (%.1f%%)\n", stem, depth, pathMean, mltMean, 100.0 * mltMean / pathMean);
+	ASSERT_GT(pathMean, 0.05);
+	EXPECT_GT(mltMean, (1.0 - tol) * pathMean) << stem << ": MLT too dark vs the path tracer";
+	EXPECT_LT(mltMean, (1.0 + tol) * pathMean) << stem << ": MLT too bright vs the path tracer";
+}
+
+TEST(PbrtBackendAgreementTest, MltClosedBoxWithLargeLightAgreesWithPathTracer) {
+	expectMltAgreesWithPathTracer("bdpt-box-room", 6, 0.03);
+}
+
+TEST(PbrtBackendAgreementTest, MltSkyLitDiffuseTransmissionShellAgreesWithPathTracer) {
+	expectMltAgreesWithPathTracer("diffuse-transmission-furnace", 4, 0.03);
+}
+
 // A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
 // every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU
 // backends, and of BDPT - which a path-tracer-vs-BDPT comparison alone could not, since the two could be wrong together.
