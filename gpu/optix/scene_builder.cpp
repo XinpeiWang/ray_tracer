@@ -26,6 +26,8 @@
 #include <sstream>
 #include <vector>
 #include <unordered_map>
+#include <list>
+#include <memory>
 #include <mutex>
 
 #include "../../src/shared/cameras.h"
@@ -75,6 +77,38 @@ namespace {
 	// point is avoiding repeated work within roughly the current working
 	// set (the scene(s) actually in view), not remembering every scene ever
 	// visited in a session.
+	// A least-recently-used cache of shared, immutable values, for the two pbrt-scene caches below (the parsed FlatScene and the built SceneData of a
+	// loaded file). Those used to be unbounded maps: a process that renders many large scenes - the gallery test renders 350 of them, one process - kept
+	// every one for good, 1-2 GB each, and reached 25 GB. Live Preview only ever needs the scene being looked at (it rebuilds on every camera move), so two
+	// entries are enough to flip between a pair of scenes without a reload. Values are shared_ptr so evicting an entry never pulls a scene out from under
+	// a build that is still reading it.
+	template <typename V>
+	class SharedLruCache {
+	  public:
+		explicit SharedLruCache(std::size_t maxEntries) : maxEntries_(maxEntries) {}
+
+		// The cached value for `key`, building it with `builder(V&)` on a miss (nullptr, nothing cached, when the builder returns false).
+		template <typename Builder>
+		std::shared_ptr<const V> get_or_build(const std::string& key, Builder&& builder) {
+			std::lock_guard<std::mutex> lock(mutex_);
+			for (auto it = entries_.begin(); it != entries_.end(); ++it) {
+				if (it->first != key) continue;
+				entries_.splice(entries_.begin(), entries_, it);   // most recently used first
+				return it->second;
+			}
+			auto value = std::make_shared<V>();
+			if (!builder(*value)) return nullptr;
+			entries_.emplace_front(key, std::shared_ptr<const V>(std::move(value)));
+			while (entries_.size() > maxEntries_) entries_.pop_back();
+			return entries_.front().second;
+		}
+
+	  private:
+		std::size_t maxEntries_;
+		std::mutex mutex_;
+		std::list<std::pair<std::string, std::shared_ptr<const V>>> entries_;
+	};
+
 	template <typename V, typename Builder>
 	const V* get_or_build_cached(std::unordered_map<std::string, V>& cache, std::mutex& mutex,
 								  const std::string& key, Builder&& builder, std::size_t maxEntries = 0) {
@@ -643,9 +677,8 @@ static bool build_loaded_pbrt_scene(
 	// any scene with warnings, instead of the one-time diagnostic it used
 	// to be back when this function was slow enough that repeat calls were
 	// rare.
-	static std::unordered_map<std::string, pbrt_load::LoadResult> s_pbrtLoadCache;
-	static std::mutex s_pbrtLoadCacheMutex;
-	const pbrt_load::LoadResult* loadedPtr = get_or_build_cached(s_pbrtLoadCache, s_pbrtLoadCacheMutex, std::string(path),
+	static SharedLruCache<pbrt_load::LoadResult> s_pbrtLoadCache(2);   // bounded: see SharedLruCache
+	const std::shared_ptr<const pbrt_load::LoadResult> loadedPtr = s_pbrtLoadCache.get_or_build(std::string(path),
 		[&](pbrt_load::LoadResult& out) -> bool {
 			out = pbrt_load::loadFile(path);
 			if (!out.ok) {
@@ -679,10 +712,9 @@ static bool build_loaded_pbrt_scene(
 		SceneData sceneData;
 		pbrt_gpu::BuildStats stats;
 	};
-	static std::unordered_map<std::string, PbrtBuiltScene> s_pbrtBuiltSceneCache;
-	static std::mutex s_pbrtBuiltSceneCacheMutex;
+	static SharedLruCache<PbrtBuiltScene> s_pbrtBuiltSceneCache(2);   // bounded: see SharedLruCache
 
-	const PbrtBuiltScene* built = get_or_build_cached(s_pbrtBuiltSceneCache, s_pbrtBuiltSceneCacheMutex, std::string(path),
+	const std::shared_ptr<const PbrtBuiltScene> built = s_pbrtBuiltSceneCache.get_or_build(std::string(path),
 		[&](PbrtBuiltScene& out) -> bool {
 			out.stats = pbrt_gpu::build(loaded.scene, out.sceneData);
 			return true;
