@@ -8,12 +8,11 @@
 # just cuts a geometric hole in a wall in front of a flat sky_light, never
 # building this class at all on either backend (see docs' correction).
 #
-# Reuses this repo's own existing equal-area (octahedral) environment image
-# (pbrt_scenes/sssdragon/textures/small_rural_road_equiarea.exr, already
-# used as a plain infinite-light filename by the sssdragon benchmark
-# scenes - its name literally flags it equal-area, required by
-# PortalImageInfiniteLight; an equirectangular/angular image like this
-# repo's other .exr files would not orient correctly through this path).
+# Uses pbrt_scenes/portal-light-sky.exr, a small generated equal-area (octahedral) sky (gradient, ground and a sun;
+# scripts/gen_equal_area_sky.cpp writes it). PortalImageInfiniteLight requires an equal-area image - an
+# equirectangular/angular one like this repo's other .exr files would not orient correctly through this path.
+# (It used to name sssdragon/textures/small_rural_road_equiarea.exr from a third-party collection that is not in a
+# checkout, so a fresh clone rendered this scene against a black sky.)
 #
 # A room with one wall opening (the portal quad) - the visible sky through
 # that opening should show the environment image's real content oriented
@@ -21,8 +20,7 @@
 # from anywhere else in the room.
 #
 # Scene geometry is original, not derived from any distributed scene, so it
-# carries no licence constraints; the referenced .exr is bundled to this
-# repo already as noted above.
+# carries no licence constraints, and so does the generated sky.
 
 LookAt  0 1.5 6    0 1.5 0    0 1 0
 Camera "perspective" "float fov" [ 50 ]
@@ -33,7 +31,7 @@ Sampler "halton" "integer pixelsamples" [ 96 ]
 WorldBegin
 
 LightSource "infinite" "point3 portal" [ -1.5 0.2 -3   1.5 0.2 -3   1.5 2.8 -3   -1.5 2.8 -3 ]
-  "string filename" [ "sssdragon/textures/small_rural_road_equiarea.exr" ]
+  "string filename" [ "portal-light-sky.exr" ]
 
 Material "diffuse" "rgb reflectance" [ 0.55 0.5 0.45 ]
 

@@ -332,12 +332,10 @@ float regional_tolerance_for(float wholeImageTolerance) {
 // either way (METAL_PARITY_STRICT doesn't distinguish the two - both
 // count as "not a clean pass" if that's ever enabled).
 const char* const kKnownGapScenes[] = {
-	// C17 (Portal Light): portal-light.pbrt reads sssdragon/textures/small_rural_road_equiarea.exr,
-	// which is not tracked in this repo (only the sssdragon benchmark checkout has it). Both
-	// backends log "could not be read; using its constant colour instead", but then diverge on
-	// that fallback (CPU renders black, cpu=0.0000; Metal 0.5884), so the sweep is comparing two
-	// different failure modes, not two renderers on the same scene. Re-triage (including whether
-	// Metal honours the portal restriction at all) once the EXR is available.
+	// C17 (Portal Light): a REAL Metal gap. portal-light.pbrt uses the bundled generated
+	// portal-light-sky.exr; the CPU honours pbrt-v4's portal restriction (sky only through the window, as seen
+	// from the ray origin) and Metal never reads portal[4], so it lights the open room as an ordinary
+	// environment map: ~2.5x brighter (cpu 0.077, metal 0.192). Port portal_image_infinite_light.h to MSL to close it.
 	"C17",
 };
 
