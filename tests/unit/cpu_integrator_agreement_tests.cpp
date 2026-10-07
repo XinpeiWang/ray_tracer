@@ -262,6 +262,30 @@ TEST(PbrtBackendAgreementTest, SppmDiskAndCylinderLightsAgreeWithPathTracer) {
 	EXPECT_LT(sppmMean, 1.05 * pathMean) << "SPPM too bright vs the path tracer";
 }
 
+// Cone and paraboloid emitters, the same way: they could not sample their own surface for emission (sample_area()) and the adapters could not read their material.
+// sample_area() is area-UNIFORM (inverse CDF of each shape's area-by-height), since the adapters assume one constant position density per emitter.
+// See pbrt_scenes/cone-paraboloid-lights.pbrt.
+TEST(PbrtBackendAgreementTest, BdptConeAndParaboloidLightsAgreeWithPathTracer) {
+	expectBdptAgreesWithPathTracer("cone-paraboloid-lights", 3, 0.02);
+}
+
+TEST(PbrtBackendAgreementTest, SppmConeAndParaboloidLightsAgreeWithPathTracer) {
+	const SceneDescriptor* s = find_example_scene("cone-paraboloid-lights");
+	if (!s) GTEST_SKIP() << "cone-paraboloid-lights.pbrt was not discovered - is pbrt_scenes/ present?";
+	const std::string pathOut = "pbrt_agree_cpl_path.exr", sppmOut = "pbrt_agree_cpl_sppm.exr";
+	double pathMean = 0.0, sppmMean = 0.0;
+	ASSERT_EQ(cpu_render_main(48, 48, 256, 4, pathOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(pathOut, pathMean));
+	ASSERT_EQ(cpu_render_main_sppm(48, 48, 60, 20000, 4, sppmOut.c_str(), s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	ASSERT_TRUE(loadLinearMean(sppmOut, sppmMean));
+	std::remove(pathOut.c_str());
+	std::remove(sppmOut.c_str());
+	std::printf("[agree] cone-paraboloid-lights: path %.4f  sppm %.4f (%.1f%%)\n", pathMean, sppmMean, 100.0 * sppmMean / pathMean);
+	ASSERT_GT(pathMean, 0.1);
+	EXPECT_GT(sppmMean, 0.95 * pathMean) << "SPPM too dark vs the path tracer";
+	EXPECT_LT(sppmMean, 1.05 * pathMean) << "SPPM too bright vs the path tracer";
+}
+
 TEST(PbrtBackendAgreementTest, BdptAndSimplePathFilterTheirCameraRaysLikeThePathTracer) {
 	const SceneDescriptor* s = find_example_scene("cornell-box-native");
 	if (!s) GTEST_SKIP() << "cornell-box-native.pbrt was not discovered - is pbrt_scenes/ present?";
@@ -322,6 +346,10 @@ static void expectMltAgreesWithPathTracer(const char* stem, int depth, double to
 	EXPECT_LT(mltMean, (1.0 + tol) * pathMean) << stem << ": MLT too bright vs the path tracer";
 }
 
+TEST(PbrtBackendAgreementTest, MltConeAndParaboloidLightsAgreeWithPathTracer) {
+	expectMltAgreesWithPathTracer("cone-paraboloid-lights", 3, 0.04);
+}
+
 TEST(PbrtBackendAgreementTest, MltClosedBoxWithLargeLightAgreesWithPathTracer) {
 	expectMltAgreesWithPathTracer("bdpt-box-room", 6, 0.03);
 }
@@ -353,7 +381,7 @@ static double renderMeanWith(const char* integrator, const SceneDescriptor* s, i
 // tracer and a cylinder 0.52x, while a quad's or disk's PDF_Li happens to coincide, so only those two looked right. Each of the four emitters is the whole picture of
 // its own scene, so the frame mean is L times the area it covers.
 TEST(PbrtBackendAgreementTest, LightPathSeesAVisibleEmitterOfEveryShapeLikeThePathTracer) {
-	for (const char* shape : {"quad", "sphere", "cylinder", "disk"}) {
+	for (const char* shape : {"quad", "sphere", "cylinder", "disk", "cone", "paraboloid"}) {
 		const std::string stem = std::string("lightpath-visible-") + shape + "-light";
 		const SceneDescriptor* s = find_example_scene(stem.c_str());
 		if (!s) { ADD_FAILURE() << stem << ".pbrt was not discovered - is pbrt_scenes/ present?"; continue; }
