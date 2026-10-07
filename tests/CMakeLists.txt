@@ -30,6 +30,7 @@ add_executable(unit_tests
     unit/curve_tessellate_tests.cpp
     unit/error_codes_tests.cpp
     unit/exr_writer_tests.cpp
+    unit/stb_image_16bit_tests.cpp
     unit/gzip_inflate_tests.cpp
     unit/hair_precision_tests.cpp
     unit/launcher_args_accelerator_tests.cpp
