@@ -416,3 +416,42 @@ TEST(SceneBuilderRenderTest, TheStarterSceneRendersLitAndFinite) {
 		EXPECT_LT(m, 3.0) << "channel " << c << " is blown out";
 	}
 }
+
+// The orientation the header promises: a box, sphere, cylinder and cone emit outward, a quad and a disk emit from their +Y side. A camera whose view lies
+// wholly inside the shape sees the emitter's radiance (strength 2) at depth 1, or nothing from behind it.
+TEST(SceneBuilderRenderTest, EmissiveShapesFaceTheWayTheDocumentSays) {
+	const std::string launcher = findLauncher();
+	if (launcher.empty()) GTEST_SKIP() << "ray_tracer.exe was not found next to the tests";
+	struct Case {
+		ShapeKind shape;
+		scene_doc::Float3 camera;  // looks at the origin
+		double expected;
+	};
+	const double L = 2.0;
+	const Case cases[] = {
+		{ShapeKind::Sphere, {0, 0, 10}, L},
+		{ShapeKind::Box, {0, 0, 10}, L},   {ShapeKind::Box, {10, 0.001, 0}, L},  {ShapeKind::Box, {0, 10, 0.001}, L}, {ShapeKind::Box, {0, -10, 0.001}, L},
+		{ShapeKind::Quad, {0, 10, 0.001}, L},  {ShapeKind::Quad, {0, -10, 0.001}, 0.0},
+		{ShapeKind::Disk, {0, 10, 0.001}, L},  {ShapeKind::Disk, {0, -10, 0.001}, 0.0},
+		{ShapeKind::Cylinder, {0, 0, 10}, L},  {ShapeKind::Cylinder, {10, 0, 0}, L},
+		{ShapeKind::Cone, {0, 0, 10}, L},
+	};
+	for (const Case& c : cases) {
+		Document d;
+		d.camera.position = c.camera;
+		d.camera.target = {0, 0, 0};
+		d.camera.fov = 3;
+		Object o = makeObject(c.shape, toString(c.shape));
+		o.position = {0, 0, 0};
+		o.emissive = true;
+		o.emission = {1, 1, 1};
+		o.emissionStrength = L;
+		o.material.color = {0, 0, 0};
+		d.objects.push_back(o);
+		ASSERT_FALSE(hasErrors(validate(d)));
+		std::vector<float> rgb;
+		int w = 0, h = 0;
+		ASSERT_TRUE(renderWithLauncher(launcher, toPbrt(d), "emit", 16, 8, 1, rgb, w, h)) << toString(c.shape);
+		EXPECT_NEAR(channelMean(rgb, 1), c.expected, 0.02) << toString(c.shape) << " seen from (" << c.camera.x << "," << c.camera.y << "," << c.camera.z << ")";
+	}
+}
