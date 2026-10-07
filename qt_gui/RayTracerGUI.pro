@@ -59,7 +59,8 @@ SOURCES += \
 	language_switch.cpp \
 	font_switch.cpp \
 	recent_renders.cpp \
-	win_taskbar.cpp
+	win_taskbar.cpp \
+	scene_builder_widget.cpp
 
 HEADERS += \
 	mainwindow.h \
@@ -77,7 +78,8 @@ HEADERS += \
 	error_handler.h \
 	scene_technique_notes.h \
 	theme.h \
-	win_taskbar.h
+	win_taskbar.h \
+	scene_builder_widget.h
 
 # scene_metadata.dll/.dylib/.so (loaded dynamically at runtime - see
 # scene_metadata_client.cpp's LoadLibrary/dlopen branches) is not linked

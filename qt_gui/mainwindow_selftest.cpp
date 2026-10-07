@@ -9,6 +9,7 @@
 #include <QComboBox>
 #include <QFile>
 #include <QFileInfo>
+#include <QImage>
 #include <QPixmap>
 #include <QPainter>
 #include <QList>
@@ -22,6 +23,8 @@
 #include <QSpinBox>
 #include <functional>
 #include <memory>
+#include <cmath>
+#include "scene_builder_widget.h"
 #include "scene_metadata_client.h"
 
 void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
@@ -63,6 +66,68 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			for (QScrollArea *sa : areas)
 				sa->verticalScrollBar()->setValue(sa->verticalScrollBar()->maximum());
 			QTimer::singleShot(500, this, [shot]() { shot("options_bottom"); QApplication::exit(0); });
+		});
+		return;
+	}
+
+	// RT_GUI_SELFTEST=builder: drives the Scene Builder tab through an edit, undo/redo, a save and re-open, and a real preview render (needs
+	// ray_tracer next to the GUI); saves screenshots <out>_builder_edit.png / _builder_preview.png and exits 0 if every step held.
+	if (mode == "builder") {
+		resize(1500, 950);
+		for (int i = 0; i < m_tabWidget->count(); ++i)
+			if (m_tabWidget->tabText(i).contains("Scene Builder")) m_tabWidget->setCurrentIndex(i);
+		SceneBuilderWidget *sb = m_sceneBuilder;
+		bool ok = sb != nullptr;
+		auto check = [&ok, log](bool cond, const QString &what) {
+			log(QString("%1: %2").arg(cond ? "ok" : "FAIL", what));
+			ok = ok && cond;
+		};
+		check(sb && sb->document().objects.size() == 5 && sb->document().lights.size() == 1, "starter scene has 5 objects and 1 light");
+		const size_t objects0 = sb->document().objects.size();
+		sb->addObject(scene_doc::ShapeKind::Cylinder);
+		sb->addLight(scene_doc::LightKind::Spot);
+		check(sb->document().objects.size() == objects0 + 1 && sb->document().lights.size() == 2, "added a cylinder and a spotlight");
+		check(sb->isDirty(), "the scene is marked unsaved");
+		check(sb->undo() && sb->document().lights.size() == 1, "undo removes the spotlight");
+		check(sb->redo() && sb->document().lights.size() == 2, "redo brings it back");
+		// A real mouse drag in the layout view moves the object (snapped to the 0.25 grid) as one undo step.
+		const scene_doc::Float3 ball0 = sb->document().objects[1].position;
+		check(sb->dragObjectForTest(1, QPointF(80, -40)), "dragging the glass ball in the layout view moves it");
+		const scene_doc::Float3 ball1 = sb->document().objects[1].position;
+		check(ball1.x > ball0.x + 0.3 && ball1.z < ball0.z - 0.1 && ball1.y == ball0.y, "it moved right and away from the camera, height unchanged");
+		check(std::fabs(ball1.x * 4 - std::round(ball1.x * 4)) < 1e-9, "the new position is on the grid");
+		check(sb->undo() && sb->document().objects[1].position.x == ball0.x && sb->document().objects[1].position.z == ball0.z, "one undo puts it back");
+		check(sb->redo(), "redo moves it again");
+		sb->selectObject(1);
+		check(sb->problemsText().isEmpty(), "the scene has no problems or notes");
+		const QString pbrt = outPrefix + "_builder.pbrt";
+		check(sb->saveFile(pbrt) && !sb->isDirty(), "saved " + pbrt);
+		const std::string before = scene_doc::toJson(sb->document());
+		QString err;
+		sb->newScene();
+		check(sb->openFile(pbrt, &err) && scene_doc::toJson(sb->document()) == before, "re-opened the saved file unchanged " + err);
+		sb->selectObject(1);
+		QTimer::singleShot(600, this, [this, shot, log, sb, ok]() mutable {
+			shot("builder_edit");
+			log("starting a preview render");
+			sb->startPreview([this, shot, log, sb, ok](bool done, const QString &message) mutable {
+				log(QString("preview: %1 - %2").arg(done ? "ok" : "FAIL", message));
+				bool good = ok && done;
+				if (done) {
+					const QImage img(sb->previewImagePath());
+					double sum = 0;
+					for (int y = 0; y < img.height(); ++y)
+						for (int x = 0; x < img.width(); ++x) sum += qGray(img.pixel(x, y));
+					const double mean = img.isNull() ? 0.0 : sum / (double(img.width()) * img.height());
+					log(QString("preview picture %1 x %2, mean grey %3").arg(img.width()).arg(img.height()).arg(mean));
+					good = good && mean > 10.0 && mean < 245.0;
+				}
+				QTimer::singleShot(300, this, [shot, log, good]() {
+					shot("builder_preview");
+					log(good ? "RESULT: OK" : "RESULT: FAIL");
+					QApplication::exit(good ? 0 : 1);
+				});
+			});
 		});
 		return;
 	}
