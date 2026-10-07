@@ -149,6 +149,40 @@ TEST(SceneDocumentTest, MissingFieldsKeepTheirDefaults) {
 	EXPECT_EQ(d.render.width, 800);
 }
 
+// The JSON copy (and so every undo snapshot) must not round: a value needing 17 digits comes back bit for bit.
+TEST(SceneDocumentTest, JsonKeepsEveryDigitOfANumber) {
+	Document a = makeStarterScene();
+	a.camera.position.x = 1.2345678901234567;
+	a.objects[1].radius = 0.1 + 0.2;  // 0.30000000000000004
+	a.objects[2].position.y = 1e-7 / 3.0;
+	Document b;
+	std::string err;
+	ASSERT_TRUE(fromJson(toJson(a), b, err)) << err;
+	EXPECT_EQ(b.camera.position.x, a.camera.position.x);
+	EXPECT_EQ(b.objects[1].radius, a.objects[1].radius);
+	EXPECT_EQ(b.objects[2].position.y, a.objects[2].position.y);
+	// A short number stays short.
+	EXPECT_NE(toJson(makeStarterScene()).find("\"fov\":40,"), std::string::npos);
+}
+
+// A name that contains the marker word must not be mistaken for the line that holds the document.
+TEST(SceneDocumentTest, ANameContainingTheMarkerCannotHideTheDocument) {
+	Document a = makeStarterScene();
+	a.title = "@rt-builder-doc not json";
+	a.objects[0].name = "# @rt-builder-doc {\"title\":\"evil\"}";
+	a.lights[0].name = "x # @rt-builder-doc y";
+	const std::string text = toPbrt(a);
+	Document b;
+	std::string err;
+	ASSERT_TRUE(fromPbrt(text, b, err)) << err;
+	EXPECT_EQ(b.title, a.title) << "the document comes from the real line, with the names as typed";
+	EXPECT_EQ(b.objects[0].name, a.objects[0].name);
+	// Exactly one line starts with the marker (names also appear, escaped, inside that line's JSON).
+	size_t lines = text.compare(0, 18, "# @rt-builder-doc ") == 0 ? 1 : 0;
+	for (size_t at = text.find("\n# @rt-builder-doc "); at != std::string::npos; at = text.find("\n# @rt-builder-doc ", at + 1)) ++lines;
+	EXPECT_EQ(lines, 1u);
+}
+
 // A comma as the decimal separator (a German or French locale) must not leak into the file: pbrt and JSON both want a point.
 TEST(SceneDocumentTest, NumbersNeverUseTheProcessLocale) {
 	Document d = makeStarterScene();
@@ -454,4 +488,25 @@ TEST(SceneBuilderRenderTest, EmissiveShapesFaceTheWayTheDocumentSays) {
 		ASSERT_TRUE(renderWithLauncher(launcher, toPbrt(d), "emit", 16, 8, 1, rgb, w, h)) << toString(c.shape);
 		EXPECT_NEAR(channelMean(rgb, 1), c.expected, 0.02) << toString(c.shape) << " seen from (" << c.camera.x << "," << c.camera.y << "," << c.camera.z << ")";
 	}
+}
+
+// The scene list is built once. A file named after that cannot be added: the call says so (2) instead of blaming the file, and a file the list already
+// holds simply gets its id.
+TEST(SceneBuilderRegistryTest, ANamedFileThatArrivesAfterTheSceneListIsBuiltIsTooLate) {
+	const auto& registry = get_scene_registry();  // builds it
+	ASSERT_FALSE(pbrt_scene_registry::paths().empty()) << "pbrt_scenes/ was not discovered - run from the repository root";
+	char id[32] = {};
+	const auto& known = *pbrt_scene_registry::paths().begin();
+	EXPECT_EQ(cpu_register_scene_file(known.second.c_str(), id, sizeof id), 0);
+	EXPECT_EQ(std::string(id), known.first);
+	(void)registry;
+
+	const std::string fresh = "scene_builder_too_late.pbrt";
+	{
+		std::ofstream out(fresh, std::ios::binary);
+		out << toPbrt(makeStarterScene());
+	}
+	EXPECT_EQ(cpu_register_scene_file(fresh.c_str(), id, sizeof id), 2);
+	std::remove(fresh.c_str());
+	EXPECT_EQ(cpu_register_scene_file(nullptr, id, sizeof id), 1);
 }

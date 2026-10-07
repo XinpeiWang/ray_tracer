@@ -177,6 +177,22 @@ inline std::string num(double v) {
 	os << std::setprecision(9) << v;
 	return os.str();
 }
+// The shortest of 15, 16 and 17 significant digits that reads back as exactly v: the JSON copy of the document (and so every undo snapshot) must not round.
+inline std::string numExact(double v) {
+	if (!std::isfinite(v)) v = 0.0;
+	std::string text;
+	for (int digits : {15, 16, 17}) {
+		std::ostringstream os;
+		os.imbue(std::locale::classic());
+		os << std::setprecision(digits) << v;
+		text = os.str();
+		std::istringstream is(text);
+		is.imbue(std::locale::classic());
+		double back = 0.0;
+		if ((is >> back) && back == v) break;
+	}
+	return text;
+}
 inline std::string vec(const Float3& v) { return num(v.x) + " " + num(v.y) + " " + num(v.z); }
 inline std::string quoted(const std::string& s) {
 	std::string out = "\"";
@@ -191,6 +207,8 @@ inline std::string quoted(const std::string& s) {
 inline std::string commentText(std::string s) {
 	for (char& c : s)
 		if (c == '\n' || c == '\r') c = ' ';
+	// The word that marks the line holding the document (see fromPbrt) must appear only on that line, so a name that contains it is written with a space.
+	for (size_t at = s.find("@rt-builder-doc"); at != std::string::npos; at = s.find("@rt-builder-doc", at + 1)) s[at + 3] = ' ';
 	return s;
 }
 // A path as pbrt wants it: forward slashes, so a file written on Windows still reads on macOS.
@@ -227,7 +245,7 @@ inline void dump(const Json& j, std::string& out) {
 	switch (j.type) {
 		case Json::Type::Null: out += "null"; break;
 		case Json::Type::Bool: out += j.b ? "true" : "false"; break;
-		case Json::Type::Num: out += num(j.n); break;
+		case Json::Type::Num: out += numExact(j.n); break;
 		case Json::Type::Str: {
 			out += '"';
 			for (unsigned char c : j.s) {
@@ -788,8 +806,10 @@ inline std::string toPbrt(const Document& d) {
 
 // Reads the document back out of text written by toPbrt(). A .pbrt file without the builder line is not a builder scene.
 inline bool fromPbrt(const std::string& text, Document& out, std::string& err) {
+	// The marker starts a line (toPbrt() never lets a name put it anywhere else; see detail::commentText).
 	const std::string marker = "# @rt-builder-doc ";
-	size_t at = text.find(marker);
+	size_t at = text.compare(0, marker.size(), marker) == 0 ? 0 : text.find("\n" + marker);
+	if (at != std::string::npos && at != 0) ++at;
 	if (at == std::string::npos) {
 		err = "this file was not made by the Scene Builder (it has no builder data), so it can be rendered but not edited here";
 		return false;

@@ -146,6 +146,13 @@ QString lightLabel(LightKind k) {
 	}
 	return QString();
 }
+// "Sphere", then "Sphere 2", "Sphere 3", ...: the first of those not already in `taken`.
+QString uniqueName(const QString &base, const QStringList &taken) {
+	QString name = base;
+	for (int n = 2; taken.contains(name); ++n) name = QString("%1 %2").arg(base).arg(n);
+	return name;
+}
+
 QString materialLabel(MaterialKind k) {
 	switch (k) {
 		case MaterialKind::Diffuse: return QObject::tr("Matte (diffuse)");
@@ -205,7 +212,15 @@ Float3 SceneLayoutView::centerInWorld() const {
 	return fromScreen(QPointF(width() / 2.0, height() / 2.0), Float3{0, 0, 0});
 }
 
+// The widget has no real size when the scene is first framed (the tab is built before it is laid out), so frame again as it is resized, until the
+// user takes over with the wheel or by panning.
+void SceneLayoutView::resizeEvent(QResizeEvent *e) {
+	QWidget::resizeEvent(e);
+	if (!m_userView) frameAll();
+}
+
 void SceneLayoutView::frameAll() {
+	m_userView = false;
 	if (!m_doc) return;
 	double u0 = 1e18, u1 = -1e18, v0 = 1e18, v1 = -1e18;
 	auto add = [&](const Float3 &p, double pad) {
@@ -295,22 +310,22 @@ const Float3 *SceneLayoutView::handlePosition(const BuilderSelection &s, int whi
 SceneLayoutView::Hit SceneLayoutView::hitTest(const QPointF &px) const {
 	Hit h;
 	if (!m_doc) return h;
-	auto near = [&](const Float3 &p, double r) { return std::hypot(toScreen(p).x() - px.x(), toScreen(p).y() - px.y()) <= r; };
+	auto withinPx = [&](const Float3 &p, double r) { return std::hypot(toScreen(p).x() - px.x(), toScreen(p).y() - px.y()) <= r; };
 
 	// The selected item's own handles first, so a target can be grabbed even when something is drawn over it.
 	for (int which = 1; which >= 0; --which) {
 		if (const Float3 *p = handlePosition(m_sel, which)) {
-			if (near(*p, 11)) { h.sel = m_sel; h.which = which; h.valid = true; return h; }
+			if (withinPx(*p, 11)) { h.sel = m_sel; h.which = which; h.valid = true; return h; }
 		}
 	}
 	// Lights and the camera next: they are small and would otherwise be hidden behind a floor.
 	for (int i = static_cast<int>(m_doc->lights.size()) - 1; i >= 0; --i) {
 		const Light &l = m_doc->lights[i];
 		if (l.kind == LightKind::Infinite) continue;
-		if (near(l.position, 12)) { h.sel = {BuilderSelection::Kind::Light, i}; h.valid = true; return h; }
+		if (withinPx(l.position, 12)) { h.sel = {BuilderSelection::Kind::Light, i}; h.valid = true; return h; }
 	}
-	if (near(m_doc->camera.position, 14)) { h.sel = {BuilderSelection::Kind::Camera, 0}; h.valid = true; return h; }
-	if (near(m_doc->camera.target, 10) && m_sel.kind == BuilderSelection::Kind::Camera) { h.sel = {BuilderSelection::Kind::Camera, 0}; h.which = 1; h.valid = true; return h; }
+	if (withinPx(m_doc->camera.position, 14)) { h.sel = {BuilderSelection::Kind::Camera, 0}; h.valid = true; return h; }
+	if (withinPx(m_doc->camera.target, 10) && m_sel.kind == BuilderSelection::Kind::Camera) { h.sel = {BuilderSelection::Kind::Camera, 0}; h.which = 1; h.valid = true; return h; }
 
 	// Objects: of everything under the pointer, the smallest outline (a ball on a floor picks the ball).
 	double best = 1e30;
@@ -363,12 +378,12 @@ void SceneLayoutView::paintEvent(QPaintEvent *) {
 		p.drawLine(QPointF(x0, 0), QPointF(x0, height()));
 		p.drawLine(QPointF(0, y0), QPointF(width(), y0));
 	}
-	const char *planeText = m_plane == Plane::Top ? "Top view: X to the right, Z towards you (down)"
-	                       : m_plane == Plane::Front ? "Front view: X to the right, Y up"
-	                                                  : "Side view: Z to the left, Y up";
+	const QString planeText = m_plane == Plane::Top ? tr("Top view: X to the right, Z towards you (down)")
+	                         : m_plane == Plane::Front ? tr("Front view: X to the right, Y up")
+	                                                    : tr("Side view: Z to the left, Y up");
 	p.setPen(text);
-	p.drawText(8, 16, tr(planeText));
-	p.drawText(8, height() - 8, tr("Grid: %1 unit%2").arg(step).arg(step == 1.0 ? "" : "s"));
+	p.drawText(8, 16, planeText);
+	p.drawText(8, height() - 8, step == 1.0 ? tr("Grid: 1 unit") : tr("Grid: %1 units").arg(step));
 
 	if (!m_doc) return;
 
@@ -436,7 +451,7 @@ void SceneLayoutView::paintEvent(QPaintEvent *) {
 			dir /= len;
 			const double aspect = m_doc->render.height > 0 ? double(m_doc->render.width) / m_doc->render.height : 1.0;
 			const double half = (m_plane == Plane::Top ? std::atan(std::tan(m_doc->camera.fov * kPi / 360.0) * aspect) : m_doc->camera.fov * kPi / 360.0);
-			const double reach = std::min(len, 90.0 + len * 0.0);
+			const double reach = std::min(len, 90.0);
 			p.setPen(QPen(camColor, 1.0, Qt::DashLine));
 			for (double sgn : {-1.0, 1.0}) {
 				const double a = sgn * half, ca = std::cos(a), sa = std::sin(a);
@@ -491,7 +506,8 @@ void SceneLayoutView::mousePressEvent(QMouseEvent *e) {
 void SceneLayoutView::mouseMoveEvent(QMouseEvent *e) {
 	const QPointF px = e->position();
 	if (m_panning) {
-		m_cu -= (px.x() - m_lastPan.x()) / m_scale;
+		m_userView = true;
+		m_cu -=(px.x() - m_lastPan.x()) / m_scale;
 		m_cv -= (px.y() - m_lastPan.y()) / m_scale;
 		m_lastPan = px;
 		update();
@@ -521,6 +537,7 @@ void SceneLayoutView::mouseReleaseEvent(QMouseEvent *) {
 }
 
 void SceneLayoutView::wheelEvent(QWheelEvent *e) {
+	m_userView = true;
 	const double factor = std::pow(1.15, e->angleDelta().y() / 120.0);
 	const QPointF px = e->position();
 	// Keep the point under the pointer where it is.
@@ -859,12 +876,18 @@ bool SceneBuilderWidget::openFile(const QString &path, QString *error) {
 	return true;
 }
 
-bool SceneBuilderWidget::saveFile(const QString &path) {
+// Writes the scene as pbrt text to `path`, without touching which file the document belongs to.
+static bool writeSceneText(const Document &doc, const QString &path) {
 	QFile f(path);
 	if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
-	const std::string text = scene_doc::toPbrt(m_doc);
+	const std::string text = scene_doc::toPbrt(doc);
 	if (f.write(text.data(), static_cast<qint64>(text.size())) != static_cast<qint64>(text.size())) return false;
 	f.close();
+	return true;
+}
+
+bool SceneBuilderWidget::saveFile(const QString &path) {
+	if (!writeSceneText(m_doc, path)) return false;
 	m_path = path;
 	m_dirty = false;
 	clearAutosave();
@@ -942,12 +965,13 @@ void SceneBuilderWidget::onSaveToSceneListClicked() {
 	if (QFileInfo::exists(path) && QFileInfo(path) != QFileInfo(m_path)) {
 		if (QMessageBox::question(this, tr("Replace the scene?"), tr("%1 already exists. Replace it?").arg(path)) != QMessageBox::Yes) return;
 	}
-	if (!saveFile(path)) {
+	// A copy for the scene list: the document keeps its own file and its unsaved state.
+	if (!writeSceneText(m_doc, path)) {
 		QMessageBox::warning(this, tr("Cannot save"), tr("Could not write %1.").arg(path));
 		return;
 	}
 	QMessageBox::information(this, tr("Added to the scene list"),
-	                         tr("Saved as %1.\n\nRestart the program to see it in the scene list (Settings tab, Custom Scenes).").arg(path));
+	                         tr("Saved a copy as %1.\n\nRestart the program to see it in the scene list (Settings tab, Custom Scenes).").arg(path));
 }
 
 // ---- undo, autosave -------------------------------------------------------------------------------------------------------------
@@ -1145,15 +1169,9 @@ void SceneBuilderWidget::addObject(ShapeKind shape) {
 		fileName = f.toStdString();
 	}
 	edit(QString(), [&]() {
-		// "Sphere 2", "Sphere 3", ...: the first free number.
-		const QString base = shapeLabel(shape).section(' ', 0, 0);
-		QString name = base;
-		for (int n = 2;; ++n) {
-			bool taken = false;
-			for (const Object &o : m_doc.objects) taken = taken || QString::fromStdString(o.name) == name;
-			if (!taken) break;
-			name = QString("%1 %2").arg(base).arg(n);
-		}
+		QStringList names;
+		for (const Object &existing : m_doc.objects) names << QString::fromStdString(existing.name);
+		const QString name = uniqueName(shapeLabel(shape).section(' ', 0, 0), names);
 		Object o = scene_doc::makeObject(shape, name.toStdString());
 		o.meshFile = fileName;
 		// Drop it at the middle of the layout view, keeping the shape's own height above the floor where the view does not show it.
@@ -1172,15 +1190,9 @@ void SceneBuilderWidget::addLight(LightKind kind) {
 	edit(QString(), [&]() {
 		Light l;
 		l.kind = kind;
-		const QString base = lightLabel(kind).section(' ', 0, 0);
-		QString name = base;
-		for (int n = 2;; ++n) {
-			bool taken = false;
-			for (const Light &x : m_doc.lights) taken = taken || QString::fromStdString(x.name) == name;
-			if (!taken) break;
-			name = QString("%1 %2").arg(base).arg(n);
-		}
-		l.name = name.toStdString();
+		QStringList names;
+		for (const Light &existing : m_doc.lights) names << QString::fromStdString(existing.name);
+		l.name = uniqueName(lightLabel(kind).section(' ', 0, 0), names).toStdString();
 		switch (kind) {
 			case LightKind::Point: l.position = {1.0, 4.0, 2.0}; l.intensity = 40.0; break;
 			case LightKind::Spot: l.position = {0.0, 5.0, 2.0}; l.target = {0.0, 0.0, 0.0}; l.intensity = 120.0; break;
@@ -1399,7 +1411,7 @@ void SceneBuilderWidget::addBool(QFormLayout *f, const QString &label, const std
 	f->addRow(label, c);
 }
 
-void SceneBuilderWidget::addText(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, bool) {
+void SceneBuilderWidget::addText(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref) {
 	auto *e = new QLineEdit;
 	if (std::string *v = ref()) e->setText(QString::fromStdString(*v));
 	const QString key = QString("%1:%2:%3").arg(static_cast<int>(m_sel.kind)).arg(m_sel.index).arg(label);
@@ -1432,7 +1444,7 @@ void SceneBuilderWidget::addFile(QFormLayout *f, const QString &label, const std
 
 void SceneBuilderWidget::inspectCamera(QFormLayout *f) {
 	addHeading(f, tr("Scene"));
-	addText(f, tr("Title"), [this]() { return &m_doc.title; }, false);
+	addText(f, tr("Title"), [this]() { return &m_doc.title; });
 	addHeading(f, tr("Camera"));
 	addVec3(f, tr("Position"), [this]() { return &m_doc.camera.position; }, 0.25);
 	addVec3(f, tr("Looks at"), [this]() { return &m_doc.camera.target; }, 0.25);
@@ -1512,7 +1524,7 @@ void SceneBuilderWidget::inspectMaterial(QFormLayout *f, int i) {
 void SceneBuilderWidget::inspectObject(QFormLayout *f, int i) {
 	auto obj = [this, i]() -> Object * { return i < static_cast<int>(m_doc.objects.size()) ? &m_doc.objects[i] : nullptr; };
 	addHeading(f, tr("Object"));
-	addText(f, tr("Name"), [obj]() { return obj() ? &obj()->name : nullptr; }, true);
+	addText(f, tr("Name"), [obj]() { return obj() ? &obj()->name : nullptr; });
 	auto *shape = new QComboBox;
 	for (ShapeKind k : {ShapeKind::Sphere, ShapeKind::Box, ShapeKind::Quad, ShapeKind::Disk, ShapeKind::Cylinder, ShapeKind::Cone, ShapeKind::Mesh})
 		shape->addItem(shapeLabel(k), static_cast<int>(k));
@@ -1569,7 +1581,7 @@ void SceneBuilderWidget::inspectObject(QFormLayout *f, int i) {
 void SceneBuilderWidget::inspectLight(QFormLayout *f, int i) {
 	auto lt = [this, i]() -> Light * { return i < static_cast<int>(m_doc.lights.size()) ? &m_doc.lights[i] : nullptr; };
 	addHeading(f, tr("Light"));
-	addText(f, tr("Name"), [lt]() { return lt() ? &lt()->name : nullptr; }, true);
+	addText(f, tr("Name"), [lt]() { return lt() ? &lt()->name : nullptr; });
 	auto *kind = new QComboBox;
 	for (LightKind k : {LightKind::Point, LightKind::Spot, LightKind::Distant, LightKind::Infinite}) kind->addItem(lightLabel(k), static_cast<int>(k));
 	kind->setCurrentIndex(kind->findData(static_cast<int>(m_doc.lights[i].kind)));
