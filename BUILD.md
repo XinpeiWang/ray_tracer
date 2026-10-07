@@ -1,12 +1,8 @@
 # Build System Guide
 
-This document describes how to build the entire Ray Tracer project on
-**Windows** - the full build, including the GPU/OptiX renderer (CUDA/OptiX is
-Windows+NVIDIA only, with no macOS equivalent). For building the CPU
-renderer, CLI, and Qt GUI on **macOS** instead, see the
-[macOS (CPU-only)](README.md#macos-cpu-only) section of README.md - it's a
-separate, purely-additive CMake/qmake path that this document's MSBuild
-instructions don't cover.
+This document describes how to build the Ray Tracer project: the full **Windows** build, including the GPU/OptiX renderer (CUDA/OptiX is
+Windows+NVIDIA only), and the **macOS** build ([macOS](#macos-cpu-and-metal-gpu) below: the CPU renderer, CLI and Qt GUI, plus the Metal GPU
+backend), a separate, purely additive CMake/qmake path that the MSBuild instructions in between do not cover. Linux is not supported yet.
 
 ## Quick Start
 
@@ -116,8 +112,8 @@ Things that make this work, and what to keep in mind:
 .\bin\Release\ray_tracer_tests.exe --gtest_filter="*BrightnessAndChannelsConsistentAcrossBackends/Scene21_*"
 ```
 
-- **Running the whole suite.** `scripts\run_tests_parallel.ps1` splits it by what the tests touch. `-Tier Fast` (about 80 s, 3930 tests) runs everything that does not use the GPU in 16 shards, the loop to use while editing. `-Tier Split` runs Fast and then Slow (the 548 GPU tests, one process) for the whole suite in about 315 s, against about 440 s for one `ray_tracer_tests.exe` process. Slow is deliberately not sharded: separate processes time-slice the GPU, and 2-4 shards measured slower (193-198 s) than one (170 s). Nearly all of Slow is the material parity sweep, where the wavefront backend takes about 125 s because a 60x60 frame is thousands of tiny, synchronised launches; only a change inside that renderer would shrink it. The runner counts failing tests itself (`--gtest_brief` hides gtest's own failure summary) and removes its scratch directory when everything passes.
-- **Gallery scenes.** The parity and light-count suites skip every scene flagged `requires_files` (the model gallery, the downloaded pbrt collections), so for a long time nothing rendered them. `GalleryGpuRenderTest` (`tests/integration/gallery_scenes_render_test.cpp`, in the Slow tier) now renders each one that is on disk at 32x32 on the recursive GPU backend and fails on a failed or all-black render: 41 scenes, about 60 s. It skips the 12 Large Scenes (Power Plant, San Miguel, Rungholt, ...: 89 s, mostly parsing gigabyte OBJ files) unless `RT_GALLERY_ALL=1`, skips twin entries of an already-rendered file, adds a CPU render and a CPU-vs-GPU brightness check with `RT_GALLERY_CPU=1`, and is skipped entirely by `RT_SKIP_GALLERY=1`. The GPU render alone is safe in one process (the OptiX scene builder keeps only the two most recent pbrt scenes; the whole Slow tier peaked at 23 GB before that and 8.5 GB now, `RT_GALLERY_ALL=1` at 10.5 GB). Do not combine `RT_GALLERY_ALL=1` and `RT_GALLERY_CPU=1` in one process: the CPU and GPU copies of the multi-million-triangle scenes accumulate (16 GB private memory after six of them) and renders start failing with "out of memory". `scripts\run_gallery_isolated.ps1 -Cpu` runs every gallery scene in its own process instead (62 scenes, about 15 minutes; without `-Cpu` about 4; `-SkipLarge` and `-Filter` narrow it); a run on 2026-10-06 passed 61 of the 62 on both backends, Large Scenes included, and the last (sportscar-area-lights) once both backends rendered the same number of samples.
+- **Running the whole suite.** `scripts\run_tests_parallel.ps1` splits it by what the tests touch. `-Tier Fast` (a couple of minutes) runs everything that does not use the GPU in 16 shards, the loop to use while editing. `-Tier Split` runs Fast and then Slow (the GPU tests, one process) for the whole suite, noticeably faster than one `ray_tracer_tests.exe` process. Slow is deliberately not sharded: separate processes time-slice the GPU, and 2-4 shards measured slower (193-198 s) than one (170 s). Nearly all of Slow is the material parity sweep, where the wavefront backend takes about 125 s because a 60x60 frame is thousands of tiny, synchronised launches; only a change inside that renderer would shrink it. The runner counts failing tests itself (`--gtest_brief` hides gtest's own failure summary) and removes its scratch directory when everything passes.
+- **Gallery scenes.** The parity and light-count suites skip every scene flagged `requires_files` (the model gallery, the downloaded pbrt collections), so for a long time nothing rendered them. `GalleryGpuRenderTest` (`tests/integration/gallery_scenes_render_test.cpp`, in the Slow tier) now renders each one that is on disk at 32x32 on the recursive GPU backend and fails on a failed or all-black render: 41 scenes, about 60 s. It skips the 12 Large Scenes (Power Plant, San Miguel, Rungholt, ...: 89 s, mostly parsing gigabyte OBJ files) unless `RT_GALLERY_ALL=1`, adds a CPU render and a CPU-vs-GPU brightness check with `RT_GALLERY_CPU=1`, and is skipped entirely by `RT_SKIP_GALLERY=1`. The GPU render alone is safe in one process (the OptiX scene builder keeps only the two most recent pbrt scenes; the whole Slow tier peaked at 23 GB before that and 8.5 GB now, `RT_GALLERY_ALL=1` at 10.5 GB). Do not combine `RT_GALLERY_ALL=1` and `RT_GALLERY_CPU=1` in one process: the CPU and GPU copies of the multi-million-triangle scenes accumulate (16 GB private memory after six of them) and renders start failing with "out of memory". `scripts\run_gallery_isolated.ps1 -Cpu` runs every gallery scene in its own process instead (62 scenes, about 15 minutes; without `-Cpu` about 4; `-SkipLarge` and `-Filter` narrow it); a run on 2026-10-06 passed 61 of the 62 on both backends, Large Scenes included, and the last (sportscar-area-lights) once both backends rendered the same number of samples.
 - **Before a big change to rendering code: take a baseline.** The test suite reliably catches a rendering error of about 3-4% and can miss 1% (measured by injecting bugs). `python scripts\render_baseline.py capture before-refactor` renders 15 scenes on the CPU and both GPU backends (about 5 minutes) and stores every pixel under `baselines\` (git-ignored); after the change and a rebuild, `python scripts\render_baseline.py compare before-refactor` renders them again with the same seeds and reports which scene/backend pairs moved, exiting 1 if any did. It compares pixel by pixel, so noise is measured instead of assumed: a 1% loss in wavefront light sampling showed as a -0.3% to -1.0% shift in 12 of 15 scenes with a noise of 0.00-0.04%, and unchanged code reproduces 43 of 45 pairs bit for bit. For a change that must not alter any image (a pure refactor) add `--expect-identical`: it also fails any pair whose pixels differ by more than 0.01% RMS, which catches changes that move no mean, such as a 2% change to the roughness mapping (4 CPU scenes, 0.3-0.75% RMS); the last-bit nondeterminism of the wavefront backend stays under the limit. It answers "did my change move the image", not "is the image right"; a deliberate fix will show as moved. A baseline is only valid for the code it was captured from, so capture a new one after merging. Details are in the script's header; `--scenes`, `--backends` and `--tolerance` narrow or tighten a run.
 - **If a build ever recompiles everything with no changes**, diagnose it instead of living with it: `msbuild ray_tracer.sln ... /v:diag` and search the log for `command line has changed` / `No output for` - those say which project's tracking is inconsistent. Also check for stale `cl.exe`/`Tracker.exe` processes left by a killed build (`Get-Process cl, Tracker`).
 
@@ -167,7 +163,7 @@ The solution contains the following projects:
    - Unit and integration tests
    - Tests both CPU and GPU renderers
 
-**What GitHub CI runs** (`.github/workflows/unit-tests.yml`, a hosted runner with no GPU, CUDA or OptiX): the portable CMake target `unit_tests` (BVH, materials, cameras, sampling, BDPT/SPPM math, volumetrics, pbrt loading) and, since the CPU renderer itself needs no SDK, `cpu_integrator_tests` (`tests/unit/cpu_integrator_agreement_tests.cpp`): the CPU path tracer, BDPT, MLT, SPPM and `--simplepath`/`--randomwalk` rendered on small pbrt scenes and compared with each other and with closed forms - the tests that pinned the BDPT/MLT/SPPM/diffuse-transmission defects. Both are built by `cmake -B build -A x64` + `cmake --build build --config Release` in `tests/` and run from the repository root. Everything that renders on an OptiX backend (`pbrt_example_scenes_tests.cpp`, the CPU-vs-GPU parity sweeps, the gallery) runs only here, with `scriptsun_tests_parallel.ps1 -Tier Split`; the GPU is never exercised in CI.
+**What GitHub CI runs** (`.github/workflows/unit-tests.yml`, a hosted runner with no GPU, CUDA or OptiX): the portable CMake target `unit_tests` (BVH, materials, cameras, sampling, BDPT/SPPM math, volumetrics, pbrt loading) and, since the CPU renderer itself needs no SDK, `cpu_integrator_tests` (`tests/unit/cpu_integrator_agreement_tests.cpp`): the CPU path tracer, BDPT, MLT, SPPM and `--simplepath`/`--randomwalk` rendered on small pbrt scenes and compared with each other and with closed forms - the tests that pinned the BDPT/MLT/SPPM/diffuse-transmission defects. Both are built by `cmake -B build -A x64` + `cmake --build build --config Release` in `tests/` and run from the repository root. Everything that renders on an OptiX backend (`pbrt_example_scenes_tests.cpp`, the CPU-vs-GPU parity sweeps, the gallery) runs only here, with `scripts\run_tests_parallel.ps1 -Tier Split`; the GPU is never exercised in CI.
 
 ### GUI (External Qt Build)
 
@@ -236,6 +232,9 @@ gpu\optix\
 
 tests\x64\Release\
   └─ ray_tracer_tests.exe        # Test suite
+
+qt_gui\release\
+  └─ RayTracerGUI.exe            # Qt GUI (if built)
 ```
 
 **Auto-Deployed Package (via MSBuild post-build events):**
@@ -249,9 +248,6 @@ RayTracer_Package\              # Canonical deployment directory
   ├─ Qt6Widgets.dll
   ├─ Qt6Network.dll
   ├─ Qt6Svg.dll
-  ├─ libgcc_s_seh-1.dll
-  ├─ libstdc++-6.dll
-  ├─ libwinpthread-1.dll
   └─ [Qt plugins in subdirectories]
 ```
 
@@ -264,7 +260,7 @@ RayTracer_Package\              # Canonical deployment directory
 The easiest way to create a complete, ready-to-run package:
 
 ```powershell
-.\build_and_deploy.ps1
+.\scripts\build_and_deploy.ps1
 ```
 
 This automatically:
@@ -317,19 +313,93 @@ The `RayTracer_Package\` directory becomes a self-contained package with:
 - OptiX GPU shader
 - All Qt6 runtime DLLs
 - Qt plugins (platform integration, styles, image formats)
-- MinGW runtime libraries
 
 **This package can be zipped and distributed without requiring Qt installation on target machines.**
 
-qt_gui\release\
-  └─ RayTracerGUI.exe            # Qt GUI (if built)
+## macOS (CPU, and Metal GPU)
 
-RayTracer_Package\               # Deployment package (if deployed)
-  ├─ RayTracerGUI.exe
-  ├─ ray_tracer.exe
-  ├─ optix_programs.ptx
-  └─ (Qt DLLs)
+No CUDA/OptiX support (the OptiX renderer is CUDA-only) — this builds the CPU path
+tracer, the `ray_tracer` CLI, and (optionally) the Qt GUI, purely additive
+alongside the Windows MSBuild solution. A plain `cmake` build is CPU-only;
+see [Metal GPU (opt-in)](#metal-gpu-opt-in) just below for the Metal GPU
+backend (always enabled in the one-command `.app`/`.dmg` build).
+
+**CLI + CPU renderer**, via the root `CMakeLists.txt`:
+```bash
+cmake -B build && cmake --build build
+./build/ray_tracer 800 100 50 A1   # width, spp, max_depth, scene_id
 ```
+Produces `cpu_renderer` (static lib), `ray_tracer` (CLI - `--gpu` falls
+back to a warning on this default build; pass `-DRT_BUILD_METAL=ON` for
+a real macOS `--gpu` path instead, see below), and `scene_metadata.dylib`.
+
+**Qt GUI**, via `qt_gui/RayTracerGUI.pro` (Qt 6, same as Windows):
+```bash
+cd qt_gui
+qmake && make
+```
+Produces `RayTracerGUI.app`. Copy the `ray_tracer` binary and
+`scene_metadata.dylib` built above into `RayTracerGUI.app/Contents/MacOS/`
+(that exact path — it's where `QCoreApplication::applicationDirPath()`
+resolves for a bundled Mac app, which is what both the GUI's subprocess
+working directory and `scene_metadata_client.cpp`'s `dlopen()` call use to
+find them). On a build without `RT_BUILD_METAL` the GUI's Renderer
+dropdown only offers CPU and Live Preview is greyed out; with it, the
+dropdown also offers **GPU (Metal)**.
+
+**One-command build + `.app` + `.dmg`**, via `scripts/build_and_deploy_macos.sh`
+(does all of the above, then runs `macdeployqt` to bundle Qt's frameworks and
+produce a distributable disk image):
+```bash
+./scripts/build_and_deploy_macos.sh                        # this Mac's own CPU (arm64 on Apple silicon)
+./scripts/build_and_deploy_macos.sh --arch universal       # arm64 + x86_64 in one dmg (about twice the build time)
+# ./scripts/build_and_deploy_macos.sh --skip-dmg            # .app only, no .dmg
+```
+The script builds for the architecture(s) you ask for and checks that your Qt install has them (an official Qt 6 install is universal, so `--arch universal` works out of the box). A plain `cmake -B build` also builds for the Mac's real CPU even when `cmake` itself is an Intel binary running under Rosetta; pass `-DCMAKE_OSX_ARCHITECTURES=x86_64` to force an Intel build.
+Output lands in `RayTracer_Package_macOS/` (`RayTracerGUI.app` and
+`RayTracerGUI.dmg`). Pushing a `v*` tag (or running the "Release (macOS)" workflow by hand) builds the universal dmg on a GitHub runner, smoke-tests the packaged app headless (`scripts/gui_selftest.py`) and attaches the dmg to the release (`.github/workflows/release-macos.yml`); the Windows package still has to be built on a machine with CUDA and the OptiX SDK. **Scenes that need external mesh/texture files
+(`requires_files=true` in `scene_registry.h` — Sponza, Bistro, every
+"Large Scene", most single-model scenes) are deliberately NOT bundled into
+the `.app`/`.dmg`**: many are hundreds of MB to 1GB+, and a few (Power
+Plant) carry non-commercial-only licenses that make redistributing them in
+an installer questionable regardless of size. Every scene that doesn't
+require external files (Basics/Materials/Lights/Cameras/Volumes/Geometry/Textures —
+most of the registry, all procedurally generated) works from the installed
+app with no extra setup, as do the bundled `pbrt_scenes/` examples (category
+K) that don't reference a missing mesh/texture. For the external-asset scenes, select the scene and press **Download missing files** (see above); you can also copy files into the installed app's `Contents/MacOS/models/` by hand.
+
+The `.app`/`.dmg` are **not code-signed or notarized** (that needs an Apple
+Developer account this project doesn't have) — macOS Gatekeeper will refuse
+to open it with a plain double-click on first launch. Right-click the app →
+**Open** (or System Settings → Privacy & Security → **Open Anyway**) once to
+run it; this is a one-time step per machine, standard for any indie/unsigned
+Mac app.
+
+### Metal GPU (opt-in)
+
+A real Metal GPU backend (`gpu/metal/`), separate from the
+CPU-only build above - opt in with `-DRT_BUILD_METAL=ON`:
+```bash
+cmake -B build -DRT_BUILD_METAL=ON && cmake --build build
+./build/ray_tracer 800 100 50 A1 --gpu   # real macOS GPU path, not a fallback warning
+```
+Also builds a standalone `metal_poc` CLI, the `realtime_renderer.dylib`
+that backs the GUI's Live Preview, and (via `ctest`, once configured this
+way) twelve regression tests: host-side math, real on-device shader
+kernels, and a CPU-vs-Metal parity harness that renders every scene on
+both and compares them
+(`METAL_PARITY_STRICT=1 ctest`; `scripts/update_metal_golden.sh` refreshes the
+golden snapshot in `gpu/metal/parity_golden.txt` after an intentional
+change). Metal renders the great majority of scenes to within noise of the
+CPU renderer; `docs/METAL_PARITY_STATUS.md` lists exactly which scenes and
+features still differ, and `docs/history/METAL_GPU_FEASIBILITY.md` has the full
+incremental history. Live Preview (interactive drag-to-orbit at a small
+fixed size) is described in `docs/MAC_LIVE_PREVIEW.md`. CI builds and runs this on every push (`.github/workflows/
+unit-tests.yml`'s own `metal-poc` job, `macos-14`) - the device-
+dependent tests gracefully skip there (GitHub's own hosted runners don't
+currently expose hardware-raytracing-capable Metal), so full local
+verification on real Apple Silicon hardware remains the authoritative
+check.
 
 ## Common Issues
 

@@ -5,8 +5,7 @@ project builds on - Windows (CLI + optional Qt GUI + optional GPU/OptiX)
 and macOS (CLI + Qt GUI, CPU rendering + a real Metal GPU backend - there
 is no CUDA/OptiX on macOS, but `scripts/build_and_deploy_macos.sh` always
 builds with `-DRT_BUILD_METAL=ON`, so every macOS release ships a fully-
-integrated `--gpu` option, not just CPU rendering - see `docs/
-METAL_GPU_FEASIBILITY.md`). The two platforms use separate
+integrated `--gpu` option, not just CPU rendering - see `docs/METAL_BACKEND.md`). The two platforms use separate
 build/package scripts (see
 `scripts/README.md`) but share the same tag-and-upload release step at
 the end, and can both be attached to the SAME GitHub Release (e.g.
@@ -121,9 +120,24 @@ the same version tag:
    existing release rather than creating a second one for the same
    version.
 
+## Release checklist
+
+Before publishing:
+
+- [ ] Build is clean in Release, and the tests pass (`scripts/run_tests_parallel.ps1 -Tier Split`)
+- [ ] GPU and CPU renderers tested, and the GUI starts and renders
+- [ ] The package was tested from its zip extracted to a clean folder outside the repository, not run in place
+- [ ] All runtime dependencies are in the package
+- [ ] `CHANGELOG.md` has the release's notes, and `README.md` / `INSTALL.md` still describe what the package does
+- [ ] The zip is named correctly, and the GitHub release has the matching `vMAJOR.MINOR.PATCH` tag
+
+## Versioning
+
+Semantic versioning, `vMAJOR.MINOR.PATCH`: **MAJOR** for breaking changes or major new features, **MINOR** for backward-compatible features, **PATCH** for fixes and small improvements.
+
 ## Version History
 
-For current version info, see main `/README.md`.
+See [`CHANGELOG.md`](../CHANGELOG.md).
 
 ## Package Structure
 

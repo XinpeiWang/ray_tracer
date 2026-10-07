@@ -1,7 +1,7 @@
 # Qt6 Installation Guide for Ray Tracer Project
 
 ## Overview
-This guide walks you through installing Qt6 on Windows for the Ray Tracer GUI modernization.
+This guide walks you through installing Qt 6 on Windows, which you need to build the Ray Tracer GUI (the portable release does not need it). [BUILD.md](../BUILD.md) has the rest of the build.
 
 ## Installation Steps
 

@@ -11,6 +11,12 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 * **Scene Builder** (GUI tab): build a scene from shapes, materials and lights, drag things around in a layout view, preview it, and save an ordinary `.pbrt` file. [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
 * The command line takes a `.pbrt` path where a scene id goes (`ray_tracer.exe --cpu 800 64 8 my-scene.pbrt`) and `--height N` for a non-square picture.
 
+### Scenes
+
+* **Every scene has a stable name** (`cornell-box`, a scene file's name) next to its short id (`A1`, `K37`). Ids still work everywhere, but they move when a category is added or a file is added to `pbrt_scenes/`; names do not. The GUI saves names (recent renders, thumbnails, notes), and the command line accepts either.
+* **The scene list is tidier.** A file that a built-in scene already uses is listed once (Custom Scenes went from 218 entries to 76, most of them copies). The 58 bundled test fixtures are a **Test Scenes** category; Custom Scenes holds your own and downloaded scenes. Names say what a scene shows ("Cornell Rough Glass") instead of how it is stored ("(pbrt example)"), and a scene file can carry its own category, description and performance in header comments.
+* **Descriptions and performance are real**: every test scene and 54 built-in scenes have new descriptions, and the performance word is a measured CPU time for a 400 x 400 picture (Fast under 10 s, Slow under 2 min, and so on) with its range shown.
+
 ### Rendering correctness
 
 * **Path tracers add the last continuation ray.** The CPU and both OptiX backends stopped one segment early, so the emission or sky seen by the last

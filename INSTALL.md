@@ -40,17 +40,15 @@ After extraction:
 ## Command-Line Usage
 
 ```
-RayTracer.exe [--cpu|--gpu] [--output PATH] width spp max_depth SCENE_ID [cam_x cam_y cam_z]
+RayTracer.exe [--cpu|--gpu] [--output PATH] [--height N] width spp max_depth SCENE [cam_x cam_y cam_z]
 ```
 
-Scenes are identified by a category letter + number (e.g. `A1` for the
-Cornell Box) - see [docs/SCENE_SELECTION.md](docs/SCENE_SELECTION.md) for
-the full id scheme and category list, or just use the GUI's scene dropdown
-instead of memorizing ids.
+A scene is a name (`cornell-box`), an id (`A1`), or the path of a `.pbrt` file of your own; see
+[docs/SCENE_SELECTION.md](docs/SCENE_SELECTION.md) for the names and categories, or just use the GUI's scene dropdown.
 
 Examples:
 ```
-RayTracer.exe --gpu --output out.png 800 500 20 A1     # Cornell Box, GPU, 500 spp
+RayTracer.exe --gpu --output out.png 800 500 20 cornell-box   # Cornell Box, GPU, 500 spp
 RayTracer.exe --cpu --output out.png 600 100 15 B10    # A Materials-category scene, CPU
 ```
 

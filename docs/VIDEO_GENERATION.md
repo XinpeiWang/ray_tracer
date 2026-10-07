@@ -1,4 +1,4 @@
-# Video Generation Feature - Testing Guide
+# Video generation
 
 This guide explains how to use the video generation feature to create animated ray-traced videos.
 
@@ -6,7 +6,7 @@ This guide explains how to use the video generation feature to create animated r
 
 The video generation feature allows you to:
 - Render multiple frames with animated camera movement
-- Choose from 4 camera animation paths (orbit, linear, figure8, spiral)
+- Choose from 6 camera animation paths (orbit, linear, figure8, spiral, tour, showcase)
 - Automatically assemble frames into an MP4 video using ffmpeg
 
 This guide covers the CLI. The Qt GUI exposes the same options (camera
@@ -298,6 +298,6 @@ output/
 
 ## See Also
 
-- [BUILD.md](../docs/BUILD.md) - Build instructions
+- [BUILD.md](../BUILD.md) - Build instructions
 - [README.md](../README.md) - Project overview
 - [launcher/camera_path.h](../launcher/camera_path.h) - Camera path implementation

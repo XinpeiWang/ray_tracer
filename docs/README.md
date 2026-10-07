@@ -1,0 +1,38 @@
+# Documentation
+
+A guide to this folder and the other documents. The repository's front page is the [README](../README.md).
+
+## Using the renderer
+
+| Document | What it is |
+|---|---|
+| [INSTALL.md](../INSTALL.md) | Using the portable release package |
+| [SCENE_SELECTION.md](SCENE_SELECTION.md) | Scene names and ids, categories, what a scene's info means, header tags, adding a scene |
+| [SCENE_BUILDER.md](SCENE_BUILDER.md) | The GUI's Scene Builder: build a scene and save a `.pbrt` |
+| [VIDEO_GENERATION.md](VIDEO_GENERATION.md) | Camera paths, frames, assembling an MP4 |
+| [MAC_LIVE_PREVIEW.md](MAC_LIVE_PREVIEW.md) | The macOS interactive Live Preview |
+| [ERROR_CODE_REFERENCE.md](ERROR_CODE_REFERENCE.md) | Every error code, what it means, what to try |
+| [../pbrt_scenes/README.md](../pbrt_scenes/README.md) | The scene folder: names, header tags, the pbrt subset read |
+
+## What the renderer supports
+
+| Document | What it is |
+|---|---|
+| [PBRT_SUPPORT.md](PBRT_SUPPORT.md) | What happens to each pbrt-v4 directive when a scene file is loaded, per backend (Full / Approx / Fallback / Unsupported) |
+| [FEATURE_INVENTORY.md](FEATURE_INVENTORY.md) | Feature by feature and backend by backend, and the gaps from pbrt-v4 |
+| [MULTIPLE_IMPORTANCE_SAMPLING.md](MULTIPLE_IMPORTANCE_SAMPLING.md) | How MIS is used |
+| [CLOSED_FORMS_FOUND_THE_BUGS.md](CLOSED_FORMS_FOUND_THE_BUGS.md) | Why the tests check closed-form answers, and what that found |
+| [METAL_BACKEND.md](METAL_BACKEND.md), [METAL_PARITY_STATUS.md](METAL_PARITY_STATUS.md) | The Metal backend and how closely it matches the CPU renderer ([history/](history/) has the long diary) |
+
+## Building and contributing
+
+| Document | What it is |
+|---|---|
+| [BUILD.md](../BUILD.md) | Building on Windows and macOS, the fast incremental loop, troubleshooting |
+| [PROJECT_STRUCTURE.md](PROJECT_STRUCTURE.md) | Where things are in the repository |
+| [CONTRIBUTING.md](../CONTRIBUTING.md), [CODING_STANDARDS.md](../CODING_STANDARDS.md) | How to contribute, and the code style |
+| [tests/TESTING_GUIDE.md](../tests/TESTING_GUIDE.md) | Running and adding tests |
+| [scripts/README.md](../scripts/README.md), [releases/README.md](../releases/README.md) | The scripts, and making a release package |
+| [gpu/optix/README.md](../gpu/optix/README.md) | The OptiX backends |
+| [qt_gui/QT_GUI_DOCUMENTATION.md](../qt_gui/QT_GUI_DOCUMENTATION.md) | The Qt GUI's code, themes and installation |
+| [CHANGELOG.md](../CHANGELOG.md), [THIRD_PARTY_NOTICES.md](../THIRD_PARTY_NOTICES.md) | What changed, and the licences of what is included |
