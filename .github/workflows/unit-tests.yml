@@ -223,8 +223,12 @@ jobs:
       matrix:
         include:
           - os: macos-14
+            qt_version: '6.11.1'
             qt_arch: ""
+          # Qt 6.11.1 on Windows lives in a repository layout (qt6_6111/qt6_6111_msvc2022_64) that the current aqtinstall cannot resolve yet
+          # ("Failed to locate XML data"), so the Windows compile check uses 6.9.3 until it can. It also shows the GUI still builds on an older Qt 6.
           - os: windows-latest
+            qt_version: '6.9.3'
             qt_arch: win64_msvc2022_64
     runs-on: ${{ matrix.os }}
     steps:
@@ -233,7 +237,7 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.1'
+          version: ${{ matrix.qt_version }}
           arch: ${{ matrix.qt_arch }}
           modules: 'qtmultimedia'
           cache: true
