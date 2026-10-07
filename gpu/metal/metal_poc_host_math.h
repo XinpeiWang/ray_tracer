@@ -13,7 +13,7 @@
 // from the real thing.
 //
 // This closes a real, previously-undocumented gap: every one of this
-// POC's ~58 documented increments (docs/METAL_GPU_FEASIBILITY.md) was
+// POC's ~58 documented increments (docs/history/METAL_GPU_FEASIBILITY.md) was
 // verified by rendering once, by hand, via a throwaway numeric/visual
 // script that was never committed - a future edit to any of THESE
 // specific functions could silently reintroduce a fixed bug (the exact

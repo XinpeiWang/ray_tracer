@@ -5,7 +5,7 @@
 // own ever needing to leak into main.cpp.
 //
 // WIRED IN: launcher/main.cpp's --gpu dispatch calls metal_render_main()
-// directly on a RT_HAVE_METAL build (see docs/METAL_GPU_FEASIBILITY.md's
+// directly on a RT_HAVE_METAL build (see docs/history/METAL_GPU_FEASIBILITY.md's
 // own phase 3a/3b sections for how ray_tracer itself came to link this
 // code, and main.cpp's own #ifdef RT_HAVE_METAL block for the call site).
 
@@ -70,7 +70,7 @@ bool metal_get_diagnostics(MetalDiagnostics* out);
 //
 // options: options.tonemap ("aces"/"reinhard"/"none", matching
 // cpu_render_main()/optix_render_main()'s own convention), options.exposure
-// (a flat pre-tonemap multiplier, section 148, docs/METAL_GPU_FEASIBILITY.md),
+// (a flat pre-tonemap multiplier, section 148, docs/history/METAL_GPU_FEASIBILITY.md),
 // options.seed (selects the per-pixel RNG stream - section 204),
 // options.crop_* (render only a pixel window, rest black - section 205), and
 // METAL_GPU_FEASIBILITY.md) and options.adaptive_sampling/adaptive_threshold (off by default, like the CPU) are

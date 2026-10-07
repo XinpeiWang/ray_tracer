@@ -226,7 +226,7 @@ inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 n
     // SAMPLED microfacet normal instead of the smooth geometric one.
     // Energy-conserving throughput correction (G/G1(wo)) derived from
     // src/shared/bxdfs_conductor.h's own validated RoughDielectricBxDF
-    // f()/pdf() pair - see docs/METAL_GPU_FEASIBILITY.md section 65 for
+    // f()/pdf() pair - see docs/history/METAL_GPU_FEASIBILITY.md section 65 for
     // the full derivation.
     float alpha = max(mat.roughness * mat.roughness, 0.0009);
     float3 tangent, bitangent;
@@ -390,7 +390,7 @@ inline bool shadeThinDielectric(TriangleMaterial mat, float3 hitPoint, float3 no
     // thickness slab: transmission passes straight through with no
     // bending, reflectance boosted by a closed-form multi-bounce
     // geometric series. Same `ior` regardless of front/back face - see
-    // docs/METAL_GPU_FEASIBILITY.md section 64.
+    // docs/history/METAL_GPU_FEASIBILITY.md section 64.
     float cosTheta = max(abs(dot(facingNormal, -rayDir)), 0.0001);
     float thinR = frDielectric(cosTheta, mat.ior);
     if (thinR < 1.0) {

@@ -6,7 +6,7 @@
 // path - split out of metal_poc_app.h as a pure code-motion refactor (no
 // behaviour change) once that file grew past ~2000 lines, the same "one
 // giant translation unit"-adjacent problem PR #156/metal_poc.mm's own
-// earlier splits already addressed - see docs/METAL_GPU_FEASIBILITY.md.
+// earlier splits already addressed - see docs/history/METAL_GPU_FEASIBILITY.md.
 // Included by metal_poc_app.h itself, so every existing includer of THAT
 // header keeps seeing these functions with no changes needed at any call
 // site.
@@ -505,7 +505,7 @@ inline float3 reflectanceToConductorK(float3 albedo) {
 // bounding-box geometry descriptor, a new intersection function, and
 // updating every `!isSphere && !isDisk && !isSuzanneInstance`-style
 // exclusion check already scattered through the main shading kernel) -
-// section 154, docs/METAL_GPU_FEASIBILITY.md. Per-VERTEX normals are
+// section 154, docs/history/METAL_GPU_FEASIBILITY.md. Per-VERTEX normals are
 // the REAL analytic bilinear-surface normal at that exact (u,v)
 // (`cross(dPdu, dPdv)`, not a flat per-face fallback), smoothly
 // interpolated across each triangle by the SAME barycentric

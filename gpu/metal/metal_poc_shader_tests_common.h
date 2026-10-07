@@ -8,7 +8,7 @@
 // translation units. Split out of metal_poc_shader_tests.mm once that
 // one file's own 36 test functions grew past ~2000 lines - a pure
 // code-motion refactor, no behaviour change, same precedent as metal_
-// poc_app.h's own split (docs/METAL_GPU_FEASIBILITY.md section 187) and
+// poc_app.h's own split (docs/history/METAL_GPU_FEASIBILITY.md section 187) and
 // metal_poc_scenes_*.mm's before it.
 //
 // Free functions below were `static` in their original single-TU home;
@@ -20,7 +20,7 @@
 // otherwise moved verbatim.
 //
 // Real regression coverage for the DEVICE-side half of metal_poc.metal -
-// the half metal_poc_math_tests.cpp (docs/METAL_GPU_FEASIBILITY.md
+// the half metal_poc_math_tests.cpp (docs/history/METAL_GPU_FEASIBILITY.md
 // section 59) explicitly could NOT close, since that one only covers
 // plain host C++ math with no GPU dependency at all. Everything checked
 // across this whole test suite only ever runs on the GPU: frDielectric(),

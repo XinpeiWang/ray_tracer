@@ -119,7 +119,7 @@ struct LaunchArgs {
 	// composited under every scene by MetalPocApp::buildScene() so 80+
 	// scene IDs can share one code path) when rendering a loaded pbrt
 	// scene. Exists purely for isolating a pbrt scene's OWN lighting during
-	// a comparison render - see docs/METAL_GPU_FEASIBILITY.md section 197's
+	// a comparison render - see docs/history/METAL_GPU_FEASIBILITY.md section 197's
 	// own finding that the demo room's undying, no-falloff "sun" swamped
 	// C9's tiny, correctly-calibrated real photometric light. Off by
 	// default so every one of the 81 kSupported scene IDs' existing

@@ -5,7 +5,7 @@
 // scene category), and metal_poc_pbrt_loader.mm (real pbrt scene
 // loading). Split out of metal_poc.mm as a pure code-motion refactor
 // (no behaviour change) once that file's own scene-builder count made
-// it unwieldy - see docs/METAL_GPU_FEASIBILITY.md.
+// it unwieldy - see docs/history/METAL_GPU_FEASIBILITY.md.
 //
 // Free functions below were `static` in their original single-TU home;
 // each is `inline` here instead (identical body, just ODR-safe to
@@ -158,7 +158,7 @@ struct MetalPocApp {
     bool pbrtRequireAllMeshes = false;
     // Optional 9th positional CLI arg (see parseArgsAndCreateDevice()'s own
     // argv[8] handling) - a scene_id one of buildHandAuthoredScene()'s own
-    // real cases covers (section 116, docs/METAL_GPU_FEASIBILITY.md), for a
+    // real cases covers (section 116, docs/history/METAL_GPU_FEASIBILITY.md), for a
     // scene with NO pbrt file backing it at all. Mutually exclusive with
     // pbrtScenePath in practice - metal_render_main() only ever sets one of
     // the two, matching cpu_scene_pbrt_path_by_id() either resolving a real
@@ -535,7 +535,7 @@ struct MetalPocApp {
     // spheres approximating CPU's own two rotated smoke boxes. See this
     // method's own definition comment (metal_poc_scenes_a.mm) for the
     // full "why," including materialType 28's own new mechanism.
-    // Section 176, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 176, docs/history/METAL_GPU_FEASIBILITY.md.
     // Shared "mesh gallery" pattern (category G/Models - section 117, docs/
     // METAL_GPU_FEASIBILITY.md) - a flat ground quad, one imported OBJ mesh
     // in a caller-chosen material, and one small quad area light above,
@@ -554,7 +554,7 @@ struct MetalPocApp {
     // G4-G24 (minus G7/G10 - need a 180-degree mesh flip buildMeshGallery
     // Scene() doesn't support yet; G12 - four meshes, not one; G13 -
     // dielectric, not conductor - all deferred to a later increment,
-    // section 118, docs/METAL_GPU_FEASIBILITY.md). Each is a one-line
+    // section 118, docs/history/METAL_GPU_FEASIBILITY.md). Each is a one-line
     // buildMeshGalleryScene() call with that scene's own real OptiX
     // albedo/roughness (gpu/optix/scene_builder_mesh_gallery.h) converted
     // the same reflectanceToConductorK() way G1-G3 already are.
@@ -568,7 +568,7 @@ struct MetalPocApp {
     // build_trophy_room() and OptiX's build_trophy_room_gpu() exactly in
     // mesh choice/material tones), the first hand-authored Metal scene to
     // combine multiple external OBJ meshes in one composition. Section
-    // 120, docs/METAL_GPU_FEASIBILITY.md.
+    // 120, docs/history/METAL_GPU_FEASIBILITY.md.
     // A3: Checkered Spheres - the first category-A ("Basics") scene beyond
     // A1's own Cornell box. Real, direct spheres.push_back() calls (no
     // mesh import, no shared helper) - the geometry is simple enough
@@ -577,11 +577,11 @@ struct MetalPocApp {
     // comment) since nothing here goes through loadObjMesh()'s targetSize/
     // centre-based auto-fit convention. Introduces materialType 16 (real
     // 3D world-space checker) - see checker3DColor()'s own declaration
-    // comment, metal_poc.metal. Section 121, docs/METAL_GPU_FEASIBILITY.md.
+    // comment, metal_poc.metal. Section 121, docs/history/METAL_GPU_FEASIBILITY.md.
     // A2: Bouncing Spheres (In One Weekend's own final scene) - see this
     // method's own definition comment (metal_poc_scenes_a.mm) for the
     // full "why," including the fixed-seed pseudo-random grid layout.
-    // Section 175, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 175, docs/history/METAL_GPU_FEASIBILITY.md.
     // A6: Colored Quads - 5 flat-colour wall quads plus one emissive lamp
     // quad, matching CPU's build_quads()/build_quads_lights() exactly.
     // Pure addQuad() calls (no new material/geometry machinery at all -
@@ -603,14 +603,14 @@ struct MetalPocApp {
     // see turbulenceSimple()'s own declaration comment, metal_poc.metal)
     // plus a warm key-light quad, matching CPU's
     // build_perlin_spheres()/build_perlin_spheres_lights() exactly.
-    // Section 124, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 124, docs/history/METAL_GPU_FEASIBILITY.md.
     // A7: Simple Light - reuses A5's own materialType 17 (Perlin marble)
     // for its ground+main sphere, plus a warm emissive SPHERE light and
     // a cool emissive quad light - matching CPU's own build_simple_light()
     // EXACTLY, including its real choice of `no_lights` (neither light
     // is NEE-registered even on CPU) - see this method's own definition
     // for why that's a deliberate fidelity choice, not a missing
-    // feature. Section 125, docs/METAL_GPU_FEASIBILITY.md.
+    // feature. Section 125, docs/history/METAL_GPU_FEASIBILITY.md.
     // Shared "Cornell family" pattern (category B/Materials) - the SAME
     // 5 walls + ceiling light + rotated box + sphere shell
     // buildCornellBoxA1() already builds for A1, but with the box's and
@@ -626,7 +626,7 @@ struct MetalPocApp {
     // not-yet-supported one (coated diffuse/conductor, subsurface, hair,
     // measured) stays out of scope until this helper (or a dedicated
     // builder) grows to cover
-    // it. Section 126, docs/METAL_GPU_FEASIBILITY.md.
+    // it. Section 126, docs/history/METAL_GPU_FEASIBILITY.md.
     // B2: Cornell Rough Metal - rough aluminium box + rough gold sphere,
     // both materialType 4 (GGX conductor), matching CPU's own
     // build_cornell_rough_metal() exactly.
@@ -644,7 +644,7 @@ struct MetalPocApp {
     // roughness 0.2, ior 1.5), matching CPU's own
     // build_cornell_rough_glass() exactly. First sphere-only use of
     // buildCornellFamilyScene()'s materialType 5 support. Section 128,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // docs/history/METAL_GPU_FEASIBILITY.md.
     // B6: Cornell Thin Glass - NOT built via buildCornellFamilyScene():
     // this scene has its own real shape (CPU's build_cornell_thin_glass(),
     // scenes_materials.h) - the standard 5 walls (still
@@ -659,7 +659,7 @@ struct MetalPocApp {
     // CPU's own build_rough_metal_spheres() exactly. Ground is a flat
     // quad, not CPU's own radius-1000 sphere - the SAME clearance issue
     // A5's own ground already had (section 124's own comment), same fix.
-    // Section 130, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 130, docs/history/METAL_GPU_FEASIBILITY.md.
     // B8: Cornell Wax Slab - back to the buildCornellFamilyScene() shape
     // (walls+light+box+sphere), box unchanged white Lambertian, sphere
     // now materialType 12 (diffuse transmission - already implemented,
@@ -673,7 +673,7 @@ struct MetalPocApp {
     // deliberately lopsided power (~1:2:6:15:80), matching CPU's own
     // build_light_sampler_comparison() exactly. Bespoke builder (like
     // buildCornellThinGlass()) - buildCornellFamilyScene() assumes
-    // exactly one light. Section 133, docs/METAL_GPU_FEASIBILITY.md.
+    // exactly one light. Section 133, docs/history/METAL_GPU_FEASIBILITY.md.
     // Shared geometry for category C's own "Cornell box, no ceiling
     // light, lit by ONE punctual light instead" family (C2-C6) - matches
     // CPU's own cornell_walls_no_light() exactly: the 5 standard walls
@@ -695,7 +695,7 @@ struct MetalPocApp {
     // own separate shared goniometricTexture/projectionTexture slot
     // (which stays reserved for the hardcoded demo room's own lights,
     // avoiding any texture-slot conflict between the two). Section 135,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // docs/history/METAL_GPU_FEASIBILITY.md.
     // F2: Triangle Mesh - a procedurally-generated icosahedron (12
     // vertices, 20 triangular faces, flat per-face normals), matching
     // CPU's own build_triangle_mesh_scene() exactly. Real triangle
@@ -718,7 +718,7 @@ struct MetalPocApp {
     // convention) instead of a Cornell box. 6 fixed-material spheres
     // (2 out-of-focus lambertian, 1 in-focus glass, 1 in-focus metal,
     // 1 more out-of-focus lambertian) plus a checker ground and a row
-    // of small accent spheres. Section 149, docs/METAL_GPU_FEASIBILITY.md.
+    // of small accent spheres. Section 149, docs/history/METAL_GPU_FEASIBILITY.md.
     // D6: Orthographic Camera Cornell Box - the EXACT SAME A1 Cornell
     // box geometry (build_cornell_box on CPU, same as D5), just with a
     // real orthographic (parallel-projection) camera instead of the
@@ -726,7 +726,7 @@ struct MetalPocApp {
     // buildCornellBoxA1(), same shape as D5's own reuse, plus a NEW
     // camera projection mode (havePbrtOrthographic/
     // Uniforms::cameraOrthographic - this loader's first ever
-    // non-perspective camera). Section 150, docs/METAL_GPU_FEASIBILITY.md.
+    // non-perspective camera). Section 150, docs/history/METAL_GPU_FEASIBILITY.md.
     // D2: Orthographic Camera (open scene) - an open (non-Cornell)
     // column-of-spheres scene demonstrating the SAME orthographic mode
     // D6 already wired up (havePbrtOrthographic), just at natural scale
@@ -736,7 +736,7 @@ struct MetalPocApp {
     // value. Needs the SAME right-vector sign correction D6's own
     // section 150 finding established (CPU's alt-camera path is
     // internally inconsistent with its own primary one). Section 151,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // docs/history/METAL_GPU_FEASIBILITY.md.
     // D7: Spherical Camera Cornell Box - the EXACT SAME A1 Cornell box
     // geometry (same as D5/D6/D8), viewed from the box's OWN CENTER as
     // a real 360-degree equirectangular panorama (pbrt-v4
@@ -753,7 +753,7 @@ struct MetalPocApp {
     // workaround D7's own build already established (D3's own registry
     // camera also has lookfrom directly above lookat, the same
     // degenerate input) - not a new construction to verify, the
-    // identical one. Section 153, docs/METAL_GPU_FEASIBILITY.md.
+    // identical one. Section 153, docs/history/METAL_GPU_FEASIBILITY.md.
     // D4: Realistic Camera (open scene) - 5 spheres viewed through a
     // real 9-element simplified Double-Gauss lens (pbrt-v4
     // RealisticCamera), demonstrating genuine per-element-refraction
@@ -761,7 +761,7 @@ struct MetalPocApp {
     // Builds a real, portable `RealisticCamera<float>` host-side and
     // reads its own GPU-port accessors directly - see
     // Uniforms::cameraRealistic's own comment for the full mechanism.
-    // Section 157, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 157, docs/history/METAL_GPU_FEASIBILITY.md.
     // D8: Realistic Camera Cornell Box - the EXACT SAME A1 Cornell box
     // geometry (same as D5/D6/D7), viewed through the SAME 9-element
     // lens D4 uses, just with the aperture diameter scaled up (350mm
@@ -774,14 +774,14 @@ struct MetalPocApp {
     // a real (approximated) camera shutter dolly - see this method's
     // own definition comment (metal_poc_scenes_d.mm) for the full
     // "why," including the honest translate-only approximation scope.
-    // Section 174, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 174, docs/history/METAL_GPU_FEASIBILITY.md.
     // F1: Bilinear Patch - a Cornell box (the SAME 5 walls + ceiling
     // light literal as A1/E1, no box/sphere) containing TWO curved,
     // non-planar bilinear-patch surfaces (a saddle + a ramp), each a
     // GGX conductor. Ported as a fine tessellated triangle grid
     // (`addBilinearPatch()`) rather than a real new custom-primitive
     // type - see that helper's own declaration comment for the full
-    // rationale. Section 154, docs/METAL_GPU_FEASIBILITY.md.
+    // rationale. Section 154, docs/history/METAL_GPU_FEASIBILITY.md.
     // F4: Curve Fibers - 70 windswept, tapered Bezier hair strands in a
     // Fibonacci-disk root arrangement, matching build_curve_fibers_scene()'s
     // own deterministic (non-RNG) placement exactly. Ported as
@@ -789,7 +789,7 @@ struct MetalPocApp {
     // scene's OWN registry description exactly ("GPU renders... tubes
     // of bilinear patches... rather than an exact curve intersection"),
     // the same documented simplification F1 already used. Section 155,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // docs/history/METAL_GPU_FEASIBILITY.md.
     // E1: Homogeneous Medium - the standard A1 Cornell box WALLS (all 6
     // of kQuads[0..5] including the light - CPU's own scene reuses the
     // exact same light quad, no box/sphere at all) filled with a real
@@ -800,41 +800,41 @@ struct MetalPocApp {
     // instead - that mechanism itself has no pbrt-specific logic at all,
     // it is a general "fill this scene's own enclosed interior with a
     // homogeneous medium" uniform, so reusing it needed no shader
-    // changes. Section 138, docs/METAL_GPU_FEASIBILITY.md.
+    // changes. Section 138, docs/history/METAL_GPU_FEASIBILITY.md.
     // E3: Dielectric Medium Showcase - 3 tinted-glass spheres
     // approximating CPU's own dielectric-plus-real-medium combination.
     // See this method's own definition comment (metal_poc_scenes_e.mm)
     // for the full "why," including the honest scope cut. Section 177,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // docs/history/METAL_GPU_FEASIBILITY.md.
     // E2: Cloud Medium - a real heterogeneous, procedural Perlin-noise
     // cloud (pbrt-v4 CloudMedium), delta-tracked through its own world-
     // space AABB via a trigger sphere, the same "invisible bounding
     // sphere plus analytic geometry" convention A8's own homogeneous
     // medium (materialType 28) established. See this method's own
     // definition comment (metal_poc_scenes_e.mm) for the full mechanism.
-    // Section 178, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 178, docs/history/METAL_GPU_FEASIBILITY.md.
     // E4: RGB Grid Medium - a real heterogeneous "nebula" with an
     // independent per-voxel R/G/B scattering grid (pbrt-v4
     // RGBGridMedium), delta-tracked via the SAME trigger-sphere
     // convention as E2's own materialType 29 - see this method's own
     // definition comment (metal_poc_scenes_e.mm) for the full mechanism.
-    // Section 179, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 179, docs/history/METAL_GPU_FEASIBILITY.md.
     // B9: Cornell Crystal - buildCornellFamilyScene() with the sphere as
     // materialType 18 (NormalizedFresnelBxDF - a genuinely NEW material,
     // not previously implemented before this PR - see
     // shadeNormalizedFresnel()'s own declaration comment, metal_poc.metal).
-    // Section 139, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 139, docs/history/METAL_GPU_FEASIBILITY.md.
     // B5: Cornell Coated Diffuse - buildCornellFamilyScene() with BOTH box
     // and sphere as materialType 19 (CoatedDiffuseBxDF, a genuinely NEW
     // stochastic layered-material shader function - see
     // shadeCoatedDiffuse()'s own declaration comment, metal_poc.metal).
-    // Section 140, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 140, docs/history/METAL_GPU_FEASIBILITY.md.
     // B7: Cornell Coated Conductor - buildCornellFamilyScene() with BOTH
     // box and sphere as materialType 20 (CoatedConductorBxDF - the SAME
     // coat random walk as materialType 19's own CoatedDiffuseBxDF, just
     // with a GGX-conductor bottom bounce instead of Lambertian - see
     // shadeCoatedConductor()'s own declaration comment, metal_poc.metal).
-    // Section 141, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 141, docs/history/METAL_GPU_FEASIBILITY.md.
     // B12: Normal Mapped Cornell - buildCornellFamilyScene() with the
     // sphere as materialType 21 (checker-driven normal-mapped
     // Lambertian - see the materialType==21u normal-perturbation
@@ -842,7 +842,7 @@ struct MetalPocApp {
     // CPU-side bump map is a real, verified NO-OP (see
     // buildNormalMappedCornell()'s own comment) so the box stays plain
     // materialType 0, matching CPU's own actually-rendered behavior.
-    // Section 142, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 142, docs/history/METAL_GPU_FEASIBILITY.md.
     // B23: Glass Prism Dispersion - a real triangular prism (3 quads + 2
     // triangle end caps) under a single directional light, splitting
     // into a visible chromatic fan on a catcher screen. materialType 22
@@ -851,7 +851,7 @@ struct MetalPocApp {
     // metal_poc.metal). Not a Cornell-family scene at all - its own
     // bespoke geometry/camera/light, matching CPU's own
     // build_prism_dispersion_geometry() exactly.
-    // Section 143, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 143, docs/history/METAL_GPU_FEASIBILITY.md.
     // Shared by buildPrismDispersion() (B23) and
     // buildPrismDispersionRough() (B24) - identical geometry/camera/
     // light, differing only in the glass material/roughness passed in.
@@ -859,7 +859,7 @@ struct MetalPocApp {
     // materialType 23 (dispersive rough dielectric - see
     // shadeDispersiveRoughDielectric()'s own declaration comment,
     // metal_poc.metal) instead of smooth. Section 144,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // docs/history/METAL_GPU_FEASIBILITY.md.
     // B10: Principled Showcase - a row of 7 spheres demonstrating pbrt-
     // v4's PrincipledBxDF (materialType 24 - see shadePrincipled()'s own
     // declaration comment, metal_poc.metal), matte diffuse through to
@@ -868,12 +868,12 @@ struct MetalPocApp {
     // standalone geometry/camera, matching build_principled_showcase()
     // exactly (F2's own "natural scale, no Cornell-style rescale"
     // convention, since this scene's own extent is already compact).
-    // Section 145, docs/METAL_GPU_FEASIBILITY.md.
+    // Section 145, docs/history/METAL_GPU_FEASIBILITY.md.
     // B11: Hair Fibers - 5 spheres (materialType 31, shadeHair() -
     // metal_poc_materials_hair.metal) with pbrt-v4's own HairBxDF applied
     // as a fur/fiber material, matching build_hair_fibers() exactly. See
     // that Metal function's own comment for the field-reuse layout and
-    // section 183, docs/METAL_GPU_FEASIBILITY.md.
+    // section 183, docs/history/METAL_GPU_FEASIBILITY.md.
     // B14: Measured BRDF - STALE/UNREACHABLE for scene_id "B14" as of
     // B14's pbrt migration (ray_tracer commit af83bb8a): the CPU
     // measured_material class this was written to match is deleted, and
@@ -890,19 +890,19 @@ struct MetalPocApp {
     // function is kept only as the first (and still only) example of this
     // loader's sphere-light NEE support (AreaLight::kind==1,
     // metal_poc_sampling.metal's sampleAreaLight()) - see its own comment
-    // and section 184, docs/METAL_GPU_FEASIBILITY.md - not as a current
+    // and section 184, docs/history/METAL_GPU_FEASIBILITY.md - not as a current
     // description of what scene_id "B14" renders.
     // B13: Subsurface Slab - a Cornell box with a dielectric wax slab
     // (box) and jade sphere, each approximated as tinted glass
     // (materialType 2, E3's own precedent) rather than a real internal
     // scattering medium. See buildSubsurfaceSlab()'s own comment and
-    // section 185, docs/METAL_GPU_FEASIBILITY.md.
+    // section 185, docs/history/METAL_GPU_FEASIBILITY.md.
     // A9: Final Scene - Book 2's own combined finale (400-box ground,
     // moving/dielectric/fuzzy-metal/tinted-glass/earth/Perlin-marble
     // spheres, a 1000-sphere cluster, and a whole-scene faint fog),
     // reusing several already-shipped mechanisms rather than needing
     // anything genuinely new. See buildFinalScene()'s own comment and
-    // section 186, docs/METAL_GPU_FEASIBILITY.md.
+    // section 186, docs/history/METAL_GPU_FEASIBILITY.md.
     // C1: HDRI Sky - an open scene (ground + 3 spheres: diffuse, rough
     // metal, glass) lit ENTIRELY by a procedural gradient sky, no other
     // light at all. Needs NO new materialType or shader code at all -
@@ -915,7 +915,7 @@ struct MetalPocApp {
     // populated them), just with a HOST-side-generated 64x32 gradient
     // image (matching CPU's own build_hdri_sky() pixel formula exactly)
     // in place of a real loaded HDRI file. Section 146,
-    // docs/METAL_GPU_FEASIBILITY.md.
+    // docs/history/METAL_GPU_FEASIBILITY.md.
     // C7: Portal Infinite Light - a Cornell-family room (right/left/
     // ceiling/floor, NO ceiling light) whose back wall has an actual
     // rectangular window cut into it (4 border quads instead of one
@@ -929,7 +929,7 @@ struct MetalPocApp {
     // metal(...) - same B2/C1 substitution). Needs no new materialType/
     // shader code at all - the only genuinely new PART is the window
     // aperture itself, which is just 4 quads with a gap between them,
-    // not a new geometry primitive. Section 147, docs/METAL_GPU_FEASIBILITY.md.
+    // not a new geometry primitive. Section 147, docs/history/METAL_GPU_FEASIBILITY.md.
     // Recomputes pbrtCameraPos/Forward/Right/Up for a new lookfrom in the
     // loaded scene's own pbrt-file coordinate space, keeping lookat/up/fov
     // exactly as loadPbrtScene() read them from the scene - see this

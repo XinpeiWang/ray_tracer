@@ -137,6 +137,6 @@ struct RenderOptions {
 	// parses. History: it used to default false to keep every existing
 	// scene's hash-sweep-verified output unchanged; see
 	// launcher/launcher_args.h's LaunchArgs::isolate_pbrt_lighting for the
-	// full "why" (docs/METAL_GPU_FEASIBILITY.md section 197's C9 finding).
+	// full "why" (docs/history/METAL_GPU_FEASIBILITY.md section 197's C9 finding).
 	bool isolate_pbrt_lighting = false;
 };

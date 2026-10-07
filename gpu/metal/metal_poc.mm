@@ -1,6 +1,6 @@
 // metal_poc.mm
 // Host side of the Metal ray tracing proof-of-concept - see
-// docs/METAL_GPU_FEASIBILITY.md. Builds a small hardcoded Cornell-box-like
+// docs/history/METAL_GPU_FEASIBILITY.md. Builds a small hardcoded Cornell-box-like
 // triangle scene, uploads it into a Metal acceleration structure, dispatches
 // metal_poc.metal's inline-intersection compute kernel, and writes the
 // result to a PNG via this project's existing stb_image_write.h - same
@@ -448,7 +448,7 @@ void MetalPocApp::buildScene() {
     // spheres share one geometry/one intersection function - adding a
     // second one below is purely a host-side array-of-2 change, no
     // shader change) - the one "Medium risk, unconfirmed" item
-    // docs/METAL_GPU_FEASIBILITY.md section 3 originally flagged that
+    // docs/history/METAL_GPU_FEASIBILITY.md section 3 originally flagged that
     // the room/mirror geometry alone hadn't exercised (triangles only).
     // Sphere 0: glass, ior 1.5 matches common glass, same value this
     // project's own CPU Cornell box scene (A1) uses for its glass
@@ -548,7 +548,7 @@ void MetalPocApp::buildScene() {
         // sphere used through step 22, not a value chosen to
         // preserve the old appearance (that A/B check is done via a
         // dedicated verification render instead, not the committed
-        // scene - see docs/METAL_GPU_FEASIBILITY.md's own note).
+        // scene - see docs/history/METAL_GPU_FEASIBILITY.md's own note).
         // conductorEta/conductorK: real gold (Au) complex IOR, sampled at
         // the sRGB primary wavelengths (630/532/467nm) from pbrt-v4's own
         // spectral tables - src/shared/conductor_data.h's kConductorAu,
@@ -822,13 +822,13 @@ void MetalPocApp::applyCameraOverride(double cam_x, double cam_y, double cam_z) 
 // MetalPocApp::buildGPUResources() - split out into its own file,
 // metal_poc_gpu_resources.mm, once this file's own Stage 3/4 pair grew
 // past ~1200 combined lines (pure code motion, no behaviour change - see
-// that file's own header comment, and docs/METAL_GPU_FEASIBILITY.md).
+// that file's own header comment, and docs/history/METAL_GPU_FEASIBILITY.md).
 
 // --- Stage 4: compile the shader, dispatch the render, read back -------
 // MetalPocApp::compileShaderAndDispatch() (plus its own checkGpuResource()
 // helper) - split out into its own file, metal_poc_dispatch.mm, alongside
 // the Stage 3 split just above (same reasoning - see that file's own
-// header comment, and docs/METAL_GPU_FEASIBILITY.md).
+// header comment, and docs/history/METAL_GPU_FEASIBILITY.md).
 
 
 // --- Stage 5: post-process the linear HDR buffer and write the PNG -----
@@ -899,7 +899,7 @@ bool MetalPocApp::postProcessAndWrite() {
 }
 
 // --- Callable entry point (phase 2 of real GPU integration - see
-// docs/METAL_GPU_FEASIBILITY.md's own section on this) -------------------
+// docs/history/METAL_GPU_FEASIBILITY.md's own section on this) -------------------
 // Signature matches gpu/optix/optix_interface.h's own optix_render_main()
 // exactly, down to reusing the same RenderOptions struct. launcher/
 // main.cpp's own --gpu dispatch (its RT_HAVE_METAL branch) calls straight
@@ -949,7 +949,7 @@ bool metal_get_diagnostics(MetalDiagnostics* out) {
 // (scene_registry.h, no pbrt file at all) are reproduced natively by
 // gpu/optix/scene_builder.cpp's own ~900-line switch instead of going
 // through pbrt_load.h - Metal's own equivalent is buildHandAuthoredScene()
-// (section 116, docs/METAL_GPU_FEASIBILITY.md), which starts with real
+// (section 116, docs/history/METAL_GPU_FEASIBILITY.md), which starts with real
 // coverage for just "A1" and grows one scene (or small batch) at a time.
 // scene_id here first tries cpu_scene_pbrt_path_by_id(); if that's empty,
 // falls back to cpu_scene_metal_hand_authored_supported() - the ONE

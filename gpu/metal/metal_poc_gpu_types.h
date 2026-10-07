@@ -6,7 +6,7 @@
 // a pure code-motion refactor (no behaviour change) once that file grew
 // past ~2000 lines, the same "one giant translation unit"-adjacent problem
 // PR #156/metal_poc.mm's own earlier splits already addressed - see
-// docs/METAL_GPU_FEASIBILITY.md. Included by metal_poc_app.h itself, so
+// docs/history/METAL_GPU_FEASIBILITY.md. Included by metal_poc_app.h itself, so
 // every existing includer of THAT header keeps seeing these types with no
 // changes needed at any call site.
 #pragma once

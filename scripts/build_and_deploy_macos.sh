@@ -6,7 +6,7 @@
 # Mirrors scripts/build_and_deploy.ps1's job on Windows. There is no
 # CUDA/OptiX GPU renderer to build here - gpu/optix/ and optix_renderer/
 # are CUDA/OptiX-only with no macOS equivalent - but this DOES build the
-# real Metal GPU backend (gpu/metal/, docs/METAL_GPU_FEASIBILITY.md),
+# real Metal GPU backend (gpu/metal/, docs/history/METAL_GPU_FEASIBILITY.md),
 # fully integrated into ray_tracer's own --gpu dispatch since PR #84 -
 # passing -DRT_BUILD_METAL=ON below is what makes that actually happen;
 # without it, RT_HAVE_METAL is never defined and the packaged app is
@@ -69,7 +69,7 @@ echo "========================================"
 echo "Ray Tracer - macOS build + package"
 echo "========================================"
 
-# The single most important rule in this whole script, found the hard way (section 113 in docs/METAL_GPU_FEASIBILITY.md):
+# The single most important rule in this whole script, found the hard way (section 113 in docs/history/METAL_GPU_FEASIBILITY.md):
 # cpu_renderer/ray_tracer/scene_metadata (built via CMake below) and RayTracerGUI (built via qmake a few steps down) must
 # come out with the SAME architecture(s), or the GUI's own dlopen() of scene_metadata.dylib fails outright with "incompatible
 # architecture". So ONE choice is made here and handed to both builds (see --arch in the usage above).

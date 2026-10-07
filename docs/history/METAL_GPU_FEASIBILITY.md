@@ -1,9 +1,11 @@
+> **This is the development diary, not the current documentation.** It records, in order, what was tried, measured and decided while the Metal backend was built (200+ numbered sections; source comments cite them as "section N"). For how the backend works today, how to change it and how to test it, read [`../METAL_BACKEND.md`](../METAL_BACKEND.md); for how closely it matches the CPU, [`../METAL_PARITY_STATUS.md`](../METAL_PARITY_STATUS.md).
+
 # GPU Rendering on macOS: Metal/MetalRT Feasibility Study
 
 Answers one question: could this project's GPU renderer run on Apple
 hardware, and what would that actually take? Written after getting the CPU
 renderer and Qt GUI building/running on macOS for the first time (see the
-"macOS (CPU-only)" section of [`README.md`](../README.md)) — this document
+"macOS (CPU-only)" section of [`README.md`](../../README.md)) — this document
 is the natural next question that work raised, not a commitment to build
 anything. No code changes here.
 
@@ -21,7 +23,7 @@ lean on — every line has to be re-expressed by hand.
 ## 1. What exists today
 
 `gpu/optix/` is ~53,000 lines across three independently-compiled GPU
-backends (see that directory's own [`README.md`](../gpu/optix/README.md)
+backends (see that directory's own [`README.md`](../../gpu/optix/README.md)
 for the file-naming convention):
 
 | Backend | What it is | Rough scale |
@@ -33,7 +35,7 @@ for the file-naming convention):
 Both the recursive and wavefront backends implement essentially the full
 CPU feature set — every pbrt-v4 shape, material, light, camera, and medium
 type the CPU backend has, per
-[`docs/FEATURE_INVENTORY.md`](FEATURE_INVENTORY.md)'s complete-feature
+[`docs/FEATURE_INVENTORY.md`](../FEATURE_INVENTORY.md)'s complete-feature
 table. This is not a "GPU does the easy 80%" renderer; the two are close to
 parity by design, and the project's own test suite has dedicated
 CPU/GPU-recursive/GPU-wavefront parity tests
@@ -627,7 +629,7 @@ adds the first *glossy* (non-delta, non-diffuse) material: `materialType
 == 4`, a rough conductor using the Trowbridge-Reitz/GGX microfacet
 distribution with height-correlated Smith masking-shadowing, matching
 pbrt-v4's own `TrowbridgeReitzDistribution` formulation (see
-[`docs/FEATURE_INVENTORY.md`](FEATURE_INVENTORY.md)'s materials table).
+[`docs/FEATURE_INVENTORY.md`](../FEATURE_INVENTORY.md)'s materials table).
 Unlike the previous two "no new API surface" steps, this one is a
 genuinely new *algorithm* addition, not new Metal API surface - it's still
 the same inline `intersector`/kernel machinery, applied to more elaborate

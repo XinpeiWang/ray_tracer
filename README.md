@@ -117,7 +117,7 @@ Pinhole, depth-of-field (thin-lens), orthographic, spherical/equirectangular 360
 ### Dual Rendering Modes
 - **CPU Renderer**: Multi-threaded, importance-sampled, the most feature-complete and battle-tested path
 - **GPU Renderer**: OptiX-accelerated, dramatically faster for complex scenes — has near-complete feature parity with CPU (see [Known Limitations](#-known-limitations) for the remaining gaps), plus an alternate queue-based **wavefront** path tracer (opt-in via `--wavefront`)
-- **Metal GPU Renderer** (macOS): a Metal path tracer (`gpu/metal/`, `--gpu` on a `-DRT_BUILD_METAL=ON` build) checked against the CPU renderer scene by scene — see [`docs/METAL_PARITY_STATUS.md`](docs/METAL_PARITY_STATUS.md) for exactly what matches and what doesn't
+- **Metal GPU Renderer** (macOS): a Metal path tracer (`gpu/metal/`, documented in `docs/METAL_BACKEND.md`, `--gpu` on a `-DRT_BUILD_METAL=ON` build) checked against the CPU renderer scene by scene — see [`docs/METAL_PARITY_STATUS.md`](docs/METAL_PARITY_STATUS.md) for exactly what matches and what doesn't
 
 ### Qt GUI
 Scene picker with live metadata (description, GPU compatibility, perf hint), camera presets, quality/resolution presets, GPU/CPU toggle, image vs. video mode with camera-path selection, a render queue, and one-click render. On macOS, **Live Preview** renders continuously on the Metal GPU so you can drag to orbit the camera (see [`docs/MAC_LIVE_PREVIEW.md`](docs/MAC_LIVE_PREVIEW.md)). The interface is translated into English, Spanish, French, Japanese and Simplified Chinese (Language menu, applied on restart) and has selectable themes and fonts.
@@ -161,7 +161,7 @@ Download the portable package and run it directly - see the [📦 Download secti
 - **CUDA Toolkit 13.2+** ([download](https://developer.nvidia.com/cuda-downloads))
 - **Updated NVIDIA drivers**
 
-**macOS**: the CPU renderer, CLI, and Qt GUI build via the root `CMakeLists.txt` and `qt_gui/RayTracerGUI.pro` — see [macOS](#macos) below. GPU rendering (`gpu/optix/`, `optix_renderer/`) is CUDA/OptiX and has no macOS equivalent — Apple dropped NVIDIA GPU support and Apple Silicon has no CUDA at all, so that specific backend isn't a "not ported yet" gap. macOS instead has its own real Metal GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON` for a plain CMake build; always on in the `.app`/`.dmg` script — see [macOS](#macos) below, `docs/METAL_PARITY_STATUS.md` for how closely it matches the CPU renderer and `docs/METAL_GPU_FEASIBILITY.md` for its history), including a real `--gpu` dispatch path in `ray_tracer`/`RayTracerGUI`, an interactive Live Preview, and macOS CI coverage (`.github/workflows/unit-tests.yml`'s own `metal-poc` job) — built and run on real Apple Silicon hardware, not just theorized.
+**macOS**: the CPU renderer, CLI, and Qt GUI build via the root `CMakeLists.txt` and `qt_gui/RayTracerGUI.pro` — see [macOS](#macos) below. GPU rendering (`gpu/optix/`, `optix_renderer/`) is CUDA/OptiX and has no macOS equivalent — Apple dropped NVIDIA GPU support and Apple Silicon has no CUDA at all, so that specific backend isn't a "not ported yet" gap. macOS instead has its own real Metal GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON` for a plain CMake build; always on in the `.app`/`.dmg` script — see [macOS](#macos) below, `docs/METAL_PARITY_STATUS.md` for how closely it matches the CPU renderer and `docs/history/METAL_GPU_FEASIBILITY.md` for its history), including a real `--gpu` dispatch path in `ray_tracer`/`RayTracerGUI`, an interactive Live Preview, and macOS CI coverage (`.github/workflows/unit-tests.yml`'s own `metal-poc` job) — built and run on real Apple Silicon hardware, not just theorized.
 
 **Optional (for video generation):**
 - **ffmpeg** on `PATH` — video rendering assembles frames into MP4 via an `ffmpeg` subprocess; without it, frames are still rendered to disk but not muxed into a video.
@@ -315,7 +315,7 @@ both and compares them
 golden snapshot in `gpu/metal/parity_golden.txt` after an intentional
 change). Metal renders the great majority of scenes to within noise of the
 CPU renderer; `docs/METAL_PARITY_STATUS.md` lists exactly which scenes and
-features still differ, and `docs/METAL_GPU_FEASIBILITY.md` has the full
+features still differ, and `docs/history/METAL_GPU_FEASIBILITY.md` has the full
 incremental history. Live Preview (interactive drag-to-orbit at a small
 fixed size) is described in `docs/MAC_LIVE_PREVIEW.md`. CI builds and runs this on every push (`.github/workflows/
 unit-tests.yml`'s own `metal-poc` job, `macos-14`) - the device-
