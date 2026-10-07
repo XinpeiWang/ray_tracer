@@ -444,6 +444,20 @@ kernel void primaryRayKernel(
         glassG = 0.0;
         glassAlbedo = float3(1.0);
         glassChan = -1;   // hero colour channel for a chromatic glass medium, else -1
+        // A camera inside a glass shell that bounds a medium (A9's radius-5000 world haze) starts INSIDE that medium: it never refracts in.
+        if (uniforms.cameraGlassPrim > 0) {
+            const TriangleMaterial camGlass = sphereMaterials[uniforms.cameraGlassPrim - 1];
+            inGlass = true;
+            glassSigmaT3 = float3(camGlass.conductorEta);
+            glassG = camGlass.conductorK.x;
+            glassAlbedo = float3(camGlass.transmitColor);
+            if (fogChan >= 0) {
+                glassChan = fogChan;
+            } else if (camGlass.conductorK.z > 0.5) {
+                glassChan = min(int(randFloat(rngState) * 3.0), 2);
+                throughput *= float3(glassChan == 0 ? 3.0 : 0.0, glassChan == 1 ? 3.0 : 0.0, glassChan == 2 ? 3.0 : 0.0);
+            }
+        }
         // Recursive-backend dispersion state (materialType 22, B23/B24) -
         // kRgbChannelUnset means "no dispersive hit yet, this sample
         // stays full RGB". See shadeDispersiveDielectric()'s own
@@ -459,7 +473,12 @@ kernel void primaryRayKernel(
         pathActive = true;
         }
         bool continuePath = false;
-        if (depth < uniforms.maxDepth) do {
+        // pbrt-v4's (and the CPU's) depth convention: maxDepth scattering vertices, then ONE more step that only adds the emission (or sky) the last
+        // sampled ray sees - weighted by the MIS share against the light sample taken at the vertex that sampled it - and stops: no light
+        // sampling, no scattering. Without that step the BSDF-sampled share of the last vertex's light sample was simply lost (a diffuse sphere under
+        // a uniform sky read 0 at depth 1 instead of 0.5; a room lit only indirectly read 3-19% dark).
+        if (depth <= uniforms.maxDepth) do {
+            const bool lastBounce = (depth >= uniforms.maxDepth);
             ray r;
             r.origin = rayOrigin;
             r.direction = rayDir;
@@ -538,6 +557,11 @@ kernel void primaryRayKernel(
             const float3 mediumOriginBefore = rayOrigin;
             bool scatteredInMedium = false;
             bool passedThroughMediumSphere = false;
+            // At the emission-only step a bounded medium (sphere/cylinder) cannot be scattered in, so the path just ends there; the light seen
+            // through it by this one last ray is dropped (an approximation limited to the very last vertex).
+            if (lastBounce && result.type == intersection_type::bounding_box &&
+                ((result.geometry_id == 0u && sphereMaterials[result.primitive_id].materialType >= 28u && sphereMaterials[result.primitive_id].materialType <= 30u) ||
+                 (result.geometry_id == 2u && cylinderMaterials[result.primitive_id].materialType == 28u))) break;
             if (result.type == intersection_type::bounding_box && result.geometry_id == 0u) {
                 uint mediumPrimId = result.primitive_id;
                 TriangleMaterial mediumMat = sphereMaterials[mediumPrimId];
@@ -632,6 +656,7 @@ kernel void primaryRayKernel(
                 float u = randFloat(rngState);
                 float t = sampleFreePathDistance(u, curSigmaT);
                 if (t < surfaceDist) {
+                    if (lastBounce) break;   // emission-only step: no scattering, the path ends
                     scatteredInMedium = true;
                     float3 scatterPoint = rayOrigin + rayDir * t;
 
@@ -1400,6 +1425,9 @@ kernel void primaryRayKernel(
                 }
             }
 
+            // Emission-only step done (the emissive hit above, or the sky on a miss): no light sampling, no scattering.
+            if (lastBounce) break;
+
             if (mat.materialType == 2u) {
                 if (!shadeDielectric(mat, hitPoint, normal, facingNormal, frontFace, result.distance,
                                       rayDir, rayOrigin, throughput, specularBounce, rngState)) break;
@@ -1524,17 +1552,29 @@ kernel void primaryRayKernel(
                     (mat.materialType == 2u || mat.materialType == 5u || mat.materialType == 11u)) {
                     const bool wasInGlass = inGlass;
                     inGlass = dot(rayDir, normal) < 0.0;
-                    if (inGlass) {
+                    // Leaving a glass-medium sphere that sits INSIDE the camera's world-haze shell puts the path back in that shell's medium.
+                    const bool backInCameraGlass = !inGlass && uniforms.cameraGlassPrim > 0 && primId != uint(uniforms.cameraGlassPrim - 1);
+                    if (backInCameraGlass) {
+                        const TriangleMaterial camGlass = sphereMaterials[uniforms.cameraGlassPrim - 1];
+                        inGlass = true;
+                        glassSigmaT3 = float3(camGlass.conductorEta);
+                        glassG = camGlass.conductorK.x;
+                        glassAlbedo = float3(camGlass.transmitColor);
+                    } else if (inGlass) {
                         glassSigmaT3 = float3(mat.conductorEta);
                         glassG = mat.conductorK.x;
                         glassAlbedo = float3(mat.transmitColor);
-                        if (!wasInGlass) {
+                        // Entering from outside, or from the camera's world-haze shell into a nested sphere (a front-face hit on a sphere other than the shell).
+                        const bool enteringNested = wasInGlass && uniforms.cameraGlassPrim > 0 && frontFace && primId != uint(uniforms.cameraGlassPrim - 1);
+                        if (!wasInGlass || enteringNested) {
                             // Entering. A chromatic medium: follow ONE colour channel for this path (chosen
                             // uniformly, weight x3 on it) so free flight and shadow attenuation can use that
                             // channel's sigma_t; averaged over paths every channel is recovered. A grey medium
                             // needs no such colour noise.
                             if (fogChan >= 0) {
                                 glassChan = fogChan;   // the camera medium already fixed this path's colour channel
+                            } else if (enteringNested && glassChan >= 0) {
+                                // the shell already fixed this path's hero channel; keep it
                             } else if (mat.conductorK.z > 0.5) {
                                 glassChan = min(int(randFloat(rngState) * 3.0), 2);
                                 float3 chanMask = float3(glassChan == 0 ? 3.0 : 0.0, glassChan == 1 ? 3.0 : 0.0, glassChan == 2 ? 3.0 : 0.0);
@@ -1589,7 +1629,7 @@ kernel void primaryRayKernel(
         } while (false);   // a `break` in the body above ends the PATH (every one of them did, in the old depth loop)
         if (continuePath) {
             ++depth;
-            if (depth < uniforms.maxDepth) continue;   // next bounce of this path (other lanes may be starting new ones)
+            if (depth <= uniforms.maxDepth) continue;   // next bounce of this path (other lanes may be starting new ones)
         }
         // The path is finished (terminated, or out of depth): finalize this sample below.
 

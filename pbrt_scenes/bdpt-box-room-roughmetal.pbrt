@@ -14,6 +14,8 @@ WorldBegin
 # The light: a 3 x 3 plate near the ceiling facing UP (counter-clockwise seen from above), so it lights the ceiling and is not visible to the camera:
 # the lit surfaces, not an emitter, make up the image.
 AttributeBegin
+  # An emitter only: without a Material pbrt gives the plate its default 0.5 diffuse, and its underside (visible at the top of the frame) would reflect.
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
   AreaLightSource "diffuse" "rgb L" [ 12 12 12 ]
   Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
     "point3 P" [ 3.5 8 5   3.5 8 8   6.5 8 8   6.5 8 5 ]

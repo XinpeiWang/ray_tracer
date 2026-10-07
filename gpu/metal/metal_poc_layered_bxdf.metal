@@ -447,17 +447,17 @@ inline void layeredCoatedDiffuseParts(float eta, float alpha, float3 albedo,
 }
 
 // CoatedConductor: as in pbrt's CoatedConductorMaterial::GetBxDF the conductor sits INSIDE the coat, so its complex IOR is
-// relative to the coat - eta and k are both divided by the coat's IOR. One roughness for both interfaces here (the host side
-// has a single alpha per material; pbrt's separate conductor.roughness is not plumbed to Metal).
+// relative to the coat - eta and k are both divided by the coat's IOR. `alpha` is the COAT's roughness; `baseAlpha` is the conductor's own
+// (pbrt's conductor.roughness), or negative for "the coat's applies to both".
 inline void layeredCoatedConductorParts(float eta, float alpha, float3 conductorEta, float3 conductorK,
-                                         thread LayerTop& top, thread LayerBottom& bottom) {
+                                         thread LayerTop& top, thread LayerBottom& bottom, float baseAlpha = -1.0) {
     top.eta = eta;
     top.alpha = alpha;
     bottom.kind = 1;
     bottom.albedo = float3(0.0);
     bottom.eta = conductorEta / eta;
     bottom.k = conductorK / eta;
-    bottom.alpha = alpha;
+    bottom.alpha = baseAlpha >= 0.0 ? baseAlpha : alpha;
 }
 
 constant float kLayerThickness = 0.01;

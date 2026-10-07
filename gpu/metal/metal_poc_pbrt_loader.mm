@@ -638,10 +638,8 @@ void MetalPocApp::loadPbrtScene() {
             case pbrt_flatten::MaterialKind::CoatedConductor: {
                 // materialType 20: pbrt-v4's real LayeredBxDF (coat dielectric over the
                 // conductor, random-walk Sample_f) via metal_poc_layered_bxdf.metal - verified
-                // against CPU on B5/B7. `ior` = the COAT's IOR, `roughness` = ONE alpha
-                // serving both interfaces (the host has a single alpha per material), so a
-                // scene giving the coat and the base DIFFERENT roughness (pbrt
-                // conductor.roughness != interface.roughness) is approximated by the coat's.
+                // against CPU on B5/B7. `ior` = the COAT's IOR, `roughness` = the COAT's alpha;
+                // the conductor's own alpha and the coat thickness ride in transmitColor (below).
                 // A named metal spectrum or explicit "eta"/"k" (m.
                 // hasConductorPreset) is used directly, already resolved
                 // by pbrt_flatten.h identically to plain Conductor above;
@@ -656,6 +654,10 @@ void MetalPocApp::loadPbrtScene() {
                 // pbrt-v4 LayeredBxDF coated conductor (materialType 20): `ior` = coat IOR, `roughness` = alpha.
                 TriangleMaterial mat{color, /*materialType=*/20u, /*ior=*/(float)m.ior,
                                      PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/alpha};
+                // The conductor has its own roughness (pbrt conductor.roughness; negative = none given, the coat's applies to both) and the coat
+                // its thickness: transmitColor = (conductor alpha, thickness, 0), read by shadeCoatedConductor().
+                const double baseRough = m.conductorRoughness_u >= 0.0 ? m.conductorRoughness_u : m.roughness_u;
+                mat.transmitColor = PackedFloat3{(float)(m.remapRoughness ? std::sqrt(baseRough) : baseRough), (float)m.coatThickness, 0.0f};
                 setConductorOptics(mat, m);
                 return mat;
             }

@@ -331,6 +331,9 @@ struct Uniforms {
     uint liveWorldPos;
     // Adaptive sampling's relative-error threshold (RenderOptions::adaptive_threshold); only read when adaptiveSampling != 0.
     float adaptiveThreshold;
+    // 1 + the primitive index of the OUTERMOST glass sphere that bounds a medium and contains the camera (a "world haze" shell), or 0 for none (so zero-initialised Uniforms mean none). A path then
+    // starts inside that medium instead of entering it by refraction, and returns to it on leaving a nested glass-medium sphere.
+    int cameraGlassPrim;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/

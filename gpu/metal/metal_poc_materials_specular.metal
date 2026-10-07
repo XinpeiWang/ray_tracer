@@ -261,6 +261,7 @@ inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 n
                 shadowRay.direction = wiWorld;
                 shadowRay.min_distance = 0.001f;
                 shadowRay.max_distance = dist - 0.002f;
+                reaimShadowRay(shadowRay, hitPoint, dist);
                 intersection_result<instancing, triangle_data> shadowResult =
                     traceShadowAny(isect, shadowRay, accelStructure, functionTable);
                 if (shadowResult.type == intersection_type::none) {
@@ -281,12 +282,19 @@ inline bool shadeRoughDielectric(TriangleMaterial mat, float3 hitPoint, float3 n
     bool cannotRefract = refractionRatio * sinTheta > 1.0;
 
     float3 newDir;
+    bool tookReflection;
     if (cannotRefract || frDielectric(cosTheta, 1.0 / refractionRatio) > randFloat(rngState)) {
         newDir = reflect(unitDir, hWorld);
+        tookReflection = true;
     } else {
         newDir = refract(unitDir, hWorld, refractionRatio);
+        tookReflection = false;
     }
     float3 newDirLocal = float3(dot(newDir, tangent), dot(newDir, bitangent), dot(newDir, facingNormal));
+    // pbrt's RoughDielectricBxDF discards a sample that ends in the wrong hemisphere (a reflection that lands below the surface, a refraction
+    // that stays on the incoming side): it carries no energy. Without this the frosted glass lost less energy than pbrt/CPU as roughness grew
+    // (+9% at roughness 0.25, +12% at 0.5 on a glass sphere in a room).
+    if (tookReflection ? (newDirLocal.z <= 0.0) : (newDirLocal.z >= 0.0)) return false;
     float roughDielectricG = ggxG(woLocal, newDirLocal, alpha, alpha);
     float roughDielectricG1 = ggxG1(woLocal, alpha, alpha);
     throughput *= roughDielectricG / max(roughDielectricG1, 1e-6);
@@ -352,12 +360,19 @@ inline bool shadeDispersiveRoughDielectric(TriangleMaterial mat, float3 hitPoint
     bool cannotRefract = refractionRatio * sinTheta > 1.0;
 
     float3 newDir;
+    bool tookReflection;
     if (cannotRefract || frDielectric(cosTheta, 1.0 / refractionRatio) > randFloat(rngState)) {
         newDir = reflect(unitDir, hWorld);
+        tookReflection = true;
     } else {
         newDir = refract(unitDir, hWorld, refractionRatio);
+        tookReflection = false;
     }
     float3 newDirLocal = float3(dot(newDir, tangent), dot(newDir, bitangent), dot(newDir, facingNormal));
+    // pbrt's RoughDielectricBxDF discards a sample that ends in the wrong hemisphere (a reflection that lands below the surface, a refraction
+    // that stays on the incoming side): it carries no energy. Without this the frosted glass lost less energy than pbrt/CPU as roughness grew
+    // (+9% at roughness 0.25, +12% at 0.5 on a glass sphere in a room).
+    if (tookReflection ? (newDirLocal.z <= 0.0) : (newDirLocal.z >= 0.0)) return false;
     float roughDielectricG = ggxG(woLocal, newDirLocal, alpha, alpha);
     float roughDielectricG1 = ggxG1(woLocal, alpha, alpha);
     throughput *= roughDielectricG / max(roughDielectricG1, 1e-6);
@@ -453,26 +468,10 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
     float3 woLocal = float3(dot(woWorld, tangent), dot(woWorld, bitangent), dot(woWorld, facingNormal));
     woLocal.z = max(woLocal.z, 0.0001);
 
-    // Multi-scatter energy compensation (section 72/73) - `energyScale`
-    // recovers the energy single-scatter GGX discards to inter-
-    // reflection between microfacets, applied as a flat multiplier on
-    // every BRDF value below AND the continuation ray's own throughput
-    // update at this function's own tail, all scaled by the SAME factor
-    // since it depends only on this hit's own (alpha, view angle), not
-    // on which light/direction is being evaluated. The table itself is
-    // isotropic-only (built from a single alpha, section 72's own
-    // buildGGXEnergyTable()); materialType 4's own genuinely anisotropic
-    // alphaX/alphaY collapse to a representative isotropic
-    // sqrt(alphaX*alphaY) for this lookup - an approximation, not exact,
-    // but the SAME kind of "isotropic energy term applied to an
-    // anisotropic lobe" approximation production renderers (including
-    // Cycles itself) commonly make, since a full anisotropic energy
-    // table would need a third table axis this phase doesn't build.
-    float ggxEnergyIsoAlpha = sqrt(alphaX * alphaY);
-    float ggxEnergyRoughness = sqrt(ggxEnergyIsoAlpha);
-    float ggxE = sampleGGXEnergyTableDevice(ggxEnergyTable, ggxEnergyRoughRes, ggxEnergyMuRes,
-                                             ggxEnergyRoughness, woLocal.z);
-    float energyScale = 1.0 / max(ggxE, 0.05);
+    // No multiple-scattering energy compensation (the old sections 72/73 boost): pbrt-v4's ConductorBxDF and the CPU/OptiX conductors are
+    // single-scatter GGX, which loses energy as roughness grows, and the boost made a rough metal read up to 1.4x brighter than they do
+    // (roughness 0.5 in a diffuse room). `energyScale` stays as a hook, fixed at 1; the GGX energy table is no longer read here.
+    const float energyScale = 1.0;
 
     if (all(mat.emission == float3(0.0))) {
         LightSample ls = sampleAreaLight(lights, uniforms.lightCount, rngState, pbrtAreaLightTexture, textureSampler);
@@ -497,6 +496,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
             shadowRay.direction = wi;
             shadowRay.min_distance = 0.001f;
             shadowRay.max_distance = dist - 0.002f;
+            reaimShadowRay(shadowRay, hitPoint, dist);
             intersection_result<instancing, triangle_data> shadowResult =
                 traceShadowAny(isect, shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
@@ -531,6 +531,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                 plShadowRay.direction = plWi;
                 plShadowRay.min_distance = 0.001f;
                 plShadowRay.max_distance = plDist - 0.002f;
+                reaimShadowRay(plShadowRay, hitPoint, plDist);
                 intersection_result<instancing, triangle_data> plShadowResult =
                     traceShadowAny(isect, plShadowRay, accelStructure, functionTable);
                 if (plShadowResult.type == intersection_type::none) {
@@ -601,6 +602,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     pjShadowRay.direction = pjWi;
                     pjShadowRay.min_distance = 0.001f;
                     pjShadowRay.max_distance = pjDist - 0.002f;
+                    reaimShadowRay(pjShadowRay, hitPoint, pjDist);
                     intersection_result<instancing, triangle_data> pjShadowResult =
                         traceShadowAny(isect, pjShadowRay, accelStructure, functionTable);
                     if (pjShadowResult.type == intersection_type::none) {
@@ -637,6 +639,7 @@ inline bool shadeConductor(TriangleMaterial mat, float3 hitPoint, float3 normal,
                     glShadowRay.direction = glWi;
                     glShadowRay.min_distance = 0.001f;
                     glShadowRay.max_distance = glDist - 0.002f;
+                    reaimShadowRay(glShadowRay, hitPoint, glDist);
                     intersection_result<instancing, triangle_data> glShadowResult =
                         traceShadowAny(isect, glShadowRay, accelStructure, functionTable);
                     if (glShadowResult.type == intersection_type::none) {
@@ -844,6 +847,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                 shadowRay.direction = wi;
                 shadowRay.min_distance = 0.001f;
                 shadowRay.max_distance = dist - 0.002f;
+                reaimShadowRay(shadowRay, hitPoint, dist);
                 intersection_result<instancing, triangle_data> shadowResult =
                     traceShadowAny(isect, shadowRay, accelStructure, functionTable);
                 if (shadowResult.type == intersection_type::none) {
@@ -871,6 +875,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                     plShadowRay.direction = plWi;
                     plShadowRay.min_distance = 0.001f;
                     plShadowRay.max_distance = plDist - 0.002f;
+                    reaimShadowRay(plShadowRay, hitPoint, plDist);
                     intersection_result<instancing, triangle_data> plShadowResult =
                         traceShadowAny(isect, plShadowRay, accelStructure, functionTable);
                     if (plShadowResult.type == intersection_type::none) {
@@ -927,6 +932,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                         pjShadowRay.direction = pjWi;
                         pjShadowRay.min_distance = 0.001f;
                         pjShadowRay.max_distance = pjDist - 0.002f;
+                        reaimShadowRay(pjShadowRay, hitPoint, pjDist);
                         intersection_result<instancing, triangle_data> pjShadowResult =
                             traceShadowAny(isect, pjShadowRay, accelStructure, functionTable);
                         if (pjShadowResult.type == intersection_type::none) {
@@ -956,6 +962,7 @@ inline bool shadeClearcoat(TriangleMaterial mat, float3 albedo, float3 hitPoint,
                         glShadowRay.direction = glWi;
                         glShadowRay.min_distance = 0.001f;
                         glShadowRay.max_distance = glDist - 0.002f;
+                        reaimShadowRay(glShadowRay, hitPoint, glDist);
                         intersection_result<instancing, triangle_data> glShadowResult =
                             traceShadowAny(isect, glShadowRay, accelStructure, functionTable);
                         if (glShadowResult.type == intersection_type::none) {

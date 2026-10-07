@@ -633,6 +633,18 @@ inline float2 envMapUV(float3 dir) {
     return float2(u, v);
 }
 
+
+// A shadow ray starts 0.001 off the surface along its normal and used to stop 0.002 short of the sampled point measured along the ORIGINAL
+// direction from the hit point. For a light whose plane is nearly parallel to the receiver (an up-facing plate under a ceiling) a ray more
+// than ~60 degrees from the normal crossed the light's own plane before that end point, so the light shadowed itself (87% of the samples at
+// an oblique ceiling point, 3x too dark). Re-aim the ray at the sampled point from the offset origin and stop 0.002 short of it.
+// `r.direction` must still be the unit vector from `hitPoint` to the target, `dist` the distance to it.
+inline void reaimShadowRay(thread ray& r, float3 hitPoint, float dist) {
+    const float3 toTarget = (hitPoint + r.direction * dist) - r.origin;
+    const float len = length(toTarget);
+    r.direction = toTarget / max(len, 1e-8f);
+    r.max_distance = len - 0.002f;
+}
 // --- Environment-map importance sampling (phase 2) --------------------
 // Device-side counterpart to gpu/metal/metal_poc_host_math.h's own
 // EnvDistribution2D/findCdfInterval/sampleEnvDistribution2D/
