@@ -315,6 +315,15 @@ private:
 	static bool probeMetalGpuAvailable();
 #endif
 	void createRenderOptionsTab();
+	// The Render Options tab is built one group box at a time (each adds itself to `layout`).
+	void buildIntegratorGroup(QWidget *optionsTab, QVBoxLayout *layout);
+	void buildSamplingGroup(QWidget *optionsTab, QVBoxLayout *layout);
+	void buildAcceleratorGroup(QWidget *optionsTab, QVBoxLayout *layout);
+	void buildPostProcessingGroup(QWidget *optionsTab, QVBoxLayout *layout);
+	void buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout);
+	void buildCropGroup(QWidget *optionsTab, QVBoxLayout *layout);
+	void buildDepthOfFieldGroup(QWidget *optionsTab, QVBoxLayout *layout);
+	void buildSeedGroup(QWidget *optionsTab, QVBoxLayout *layout);
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	// Split out of createRenderOptionsTab() (a code-health pass - that
 	// function had grown to ~1779 lines as every Live Preview feature this

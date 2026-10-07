@@ -63,42 +63,8 @@ void MainWindow::populateComboEntries(QComboBox *combo, std::initializer_list<Co
 	}
 }
 
-// ============================================================================
-// Render Options Tab
-// ============================================================================
-// Exposes CLI flags RenderController::start() (mainwindow.cpp) already knows
-// how to emit but that no earlier tab surfaced: --sampler, --spectral,
-// --exposure, --tonemap, --stats, --denoise, --optix-validate. Deliberately
-// a separate tab from Settings (resolution/samples/depth/camera, among
-// other things) rather than folded into it, since this tab is exclusively
-// about render BEHAVIOR flags, not image/camera parameters.
-void MainWindow::createRenderOptionsTab() {
-	QWidget *optionsTab = new QWidget();
-	QVBoxLayout *layout = new QVBoxLayout(optionsTab);
-	layout->setSpacing(14);
-	layout->setContentsMargins(12, 12, 12, 12);
-
-#ifdef RT_GUI_HAVE_LIVE_PREVIEW
-	// Same "banner, don't hide" convention as the Settings tab's own
-	// m_videoModeWarningLabel/m_liveModeWarningLabel - see their comments
-	// (mainwindow.h). Live Preview always renders via the GPU wavefront path
-	// tracer directly, so almost nothing on this tab applies to it - except
-	// the Denoiser group's own "Live Preview" subsection further down,
-	// which is specifically FOR it (and is dimmed/undimmed the same way
-	// this banner is shown/hidden).
-#ifdef Q_OS_MAC
-	m_liveModeOptionsWarningLabel = makeModeWarningBanner(optionsTab,
-		tr("⚠ Live Preview uses the Metal progressive path tracer directly - none of the "
-		"settings on this tab apply to it, except the \"Live Preview Settings\" group below."));
-#else
-	m_liveModeOptionsWarningLabel = makeModeWarningBanner(optionsTab,
-		tr("⚠ Live Preview uses the GPU progressive path tracer directly - none of the "
-		"settings on this tab apply to it, except the Denoiser section's own "
-		"\"Live Preview\" subsection below."));
-#endif
-	layout->addWidget(m_liveModeOptionsWarningLabel);
-#endif
-
+// The Integrator group: the algorithm selector, and a page of sub-flags for whichever alternate integrator it selects.
+void MainWindow::buildIntegratorGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Integrator group - the algorithm selector itself, plus sub-flags for
 	// whichever alternate integrator it selects. Comes first (rather than
@@ -389,7 +355,10 @@ void MainWindow::createRenderOptionsTab() {
 
 	integratorGroupLayout->addWidget(m_integratorOptionsStack);
 	layout->addWidget(m_integratorOptionsGroup);
+}
 
+// The Sampling & Spectral group (CPU default path tracer only).
+void MainWindow::buildSamplingGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Sampling & Spectral group - CPU default path tracer only
 	// ------------------------------------------------------------------
@@ -749,7 +718,10 @@ void MainWindow::createRenderOptionsTab() {
 	}
 
 	layout->addWidget(samplingGroup);
+}
 
+// The Accelerator group (CPU, shared by every integrator).
+void MainWindow::buildAcceleratorGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Accelerator group - CPU only, but (unlike Sampling & Spectral above)
 	// shared by every integrator, not just the default path tracer - see
@@ -864,7 +836,10 @@ void MainWindow::createRenderOptionsTab() {
 	});
 
 	layout->addWidget(acceleratorGroup);
+}
 
+// The Post-Processing & Diagnostics group.
+void MainWindow::buildPostProcessingGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Post-Processing & Diagnostics group
 	// ------------------------------------------------------------------
@@ -945,7 +920,10 @@ void MainWindow::createRenderOptionsTab() {
 		"set to GPU on macOS.")));
 
 	layout->addWidget(outputGroup);
+}
 
+// The Denoiser group, with its Image & Video and Live Preview subsections.
+void MainWindow::buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Denoiser group
 	// ------------------------------------------------------------------
@@ -1039,7 +1017,10 @@ void MainWindow::createRenderOptionsTab() {
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	buildLivePreviewSettingsSection(optionsTab, layout);
 #endif
+}
 
+// The Crop Window group.
+void MainWindow::buildCropGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Crop Window group
 	// ------------------------------------------------------------------
@@ -1143,7 +1124,10 @@ void MainWindow::createRenderOptionsTab() {
 	cropY1Label->setEnabled(m_cropCheck->isChecked());
 
 	layout->addWidget(cropGroup);
+}
 
+// The Depth of Field group.
+void MainWindow::buildDepthOfFieldGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Depth of Field group
 	// ------------------------------------------------------------------
@@ -1220,7 +1204,10 @@ void MainWindow::createRenderOptionsTab() {
 	focusDistanceLabel->setEnabled(m_dofOverrideCheck->isChecked());
 
 	layout->addWidget(dofGroup);
+}
 
+// The Reproducibility (seed) group.
+void MainWindow::buildSeedGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	// ------------------------------------------------------------------
 	// Seed group
 	// ------------------------------------------------------------------
@@ -1271,6 +1258,52 @@ void MainWindow::createRenderOptionsTab() {
 		m_seedSpin);
 
 	layout->addWidget(seedGroup);
+}
+
+// ============================================================================
+// Render Options Tab
+// ============================================================================
+// Exposes CLI flags RenderController::start() (mainwindow.cpp) already knows
+// how to emit but that no earlier tab surfaced: --sampler, --spectral,
+// --exposure, --tonemap, --stats, --denoise, --optix-validate. Deliberately
+// a separate tab from Settings (resolution/samples/depth/camera, among
+// other things) rather than folded into it, since this tab is exclusively
+// about render BEHAVIOR flags, not image/camera parameters.
+void MainWindow::createRenderOptionsTab() {
+	QWidget *optionsTab = new QWidget();
+	QVBoxLayout *layout = new QVBoxLayout(optionsTab);
+	layout->setSpacing(14);
+	layout->setContentsMargins(12, 12, 12, 12);
+
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	// Same "banner, don't hide" convention as the Settings tab's own
+	// m_videoModeWarningLabel/m_liveModeWarningLabel - see their comments
+	// (mainwindow.h). Live Preview always renders via the GPU wavefront path
+	// tracer directly, so almost nothing on this tab applies to it - except
+	// the Denoiser group's own "Live Preview" subsection further down,
+	// which is specifically FOR it (and is dimmed/undimmed the same way
+	// this banner is shown/hidden).
+#ifdef Q_OS_MAC
+	m_liveModeOptionsWarningLabel = makeModeWarningBanner(optionsTab,
+		tr("⚠ Live Preview uses the Metal progressive path tracer directly - none of the "
+		"settings on this tab apply to it, except the \"Live Preview Settings\" group below."));
+#else
+	m_liveModeOptionsWarningLabel = makeModeWarningBanner(optionsTab,
+		tr("⚠ Live Preview uses the GPU progressive path tracer directly - none of the "
+		"settings on this tab apply to it, except the Denoiser section's own "
+		"\"Live Preview\" subsection below."));
+#endif
+	layout->addWidget(m_liveModeOptionsWarningLabel);
+#endif
+
+	buildIntegratorGroup(optionsTab, layout);
+	buildSamplingGroup(optionsTab, layout);
+	buildAcceleratorGroup(optionsTab, layout);
+	buildPostProcessingGroup(optionsTab, layout);
+	buildDenoiserGroup(optionsTab, layout);
+	buildCropGroup(optionsTab, layout);
+	buildDepthOfFieldGroup(optionsTab, layout);
+	buildSeedGroup(optionsTab, layout);
 	layout->addStretch();
 
 	// Initial enabled state matches whatever m_renderModeCombo/
