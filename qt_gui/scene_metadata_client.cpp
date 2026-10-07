@@ -29,6 +29,9 @@ struct DllHandle {
 	// Optional (absent in a library built before this export existed): the GUI just shows no
 	// missing-files detail then, rather than refusing to load.
 	StringByIdFn missingAssetsFn = nullptr;
+	// Also optional: a scene's slug, and the id a key (id or slug) names. Absent in an older library, where the id itself is the key.
+	StringByIdFn slugFn = nullptr;
+	StringByIdFn idForKeyFn = nullptr;
 	SnapshotFn snapshotFn = nullptr;
 };
 
@@ -93,6 +96,10 @@ DllHandle& handle() {
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_snapshot"));
 		h.missingAssetsFn = reinterpret_cast<StringByIdFn>(
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_missing_assets"));
+		h.slugFn = reinterpret_cast<StringByIdFn>(
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_slug"));
+		h.idForKeyFn = reinterpret_cast<StringByIdFn>(
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_id_for_key"));
 
 		// Every export is required, including newer ones: a library missing
 		// any of them is a stale build sitting next to a newer exe, and
@@ -156,6 +163,19 @@ QString sceneIdAtIndex(int index) {
 QString sceneName(const QString& scene_id) {
 	if (!ensureLoaded()) return QString();
 	return QString::fromUtf8(handle().nameFn(scene_id.toUtf8().constData()));
+}
+
+QString sceneSlug(const QString& scene_id) {
+	if (!ensureLoaded()) return scene_id;
+	if (!handle().slugFn) return scene_id;
+	const QString slug = QString::fromUtf8(handle().slugFn(scene_id.toUtf8().constData()));
+	return slug.isEmpty() ? scene_id : slug;
+}
+
+QString sceneIdForKey(const QString& key) {
+	if (!ensureLoaded()) return key;
+	if (!handle().idForKeyFn) return key;
+	return QString::fromUtf8(handle().idForKeyFn(key.toUtf8().constData()));
 }
 
 QString sceneCategory(const QString& scene_id) {

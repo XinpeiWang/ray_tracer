@@ -84,6 +84,13 @@ QString sceneName(const QString& scene_id);
 // scene_id's category ("Basics", "Materials", ...), or "" if not
 // loaded/found. Matches one of the SceneCategories:: constants in
 // src/shared/scene_descriptor.h; the GUI groups its scene list by this.
+// The scene's slug (its durable key, e.g. "cornell-box"; src/shared/scene_slugs.h), or the id itself when the library has none. Use it for anything
+// saved: ids ("B10", "K37") move when the registry changes.
+QString sceneSlug(const QString& scene_id);
+
+// The id of the scene that `key` (an id or a slug) names; empty when no scene matches (the key itself when the library cannot tell).
+QString sceneIdForKey(const QString& key);
+
 QString sceneCategory(const QString& scene_id);
 
 // The text to SHOW for a category / performance hint. sceneCategory() and

@@ -847,3 +847,87 @@ TEST(SceneRegistryTest, EnclosedCornellRoomsDoNotUseAnOrbitFamilyPath) {
 		EXPECT_STREQ(recommended_camera_path_for(id), "tour") << "scene " << id;
 	}
 }
+
+// ===========================================================================
+// Slugs: the durable key of a scene (src/shared/scene_slugs.h)
+// ===========================================================================
+
+TEST(SceneSlugTest, SlugifyTurnsNamesIntoKebabCase) {
+	using scene_slugs::slugify;
+	EXPECT_EQ(slugify("Cornell Box"), "cornell-box");
+	EXPECT_EQ(slugify("Depth of Field (pbrt file)"), "depth-of-field-pbrt-file");
+	EXPECT_EQ(slugify("Conductor RGB Eta/K"), "conductor-rgb-eta-k");
+	EXPECT_EQ(slugify("Mix & Match"), "mix-and-match");
+	EXPECT_EQ(slugify("dragon_10"), "dragon-10") << "no underscores: render file names are split on them";
+	EXPECT_EQ(slugify("  --odd__name--  "), "odd-name");
+	EXPECT_EQ(slugify("???"), "scene");
+}
+
+TEST(SceneSlugTest, UniqueSlugAppendsANumberOnlyOnAClash) {
+	std::set<std::string> taken;
+	EXPECT_EQ(scene_slugs::uniqueSlug("frame", taken), "frame");
+	EXPECT_EQ(scene_slugs::uniqueSlug("frame", taken), "frame-2");
+	EXPECT_EQ(scene_slugs::uniqueSlug("frame", taken), "frame-3");
+	EXPECT_EQ(scene_slugs::uniqueSlug("other", taken), "other");
+}
+
+TEST(SceneSlugTest, SlugsAndIdsAreToldApart) {
+	using scene_slugs::looksLikeSlug;
+	EXPECT_TRUE(looksLikeSlug("cornell-box"));
+	EXPECT_TRUE(looksLikeSlug("frame1266"));
+	EXPECT_FALSE(looksLikeSlug("A1"));
+	EXPECT_FALSE(looksLikeSlug("K37"));
+	EXPECT_FALSE(looksLikeSlug("1abc"));
+	EXPECT_FALSE(looksLikeSlug(""));
+	EXPECT_FALSE(looksLikeSlug("has_underscore"));
+	EXPECT_FALSE(looksLikeSlug("Upper"));
+}
+
+TEST(SceneSlugTest, EveryBuiltInSceneHasAWellFormedUniqueSlug) {
+	std::set<std::string> seen;
+	for (const auto& s : get_scene_registry()) {
+		EXPECT_FALSE(s.slug.empty()) << s.id << " (" << s.name << ") has no slug";
+		EXPECT_TRUE(scene_slugs::looksLikeSlug(s.slug)) << s.id << ": '" << s.slug << "'";
+		EXPECT_TRUE(seen.insert(s.slug).second) << "duplicate slug '" << s.slug << "' (" << s.id << ")";
+	}
+}
+
+TEST(SceneSlugTest, TheSlugTableMatchesTheCompiledInScenes) {
+	std::set<std::string> ids;
+	for (const auto& s : get_builtin_scene_registry()) ids.insert(s.id);
+	for (const auto& e : scene_slugs::kBuiltin) EXPECT_TRUE(ids.count(e.id)) << "slug table row for unknown scene " << e.id;
+	for (const auto& s : get_builtin_scene_registry()) EXPECT_FALSE(scene_slugs::builtinSlugForId(s.id).empty()) << s.id << " is missing from kBuiltin";
+	EXPECT_EQ(scene_slugs::kBuiltinCount, ids.size());
+}
+
+TEST(SceneSlugTest, FindSceneAcceptsASlugOrAnId) {
+	const SceneDescriptor* byId = find_scene("A1");
+	const SceneDescriptor* bySlug = find_scene("cornell-box");
+	ASSERT_NE(byId, nullptr);
+	EXPECT_EQ(byId, bySlug);
+	EXPECT_EQ(byId->slug, "cornell-box");
+	EXPECT_EQ(find_scene("no-such-scene"), nullptr);
+	EXPECT_EQ(find_scene("A1 "), nullptr);
+}
+
+TEST(SceneSlugTest, TheCApiResolvesEitherKeyToTheId) {
+	char id[32];
+	ASSERT_EQ(cpu_resolve_scene_id("cornell-box", id, sizeof id), 1);
+	EXPECT_STREQ(id, "A1");
+	ASSERT_EQ(cpu_resolve_scene_id("B3", id, sizeof id), 1);
+	EXPECT_STREQ(id, "B3");
+	EXPECT_EQ(cpu_resolve_scene_id("nope", id, sizeof id), 0);
+	EXPECT_STREQ(id, "");
+	EXPECT_STREQ(cpu_scene_slug_by_id("A1"), "cornell-box");
+	EXPECT_STREQ(cpu_scene_slug_by_id("cornell-box"), "cornell-box") << "the by-id accessors take a slug too";
+	EXPECT_STREQ(cpu_scene_name_by_id("cornell-box"), cpu_scene_name_by_id("A1"));
+	EXPECT_STREQ(cpu_scene_id_for_key("cornell-box"), "A1");
+}
+
+// A file in pbrt_scenes/ gets its name as its slug, so adding another file does not change it (its id may).
+TEST(SceneSlugTest, ASceneFoundOnDiskIsKeyedByItsFileName) {
+	const SceneDescriptor* s = find_scene("chromatic-absorber");
+	if (!s) GTEST_SKIP() << "pbrt_scenes/ was not discovered - run from the repository root";
+	EXPECT_EQ(s->category, std::string(SceneCategories::CustomScenes));
+	EXPECT_EQ(s->slug, "chromatic-absorber");
+}

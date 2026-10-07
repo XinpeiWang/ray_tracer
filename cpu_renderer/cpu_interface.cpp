@@ -398,7 +398,8 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// that copy needs the same is_cornell_box_scene/power/bvh treatment
 		// this one has - grep this file for "A1") == 0" to find it.
 		std::unique_ptr<hittable> lights_ptr;
-		const bool is_cornell_box_scene = std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0;
+		// The descriptor's id, not the caller's string: scene_id may be the slug ("cornell-box") of the scene.
+		const bool is_cornell_box_scene = scene_desc->id == "A1" || scene_desc->id == "B2";
 		if (light_sampler_choice == "uniform") {
 			lights_ptr = std::make_unique<hittable_list>(lights_raw);
 		} else if (light_sampler_choice == "power") {
@@ -718,7 +719,7 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 		// ever added here too, mirror that function's own treatment of this
 		// same check.
 		bvh_light_sampler lights;
-		if (std::strcmp(scene_id, "A1") == 0 || std::strcmp(scene_id, "B2") == 0) {
+		if (scene_desc->id == "A1" || scene_desc->id == "B2") {
 			lights = build_cornell_box_bvh_lights();
 		} else {
 			lights = bvh_light_sampler(lights_raw);
@@ -986,6 +987,17 @@ extern "C" const char* cpu_scene_name_by_id(const char* scene_id) {
 	return s ? s->name : "";
 }
 
+extern "C" const char* cpu_scene_slug_by_id(const char* scene_id) {
+	const SceneDescriptor* s = find_scene(scene_id);
+	return s ? s->slug.c_str() : "";
+}
+
+// The id of the scene a key (an id or a slug) names, or "" - a pointer into the registry, valid for the life of the process.
+extern "C" const char* cpu_scene_id_for_key(const char* key) {
+	const SceneDescriptor* s = key ? find_scene(key) : nullptr;
+	return s ? s->id.c_str() : "";
+}
+
 extern "C" const char* cpu_scene_category_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->category : "";
@@ -1007,8 +1019,20 @@ extern "C" const char* cpu_scene_pbrt_path_by_id(const char* scene_id) {
 	// first, before anything else has ever touched the registry).
 	(void)get_scene_registry();
 	const auto& byId = pbrt_scene_registry::paths();
-	const auto it = byId.find(scene_id);
+	// paths() is keyed by id; scene_id may be a slug.
+	const SceneDescriptor* s = find_scene(scene_id);
+	const auto it = byId.find(s ? s->id : std::string(scene_id));
 	return (it == byId.end()) ? "" : it->second.c_str();
+}
+
+// Resolves a scene key - an id ("B10") or a slug ("rough-glass") - to the scene's id; returns 0 (and writes an empty string) for an unknown key.
+extern "C" int cpu_resolve_scene_id(const char* key, char* id_out, int id_out_size) {
+	if (!id_out || id_out_size < 1) return 0;
+	id_out[0] = '\0';
+	const SceneDescriptor* s = key ? find_scene(key) : nullptr;
+	if (!s || static_cast<int>(s->id.size()) + 1 > id_out_size) return 0;
+	std::snprintf(id_out, static_cast<size_t>(id_out_size), "%s", s->id.c_str());
+	return 1;
 }
 
 extern "C" int cpu_scene_legacy_id_by_id(const char* scene_id) {

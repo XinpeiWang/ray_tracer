@@ -25,6 +25,7 @@
 #include <memory>
 #include <cmath>
 #include "scene_builder_widget.h"
+#include "scene_technique_notes.h"
 #include "scene_metadata_client.h"
 
 void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
@@ -151,6 +152,37 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			QApplication::exit(m_lastDiagReport.contains("=== Network ===") ? 0 : 1);
 		});
 		poll->start(500);
+		return;
+	}
+
+	// RT_GUI_SELFTEST=scenekeys: the scene keys the GUI saves and looks up by (slugs, with ids still accepted) round-trip through the metadata library, the
+	// technique notes are found by either, and the thumbnail cache is keyed by slug. Exit 0 if every check held.
+	if (mode == "scenekeys") {
+		bool ok = true;
+		auto check = [&ok, log](bool cond, const QString &what) {
+			log(QString("%1: %2").arg(cond ? "ok" : "FAIL", what));
+			ok = ok && cond;
+		};
+		const QString slug = SceneMetadataClient::sceneSlug("A1");
+		check(slug == "cornell-box", "A1's slug is cornell-box (got \"" + slug + "\")");
+		check(SceneMetadataClient::sceneIdForKey("cornell-box") == "A1", "the slug resolves to A1");
+		check(SceneMetadataClient::sceneIdForKey("A1") == "A1", "an id resolves to itself");
+		check(SceneMetadataClient::sceneIdForKey("no-such-scene").isEmpty(), "an unknown key resolves to nothing");
+		check(scene_technique_notes::hasNote("A1") && scene_technique_notes::hasNote("cornell-box"), "the Cornell Box note is found by id and by slug");
+		check(scene_technique_notes::forScene("A1") == scene_technique_notes::forScene("cornell-box"), "both give the same note");
+		check(thumbnailCachePath("A1").endsWith("/thumbnails/cornell-box.png"), "the thumbnail cache file is named by slug: " + thumbnailCachePath("A1"));
+		// every compiled-in scene's slug is unique and resolves back to its own id
+		QSet<QString> slugs;
+		int count = SceneMetadataClient::sceneCount(), bad = 0;
+		for (int i = 0; i < count; ++i) {
+			const QString id = SceneMetadataClient::sceneIdAtIndex(i);
+			const QString s = SceneMetadataClient::sceneSlug(id);
+			if (s == id || slugs.contains(s) || SceneMetadataClient::sceneIdForKey(s) != id) ++bad;
+			slugs.insert(s);
+		}
+		check(bad == 0, QString("%1 scenes: every slug is unique and resolves back to its id (%2 bad)").arg(count).arg(bad));
+		log(ok ? "RESULT: OK" : "RESULT: FAIL");
+		QApplication::exit(ok ? 0 : 1);
 		return;
 	}
 

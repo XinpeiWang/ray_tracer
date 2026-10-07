@@ -42,7 +42,7 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("outputPath", entry.outputPath);
 	settings.setValue("previewPath", entry.previewPath);
 	settings.setValue("isVideo", entry.isVideo);
-	settings.setValue("sceneId", entry.sceneId);
+	settings.setValue("sceneId", SceneMetadataClient::sceneSlug(entry.sceneId));  // slug: durable (an id can name another scene later)
 	settings.setValue("displayTitle", entry.displayTitle);
 	settings.setValue("sceneDescription", entry.sceneDescription);
 	settings.setValue("width", entry.width);
@@ -122,7 +122,10 @@ RecentRenderEntry buildScannedEntry(const QFileInfo &fileInfo, bool isVideo) {
 	// parts[0] = "render"/"video", parts[1] = sceneId (this app's scene
 	// ids - "A1", "B23", "I5" - never contain an underscore themselves),
 	// parts[2..] = timestamp fragments.
-	const QString sceneId = parts.size() >= 2 ? parts[1] : QString();
+	// parts[1] is a slug (current names) or an id (files from before slugs); either resolves to the scene's id.
+	const QString sceneKey = parts.size() >= 2 ? parts[1] : QString();
+	const QString resolvedId = sceneKey.isEmpty() ? QString() : SceneMetadataClient::sceneIdForKey(sceneKey);
+	const QString sceneId = resolvedId.isEmpty() ? sceneKey : resolvedId;
 	entry.sceneId = sceneId;
 	const QString sceneName = sceneId.isEmpty() ? QString() : SceneMetadataClient::sceneName(sceneId);
 	// Falls back to the raw filename when the id can't be parsed or isn't
@@ -143,6 +146,8 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	entry.previewPath = settings.value("previewPath").toString();
 	entry.isVideo = settings.value("isVideo").toBool();
 	entry.sceneId = settings.value("sceneId").toString();
+	// Stored as a slug (an id in older settings): back to the scene's current id.
+	if (const QString resolved = SceneMetadataClient::sceneIdForKey(entry.sceneId); !resolved.isEmpty()) entry.sceneId = resolved;
 	entry.displayTitle = settings.value("displayTitle").toString();
 	entry.sceneDescription = settings.value("sceneDescription").toString();
 	entry.width = settings.value("width").toInt();

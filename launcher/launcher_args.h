@@ -15,6 +15,7 @@
 
 #include "../src/shared/video_preset.h"
 #include "../src/shared/render_flag_names.h"
+#include "../src/shared/scene_slugs.h"
 
 namespace {
 	constexpr int kDefaultWidth = 600;
@@ -1052,7 +1053,8 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 					  << "  --height N : Image height, for a non-square image (default: the width)\n"
 					  << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n"
 					  << "  max_depth  : Max ray depth (default " << kDefaultMaxDepth << ")\n"
-					  << "  scene_id   : Scene selector, category letter + number (e.g. \"A1\"=Cornell Box,\n"
+					  << "  scene_id   : Scene selector: a scene name (e.g. \"cornell-box\") or an id, category letter +\n"
+					  << "               number (e.g. \"A1\"=Cornell Box; names are stable, ids can shift),\n"
 					  << "               default " << kDefaultSceneId << " - see src/TheRestOfYourLife/scene_registry.h),\n"
 					  << "               or the path of a .pbrt file (e.g. one saved by the GUI's Scene Builder)\n"
 					  << "  cam_x/y/z  : Camera position - if omitted, uses the selected scene's own\n"
@@ -1116,12 +1118,13 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 		std::transform(ext.begin(), ext.end(), ext.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
 		if (!valid && ext == ".pbrt") {
 			out.scene_file = id;
-		} else if (valid) {
+		} else if (valid || scene_slugs::looksLikeSlug(id)) {
+			// An id ("A1") or a slug ("cornell-box"); main() resolves either to the scene.
 			out.scene_id = id;
 		} else {
-			std::cerr << "Invalid scene_id \"" << id
-				<< "\" - expected a category letter followed by a number "
-				   "(e.g. \"A1\"), see src/TheRestOfYourLife/scene_registry.h\n";
+			std::cerr << "Invalid scene \"" << id
+				<< "\" - expected a scene name such as \"cornell-box\", an id such as \"A1\", or the path of a .pbrt file "
+				   "(see src/shared/scene_slugs.h and src/TheRestOfYourLife/scene_registry.h)\n";
 			return false;
 		}
 	}
