@@ -26,6 +26,9 @@ struct DllHandle {
 	StringByIdFn categoryFn = nullptr;
 	StringByIdFn descriptionFn = nullptr;
 	IntByIdFn requiresFilesFn = nullptr;
+	// Optional (absent in a library built before this export existed): the GUI just shows no
+	// missing-files detail then, rather than refusing to load.
+	StringByIdFn missingAssetsFn = nullptr;
 	SnapshotFn snapshotFn = nullptr;
 };
 
@@ -88,6 +91,8 @@ DllHandle& handle() {
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_requires_files"));
 		h.snapshotFn = reinterpret_cast<SnapshotFn>(
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_snapshot"));
+		h.missingAssetsFn = reinterpret_cast<StringByIdFn>(
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_missing_assets"));
 
 		// Every export is required, including newer ones: a library missing
 		// any of them is a stale build sitting next to a newer exe, and
@@ -189,6 +194,20 @@ QString displayPerformance(const QString& performance) {
 	for (const char *name : kNames)
 		if (performance == QLatin1String(name)) return QCoreApplication::translate("ScenePerformance", name);
 	return performance;
+}
+
+MissingAssets missingAssets(const QString& scene_id) {
+	MissingAssets out;
+	if (!ensureLoaded() || !handle().missingAssetsFn) return out;
+	const QStringList fields = QString::fromUtf8(handle().missingAssetsFn(scene_id.toUtf8().constData()))
+		.split(QLatin1Char('\t'));
+	if (fields.size() != 4) return out;
+	out.any = true;
+	out.folder = fields[0];
+	out.missing = fields[1].toInt();
+	out.referenced = fields[2].toInt();
+	out.example = fields[3];
+	return out;
 }
 
 QString sceneDescription(const QString& scene_id) {

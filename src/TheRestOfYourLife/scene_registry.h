@@ -22,6 +22,7 @@
 #include "sky_light.h"
 #include "punctual_light_objects.h"
 #include "camera.h"
+#include "error_codes.h"
 #include "pbrt_cpu_builder.h"
 #include "../shared/pbrt_discover.h"
 #include "../shared/pbrt_load.h"
@@ -114,6 +115,11 @@ struct SceneDescriptor {
     CameraConfig camera;
     std::function<hittable_list()>                       build_world;
     std::function<hittable_list()>                       build_lights;   // may return empty list
+    // Valid only AFTER build_world() has run. Non-empty when the scene is a pbrt file whose
+    // every mesh was unreadable (pbrt_load::LoadResult::missingFiles): the message names the
+    // files. Callers turn it into ERR_FILE_NOT_FOUND instead of rendering an empty scene and
+    // reporting success. Left null for scenes that cannot fail this way.
+    std::function<std::string()>                         missing_assets_error;
     std::function<std::shared_ptr<sky_light>()>          build_sky;      // nullptr = flat bg
     std::function<std::shared_ptr<punctual_light_list>()> build_punct;   // nullptr = none
     std::function<void(camera_t&)>                       setup_camera;   // nullptr = default perspective
@@ -258,6 +264,7 @@ namespace pbrt_scene_registry {
     struct Loaded {
         bool attempted = false;
         pbrt_cpu::BuildResult built;
+        std::string missingAssetsError;   // see SceneDescriptor::missing_assets_error
     };
 
     // Wires every field of `s` that must be derived from - and stay
@@ -325,6 +332,7 @@ namespace pbrt_scene_registry {
                     pbrt_load::loadFile(path, accelerator_override::state());
                 if (!r.ok) {
                     std::cerr << "error: " << r.error << "\n";
+                    if (!r.missingFiles.empty()) state->missingAssetsError = r.error;
                 } else {
                     for (const pbrt_scene::Warning& w : r.scene.warnings)
                         std::cerr << "warning: " << path << ": " << w.message << "\n";
@@ -386,6 +394,7 @@ namespace pbrt_scene_registry {
             pbrt_cpu::BuildResult& b = ensure();
             return b.lights ? *b.lights : hittable_list{};
         };
+        s.missing_assets_error = [state]() { return state->missingAssetsError; };
         // nullptr (flat background) unless the scene declared its own
         // LightSource "infinite" - see pbrt_cpu_builder.h's build() for how
         // b.sky gets populated (constant-colour form now; image-backed form
@@ -1003,6 +1012,18 @@ inline const SceneDescriptor* find_scene(const std::string& id) {
     for (const auto& s : get_scene_registry())
         if (s.id == id) return &s;
     return nullptr;
+}
+
+// Call right after scene.build_world(). If that scene is a pbrt file whose every mesh was
+// unreadable, returns ERR_FILE_NOT_FOUND so the render stops with a failure
+// instead of producing an empty image and reporting success; otherwise returns SUCCESS. The
+// explanation itself was already printed by the load (see below).
+inline int check_scene_assets(const SceneDescriptor& scene) {
+    if (!scene.missing_assets_error) return SUCCESS;
+    if (scene.missing_assets_error().empty()) return SUCCESS;
+    // No message printed here: the load itself already reported it (the registry prints "error: ..."
+    // when the loader fails), and a second copy only clutters the log.
+    return ERR_FILE_NOT_FOUND;
 }
 
 inline int scene_count() {

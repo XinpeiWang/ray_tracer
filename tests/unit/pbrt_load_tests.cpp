@@ -12,6 +12,7 @@
 #include <gtest/gtest.h>
 
 #include "pbrt_load.h"
+#include "pbrt_asset_check.h"
 
 #include <cstdio>
 #ifdef _WIN32
@@ -365,6 +366,54 @@ TEST_F(TempTree, MissingPlyMeshWarnsRatherThanFailingTheWholeScene) {
 	EXPECT_TRUE(warned);
 }
 
+TEST_F(TempTree, SceneWhoseEveryMeshIsMissingFailsAndNamesTheFiles) {
+	// A scene that skipped every shape used to load "successfully" and render an
+	// empty (sky-only) picture - the K68 report. Now it is an error that says which
+	// files to install, and the caller can tell it from a parse failure.
+	write("scene.pbrt",
+		  "LightSource \"infinite\" \"rgb L\" [ 1 1 1 ]\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/a.ply\" ]\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/b.ply\" ]\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/a.ply\" ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("geometry/a.ply"), std::string::npos) << r.error;
+	EXPECT_NE(r.error.find("geometry/b.ply"), std::string::npos) << r.error;
+	EXPECT_NE(r.error.find("scene.pbrt"), std::string::npos) << r.error;
+	EXPECT_EQ(r.missingFiles.size(), 3u) << "one entry per skipped shape";
+}
+
+TEST_F(TempTree, MissingMeshErrorListIsDeduplicatedAndCapped) {
+	std::string scene;
+	for (int i = 0; i < 9; ++i)
+		scene += "Shape \"plymesh\" \"string filename\" [ \"geometry/m" + std::to_string(i) + ".ply\" ]\n";
+	write("scene.pbrt", scene);
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("m0.ply"), std::string::npos) << r.error;
+	EXPECT_EQ(r.error.find("m8.ply"), std::string::npos) << "only the first few are listed: " << r.error;
+	EXPECT_NE(r.error.find("(+4 more)"), std::string::npos) << r.error;
+}
+
+TEST_F(TempTree, MissingMeshWithOtherGeometryStillLoads) {
+	// Only the all-skipped case is an error; one surviving shape of any kind keeps
+	// the lenient warn-and-continue behaviour.
+	write("scene.pbrt",
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/gone.ply\" ]\n"
+		  "Shape \"sphere\" \"float radius\" 1\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_TRUE(r.missingFiles.empty());
+	EXPECT_EQ(r.scene.missingFiles.size(), 1u);
+}
+
+TEST_F(TempTree, SceneWithNoShapesAtAllIsNotTreatedAsMissingAssets) {
+	// Nothing was skipped, there just is nothing: not this error's business.
+	write("scene.pbrt", "LightSource \"infinite\" \"rgb L\" [ 1 1 1 ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	EXPECT_TRUE(r.ok) << r.error;
+}
+
 // ---------------------------------------------------------------------------
 // loadFileNear / parseLensFile - a realistic camera's lensfile. Neither
 // pbrt_scene.h nor pbrt_flatten.h can read it themselves (see pbrt_load.h's
@@ -471,4 +520,85 @@ AttributeEnd
 	ASSERT_EQ(a.imageHeight, 2);
 	ASSERT_EQ(b.imagePixels.size(), a.imagePixels.size());
 	EXPECT_NE(a.imagePixels, b.imagePixels) << "a 90 degree rotation left the environment image untouched";
+}
+
+// ---------------------------------------------------------------------------
+// pbrt_asset_check - the GUI's "this scene's files are missing" warning. A text scan of the
+// scene (and its Includes) for the files it refers to, using the loader's own lookups.
+// ---------------------------------------------------------------------------
+
+namespace {
+bool endsWith(const std::string &s, const std::string &suffix) {
+	return s.size() >= suffix.size() && s.compare(s.size() - suffix.size(), suffix.size(), suffix) == 0;
+}
+}  // namespace
+
+TEST_F(TempTree, AssetCheckCountsMissingAndFoundReferences) {
+	write("textures/here.png", "x");
+	write("scene.pbrt",
+		  "Texture \"t\" \"spectrum\" \"imagemap\" \"string filename\" [ \"textures/here.png\" ]\n"
+		  "Shape \"plymesh\" \"string filename\" \"geometry/gone.ply\"\n"
+		  "# \"string filename\" [ \"textures/commented-out.png\" ]\n");
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path("scene.pbrt"));
+	ASSERT_EQ(r.missing.size(), 1u);
+	EXPECT_EQ(r.missing[0], "geometry/gone.ply");
+	EXPECT_EQ(r.referenced, 2) << "the commented-out line is not a reference";
+	EXPECT_TRUE(endsWith(r.folder, "geometry")) << "the folder the file belongs in: " << r.folder;
+}
+
+TEST_F(TempTree, AssetCheckFollowsIncludesAndAcceptsGzippedMeshes) {
+	write("geometry/part.pbrt", "Shape \"plymesh\" \"string filename\" [ \"gone.ply\" ]\n");
+	write("geometry/zipped.ply.gz", "x");
+	write("scene.pbrt",
+		  "Include \"geometry/part.pbrt\"\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/zipped.ply\" ]\n");
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path("scene.pbrt"));
+	ASSERT_EQ(r.missing.size(), 1u) << "only the include's gone.ply; the .ply.gz stands in for zipped.ply";
+	EXPECT_EQ(r.missing[0], "gone.ply");
+}
+
+TEST_F(TempTree, AssetCheckOnAMissingSceneFileReportsThatFile) {
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path("nope.pbrt"));
+	ASSERT_EQ(r.missing.size(), 1u);
+	EXPECT_EQ(r.referenced, 0) << "referenced == 0 is how callers tell 'scene file absent' from 'its assets absent'";
+	EXPECT_FALSE(r.folder.empty());
+}
+
+TEST_F(TempTree, AssetCheckOnACompleteSceneReportsNothing) {
+	write("geometry/a.ply", "x");
+	write("scene.pbrt", "Shape \"plymesh\" \"string filename\" [ \"geometry/a.ply\" ]\n");
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path("scene.pbrt"));
+	EXPECT_TRUE(r.missing.empty());
+	EXPECT_TRUE(r.folder.empty());
+}
+
+TEST_F(TempTree, AssetCheckTreatsAGroupSuffixAsTheFileBeforeIt) {
+	// "model.obj#group" is one group of an OBJ; the file existing means it is not missing.
+	write("geometry/model.obj", "x");
+	write("scene.pbrt",
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/model.obj#a\" ]\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/model.obj#b\" ]\n");
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path("scene.pbrt"));
+	EXPECT_TRUE(r.missing.empty());
+	EXPECT_EQ(r.referenced, 1) << "two groups, one file";
+}
+
+TEST_F(TempTree, AssetCheckPointsAtTheFolderContainingEveryMissingFile) {
+	write("scene.pbrt",
+		  "Shape \"plymesh\" \"string filename\" [ \"models/a.obj\" ]\n"
+		  "Texture \"t\" \"spectrum\" \"imagemap\" \"string filename\" [ \"models/textures/b.png\" ]\n");
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path("scene.pbrt"));
+	ASSERT_EQ(r.missing.size(), 2u);
+	EXPECT_TRUE(endsWith(r.folder, "models")) << "not the textures subfolder: " << r.folder;
+}
+
+TEST_F(TempTree, MissingMeshErrorNamesTheFileOnceNotOncePerObjGroup) {
+	write("scene.pbrt",
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/model.obj#a\" ]\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/model.obj#b\" ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("geometry/model.obj"), std::string::npos) << r.error;
+	EXPECT_EQ(r.error.find('#'), std::string::npos) << "the group suffix is not part of the file: " << r.error;
+	EXPECT_EQ(r.error.find("more)"), std::string::npos) << "one file, nothing to abbreviate: " << r.error;
 }

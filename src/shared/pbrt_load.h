@@ -42,6 +42,11 @@ namespace pbrt_load {
 struct LoadResult {
 	bool ok = false;
 	std::string error;
+	// Set (with ok == false) when the scene named mesh files it could not read and
+	// NOTHING else was left to render - lets a caller pick "file not found" over a
+	// generic build failure. Empty for every other failure and for a scene that is
+	// merely missing some of its meshes (that one still loads, with warnings).
+	std::vector<std::string> missingFiles;
 	pbrt_flatten::FlatScene scene;
 };
 
@@ -255,6 +260,30 @@ inline bool decodeInfiniteLightImage(const std::string &filename, const std::str
 	return true;
 }
 
+// The error for a scene whose every mesh was unreadable (see loadFile). Names the
+// files, deduplicated and capped so a scene with thousands of shapes still gives a
+// readable line, and says where they were looked for.
+inline std::string missingMeshesMessage(const std::string &scenePath,
+										const std::vector<std::string> &missing) {
+	std::vector<std::string> unique;
+	for (const std::string &f : missing) {
+		// "model.obj#group" names one group of a file: the file is what to install.
+		const std::string file = f.substr(0, f.find('#'));
+		if (std::find(unique.begin(), unique.end(), file) == unique.end()) unique.push_back(file);
+	}
+	constexpr std::size_t kShown = 5;
+	std::string names;
+	for (std::size_t i = 0; i < unique.size() && i < kShown; ++i) {
+		if (i) names += ", ";
+		names += unique[i];
+	}
+	if (unique.size() > kShown) names += " (+" + std::to_string(unique.size() - kShown) + " more)";
+	return scenePath + ": nothing to render - every mesh file this scene needs could not be read, so all of its "
+		"shapes were skipped. Missing: " + names + ". They were looked for next to the scene file and relative "
+		"to the working directory; install the scene's assets (the GUI's \"Requires External Files\" tab lists "
+		"which scenes need them) and render again.";
+}
+
 } // namespace detail
 
 // Reads `path`, resolving Include and plymesh references relative to it.
@@ -358,6 +387,16 @@ inline LoadResult loadFile(const std::string &path,
 		r.scene = pbrt_flatten::flatten(parsed.scene, meshes);
 	}
 	r.ok = true;
+
+	// Every mesh the scene referenced was unreadable and there is no other geometry:
+	// rendering it would produce a black or sky-only image and report success, which is
+	// how a scene whose models/ folder is not installed used to look like it worked.
+	if (!r.scene.missingFiles.empty() && !r.scene.hasAnyGeometry()) {
+		r.ok = false;
+		r.missingFiles = r.scene.missingFiles;
+		r.error = detail::missingMeshesMessage(path, r.scene.missingFiles);
+		return r;
+	}
 
 	// Infinite light's image, if it has one. Resolved the same
 	// scene-directory-then-as-given way as everything else in this file

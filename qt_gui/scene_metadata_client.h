@@ -93,6 +93,19 @@ QString sceneCategory(const QString& scene_id);
 QString displayCategory(const QString& category);
 QString displayPerformance(const QString& performance);
 
+// What a scene flagged requires_files is missing on disk, found by scanning its .pbrt for the
+// files it refers to. `any` is false when nothing is missing, the scene is not pbrt-backed, or
+// the library predates this query. When the scene file itself is absent `referenced` is 0 and
+// `example` is that file.
+struct MissingAssets {
+	bool any = false;
+	QString folder;      // absolute directory the missing files belong in
+	int missing = 0;
+	int referenced = 0;
+	QString example;     // first missing path, as written in the scene
+};
+MissingAssets missingAssets(const QString& scene_id);
+
 // scene_id's short description, or "" if not loaded/found.
 QString sceneDescription(const QString& scene_id);
 
