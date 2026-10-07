@@ -4,6 +4,7 @@
          the doubled ":/icons/icons/<name>.svg" a "/icons" prefix would give,
          since the files already live in an icons/ directory. -->
     <qresource prefix="/">
+        <file alias="assets/downloadable_assets.txt">downloadable_assets.txt</file>
         <file>icons/render.svg</file>
         <file>icons/stop.svg</file>
         <file>icons/pause.svg</file>

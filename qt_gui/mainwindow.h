@@ -46,6 +46,7 @@
 #include <QFile>
 #include <functional>
 
+#include "asset_downloader.h"
 #include "camera_math.h"
 #include "render_output_parser.h"
 #include "theme.h"
@@ -1562,6 +1563,16 @@ private:
 	// cascading logic. No-op (logs a warning) if `id` isn't a real scene id.
 	void selectSceneById(const QString &id);
 	QLabel *m_sceneInfoLabel;           // Scene description and performance info
+	// "Download N missing files" - shown under the info label only when the selected scene is missing files
+	// that asset_downloader's manifest lists (see refreshSceneInfoLabel()). The jobs it would run are kept
+	// here so the click does not have to re-derive them.
+	QPushButton *m_downloadAssetsButton = nullptr;
+	QList<asset_downloader::Job> m_downloadableAssetJobs;
+	asset_downloader::Downloader *m_assetDownloader = nullptr;
+	void onDownloadMissingAssetsClicked();
+	// Runs the download; `confirm` false skips the dialogs (the self-test). `onDone` is called with the result.
+	void startAssetDownload(const QList<asset_downloader::Job> &jobs, bool confirm,
+							std::function<void(bool ok, const QString &error)> onDone = nullptr);
 	// Unlike every other info icon (fixed tooltip at construction), this
 	// one's tooltip is rewritten per selection by refreshSceneInfoLabel() -
 	// see scene_technique_notes.h for the per-scene content it reads from.

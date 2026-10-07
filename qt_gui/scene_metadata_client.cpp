@@ -201,12 +201,13 @@ MissingAssets missingAssets(const QString& scene_id) {
 	if (!ensureLoaded() || !handle().missingAssetsFn) return out;
 	const QStringList fields = QString::fromUtf8(handle().missingAssetsFn(scene_id.toUtf8().constData()))
 		.split(QLatin1Char('\t'));
-	if (fields.size() != 4) return out;
+	if (fields.size() < 4) return out;
 	out.any = true;
 	out.folder = fields[0];
 	out.missing = fields[1].toInt();
 	out.referenced = fields[2].toInt();
 	out.example = fields[3];
+	if (fields.size() >= 5) out.missingPaths = fields[4].split(QLatin1Char('\n'), Qt::SkipEmptyParts);
 	return out;
 }
 

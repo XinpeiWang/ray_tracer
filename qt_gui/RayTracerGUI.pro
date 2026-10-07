@@ -5,7 +5,7 @@
 # QMediaPlayer playback for video-mode renders (see assembleVideoAutomatically()
 # in mainwindow_slots.cpp) - needs Qt6Multimedia.dll/Qt6MultimediaWidgets.dll
 # plus the ffmpeg backend plugin/runtime DLLs deployed alongside the exe.
-QT += core gui widgets svg multimedia multimediawidgets
+QT += core gui widgets svg multimedia multimediawidgets network
 
 CONFIG += c++17
 
@@ -52,6 +52,7 @@ SOURCES += \
 	palette_file.cpp \
 	theme_load.cpp \
 	scene_metadata_client.cpp \
+	asset_downloader.cpp \
 	realtime_preview_session.cpp \
 	theme.cpp \
 	theme_switch.cpp \
@@ -70,6 +71,7 @@ HEADERS += \
 	palette_file.h \
 	render_output_parser.h \
 	scene_metadata_client.h \
+	asset_downloader.h \
 	realtime_preview_session.h \
 	cross_abi_library.h \
 	error_handler.h \

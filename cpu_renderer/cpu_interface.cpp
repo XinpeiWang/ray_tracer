@@ -1021,7 +1021,8 @@ extern "C" const char* cpu_scene_missing_assets_by_id(const char* scene_id) {
 	if (!path || !path[0]) return "";
 	const pbrt_asset_check::Result r = pbrt_asset_check::check(path);
 	if (r.missing.empty()) return "";
-	report = r.folder + "\t" + std::to_string(r.missing.size()) + "\t" + std::to_string(r.referenced) + "\t" + r.missing.front();
+	report = r.folder + "\t" + std::to_string(r.missing.size()) + "\t" + std::to_string(r.referenced) + "\t" + r.missing.front() + "\t";
+	for (std::size_t i = 0; i < r.missingPaths.size(); ++i) report += (i ? "\n" : "") + r.missingPaths[i];
 	return report.c_str();
 }
 

@@ -519,9 +519,10 @@ int cpu_scene_recommended_spp_by_id(const char* scene_id);
 int cpu_scene_requires_files_by_id(const char* scene_id);
 /// For a scene flagged requires_files that is backed by a .pbrt file: checks whether the files that
 /// scene refers to are actually on disk. "" when nothing is missing (or the scene is not pbrt-backed,
-/// so there is nothing to check); otherwise four tab-separated fields - the directory the missing
-/// files belong in (absolute), how many are missing, how many the scene refers to, and the first
-/// missing path as written in the scene. The pointer stays valid until the next call on this thread.
+/// so there is nothing to check); otherwise five tab-separated fields - the directory the missing
+/// files belong in (absolute), how many are missing, how many the scene refers to, the first
+/// missing path as written in the scene, and every missing file as an absolute path (newline-separated),
+/// which is where each belongs on disk. The pointer stays valid until the next call on this thread.
 const char* cpu_scene_missing_assets_by_id(const char* scene_id);
 /// For a scene loaded from a .pbrt file that itself declares a Sampler/
 /// Integrator/light sampler directive (SceneDescriptor::recommended_*,

@@ -2,6 +2,7 @@
 #define SCENE_METADATA_CLIENT_H
 
 #include <QString>
+#include <QStringList>
 
 // ============================================================================
 // SceneMetadataClient
@@ -103,6 +104,7 @@ struct MissingAssets {
 	int missing = 0;
 	int referenced = 0;
 	QString example;     // first missing path, as written in the scene
+	QStringList missingPaths;   // every missing file as an absolute path - where it has to be placed
 };
 MissingAssets missingAssets(const QString& scene_id);
 
