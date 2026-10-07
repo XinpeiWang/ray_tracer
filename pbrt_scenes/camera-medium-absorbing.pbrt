@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # camera-medium-absorbing.pbrt -- regression scene for pbrt's camera medium (a MediumInterface before the Camera
 # directive: the camera sits inside an unbounded fog) on all three backends.
 #

@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # cone-paraboloid-lights.pbrt -- a floor lit only by a cone and a paraboloid that are area lights; --bdpt, --mlt, --sppm and the path tracer must agree.
 #
 # BDPT, MLT and SPPM build their light list from shapes that can sample their own surface (sample_area(), area-uniformly: the adapters take one constant position density

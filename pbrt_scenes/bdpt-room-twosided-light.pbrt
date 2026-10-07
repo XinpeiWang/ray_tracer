@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bdpt-room-twosided-light.pbrt -- a two-sided plate light at the centre of a closed diffuse sphere; BDPT and the path tracer must agree.
 #
 # A two-sided emitter radiates from either face with probability 1/2 each. SampleLightLe() halves the density that way, but LightPDFLe() (used by every

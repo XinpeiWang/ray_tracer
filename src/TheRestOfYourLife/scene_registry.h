@@ -879,7 +879,7 @@ inline std::string displayNameFor(const pbrt_discover::Discovered& d) {
     const std::string pretty = scene_slugs::prettyName(d.name);
     if (d.nested) {
         const std::string folder = std::filesystem::path(d.path).parent_path().filename().string();
-        if (!folder.empty()) return scene_slugs::prettyName(folder) + ": " + pretty;
+        if (!folder.empty() && scene_slugs::slugify(d.name).rfind(scene_slugs::slugify(folder), 0) != 0) return scene_slugs::prettyName(folder) + ": " + pretty;
     }
     return pretty;
 }
@@ -942,7 +942,9 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     int legacy_id = 0;
     for (const SceneDescriptor& b : get_builtin_scene_registry())
         legacy_id = std::max(legacy_id, b.legacy_id + 1);
-    int user_number = 1;
+    // Ids continue per category letter: a scene found on disk is numbered within its own category (K1, K2, ... for Custom Scenes, L1, ... for Test
+    // Scenes), in the order the files were found.
+    std::map<char, int> nextNumber;
     // Every slug already taken (the built-in scenes'), so a file's slug never clashes with one.
     std::set<std::string> takenSlugs;
     for (const SceneDescriptor& existing : registry)
@@ -957,19 +959,41 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             continue;
         }
 
+        // A file a curated entry (build_curated_pbrt_scene_descriptor() and its external sibling, which register paths() as part of building the built-in
+        // registry, before this runs) already lists is not listed a second time: it would be the same scene twice, one with a real name, category and
+        // description and one with a file name. Matched with std::filesystem::equivalent, not string equality, since a curated entry and this scan can reach the
+        // same file through different-looking path strings (separators, or a different defaultSearchPaths() entry winning for each).
+        {
+            bool listed = false;
+            for (const auto& entry : paths()) {
+                std::error_code ec;
+                if (std::filesystem::equivalent(entry.second, d.path, ec) && !ec) { listed = true; break; }
+            }
+            if (listed) continue;
+        }
+
         names.push_back(displayNameFor(d));
-        descriptions.push_back(
-            "Loaded from " + d.path + " (pbrt-v4 scene). Camera, resolution and "
-            "sample count come from the file itself; geometry is read on first "
-            "render, so the first frame of a large scene starts slowly.");
+        // The file's own description if it gives one ("# @rt-description ..."), else what can be said about any pbrt file from its header.
+        descriptions.push_back(!d.description.empty()
+            ? d.description
+            : "A pbrt-v4 scene file (" + d.path + "), set up for " + std::to_string(d.xResolution) + " x " + std::to_string(d.yResolution)
+                + " at " + std::to_string(d.samplesPerPixel) + " samples per pixel as the file itself says. Its geometry is read when it is first rendered, "
+                  "so a large scene starts slowly.");
+
+        // The category the file names, if it is one of ours; anything else is a Custom Scene.
+        const char* category = SceneCategories::CustomScenes;
+        for (const char* known : SceneCategories::kAll)
+            if (d.category == known) category = known;
+        if (!d.category.empty() && d.category != category)
+            std::cerr << "warning: " << d.path << ": unknown @rt-category \"" << d.category << "\" - listed under Custom Scenes\n";
 
         SceneDescriptor s;
         // Uses SceneCategories::letter_for_category() rather than a
         // hardcoded 'I', so this can't silently drift from
         // SceneCategories::kAll's declared order (see that function's
         // comment in scene_descriptor.h).
-        s.id = std::string(1, SceneCategories::letter_for_category(SceneCategories::CustomScenes))
-             + std::to_string(user_number++);
+        const char letter = SceneCategories::letter_for_category(category);
+        s.id = std::string(1, letter) + std::to_string(++nextNumber[letter]);
         s.legacy_id = legacy_id++;
         // A file's slug is its name (a scene in a downloaded collection's own folder is prefixed with that folder, since "frame25" alone says nothing);
         // unlike the id it does not depend on which other files are present.
@@ -977,17 +1001,21 @@ inline void append(std::vector<SceneDescriptor>& registry) {
             std::string base = d.name;
             if (d.nested) {
                 const std::string folder = std::filesystem::path(d.path).parent_path().filename().string();
-                if (!folder.empty()) base = folder + "-" + d.name;
+                // "villa/villa-lights-on" is just "villa-lights-on"; "zero-day/frame25" needs its folder.
+                if (!folder.empty() && scene_slugs::slugify(d.name).rfind(scene_slugs::slugify(folder), 0) != 0) base = folder + "-" + d.name;
             }
             s.slug = scene_slugs::uniqueSlug(scene_slugs::slugify(base), takenSlugs);
         }
         s.name = names.back().c_str();
-        s.category = SceneCategories::CustomScenes;
+        s.category = category;
         s.description = descriptions.back().c_str();
         // Honest rather than flattering: a .pbrt file can hold anything from
         // three triangles to ten million, and nothing in the header says
         // which. "Unknown" is the truthful answer at this point.
         s.performance = "Unknown";
+        // ...unless the file itself says ("# @rt-performance Fast").
+        for (const char* word : {"Fast", "Medium", "Slow", "Very Slow"})
+            if (d.performance == word) s.performance = word;
         // Not unconditionally true: a hand-authored scene bundled directly
         // in pbrt_scenes/ (git-tracked, no assets beyond the repo checkout)
         // is exactly as self-contained as a builtin scene, but a scene from
@@ -1011,42 +1039,6 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // build_instanced_spheres_descriptor()'s curated entry instead of
         // each hand-writing its own copy.
         wire_pbrt_backed_scene(s, d, d.path);
-
-        // A curated entry for this exact file (build_curated_pbrt_scene_
-        // descriptor()/build_curated_external_pbrt_scene_descriptor(), both
-        // of which register paths() themselves as part of building
-        // get_builtin_scene_registry() - already fully done by the time
-        // append() runs) may have hand-tuned recommended_exposure, e.g.
-        // H19's crown.pbrt needs roughly 30x the engine's neutral default to
-        // read as anything but a near-black silhouette (see
-        // SceneDescriptor::recommended_exposure's own comment). Without
-        // this, the same file's auto-discovered twin registered right below
-        // would default back to 1.0 and render just as unusably dark.
-        // Matched via std::filesystem::equivalent rather than string
-        // equality: a curated entry and this scan can resolve the same file
-        // through different-looking path strings (different separators, or
-        // a different defaultSearchPaths() entry winning for each).
-        for (const auto& [existing_id, existing_path] : paths()) {
-            std::error_code ec;
-            if (!std::filesystem::equivalent(existing_path, d.path, ec) || ec) continue;
-            for (const SceneDescriptor& existing : registry) {
-                if (existing.id == existing_id) {
-                    s.recommended_exposure = existing.recommended_exposure;
-                    // The Large Scenes category (H1-H12 environment scenes: gigabyte
-                    // OBJs + texture folders) declares its assets external, and so must
-                    // its twin - pbrt_discover only sees a flat file in pbrt_scenes/ and
-                    // calls it self-contained, which would send every registry-wide
-                    // render test off to load San Miguel. Deliberately NOT every curated
-                    // requires_files entry: the Models (G1-G24) twins are cheap and
-                    // their registry-wide tests keep running. See
-                    // FindSceneTest.LargeSceneTwinsInheritRequiresFiles.
-                    if (existing.category == SceneCategories::LargeScene && existing.requires_files)
-                        s.requires_files = true;
-                    break;
-                }
-            }
-            break;
-        }
 
         paths()[s.id] = d.path;
         registry.push_back(s);

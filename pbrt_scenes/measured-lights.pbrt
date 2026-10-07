@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # measured-lights.pbrt -- a measured-BSDF floor and sphere lit by a small area light and a point light (no sky).
 #
 # The measured material samples its BSDF and, since it was given real light sampling, also takes direct-light samples with MIS. A small bright

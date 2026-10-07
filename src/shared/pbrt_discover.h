@@ -103,6 +103,11 @@ struct Discovered {
 	// directory instead. scene_registry.h uses this - not a per-file guess -
 	// to set SceneDescriptor::requires_files.
 	bool nested = false;
+	// What the file says about itself in "# @rt-<key> <value>" comment lines before WorldBegin (see detail::readHeaderTags): the category (one of
+	// SceneCategories), a one-line description, and a performance word. Empty when absent.
+	std::string category;
+	std::string description;
+	std::string performance;
 	// The title the Scene Builder saved in the file (scene_document.h's "# @rt-builder-doc" line); empty for any other file.
 	std::string title;
 	// True for a file the user named explicitly (ray_tracer.exe ... path/to/scene.pbrt, the GUI's Scene Builder) rather than one found by scanning a
@@ -132,6 +137,33 @@ inline std::string headerOf(const std::string &text) {
 	const std::size_t at = text.find("WorldBegin");
 	if (at == std::string::npos) return text;
 	return text.substr(0, at) + "WorldBegin\n";
+}
+
+// "# @rt-category Test Scenes", "# @rt-description ...", "# @rt-performance Fast": scene metadata kept in the scene's own header, so a file carries it
+// wherever it is copied. Only comment lines before WorldBegin are read; a description given on several lines is joined with spaces; the Scene
+// Builder's own "# @rt-builder-doc" line is not one of these. Unknown keys are ignored.
+struct HeaderTags {
+	std::string category, description, performance;
+};
+inline HeaderTags readHeaderTags(const std::string &text) {
+	HeaderTags tags;
+	const std::string header = headerOf(text);
+	std::istringstream in(header);
+	std::string line;
+	const std::string prefix = "# @rt-";
+	while (std::getline(in, line)) {
+		while (!line.empty() && (line.back() == '\r' || line.back() == ' ' || line.back() == '\t')) line.pop_back();
+		if (line.compare(0, prefix.size(), prefix) != 0) continue;
+		const std::size_t space = line.find(' ', prefix.size());
+		const std::string key = line.substr(prefix.size(), space == std::string::npos ? std::string::npos : space - prefix.size());
+		std::string value = space == std::string::npos ? std::string() : line.substr(space + 1);
+		while (!value.empty() && value.front() == ' ') value.erase(value.begin());
+		if (value.empty()) continue;
+		if (key == "category") tags.category = value;
+		else if (key == "performance") tags.performance = value;
+		else if (key == "description") tags.description += (tags.description.empty() ? "" : " ") + value;
+	}
+	return tags;
 }
 
 inline std::string stemOf(const std::string &path) {
@@ -218,6 +250,12 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	d.cropX0 = flat.cropX0; d.cropX1 = flat.cropX1;
 	d.cropY0 = flat.cropY0; d.cropY1 = flat.cropY1;
 	d.maxComponentValue = flat.maxComponentValue;
+	{
+		const detail::HeaderTags tags = detail::readHeaderTags(text);
+		d.category = tags.category;
+		d.description = tags.description;
+		d.performance = tags.performance;
+	}
 	{
 		scene_doc::Document builderDoc;
 		std::string ignored;

@@ -197,6 +197,7 @@ QString displayCategory(const QString& category) {
 		QT_TRANSLATE_NOOP("SceneCategory", "Education"),
 		QT_TRANSLATE_NOOP("SceneCategory", "Textures"),
 		QT_TRANSLATE_NOOP("SceneCategory", "Custom Scenes"),
+		QT_TRANSLATE_NOOP("SceneCategory", "Test Scenes"),
 	};
 	for (const char *name : kNames)
 		if (category == QLatin1String(name)) return QCoreApplication::translate("SceneCategory", name);

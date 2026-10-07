@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bump-mapped-plane.pbrt -- regression scene for GPU bump mapping (a grayscale "texture displacement").
 #
 # A diffuse plane whose shading normal is perturbed by a height image (images/bump-marble.png, scaled by a

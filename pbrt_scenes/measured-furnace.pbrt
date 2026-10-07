@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # measured-furnace.pbrt -- a measured-BSDF sphere under a uniform white sky: a one-bounce furnace for the measured material.
 #
 # Every pixel is the sphere's directional albedo for the view direction, so it must be at most 1 in every channel and the same on every backend.

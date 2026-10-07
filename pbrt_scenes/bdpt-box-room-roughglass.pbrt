@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bdpt-box-room-roughglass.pbrt -- the closed box of bdpt-box-room.pbrt (light facing up) with a rough glass sphere in it; BDPT and the path tracer agree.
 #
 # Rough dielectrics broke BDPT/MLT three ways: the reverse pdf used by the MIS weights was a cosine lobe instead of the GGX density the material samples

@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bdpt-box-room-roughmetal.pbrt -- the closed box of bdpt-box-room.pbrt (light facing up) with a rough conductor sphere in it; BDPT and the path tracer agree.
 #
 # BDPT/MLT took the conductor's colour from scatter() - one Fresnel value per hit, at the view-normal cosine - where the path tracer asks

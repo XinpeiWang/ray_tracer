@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bdpt-box-room-glass.pbrt -- the closed box of bdpt-box-room.pbrt (light facing up) with a smooth glass sphere in it; BDPT and the path tracer must agree.
 #
 # BDPT rebuilt every hit with front_face = true, so a ray LEAVING the glass was shaded as if it were entering: wrong refraction ratio and Fresnel at every

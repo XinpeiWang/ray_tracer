@@ -14,6 +14,7 @@
 #include <gtest/gtest.h>
 #include <filesystem>
 #include <string>
+#include <map>
 #include <set>
 
 // C++ registry (available to the test project via TheRestOfYourLife include path)
@@ -146,22 +147,17 @@ TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem)
 		EXPECT_EQ(all[i].id, builtins[i].id);
 		EXPECT_STREQ(all[i].name, builtins[i].name);
 	}
-	// No built-in scene uses category CustomScenes, so loaded scenes start
-	// numbering at 1 under CustomScenes's own letter - see
-	// pbrt_scene_registry::append()'s user_number comment in
-	// scene_registry.h. Derived via letter_for_category() rather than a
-	// hardcoded literal (this used to hardcode "J" and broke the moment
-	// CustomScenes's own position in kAll shifted for an unrelated new
-	// category - the exact class of drift BuiltinIdLetterMatchesItsCategory
-	// exists to catch on the builtin side; this is that same fix applied
-	// here too).
-	const char customScenesLetter = SceneCategories::letter_for_category(SceneCategories::CustomScenes);
-	int user_number = 1;
+	// Scenes found on disk come after the built-ins (the built-in ones use no Custom Scenes or Test Scenes category) and are numbered within their own
+	// category's letter, in the order they were found: K1, K2, ... for Custom Scenes, L1, L2, ... for Test Scenes. Derived via letter_for_category()
+	// rather than hardcoded literals, so a new category cannot make this stale (see BuiltinIdLetterMatchesItsCategory).
+	std::map<char, int> number;
 	for (std::size_t i = builtins.size(); i < all.size(); ++i) {
-		EXPECT_STREQ(all[i].category, SceneCategories::CustomScenes)
-			<< "a scene past the built-ins should be a loaded one";
-		EXPECT_EQ(all[i].id, std::string(1, customScenesLetter) + std::to_string(user_number++))
-			<< "loaded scene ids must continue the CustomScenes sequence without gaps";
+		const std::string category = all[i].category;
+		EXPECT_TRUE(category == SceneCategories::CustomScenes || category == SceneCategories::Tests)
+			<< "a scene past the built-ins should be a loaded one: " << all[i].id << " is in " << category;
+		const char letter = SceneCategories::letter_for_category(all[i].category);
+		EXPECT_EQ(all[i].id, std::string(1, letter) + std::to_string(++number[letter]))
+			<< "loaded scene ids must continue their category's sequence without gaps";
 	}
 }
 
@@ -271,7 +267,7 @@ TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
 		// legitimately empty on a machine with no scene collection installed -
 		// including every CI machine. Every other category is compiled in, so
 		// an empty one there really is the bug this test is looking for.
-		if (std::string(SceneCategories::kAll[i]) == SceneCategories::CustomScenes)
+		if (std::string(SceneCategories::kAll[i]) == SceneCategories::CustomScenes || std::string(SceneCategories::kAll[i]) == SceneCategories::Tests)
 			continue;
 		EXPECT_GT(used.count(SceneCategories::kAll[i]), 0u)
 			<< "Category '" << SceneCategories::kAll[i]
@@ -444,27 +440,39 @@ TEST(FindSceneTest, EarthSceneRequiresFiles) {
 	EXPECT_TRUE(s->requires_files);
 }
 
-TEST(FindSceneTest, LargeSceneTwinsInheritRequiresFiles) {
-	// Every pbrt file in pbrt_scenes/ also auto-registers as an "I<N>" twin, and
-	// pbrt_discover calls a flat file self-contained. The H1-H12 environment scenes read
-	// gigabyte OBJs, so their twins must report requires_files too or every registry-wide
-	// render test tries to load San Miguel.
-	int checked = 0;
-	for (const SceneDescriptor& curated : get_builtin_scene_registry()) {
-		if (curated.category != SceneCategories::LargeScene || !curated.requires_files) continue;
-		const auto curatedPath = pbrt_scene_registry::paths().find(curated.id);
-		if (curatedPath == pbrt_scene_registry::paths().end()) continue;
-		for (const SceneDescriptor& twin : get_scene_registry()) {
-			if (twin.id == curated.id) continue;
-			const auto twinPath = pbrt_scene_registry::paths().find(twin.id);
-			if (twinPath == pbrt_scene_registry::paths().end()) continue;
+// A .pbrt file that a curated entry already lists is not listed again under Custom Scenes: it used to be (the same scene twice, once with a real
+// name, category and description and once under its file name, which made most of the Custom Scenes list a copy of the rest). Curated entries may
+// share a file with one another on purpose (the Education scenes reuse another scene's file with their own description and settings).
+TEST(FindSceneTest, ACustomSceneIsNeverACopyOfAnotherEntry) {
+	const auto& paths = pbrt_scene_registry::paths();
+	ASSERT_GT(paths.size(), 100u);
+	int custom = 0, duplicates = 0;
+	for (const SceneDescriptor& s : get_scene_registry()) {
+		if (s.category != std::string(SceneCategories::CustomScenes)) continue;
+		++custom;
+		const auto mine = paths.find(s.id);
+		ASSERT_NE(mine, paths.end()) << s.id;
+		for (const auto& other : paths) {
 			std::error_code ec;
-			if (!std::filesystem::equivalent(curatedPath->second, twinPath->second, ec) || ec) continue;
-			EXPECT_TRUE(twin.requires_files) << twin.id << " is the twin of " << curated.id;
-			++checked;
+			if (other.first != s.id && std::filesystem::equivalent(other.second, mine->second, ec) && !ec) {
+				++duplicates;
+				ADD_FAILURE() << s.id << " (" << s.name << ") is the same file as " << other.first << ": " << mine->second;
+			}
 		}
 	}
-	EXPECT_GT(checked, 0) << "no Large Scenes twin found - the test is not exercising anything";
+	EXPECT_GT(custom, 0);
+	EXPECT_EQ(duplicates, 0);
+}
+
+TEST(FindSceneTest, ACuratedSceneKeepsItsOwnSettingsNotAFileEntrys) {
+	// The Large Scenes read gigabyte meshes and the curated entry says so.
+	int checked = 0;
+	for (const SceneDescriptor& s : get_scene_registry()) {
+		if (s.category != std::string(SceneCategories::LargeScene)) continue;
+		EXPECT_TRUE(s.requires_files) << s.id << " (" << s.name << ")";
+		++checked;
+	}
+	EXPECT_GT(checked, 0);
 }
 
 TEST(FindSceneTest, CornellBoxIsGpuCompatible) {
@@ -928,7 +936,7 @@ TEST(SceneSlugTest, TheCApiResolvesEitherKeyToTheId) {
 TEST(SceneSlugTest, ASceneFoundOnDiskIsKeyedByItsFileName) {
 	const SceneDescriptor* s = find_scene("chromatic-absorber");
 	if (!s) GTEST_SKIP() << "pbrt_scenes/ was not discovered - run from the repository root";
-	EXPECT_EQ(s->category, std::string(SceneCategories::CustomScenes));
+	EXPECT_EQ(s->category, std::string(SceneCategories::Tests)) << "a bundled fixture tags itself as a Test Scene";
 	EXPECT_EQ(s->slug, "chromatic-absorber");
 }
 
@@ -1000,4 +1008,39 @@ TEST(SceneNameTest, DescribeReadsTheTitleOfASceneBuilderFile) {
 	const pbrt_discover::Discovered d = pbrt_discover::describe("kitchen.pbrt", text);
 	EXPECT_EQ(d.title, "Kitchen at night");
 	EXPECT_TRUE(pbrt_discover::describe("plain.pbrt", "LookAt 0 0 5  0 0 0  0 1 0\nCamera \"perspective\"\nWorldBegin\n").title.empty());
+}
+
+// ===========================================================================
+// Scene metadata a file carries in its own header
+// ===========================================================================
+
+TEST(SceneHeaderTagsTest, ReadsCategoryDescriptionAndPerformance) {
+	const std::string text =
+		"# @rt-category Test Scenes\n# plain comment\n# @rt-description A furnace:\r\n# @rt-description every pixel reads 1.\n"
+		"# @rt-performance Fast\n# @rt-unknown ignored\n# @rt-builder-doc {}\nLookAt 0 0 5 0 0 0 0 1 0\nCamera \"perspective\"\nWorldBegin\n"
+		"# @rt-category After WorldBegin is not read\n";
+	const auto tags = pbrt_discover::detail::readHeaderTags(text);
+	EXPECT_EQ(tags.category, "Test Scenes");
+	EXPECT_EQ(tags.description, "A furnace: every pixel reads 1.");
+	EXPECT_EQ(tags.performance, "Fast");
+	const auto none = pbrt_discover::detail::readHeaderTags("LookAt 0 0 5 0 0 0 0 1 0\nWorldBegin\n");
+	EXPECT_TRUE(none.category.empty() && none.description.empty() && none.performance.empty());
+}
+
+TEST(SceneHeaderTagsTest, DescribeCarriesTheTags) {
+	const auto d = pbrt_discover::describe(
+		"f.pbrt", "# @rt-category Test Scenes\n# @rt-description One thing.\nLookAt 0 0 5 0 0 0 0 1 0\nCamera \"perspective\"\nWorldBegin\n");
+	EXPECT_EQ(d.category, "Test Scenes");
+	EXPECT_EQ(d.description, "One thing.");
+}
+
+// The bundled test fixtures sit under Test Scenes; a file with no tag (a user's own, or a Scene Builder one) stays a Custom Scene.
+TEST(SceneHeaderTagsTest, BundledFixturesAreTestScenesAndUntaggedFilesAreCustom) {
+	const SceneDescriptor* fixture = find_scene_by_file_stem("fog-furnace");
+	if (!fixture) GTEST_SKIP() << "pbrt_scenes/ was not discovered - run from the repository root";
+	EXPECT_EQ(fixture->category, std::string(SceneCategories::Tests));
+	EXPECT_EQ(fixture->id[0], SceneCategories::letter_for_category(SceneCategories::Tests));
+	for (const SceneDescriptor& s : get_scene_registry())
+		if (s.category == std::string(SceneCategories::CustomScenes))
+			EXPECT_FALSE(std::string(s.description).empty()) << s.id;
 }

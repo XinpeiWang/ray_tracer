@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # chromatic-fog-furnace.pbrt -- a non-absorbing fog whose scattering differs by colour, under a uniform sky.
 #
 # The chromatic twin of fog-furnace.pbrt: sigma_s = (0.2, 0.35, 0.5), sigma_a = 0, albedo 1 in every channel, so a path either

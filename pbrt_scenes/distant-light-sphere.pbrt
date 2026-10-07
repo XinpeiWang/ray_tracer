@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # distant-light-sphere.pbrt -- a diffuse sphere under one distant light: smooth shading, no inter-reflection, no hard edges.
 #
 # With nothing but direct lighting every integrator must read the same mean at any depth of 1 or more. It is the scene that showed BDPT and MLT

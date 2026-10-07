@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # coated-conductor-glossy-lamp.pbrt -- a smooth coat over a ROUGH copper base (conductor.roughness 0.3) under the same small
 # lamp as coated-conductor-lamp.pbrt. The coat's mirror reflection of the lamp is a specular sample while everything that went
 # through the coat is glossy, so this is the layered BSDF's mixed case: pbrt takes the light samples with f() (which has no

@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # lightpath-visible-paraboloid-light.pbrt -- a paraboloid (seen from the side) that is itself the picture, lit by nothing else: --lightpath, --bdpt and the path tracer must read the same.
 # See lightpath-visible-sphere-light.pbrt.
 #

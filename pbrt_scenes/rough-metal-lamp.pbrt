@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # rough-metal-lamp.pbrt -- a rough copper sphere lit only by a small lamp that is OUT OF VIEW above the frame, so the whole
 # image is the sphere's highlight (nothing but glossy direct light, nothing hides an error in it).
 #

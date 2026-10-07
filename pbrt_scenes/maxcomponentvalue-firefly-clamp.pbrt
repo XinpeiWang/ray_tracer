@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # maxcomponentvalue-firefly-clamp.pbrt -- exercises Film "float
 # maxcomponentvalue" (camera.h's clamp_sensor_rgb(), gated on scene_registry
 # .h's cam.max_component_value), previously implemented but never exercised

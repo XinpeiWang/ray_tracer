@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # fuzzed-metal-furnace.pbrt -- regression scene for the recursive GPU backend's fuzzed-metal sampling.
 #
 # A huge plane of "conductor, reflectance 0.9, roughness 1" under a uniform white sky, seen at an angle.

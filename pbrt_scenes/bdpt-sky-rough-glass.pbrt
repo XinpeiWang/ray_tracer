@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # bdpt-sky-rough-glass.pbrt -- a rough glass sphere filling the view under a uniform white sky; BDPT/MLT must agree with the path tracer.
 #
 # A sky (like a distant light) is an infinite-light vertex with no position. BDPTVertex::PDF() derived the direction toward such a `prev` vertex from its

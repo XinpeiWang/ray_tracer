@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # fog-point-light.pbrt -- regression scene for two participating-medium bugs, with a closed-form check.
 #
 # A fog sphere (radius 10, sigma_s 0.05, optical depth ~1 across the diameter, isotropic) lit only by a

@@ -1,3 +1,4 @@
+# @rt-category Test Scenes
 # coated-conductor-lamp.pbrt -- pbrt's default coatedconductor (a smooth coat over smooth copper) under a small lamp: a
 # mirror, so the picture is the lamp's reflection in a sphere and nothing hides an error in the coated BSDF's value.
 #
