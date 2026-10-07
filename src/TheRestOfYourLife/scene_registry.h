@@ -730,6 +730,16 @@ namespace pbrt_scene_registry {
             std::error_code ec;
             if (std::filesystem::exists(candidate, ec)) { path = candidate.string(); break; }
         }
+        // Not next to the app: a scene the GUI downloaded earlier lives under the per-user asset folder (pbrt_asset_check.h). Used by its ABSOLUTE
+        // path, so describeFile() reads it and every file it names (relative to the scene) resolves beside it.
+        if (path.empty()) {
+            const std::string userRoot = pbrt_asset_check::userAssetRoot();
+            if (!userRoot.empty()) {
+                std::error_code ec;
+                const std::filesystem::path candidate = std::filesystem::path(userRoot) / "pbrt_scenes" / filename;
+                if (std::filesystem::exists(candidate, ec)) path = candidate.string();
+            }
+        }
         if (path.empty()) path = std::string("pbrt_scenes/") + filename;  // not downloaded - fails gracefully below
 
         const pbrt_discover::Discovered d = pbrt_discover::describeFile(path);

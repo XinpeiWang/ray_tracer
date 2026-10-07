@@ -93,6 +93,18 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	if (mode == "download") {
 		selectSceneById(qEnvironmentVariable("RT_GUI_SELFTEST_SCENE"));
 		const QList<asset_downloader::Job> jobs = m_downloadableAssetJobs;
+		const scene_packs::Pack *pack = m_downloadablePack;
+		if (jobs.isEmpty() && pack) {
+			log(QString("scene=%1, pack \"%2\": %3 file(s), %4 MB to download").arg(m_sceneCombo->currentData().toString(), pack->title).arg(pack->fileCount()).arg(pack->downloadBytes() / 1.0e6, 0, 'f', 1));
+			QTimer::singleShot(1800000, this, [log]() { log("RESULT: FAIL (timed out)"); QApplication::exit(1); });
+			startPackDownload(*pack, false, [this, log](bool ok, const QString &error) {
+				const bool stillMissing = SceneMetadataClient::missingAssets(m_sceneCombo->currentData().toString()).any;
+				log(QString("download ok=%1 error=\"%2\" scene-still-reports-missing=%3").arg(ok).arg(error).arg(stillMissing));
+				log(ok && !stillMissing ? "RESULT: OK" : "RESULT: FAIL");
+				QApplication::exit(ok && !stillMissing ? 0 : 1);
+			});
+			return;
+		}
 		log(QString("scene=%1, %2 downloadable missing file(s), button visible: %3")
 			.arg(m_sceneCombo->currentData().toString()).arg(jobs.size()).arg(m_downloadAssetsButton && !m_downloadAssetsButton->isHidden()));
 		if (jobs.isEmpty()) { log("RESULT: FAIL (nothing to download for this scene)"); QApplication::exit(1); return; }

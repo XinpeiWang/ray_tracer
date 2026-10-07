@@ -53,6 +53,8 @@ SOURCES += \
 	theme_load.cpp \
 	scene_metadata_client.cpp \
 	asset_downloader.cpp \
+	scene_packs.cpp \
+	../src/external/miniz.c \
 	realtime_preview_session.cpp \
 	theme.cpp \
 	theme_switch.cpp \
@@ -72,6 +74,7 @@ HEADERS += \
 	render_output_parser.h \
 	scene_metadata_client.h \
 	asset_downloader.h \
+	scene_packs.h \
 	realtime_preview_session.h \
 	cross_abi_library.h \
 	error_handler.h \

@@ -47,6 +47,7 @@
 #include <functional>
 
 #include "asset_downloader.h"
+#include "scene_packs.h"
 #include "camera_math.h"
 #include "render_output_parser.h"
 #include "theme.h"
@@ -1569,6 +1570,11 @@ private:
 	QPushButton *m_downloadAssetsButton = nullptr;
 	QList<asset_downloader::Job> m_downloadableAssetJobs;
 	asset_downloader::Downloader *m_assetDownloader = nullptr;
+	// Set instead of m_downloadableAssetJobs when the selected scene's missing files belong to a catalogue pack (scene_packs.h): the large
+	// third-party scenes, downloaded from their original sites. The button then offers the whole pack.
+	const scene_packs::Pack *m_downloadablePack = nullptr;
+	scene_packs::PackDownloader *m_packDownloader = nullptr;
+	void startPackDownload(const scene_packs::Pack &pack, bool confirm, std::function<void(bool ok, const QString &error)> onDone = nullptr);
 	// The "Network" section appended to the Diagnostics report once the CLI part is in (see onDiagnosticsReportReady()).
 	asset_downloader::ConnectionCheck *m_connectionCheck = nullptr;
 	void onDownloadMissingAssetsClicked();

@@ -70,6 +70,12 @@ namespace detail {
 
 inline bool readText(const std::filesystem::path &p, std::string &out) {
 	std::ifstream f(p, std::ios::binary);
+	if (!f) {
+		// Not next to the application: a scene or Include that "Download missing files" put under the user asset folder.
+		const std::string alt = userAssetPath(std::filesystem::path(), p.string());
+		if (alt.empty()) return false;
+		f.open(alt, std::ios::binary);
+	}
 	if (!f) return false;
 	std::ostringstream ss;
 	ss << f.rdbuf();
@@ -90,6 +96,9 @@ inline void scanText(const std::string &text, std::vector<std::string> &files,
 					 std::vector<std::string> &includes) {
 	const std::size_t n = text.size();
 	std::size_t i = 0;
+	// The most recent capitalised word outside quotes is the pbrt directive the current parameters belong to. Film's "string filename" names the
+	// OUTPUT image the render would write, not an input, so it is never a missing file.
+	std::string directive;
 	auto skipSpace = [&](std::size_t &k) {
 		while (k < n && (std::isspace(static_cast<unsigned char>(text[k])) || text[k] == '[')) ++k;
 	};
@@ -118,6 +127,13 @@ inline void scanText(const std::string &text, std::vector<std::string> &files,
 				i = k;
 				continue;
 			}
+			if (std::isupper(static_cast<unsigned char>(text[i])) && (i == 0 || !std::isalnum(static_cast<unsigned char>(text[i - 1])))) {
+				std::size_t k = i;
+				while (k < n && std::isalnum(static_cast<unsigned char>(text[k]))) ++k;
+				directive = text.substr(i, k - i);
+				i = k;
+				continue;
+			}
 			++i;
 			continue;
 		}
@@ -132,7 +148,7 @@ inline void scanText(const std::string &text, std::vector<std::string> &files,
 			skipSpace(k);
 			std::string value;
 			if (readQuoted(k, value)) {
-				files.push_back(value);
+				if (directive != "Film") files.push_back(value);
 				i = k;
 			}
 		}

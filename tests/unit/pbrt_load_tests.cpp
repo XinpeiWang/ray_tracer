@@ -697,3 +697,58 @@ TEST_F(TempTree, PartialMissingMeshMessageSaysPartAndNotNothing) {
 	EXPECT_NE(msg.find("missing part of the scene"), std::string::npos) << msg;
 	EXPECT_EQ(msg.find("nothing to render"), std::string::npos) << msg;
 }
+
+TEST_F(TempTree, MissingGroupInAnExistingObjIsAWarningNotAMissingFile) {
+	// A newer upstream OBJ without the material the scene names: the file is there, so this must not be reported (and made fatal) as missing.
+	write("geometry/m.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nusemtl present\nf 1 2 3\n");
+	write("scene.pbrt",
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/m.obj#present\" ]\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/m.obj#renamed_away\" ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.scene.triangles.size(), 1u);
+	EXPECT_TRUE(r.scene.missingFiles.empty()) << "the file exists";
+	bool warned = false;
+	for (const pbrt_scene::Warning &w : r.scene.warnings)
+		if (w.message.find("renamed_away") != std::string::npos) warned = true;
+	EXPECT_TRUE(warned);
+}
+
+TEST_F(TempTree, AssetCheckIgnoresFilmsOutputFilename) {
+	// Film's "string filename" is where the render WRITES its image; it never exists beforehand and is not a missing asset.
+	write("scene.pbrt",
+		  "Film \"rgb\" \"integer xresolution\" [ 64 ] \"string filename\" [ \"out.exr\" ]\n"
+		  "Shape \"plymesh\" \"string filename\" [ \"geometry/gone.ply\" ]\n");
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path("scene.pbrt"));
+	ASSERT_EQ(r.missing.size(), 1u);
+	EXPECT_EQ(r.missing[0], "geometry/gone.ply");
+	EXPECT_EQ(r.referenced, 1);
+}
+
+TEST_F(TempTree, NamedMaterialMayBeUsedBeforeItIsMade) {
+	// pbrt-v4 resolves named materials after the whole file is read: pbrt-v4-scenes' contemporary-bathroom uses NamedMaterial "light" and
+	// only Includes the file that makes it at the very end.
+	write("mats.pbrt", "MakeNamedMaterial \"later\" \"string type\" [ \"diffuse\" ] \"rgb reflectance\" [ 0.2 0.4 0.6 ]\n");
+	write("scene.pbrt",
+		  "WorldBegin\n"
+		  "NamedMaterial \"later\"\n"
+		  "Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ] \"point3 P\" [ 0 0 0 1 0 0 0 1 0 ]\n"
+		  "Include \"mats.pbrt\"\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	ASSERT_TRUE(r.ok) << r.error;
+	ASSERT_EQ(r.scene.triangles.size(), 1u);
+	ASSERT_FALSE(r.scene.materials.empty());
+	const int mi = r.scene.triangles[0].material;   // the shape points at the filled-in material, not a stand-in
+	ASSERT_GE(mi, 0);
+	EXPECT_NEAR(r.scene.materials[mi].color[2], 0.6, 1e-6);
+}
+
+TEST_F(TempTree, NamedMaterialNeverMadeStillFails) {
+	write("scene.pbrt",
+		  "WorldBegin\n"
+		  "NamedMaterial \"nowhere\"\n"
+		  "Shape \"trianglemesh\" \"integer indices\" [ 0 1 2 ] \"point3 P\" [ 0 0 0 1 0 0 0 1 0 ]\n");
+	const pbrt_load::LoadResult r = pbrt_load::loadFile(path("scene.pbrt"));
+	EXPECT_FALSE(r.ok);
+	EXPECT_NE(r.error.find("nowhere"), std::string::npos) << r.error;
+}
