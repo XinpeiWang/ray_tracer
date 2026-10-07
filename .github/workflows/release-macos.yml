@@ -1,0 +1,74 @@
+# Builds the macOS release: one universal (Apple silicon + Intel) RayTracerGUI.dmg, smoke-tests the packaged app, and attaches the dmg to the
+# GitHub Release of the tag that triggered it. Until now the dmg was built by hand on a developer Mac and delivered ad hoc.
+#
+#   git tag v1.2.3 && git push origin v1.2.3     # builds the dmg, attaches it to the release for v1.2.3 (created if it does not exist)
+#   Actions -> "Release (macOS)" -> Run workflow  # builds the dmg and keeps it as a workflow artifact only (nothing is published)
+#
+# The Windows release (scripts/package.ps1) cannot be built here: its GPU tier needs the CUDA Toolkit and the OptiX SDK, which a hosted runner
+# does not have, so it stays a manual build on a machine that does. The app is not code-signed or notarized (no Apple Developer account), so the
+# README tells users to right-click -> Open the first time.
+name: Release (macOS)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+permissions:
+  contents: write   # to attach the dmg to a release
+
+jobs:
+  dmg:
+    runs-on: macos-14
+    steps:
+      - uses: actions/checkout@v4
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Build the universal app and dmg
+        run: bash scripts/build_and_deploy_macos.sh --arch universal
+
+      - name: Check that every binary in the app has both architectures
+        run: |
+          set -e
+          app=RayTracer_Package_macOS/RayTracerGUI.app/Contents
+          for f in MacOS/RayTracerGUI MacOS/ray_tracer MacOS/scene_metadata.dylib MacOS/realtime_renderer.dylib; do
+            archs="$(lipo -archs "$app/$f")"
+            echo "$f: $archs"
+            case " $archs " in *" arm64 "*) ;; *) echo "::error::$f has no arm64 slice"; exit 1 ;; esac
+            case " $archs " in *" x86_64 "*) ;; *) echo "::error::$f has no x86_64 slice"; exit 1 ;; esac
+          done
+
+      - name: Smoke-test the packaged GUI (headless)
+        # No GPU on the runner, so the Live Preview mode is not run; the window, options, scene builder and diagnostics modes are.
+        run: python3 scripts/gui_selftest.py RayTracer_Package_macOS/RayTracerGUI.app --out gui_selftest_logs
+
+      - name: Name the dmg
+        id: name
+        run: |
+          ref="${GITHUB_REF_NAME//\//-}"
+          cp RayTracer_Package_macOS/RayTracerGUI.dmg "RayTracer-macOS-universal-${ref}.dmg"
+          echo "file=RayTracer-macOS-universal-${ref}.dmg" >> "$GITHUB_OUTPUT"
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: ${{ steps.name.outputs.file }}
+          path: ${{ steps.name.outputs.file }}
+
+      - name: Self-test logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-selftest-logs
+          path: gui_selftest_logs
+
+      - name: Attach the dmg to the release
+        if: startsWith(github.ref, 'refs/tags/v')
+        uses: softprops/action-gh-release@v2
+        with:
+          files: ${{ steps.name.outputs.file }}

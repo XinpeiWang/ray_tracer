@@ -280,7 +280,7 @@ produce a distributable disk image):
 ```
 The script builds for the architecture(s) you ask for and checks that your Qt install has them (an official Qt 6 install is universal, so `--arch universal` works out of the box). A plain `cmake -B build` also builds for the Mac's real CPU even when `cmake` itself is an Intel binary running under Rosetta; pass `-DCMAKE_OSX_ARCHITECTURES=x86_64` to force an Intel build.
 Output lands in `RayTracer_Package_macOS/` (`RayTracerGUI.app` and
-`RayTracerGUI.dmg`). **Scenes that need external mesh/texture files
+`RayTracerGUI.dmg`). Pushing a `v*` tag (or running the "Release (macOS)" workflow by hand) builds the universal dmg on a GitHub runner, smoke-tests the packaged app headless (`scripts/gui_selftest.py`) and attaches the dmg to the release (`.github/workflows/release-macos.yml`); the Windows package still has to be built on a machine with CUDA and the OptiX SDK. **Scenes that need external mesh/texture files
 (`requires_files=true` in `scene_registry.h` — Sponza, Bistro, every
 "Large Scene", most single-model scenes) are deliberately NOT bundled into
 the `.app`/`.dmg`**: many are hundreds of MB to 1GB+, and a few (Power
