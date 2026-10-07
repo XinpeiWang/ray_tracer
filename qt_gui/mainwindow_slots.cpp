@@ -538,7 +538,7 @@ void MainWindow::onClearQueue() {
 void MainWindow::onRunDiagnosticsClicked() {
 	// A stray click while one is already running would leak a second
 	// QProcess and race both sets of signals into the same text edit.
-	if (m_diagnosticsRunner) return;
+	if (m_diagnosticsRunner || (m_connectionCheck && m_connectionCheck->isRunning())) return;
 
 	m_lastDiagReport.clear();  // no report to recolour until reportReady fires
 	if (m_diagTextEdit) {
@@ -573,6 +573,25 @@ void MainWindow::onRunDiagnosticsClicked() {
 void MainWindow::onDiagnosticsReportReady(const QString &report) {
 	m_lastDiagReport = report;
 	rebuildDiagPane();
+
+	// The CLI's report has no network facts (and cannot - the point is whether THIS app can reach the download server), so
+	// the GUI adds its own section: shown as soon as the check finishes, and part of the saved/copied report from then on.
+	if (!m_connectionCheck) {
+		m_connectionCheck = new asset_downloader::ConnectionCheck(asset_downloader::builtInManifest(), this);
+		connect(m_connectionCheck, &asset_downloader::ConnectionCheck::finished, this, [this](const QString &section) {
+			if (!m_lastDiagReport.isEmpty()) {
+				if (!m_lastDiagReport.endsWith(QLatin1Char('\n'))) m_lastDiagReport += QLatin1Char('\n');
+				m_lastDiagReport += section;
+				rebuildDiagPane();
+			}
+			if (m_runDiagnosticsButton && !m_diagnosticsRunner) m_runDiagnosticsButton->setEnabled(true);
+		});
+	}
+	m_connectionCheck->start();
+	// The runner's own cleanup (connected after this slot) re-enables the button; keep it off until the check is done too.
+	QTimer::singleShot(0, this, [this]() {
+		if (m_runDiagnosticsButton && m_connectionCheck && m_connectionCheck->isRunning()) m_runDiagnosticsButton->setEnabled(false);
+	});
 }
 
 void MainWindow::onDiagnosticsFailed(const QString &message) {

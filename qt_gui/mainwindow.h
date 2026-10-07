@@ -1569,6 +1569,8 @@ private:
 	QPushButton *m_downloadAssetsButton = nullptr;
 	QList<asset_downloader::Job> m_downloadableAssetJobs;
 	asset_downloader::Downloader *m_assetDownloader = nullptr;
+	// The "Network" section appended to the Diagnostics report once the CLI part is in (see onDiagnosticsReportReady()).
+	asset_downloader::ConnectionCheck *m_connectionCheck = nullptr;
 	void onDownloadMissingAssetsClicked();
 	// Runs the download; `confirm` false skips the dialogs (the self-test). `onDone` is called with the result.
 	void startAssetDownload(const QList<asset_downloader::Job> &jobs, bool confirm,

@@ -5,6 +5,8 @@
 #include <QDir>
 #include <QFile>
 #include <QFileInfo>
+#include <QElapsedTimer>
+#include <QNetworkInformation>
 #include <QNetworkReply>
 #include <QNetworkRequest>
 #include <QUrl>
@@ -162,6 +164,67 @@ void Downloader::finishWith(bool ok, const QString &error) {
 	m_running = false;
 	m_file.reset();
 	emit finished(ok, error, m_index);
+}
+
+}  // namespace asset_downloader
+
+namespace asset_downloader {
+
+ConnectionCheck::ConnectionCheck(const Manifest &manifest, QObject *parent) : QObject(parent), m_manifest(manifest) {}
+
+void ConnectionCheck::start() {
+	if (m_running) return;
+	m_running = true;
+
+	QString section = QStringLiteral("=== Network ===\n");
+	// What the operating system believes - cheap, and tells "no network at all" apart from "network up, host unreachable".
+	if (QNetworkInformation::loadDefaultBackend() && QNetworkInformation::instance()) {
+		switch (QNetworkInformation::instance()->reachability()) {
+		case QNetworkInformation::Reachability::Online:
+		case QNetworkInformation::Reachability::Site:
+			section += QStringLiteral("System Network: available (the system reports a connection)\n");
+			break;
+		case QNetworkInformation::Reachability::Local:
+			section += QStringLiteral("System Network: not available (local network only, no internet route)\n");
+			break;
+		case QNetworkInformation::Reachability::Disconnected:
+			section += QStringLiteral("System Network: not available (the system reports no connection)\n");
+			break;
+		default:
+			break;   // Unknown: say nothing rather than guess
+		}
+	}
+
+	if (m_manifest.baseUrl.isEmpty() || m_manifest.entries.isEmpty()) {
+		m_running = false;
+		emit finished(section);
+		return;
+	}
+	const QUrl url(m_manifest.urlFor(m_manifest.entries.first()));
+	const QString host = url.host();
+
+	QNetworkRequest request(url);
+	request.setAttribute(QNetworkRequest::RedirectPolicyAttribute, QNetworkRequest::NoLessSafeRedirectPolicy);
+	request.setTransferTimeout(8000);
+	auto *timer = new QElapsedTimer;
+	timer->start();
+	QNetworkReply *reply = m_network.head(request);
+	connect(reply, &QNetworkReply::finished, this, [this, reply, timer, host, section]() mutable {
+		const qint64 ms = timer->elapsed();
+		delete timer;
+		const int status = reply->attribute(QNetworkRequest::HttpStatusCodeAttribute).toInt();
+		if (reply->error() == QNetworkReply::NoError) {
+			section += QStringLiteral("Internet: available (reached %1 over HTTPS in %2 ms)\n").arg(host).arg(ms);
+		} else if (status > 0) {
+			// The server answered, just not with a file: the connection itself is fine.
+			section += QStringLiteral("Internet: available (reached %1 in %2 ms, but it answered HTTP %3)\n").arg(host).arg(ms).arg(status);
+		} else {
+			section += QStringLiteral("Internet: not available (could not reach %1: %2)\n").arg(host, reply->errorString());
+		}
+		reply->deleteLater();
+		m_running = false;
+		emit finished(section);
+	});
 }
 
 }  // namespace asset_downloader

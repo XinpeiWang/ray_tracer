@@ -89,4 +89,24 @@ private:
 	std::unique_ptr<QFile> m_file;
 };
 
+// The "Network" section of the Diagnostics report: does the system report a connection, and can the download server
+// (the host in the manifest) actually be reached over HTTPS from this app? One small HEAD request with a timeout - nothing
+// is downloaded, and only the project's own download host is contacted. The report is plain English, one "Key: value" fact per
+// line, like the CLI's own --diagnose report it is appended to (the GUI colours a line by words such as "available").
+class ConnectionCheck : public QObject {
+	Q_OBJECT
+public:
+	explicit ConnectionCheck(const Manifest &manifest, QObject *parent = nullptr);
+	void start();
+	bool isRunning() const { return m_running; }
+
+signals:
+	void finished(const QString &reportSection);
+
+private:
+	const Manifest &m_manifest;
+	QNetworkAccessManager m_network;
+	bool m_running = false;
+};
+
 }  // namespace asset_downloader

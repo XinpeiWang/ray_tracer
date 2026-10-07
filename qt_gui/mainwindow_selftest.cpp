@@ -67,6 +67,26 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		return;
 	}
 
+	// RT_GUI_SELFTEST=diagnostics: runs the Diagnostics tab's action (the CLI report plus the GUI's Network section) and logs the
+	// finished report. RT_ASSET_BASE_URL can point the network check at a local or dead address.
+	if (mode == "diagnostics") {
+		for (int i = 0; i < m_tabWidget->count(); ++i)
+			if (m_tabWidget->tabText(i).contains("Diagnostics")) m_tabWidget->setCurrentIndex(i);
+		onRunDiagnosticsClicked();
+		auto *poll = new QTimer(this);
+		auto *waited = new int(0);
+		connect(poll, &QTimer::timeout, this, [this, poll, waited, log]() {
+			const bool done = !m_diagnosticsRunner && !(m_connectionCheck && m_connectionCheck->isRunning()) && !m_lastDiagReport.isEmpty();
+			if (!done && ++*waited < 120) return;
+			poll->stop();
+			log(m_lastDiagReport);
+			log(m_lastDiagReport.contains("=== Network ===") ? "RESULT: OK" : "RESULT: FAIL (no Network section)");
+			QApplication::exit(m_lastDiagReport.contains("=== Network ===") ? 0 : 1);
+		});
+		poll->start(500);
+		return;
+	}
+
 	// RT_GUI_SELFTEST=download RT_GUI_SELFTEST_SCENE=<id>: selects the scene, runs the "Download missing files" action
 	// without dialogs (point RT_ASSET_BASE_URL at a local server to avoid the network), and checks the files arrived and
 	// the scene no longer reports them missing. Exit 0 on success.
