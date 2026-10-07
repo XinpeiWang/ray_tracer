@@ -488,6 +488,7 @@ inline bool flattenTriangleMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 		std::vector<float> nrm;
 		if (!meshes(file, pos, indices, uvs, nrm)) {
 			warn("plymesh '" + file + "' could not be read; skipped");
+			out.missingFiles.push_back(file);
 			return true;
 		}
 		P.assign(pos.begin(), pos.end());

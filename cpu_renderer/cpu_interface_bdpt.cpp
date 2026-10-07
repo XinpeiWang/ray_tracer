@@ -60,6 +60,10 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	}
 
 	out_world = scene_desc->build_world();
+	if (const int assets_err = check_scene_assets(*scene_desc)) {
+		out_err = assets_err;
+		return nullptr;
+	}
 	if (out_world.objects.size() == 0) {
 		std::cerr << ErrorInfo(ERR_CPU_SCENE_EMPTY).to_string() << std::endl;
 		out_err = ERR_CPU_SCENE_EMPTY;

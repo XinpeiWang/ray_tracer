@@ -149,6 +149,10 @@ struct MetalPocApp {
     // pbrt this v1 supports). Empty (the default) keeps every existing
     // CLI invocation's behavior identical to before this existed.
     std::string pbrtScenePath;
+    // Set by loadPbrtScene() when the scene named mesh files that could not be read and had
+    // nothing else to draw (pbrt_load::LoadResult::missingFiles). metal_render_main() turns it
+    // into ERR_FILE_NOT_FOUND instead of rendering the empty room and reporting success.
+    std::string pbrtMissingAssetsError;
     // Optional 9th positional CLI arg (see parseArgsAndCreateDevice()'s own
     // argv[8] handling) - a scene_id one of buildHandAuthoredScene()'s own
     // real cases covers (section 116, docs/METAL_GPU_FEASIBILITY.md), for a

@@ -163,6 +163,15 @@ SCENE_METADATA_API int scene_metadata_requires_files(const char* scene_id) {
 	}
 }
 
+// See cpu_scene_missing_assets_by_id() in cpu_interface.h for the format.
+SCENE_METADATA_API const char* scene_metadata_missing_assets(const char* scene_id) {
+	try {
+		return cpu_scene_missing_assets_by_id(scene_id);
+	} catch (...) {
+		return "";
+	}
+}
+
 SCENE_METADATA_API const char* scene_metadata_recommended_integrator(const char* scene_id) {
 	try {
 		return cpu_scene_recommended_integrator_by_id(scene_id);

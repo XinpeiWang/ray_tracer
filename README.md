@@ -775,14 +775,13 @@ Being upfront about what's incomplete rather than overselling:
 - **Hair/fur has two different fidelity levels**: scene F4 (Curve Fibers) uses real Bezier curve/strand geometry (`CurveShape`, exact ray-curve intersection on CPU, tessellated bilinear-patch tubes on GPU); the older scene B11 instead applies the Marschner/Chiang BxDF math via a shading-normal proxy on sphere primitives, not actual fiber geometry.
 - **GPU wavefront path tracer is opt-in and less exercised**: enabled via the `--wavefront` flag; the default recursive GPU backend is the primary, best-tested GPU path.
 - **GPU/OptiX rendering is Windows+NVIDIA only, with no fallback**: CUDA/OptiX isn't available on macOS at all (Apple dropped NVIDIA GPU support; Apple Silicon has no CUDA), so that specific backend can't be ported there. macOS instead has its own separate Metal GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON`) alongside the CPU renderer/CLI/Qt GUI (see [macOS](#macos)). It matches the CPU renderer on nearly every scene but is not at full parity — `docs/METAL_PARITY_STATUS.md` lists the remaining differences (for example the `portal-light` example, whose environment map isn't bundled, and a few texture-filtering and integrator-option gaps).
-- **Scenes with missing assets can report success while rendering nothing**: a scene that needs external meshes/textures (the GUI's "Requires External Files" tab) renders an empty or partial image when those files aren't present, and the renderer still exits with success. Check the Log tab for "could not be read; skipped" lines.
+- **A scene with some assets missing renders without them**: when a scene needs external meshes/textures (the GUI's "Requires External Files" tab) and only *some* are absent, the renderer skips them with a warning (see "could not be read" in the Log tab) and draws the rest. If *every* mesh is missing it now stops with an error (exit code 3, "file not found") naming the files, and the GUI shows which folder they belong in as soon as you select the scene.
 
 ### Planned / possible future work
 
 - [ ] GPU implementation of BDPT/MLT
 - [ ] Broader GPU SPPM scene support
 - [ ] Real curve/strand geometry for scene B11's hair fibers (matching scene F4's approach)
-- [ ] Failing loudly (and warning in the GUI) when a scene's assets are missing
 - [ ] Native Apple Silicon (arm64) GUI build — the current `.app`/`.dmg` is x86_64 and runs under Rosetta
 - [ ] Linux support (likely a small extension of the same CMake/POSIX groundwork the macOS port added)
 

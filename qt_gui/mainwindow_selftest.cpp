@@ -67,6 +67,11 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	}
 
 	if (mode == "ui") {
+		// RT_GUI_SELFTEST_SCENE=<id> selects that scene first, so the scene info (including the
+		// missing-files warning) can be checked; its text is logged as well as pictured.
+		const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
+		if (!sceneOverride.isEmpty()) selectSceneById(sceneOverride);
+		log(QString("scene info: %1").arg(m_sceneInfoLabel ? m_sceneInfoLabel->text() : QString()));
 		shot("ui");
 		QApplication::exit(0);
 		return;

@@ -517,6 +517,12 @@ int cpu_scene_legacy_id_by_id(const char* scene_id);
 const char* cpu_scene_performance_by_id(const char* scene_id);
 int cpu_scene_recommended_spp_by_id(const char* scene_id);
 int cpu_scene_requires_files_by_id(const char* scene_id);
+/// For a scene flagged requires_files that is backed by a .pbrt file: checks whether the files that
+/// scene refers to are actually on disk. "" when nothing is missing (or the scene is not pbrt-backed,
+/// so there is nothing to check); otherwise four tab-separated fields - the directory the missing
+/// files belong in (absolute), how many are missing, how many the scene refers to, and the first
+/// missing path as written in the scene. The pointer stays valid until the next call on this thread.
+const char* cpu_scene_missing_assets_by_id(const char* scene_id);
 /// For a scene loaded from a .pbrt file that itself declares a Sampler/
 /// Integrator/light sampler directive (SceneDescriptor::recommended_*,
 /// see scene_registry.h) - "" for every hand-built scene, and for a

@@ -1868,9 +1868,30 @@ struct FlatScene {
 	// cropX0 above, not maxDepth/samplerType's CLI-overridable one.
 	double maxComponentValue = 1e9;
 	std::vector<pbrt_scene::Warning> warnings;
+	// Mesh files (plymesh / .obj) a Shape named but the resolver could not read.
+	// Those shapes are skipped with a warning; this list is what lets the loader
+	// tell "a few meshes are missing" from "the scene is empty because every
+	// mesh is missing" (pbrt_load::loadFile turns the latter into an error).
+	std::vector<std::string> missingFiles;
 
 	bool empty() const {
 		return triangles.empty() && spheres.empty() && instances.empty();
+	}
+
+	// True if ANY shape survived flattening, of any kind. empty() above only
+	// looks at triangles/spheres/instances, and an instance of a group whose
+	// shapes were all skipped still counts there.
+	bool hasAnyGeometry() const {
+		if (!triangles.empty() || !animatedTriangleMeshes.empty() || !spheres.empty() || !disks.empty() ||
+			!cylinders.empty() || !cones.empty() || !paraboloids.empty() || !bilinearPatches.empty() ||
+			!animatedBilinearPatches.empty() || !curves.empty() || !animatedCurves.empty())
+			return true;
+		for (const Instance &inst : instances) {
+			if (inst.group < 0 || inst.group >= static_cast<int>(groups.size())) continue;
+			const InstanceGroup &g = groups[inst.group];
+			if (!g.triangles.empty() || !g.spheres.empty()) return true;
+		}
+		return false;
 	}
 };
 

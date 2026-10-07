@@ -1094,9 +1094,27 @@ void MainWindow::refreshSceneInfoLabel(const SceneMetadataClient::SceneMetadata*
 	// on every call (rather than cached) specifically so restyleThemedWidgets()
 	// calling this on a theme switch picks up the new theme's colours instead
 	// of leaving an already-shown badge stuck in the old one.
-	if (meta->requiresFiles)
-		infoText += tr("<br><b style='color: %1;'>&#9888; Requires external files</b>")
-			.arg(m_activeTheme.logWarning.name());
+	if (meta->requiresFiles) {
+		// Checked on every selection, not cached: the user may copy the missing
+		// folder in while the app is open and re-select the scene to see it clear.
+		const SceneMetadataClient::MissingAssets missing = SceneMetadataClient::missingAssets(scene_id);
+		const QString folder = QDir::toNativeSeparators(missing.folder).toHtmlEscaped();
+		if (missing.any && missing.referenced == 0) {
+			// The scene's own .pbrt is absent (a scene from a collection that has not been downloaded).
+			infoText += tr("<br><b style='color: %1;'>&#9888; This scene's file was not found: %2</b>"
+						   "<br>Expected in: %3<br>Rendering this scene will fail until it is installed.")
+				.arg(m_activeTheme.logError.name(), QDir::toNativeSeparators(missing.example).toHtmlEscaped(), folder);
+		} else if (missing.any) {
+			infoText += tr("<br><b style='color: %1;'>&#9888; Missing external files: %2 of %3 not found (first: %4)</b>"
+						   "<br>Put them in: %5<br>Rendering this scene will fail until they are installed.")
+				.arg(m_activeTheme.logError.name())
+				.arg(missing.missing).arg(missing.referenced)
+				.arg(missing.example.toHtmlEscaped(), folder);
+		} else {
+			infoText += tr("<br><b style='color: %1;'>&#9888; Requires external files</b>")
+				.arg(m_activeTheme.logWarning.name());
+		}
+	}
 	if (!gpuSupported)
 		infoText += tr("<br><b style='color: %1;'>&#9888; CPU renderer only</b>")
 			.arg(m_activeTheme.logError.name());

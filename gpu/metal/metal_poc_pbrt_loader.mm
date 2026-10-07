@@ -240,6 +240,7 @@ void MetalPocApp::loadPbrtScene() {
     pbrt_load::LoadResult result = pbrt_load::loadFile(pbrtScenePath);
     if (!result.ok) {
         fprintf(stderr, "loadPbrtScene: %s\n", result.error.c_str());
+        if (!result.missingFiles.empty()) pbrtMissingAssetsError = result.error;
         return;
     }
     pbrtTriangleFiberTangent.clear();

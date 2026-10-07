@@ -100,6 +100,7 @@ std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int h
     app.skipDemoRoom = true;
     app.liveSession = true;
     app.buildScene();
+    if (!app.pbrtMissingAssetsError.empty()) { fail(app.pbrtMissingAssetsError); return nullptr; }
     if (!app.havePbrtCamera) { fail("the pbrt scene failed to load (see the loader's message above)"); return nullptr; }
     if (!app.buildGPUResources()) { fail("could not build the GPU scene resources"); return nullptr; }
     if (!app.compileShaderAndDispatch(8, args)) { fail("shader compile / first frame failed"); return nullptr; }   // also fills app.liveRender

@@ -1036,6 +1036,8 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
             }
         }
         app.buildScene();
+        // loadPbrtScene() already printed the explanation (naming the missing files).
+        if (!app.pbrtMissingAssetsError.empty()) return ERR_FILE_NOT_FOUND;
         if (force_camera_override) {
             if (app.havePbrtCamera) {
                 app.applyCameraOverride(cam_x, cam_y, cam_z);

@@ -40,6 +40,7 @@
 #include "../src/TheRestOfYourLife/transform_instance.h"
 #include "../src/TheRestOfYourLife/animated_transform_instance.h"
 #include "../src/shared/exr_writer.h"
+#include "../src/shared/pbrt_asset_check.h"
 #include "../src/shared/light_sampler_resolution.h"
 #include <iostream>
 #include <fstream>
@@ -355,6 +356,7 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 		// Build world and lights via registry -- no switch needed
 		std::cout << "[cpu_interface] Building scene " << scene_id << " (" << scene_desc->name << ")..." << std::endl;
 		hittable_list world      = scene_desc->build_world();
+		if (const int assets_err = check_scene_assets(*scene_desc)) return assets_err;
 		hittable_list lights_raw = scene_desc->build_lights();
 
 		// See light_sampler_resolution.h's own comment for the full "CLI
@@ -705,6 +707,7 @@ extern "C" int cpu_render_main_sppm(int width, int height, int iterations, int p
 
 		std::cout << "[cpu_interface] Building scene " << scene_id << " (" << scene_desc->name << ") for SPPM..." << std::endl;
 		hittable_list world      = scene_desc->build_world();
+		if (const int assets_err = check_scene_assets(*scene_desc)) return assets_err;
 		hittable_list lights_raw = scene_desc->build_lights();
 
 		// SPPM has no --lightsampler of its own (see main.cpp's "has no
@@ -1007,6 +1010,19 @@ extern "C" const char* cpu_scene_performance_by_id(const char* scene_id) {
 extern "C" int cpu_scene_recommended_spp_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->recommended_spp : 100;
+}
+
+extern "C" const char* cpu_scene_missing_assets_by_id(const char* scene_id) {
+	static thread_local std::string report;
+	report.clear();
+	const SceneDescriptor* s = find_scene(scene_id);
+	if (!s || !s->requires_files || !s->is_pbrt_backed) return "";
+	const char* path = cpu_scene_pbrt_path_by_id(scene_id);
+	if (!path || !path[0]) return "";
+	const pbrt_asset_check::Result r = pbrt_asset_check::check(path);
+	if (r.missing.empty()) return "";
+	report = r.folder + "\t" + std::to_string(r.missing.size()) + "\t" + std::to_string(r.referenced) + "\t" + r.missing.front();
+	return report.c_str();
 }
 
 extern "C" int cpu_scene_requires_files_by_id(const char* scene_id) {
