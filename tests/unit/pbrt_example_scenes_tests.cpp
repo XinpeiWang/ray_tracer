@@ -520,6 +520,19 @@ TEST(PbrtBackendAgreementTest, GpuSppmAgreesWithCpuSppmOnSkyLitAndSphericalCamer
 	}
 }
 
+// A small sphere light ~480 units away. The GPU backends found the sampled point on the sphere, and intersected it, with float32 formulas that subtract two numbers near
+// |oc|^2 = 2.3e5 (b^2 - c; 1 - sqrt(1 - r^2/d^2)): the point came out ~0.005 units off, the shadow ray (stopped 0.002 short of it) hit the light's own surface first and was counted
+// as blocked. A floor point read 65% (recursive) / 73% (wavefront) of its closed form Lo = rho L (r/d)^2 cos, and a floor-and-wall scene 84% / 97% of the CPU; the farther from
+// the light, the worse. pbrt-v4's improved-precision discriminant and the exact 1 - cos(theta_max) fix it: both read the closed form and the CPU to 0.1%.
+TEST(PbrtBackendAgreementTest, DistantSphereLightHasItsClosedFormOnEveryBackend) {
+	const double expected[3] = {0.01294, 0.01294, 0.02071};
+	expectChannelMeans("distant-sphere-light-probe", 256, 1, expected, 0.02, 0.03);
+}
+
+TEST(PbrtBackendAgreementTest, DistantSphereLightSceneAgreesAcrossBackends) {
+	expectBackendsAgree("distant-sphere-light", 64, 0.985, 1.015);
+}
+
 // A diffuse-transmission plate (R = 0.3, T = 0.5) lit by one point light has a closed form at the centre (pbrt_scenes/diffuse-transmission-point-light*.pbrt):
 // E = I / d^2 = 10, so 0.5 / pi * 10 = 1.5915 seen through the plate from a light behind it and 0.3 / pi * 10 = 0.9549 seen from the lit side. Both GPU backends
 // sampled no light at a diffuse-transmission vertex (a BSDF-only estimator), which cannot find a point light at all: the plate rendered black, in both cases.

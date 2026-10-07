@@ -182,7 +182,7 @@ __device__ __forceinline__ bool wf_reevaluate_light_geometry(
 		const float3 w = toC / distC;
 		const float cosTheta = dot(out_dir, w);
 		if (cosTheta < cosMax) { out_geom_pdf = 0.0f; return false; }
-		const float solid = 2.0f * 3.14159265f * (1.0f - cosMax);
+		const float solid = 2.0f * 3.14159265f * (((r * r) / (distC * distC)) / (1.0f + cosMax));   // 1 - cosMax in its stable form (see wf_sample_sphere_light)
 		// Degenerate near-zero solid angle: fall back to pdf=1.0f, matching
 		// wf_sample_sphere_light's OWN fallback exactly (not 0.0f/failure) -
 		// these two formulas must agree, since a candidate generated with

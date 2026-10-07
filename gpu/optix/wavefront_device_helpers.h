@@ -815,9 +815,14 @@ __device__ __forceinline__ float3 wf_sample_sphere_light(const SphereData& sph, 
 		pdf = 1.0f / (4.0f * 3.14159265f * r * r);
 		dir = normalize(wf_rand_unit(seed));
 	} else {
-		float cos_max = sqrtf(fmaxf(0.0f, 1.0f - (r * r) / (dist * dist)));
+		// 1 - cos(theta_max) = x / (1 + cos(theta_max)) with x = r^2 / d^2. Written this way (and the closest-approach vector below) because 1 - sqrt(1 - x) and
+	// b^2 - c each subtract two nearly equal float numbers for a distant light (x ~ 4e-5 and |oc|^2 ~ 2.5e5 at 500 units): the recovered surface point was off by
+	// ~0.005 units, the shadow ray stopped 0.002 short of it, hit the light sphere's own surface first and counted as blocked - a light 500 units away lost 20-55%.
+		const float x_sq = (r * r) / (dist * dist);
+		float cos_max = sqrtf(fmaxf(0.0f, 1.0f - x_sq));
+		const float one_minus_cos = x_sq / (1.0f + cos_max);
 		float phi     = 2.0f * 3.14159265f * wf_rand(seed);
-		float cos_t   = 1.0f - wf_rand(seed) * (1.0f - cos_max);
+		float cos_t   = 1.0f - wf_rand(seed) * one_minus_cos;
 		float sin_t   = sqrtf(fmaxf(0.0f, 1.0f - cos_t * cos_t));
 		float3 w      = normalize(to_c);
 		float3 u, v;
@@ -825,7 +830,7 @@ __device__ __forceinline__ float3 wf_sample_sphere_light(const SphereData& sph, 
 		else                    u = normalize(cross(make_float3(1,0,0), w));
 		v = cross(w, u);
 		dir = normalize(sin_t * cosf(phi) * u + sin_t * sinf(phi) * v + cos_t * w);
-		float solid = 2.0f * 3.14159265f * (1.0f - cos_max);
+		float solid = 2.0f * 3.14159265f * one_minus_cos;
 		pdf = (solid > 1e-10f) ? 1.0f / solid : 1.0f;
 	}
 	// Ray-sphere intersection along `dir` from `hit` to find the true
@@ -836,8 +841,8 @@ __device__ __forceinline__ float3 wf_sample_sphere_light(const SphereData& sph, 
 	// far root in that case.
 	float3 oc = hit - center;
 	float b = dot(oc, dir);
-	float c = dot(oc, oc) - r * r;
-	float disc = fmaxf(0.0f, b * b - c);
+	const float3 perp = oc - b * dir;   // closest approach of the ray's line to the centre
+	float disc = fmaxf(0.0f, r * r - dot(perp, perp));
 	float sq = sqrtf(disc);
 	float tNear = -b - sq;
 	maxDist = (tNear > 1e-6f) ? tNear : fmaxf(0.0f, -b + sq);

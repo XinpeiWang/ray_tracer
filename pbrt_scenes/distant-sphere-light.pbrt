@@ -1,0 +1,35 @@
+# distant-sphere-light.pbrt -- a floor and a wall lit only by a small sphere light about 500 units away; the GPU backends must read what the CPU reads.
+#
+# The GPU light samplers recovered the sampled point on a sphere light with b^2 - c, two float numbers around |oc|^2 = 2.5e5 here, and 1 - cos(theta_max) as
+# 1 - sqrt(1 - r^2/d^2) with r^2/d^2 ~ 4e-5: both cancel catastrophically in float32. The point came out ~0.005 units off, the shadow ray (stopped 0.002 before it)
+# hit the light sphere's own surface first and was counted as blocked, and the farther from the light, the more samples were lost: the recursive backend read 81% of
+# the CPU on this layout (the dim far regions 42%), the wavefront backend 95%. The camera looks away from the light so the picture is the lit floor and wall only (the light itself would dominate the mean). Layout from
+# killeroo-simple.pbrt without the models.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  400 20 30    0 63 -300    0 0 1
+Rotate -5 0 0 1
+Camera "perspective" "float fov" [ 39 ]
+
+Film "rgb" "integer xresolution" [ 64 ] "integer yresolution" [ 64 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  Translate 150 0 20
+  Translate 0 120 0
+  AreaLightSource "diffuse" "rgb L" [ 2000 2000 2000 ]
+  Shape "sphere" "float radius" [ 3 ]
+AttributeEnd
+
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.8 ]
+  Translate 0 0 -140
+  Shape "trianglemesh" "integer indices" [ 0 1 2 2 3 0 ]
+    "point3 P" [ -1000 -1000 0 1000 -1000 0 1000 1000 0 -1000 1000 0 ]
+  Shape "trianglemesh" "integer indices" [ 0 1 2 2 3 0 ]
+    "point3 P" [ -400 -1000 -1000 -400 1000 -1000 -400 1000 1000 -400 -1000 1000 ]
+AttributeEnd

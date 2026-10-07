@@ -1,0 +1,28 @@
+# distant-sphere-light-probe.pbrt -- one floor point lit by a small sphere light about 480 units away, with a closed form.
+#
+# Radiance of a diffuse floor point under a small sphere light (radius r, distance d, radiance L, floor reflectance rho, cosine c at the floor):
+#   Lo = rho * L * (r / d)^2 * c.   Here P = (-300, 63, -140), the light centre (150, 120, 20), r = 3, L = 2000: d = 479.9, c = 160 / d = 0.3334, so
+#   Lo = 0.01294 (red and green, rho 0.5) and 0.02071 (blue, rho 0.8).
+# The camera looks straight down at P with a 1 degree field of view (every pixel sees P), depth 1. The GPU backends read 65% (recursive) and 73% (wavefront) of this
+# before their sphere intersection and light sampling stopped cancelling catastrophically in float32 at this distance (see distant-sphere-light.pbrt).
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  -300 63 -100    -300 63 -140    1 0 0
+Camera "perspective" "float fov" [ 1 ]
+Film "rgb" "integer xresolution" [ 16 ] "integer yresolution" [ 16 ]
+Sampler "halton" "integer pixelsamples" [ 16 ]
+WorldBegin
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0 0 0 ]
+  Translate 150 0 20
+  Translate 0 120 0
+  AreaLightSource "diffuse" "rgb L" [ 2000 2000 2000 ]
+  Shape "sphere" "float radius" [ 3 ]
+AttributeEnd
+AttributeBegin
+  Material "diffuse" "rgb reflectance" [ 0.5 0.5 0.8 ]
+  Translate 0 0 -140
+  Shape "trianglemesh" "integer indices" [ 0 1 2 2 3 0 ]
+    "point3 P" [ -1000 -1000 0 1000 -1000 0 1000 1000 0 -1000 1000 0 ]
+AttributeEnd

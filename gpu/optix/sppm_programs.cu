@@ -123,8 +123,12 @@ extern "C" __global__ void __intersection__sppm_sphere() {
 	const float3 oc = ray_orig - sphere.center;
 	const float a = dot(ray_dir, ray_dir);
 	const float half_b = dot(oc, ray_dir);
-	const float c = dot(oc, oc) - sphere.radius * sphere.radius;
-	const float discriminant = half_b * half_b - a * c;
+	// pbrt-v4's improved-precision discriminant (Sphere::BasicIntersect): half_b^2 - a*c subtracts two float numbers near |oc|^2 (2.5e5 for a sphere 500 units
+	// away) and so puts the roots ~0.005 units off - enough for a shadow ray to a light sphere to hit its surface before the point it was aimed at and be counted
+	// as blocked. Taking the length of v = oc - (half_b / a) d, the closest approach of the ray's line to the centre, gives a * (r + |v|) * (r - |v|) exactly.
+	const float3 closest = oc - (half_b / a) * ray_dir;
+	const float closest_len = length(closest);
+	const float discriminant = a * (sphere.radius + closest_len) * (sphere.radius - closest_len);
 	if (discriminant < 0.0f) return;
 
 	const float sqrtd = sqrtf(discriminant);
@@ -449,9 +453,12 @@ static __device__ float3 sppm_sample_sphere_light(const SphereData& sph, const f
 		} while (dot(p, p) > 1.0f || dot(p, p) < 1e-8f);
 		dir = normalize(p);
 	} else {
-		float cos_max = sqrtf(fmaxf(0.0f, 1.0f - (r * r) / (dist * dist)));
+		// 1 - cos(theta_max) in its numerically stable form and a cancellation-free surface point: see wf_sample_sphere_light() (wavefront_device_helpers.h).
+		const float x_sq = (r * r) / (dist * dist);
+		float cos_max = sqrtf(fmaxf(0.0f, 1.0f - x_sq));
+		const float one_minus_cos = x_sq / (1.0f + cos_max);
 		float phi     = 2.0f * 3.14159265f * sppm_rand(seed);
-		float cos_t   = 1.0f - sppm_rand(seed) * (1.0f - cos_max);
+		float cos_t   = 1.0f - sppm_rand(seed) * one_minus_cos;
 		float sin_t   = sqrtf(fmaxf(0.0f, 1.0f - cos_t * cos_t));
 		float3 w      = normalize(to_c);
 		float3 u, v;
@@ -459,13 +466,13 @@ static __device__ float3 sppm_sample_sphere_light(const SphereData& sph, const f
 		else                    u = normalize(cross(make_float3(1,0,0), w));
 		v = cross(w, u);
 		dir = normalize(sin_t * cosf(phi) * u + sin_t * sinf(phi) * v + cos_t * w);
-		float solid = 2.0f * 3.14159265f * (1.0f - cos_max);
+		float solid = 2.0f * 3.14159265f * one_minus_cos;
 		pdf = (solid > 1e-10f) ? 1.0f / solid : 1.0f;
 	}
 	float3 oc = hit - sph.center;
 	float b = dot(oc, dir);
-	float c = dot(oc, oc) - r * r;
-	float disc = fmaxf(0.0f, b * b - c);
+	const float3 perp = oc - b * dir;
+	float disc = fmaxf(0.0f, r * r - dot(perp, perp));
 	float sq = sqrtf(disc);
 	float tNear = -b - sq;
 	maxDist = (tNear > 1e-6f) ? tNear : fmaxf(0.0f, -b + sq);
