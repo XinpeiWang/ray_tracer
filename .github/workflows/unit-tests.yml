@@ -94,6 +94,42 @@ jobs:
         timeout-minutes: 20
         run: .\tests\build\Release\cpu_integrator_tests.exe --gtest_color=yes
 
+  unit-tests-macos:
+    # The same portable test target as the Windows job above, on Apple silicon: it builds and passes there (about 3,570 tests, ~20 s to run
+    # natively) and so catches a macOS-only break - a header that only compiles with MSVC, a path assumption, an Apple clang diagnostic - that the
+    # Windows job cannot. Same two executables, same cwd rule (the repo root, so pbrt_scenes/ resolves). Pinned to macos-14 like metal-poc.
+    runs-on: macos-14
+    env:
+      # Several tests build scratch folders under $TEMP (set on Windows, not on macOS); without it they would litter the repo root.
+      TEMP: ${{ runner.temp }}
+    steps:
+      - uses: actions/checkout
+
+      - name: Set up ccache
+        uses: hendrikmuhs/ccache-action@v1.2
+        with:
+          key: unit-tests-macos-14
+          max-size: 500M
+
+      - name: Ensure Ninja
+        run: command -v ninja || brew install ninja
+
+      - name: Configure (CMake)
+        run: >
+          cmake -S tests -B build_tests -G Ninja -DCMAKE_BUILD_TYPE=Release
+          -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache
+
+      - name: Build (Release)
+        run: cmake --build build_tests --target unit_tests cpu_integrator_tests
+
+      - name: Run unit_tests
+        # From the repo root, not tests/ - see the Windows job's own comment on why (fixtures under pbrt_scenes/ are found relative to the cwd).
+        run: build_tests/unit_tests --gtest_color=yes
+
+      - name: Run CPU integrator agreement tests
+        timeout-minutes: 20
+        run: build_tests/cpu_integrator_tests --gtest_color=yes
+
   metal-poc:
     # Pinned to a specific image, not macos-latest - this job's own
     # sibling above already learned this lesson the hard way once
