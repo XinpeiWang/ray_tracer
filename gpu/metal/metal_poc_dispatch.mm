@@ -662,6 +662,22 @@ bool MetalPocApp::compileShaderAndDispatch(int argc, const char** argv) {
         // (exp(-0.05*800) ~ 0) - not a subtle atmospheric tweak, a
         // completely broken render.
         uniforms.cameraPos = PackedFloat3{pbrtCameraPos.x, pbrtCameraPos.y, pbrtCameraPos.z};
+        // A glass sphere bounding a medium that CONTAINS the camera (A9's radius-5000 world haze): paths start inside its medium. The outermost
+        // such sphere wins (a smaller one nested inside is entered and left by refraction as usual).
+        uniforms.cameraGlassPrim = 0;   // 1 + the sphere index, 0 = none
+        {
+            float bestRadius = 0.0f;
+            for (size_t si = 0; si < spheres.size() && si < sphereMaterials.size(); ++si) {
+                const TriangleMaterial& sm = sphereMaterials[si];
+                const bool glassMedium = (sm.materialType == 2u || sm.materialType == 5u || sm.materialType == 11u) && sm.conductorK.y > 0.5f;
+                if (!glassMedium) continue;
+                const float dx = pbrtCameraPos.x - spheres[si].center.x, dy = pbrtCameraPos.y - spheres[si].center.y, dz = pbrtCameraPos.z - spheres[si].center.z;
+                if (dx * dx + dy * dy + dz * dz < spheres[si].radius * spheres[si].radius && spheres[si].radius > bestRadius) {
+                    bestRadius = spheres[si].radius;
+                    uniforms.cameraGlassPrim = (int32_t)si + 1;
+                }
+            }
+        }
         uniforms.cameraForward = PackedFloat3{pbrtCameraForward.x, pbrtCameraForward.y, pbrtCameraForward.z};
         uniforms.cameraRight = PackedFloat3{pbrtCameraRight.x, pbrtCameraRight.y, pbrtCameraRight.z};
         uniforms.cameraUp = PackedFloat3{pbrtCameraUp.x, pbrtCameraUp.y, pbrtCameraUp.z};

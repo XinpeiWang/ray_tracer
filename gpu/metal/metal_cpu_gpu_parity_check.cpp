@@ -297,6 +297,11 @@ MPRegionalDiffResult mp_regional_diff(const MPImage& a, const MPImage& b,
 constexpr int kWidth = 60;
 constexpr int kHeight = 60;
 constexpr int kDepth = 8;
+// METAL_PARITY_DEPTH=<n> overrides the path depth of BOTH renders (to tell a depth-limit difference from a lighting one; not for the gate).
+int parity_depth() {
+	if (const char* e = std::getenv("METAL_PARITY_DEPTH")) return std::max(1, std::atoi(e));
+	return kDepth;
+}
 constexpr int kCpuSpp = 200;
 constexpr int kMetalSpp = 600;
 constexpr int kVolumeCpuSpp = 300;
@@ -360,7 +365,7 @@ bool is_extra_regression_scene(const std::string& id) {
 	static const char* const kNames[] = {"chromatic-absorber.pbrt", "chromatic-camera-medium-absorber.pbrt", "chromatic-camera-medium.pbrt",
 	                                      "chromatic-rgbgrid-absorber.pbrt", "chromatic-rgbgrid-furnace.pbrt", "fog-point-light.pbrt",
 	                                      "cornell-spotlight.pbrt", "bump-mapped-plane.pbrt", "maxcomponentvalue-firefly-clamp.pbrt", "rough-glass-from-inside.pbrt",
-	                                      "hair-sphere-dim-sky.pbrt", "textured-twosided-lights.pbrt", "normal-mapped-plane.pbrt", "rgbgrid-emission.pbrt", "measured-furnace.pbrt", "measured-lights.pbrt", "measured-lights-area.pbrt"};
+	                                      "hair-sphere-dim-sky.pbrt", "textured-twosided-lights.pbrt", "normal-mapped-plane.pbrt", "rgbgrid-emission.pbrt", "measured-furnace.pbrt", "measured-lights.pbrt", "measured-lights-area.pbrt", "coated-conductor-glossy-lamp.pbrt"};
 	const std::string path(p);
 	for (const char* n : kNames) {
 		const std::string name(n);
@@ -456,7 +461,7 @@ RenderOptions parity_options() {
 
 MPImage render_cpu_once(const SceneDescriptor& s, int spp) {
 	const std::string fn = "mcparity_" + s.id + "_cpu.exr";
-	cpu_render_main(kWidth, kHeight, spp, kDepth, fn.c_str(), s.id.c_str(),
+	cpu_render_main(kWidth, kHeight, spp, parity_depth(), fn.c_str(), s.id.c_str(),
 	                 s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z, /*force_camera_override=*/0, parity_options());
 	MPImage img = mp_load_exr(fn.c_str());
 	if (!std::getenv("METAL_PARITY_KEEP")) std::remove(fn.c_str());  // METAL_PARITY_KEEP=1 keeps the EXRs for inspection
@@ -469,7 +474,7 @@ MPImage render_metal_once(const SceneDescriptor& s, int spp) {
 	// METAL_PARITY_ADAPTIVE=1 turns Metal's adaptive sampling on (off by default, as on the CPU) - only for measuring what it saves.
 	if (std::getenv("METAL_PARITY_ADAPTIVE")) opts.adaptive_sampling = true;
 	const auto t0 = std::chrono::steady_clock::now();
-	metal_render_main(kWidth, kHeight, spp, kDepth, fn.c_str(), s.id.c_str(),
+	metal_render_main(kWidth, kHeight, spp, parity_depth(), fn.c_str(), s.id.c_str(),
 	                   s.camera.lookfrom_x, s.camera.lookfrom_y, s.camera.lookfrom_z, /*force_camera_override=*/0, opts);
 	// METAL_PARITY_TIMING=1 prints the Metal render's wall time (scene load + shader compile + render + write) per scene.
 	if (std::getenv("METAL_PARITY_TIMING"))

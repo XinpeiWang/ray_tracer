@@ -2,27 +2,30 @@
 // the walk and metal_poc_materials_layered.metal's CoatedDiffuse comment for how its three pieces (Sample_f, PDF(), f()) are
 // integrated. `mat.conductorEta`/`mat.conductorK` = the metal's own complex IOR; as in pbrt's CoatedConductorMaterial::GetBxDF the
 // conductor sits INSIDE the coat, so both are divided by the coat's IOR (done in layeredCoatedConductorParts()). `mat.color` is
-// unused. `mat.ior`/`mat.roughness` are the coat's real IOR and PRECOMPUTED GGX alpha, which also serves as the conductor's
-// (pbrt's separate conductor.roughness is not plumbed to Metal).
+// unused. `mat.ior`/`mat.roughness` are the coat's real IOR and PRECOMPUTED GGX alpha. `mat.transmitColor` = (conductor alpha, coat thickness, 0)
+// when transmitColor.y > 0 (pbrt's conductor.roughness and thickness); otherwise (zero-initialised materials) the coat's alpha serves both
+// interfaces and the thickness is kLayerThickness.
 inline float3 layeredCoatedConductorF(float3 wiLocal, float3 woLocal, float eta, float alpha,
-                                       float3 conductorEta, float3 conductorK, thread uint& rngState) {
+                                       float3 conductorEta, float3 conductorK, thread uint& rngState,
+                                       float baseAlpha = -1.0, float thickness = kLayerThickness) {
     LayerTop top; LayerBottom bottom;
-    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom);
-    return layeredF(top, bottom, kLayerThickness, woLocal, wiLocal, rngState);
+    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom, baseAlpha);
+    return layeredF(top, bottom, thickness, woLocal, wiLocal, rngState);
 }
 
 inline float layeredCoatedConductorPdf(float3 woLocal, float3 wiLocal, float eta, float alpha,
-                                        float3 conductorEta, float3 conductorK) {
+                                        float3 conductorEta, float3 conductorK, float baseAlpha = -1.0) {
     LayerTop top; LayerBottom bottom;
-    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom);
+    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom, baseAlpha);
     return layeredPdf(top, bottom, woLocal, wiLocal);
 }
 
 inline LayerSample layeredCoatedConductorSample(float3 woLocal, float eta, float alpha,
-                                                 float3 conductorEta, float3 conductorK, thread uint& rngState) {
+                                                 float3 conductorEta, float3 conductorK, thread uint& rngState,
+                                                 float baseAlpha = -1.0, float thickness = kLayerThickness) {
     LayerTop top; LayerBottom bottom;
-    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom);
-    return layeredSample(top, bottom, kLayerThickness, woLocal, rngState);
+    layeredCoatedConductorParts(eta, alpha, conductorEta, conductorK, top, bottom, baseAlpha);
+    return layeredSample(top, bottom, thickness, woLocal, rngState);
 }
 
 inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 facingNormal,
@@ -60,11 +63,14 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
     woLocal.z = max(woLocal.z, 0.0001);
     float3 conductorEta = float3(mat.conductorEta);
     float3 conductorK = float3(mat.conductorK);
+    const bool hasBase = mat.transmitColor.y > 0.0;
+    const float baseAlpha = hasBase ? max(float(mat.transmitColor.x), 0.0f) : -1.0f;
+    const float coatThickness = hasBase ? float(mat.transmitColor.y) : kLayerThickness;
 
     // pbrt's Flags(): a smooth coat over a smooth conductor is a delta lobe (no light samples, no MIS); any roughness at all, on the
     // coat or the conductor, gets light samples. Here the one alpha serves both interfaces.
     LayerTop deltaTop; LayerBottom deltaBottom;
-    layeredCoatedConductorParts(mat.ior, alpha, conductorEta, conductorK, deltaTop, deltaBottom);
+    layeredCoatedConductorParts(mat.ior, alpha, conductorEta, conductorK, deltaTop, deltaBottom, baseAlpha);
     const bool takesLightSamples = !layerIsDelta(deltaTop, deltaBottom);
 
     if (takesLightSamples && all(mat.emission == float3(0.0))) {
@@ -81,13 +87,14 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
             shadowRay.direction = wi;
             shadowRay.min_distance = 0.001f;
             shadowRay.max_distance = dist - 0.002f;
+            reaimShadowRay(shadowRay, hitPoint, dist);
             intersection_result<instancing, triangle_data> shadowResult =
                 traceShadowAny(isect, shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
                 float3 wiLocal = float3(dot(wi, tangent), dot(wi, bitangent), dot(wi, facingNormal));
-                float3 f = layeredCoatedConductorF(wiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                float3 f = layeredCoatedConductorF(wiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
                 float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
-                float pdfBsdf = layeredCoatedConductorPdf(woLocal, wiLocal, mat.ior, alpha, conductorEta, conductorK);
+                float pdfBsdf = layeredCoatedConductorPdf(woLocal, wiLocal, mat.ior, alpha, conductorEta, conductorK, baseAlpha);
                 float weight = (pdfSolidAngle * pdfSolidAngle)
                     / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
                 float transmittance = exp(-uniforms.fogSigmaT * dist);
@@ -108,11 +115,12 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                 plShadowRay.direction = plWi;
                 plShadowRay.min_distance = 0.001f;
                 plShadowRay.max_distance = plDist - 0.002f;
+                reaimShadowRay(plShadowRay, hitPoint, plDist);
                 intersection_result<instancing, triangle_data> plShadowResult =
                     traceShadowAny(isect, plShadowRay, accelStructure, functionTable);
                 if (plShadowResult.type == intersection_type::none) {
                     float3 plWiLocal = float3(dot(plWi, tangent), dot(plWi, bitangent), dot(plWi, facingNormal));
-                    float3 plF = layeredCoatedConductorF(plWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                    float3 plF = layeredCoatedConductorF(plWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
                     float plTransmittance = exp(-uniforms.fogSigmaT * plDist);
                     float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
                     radiance += throughput * plF * float3(pl.emission) * plCosSurface * plSpot * plTransmittance / plDistSq;
@@ -134,7 +142,7 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                     traceShadowAny(isect, dlShadowRay, accelStructure, functionTable);
                 if (dlShadowResult.type == intersection_type::none) {
                     float3 dlWiLocal = float3(dot(dlWi, tangent), dot(dlWi, bitangent), dot(dlWi, facingNormal));
-                    float3 dlF = layeredCoatedConductorF(dlWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                    float3 dlF = layeredCoatedConductorF(dlWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
                     // Skip when there is no fog - rayBoxExitDistance()
                     // is only valid for an origin INSIDE the hardcoded
                     // room bounds (see that function.s own comment for
@@ -164,11 +172,12 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                     pjShadowRay.direction = pjWi;
                     pjShadowRay.min_distance = 0.001f;
                     pjShadowRay.max_distance = pjDist - 0.002f;
+                    reaimShadowRay(pjShadowRay, hitPoint, pjDist);
                     intersection_result<instancing, triangle_data> pjShadowResult =
                         traceShadowAny(isect, pjShadowRay, accelStructure, functionTable);
                     if (pjShadowResult.type == intersection_type::none) {
                         float3 pjWiLocal = float3(dot(pjWi, tangent), dot(pjWi, bitangent), dot(pjWi, facingNormal));
-                        float3 pjF = layeredCoatedConductorF(pjWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                        float3 pjF = layeredCoatedConductorF(pjWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
                         float pjTransmittance = exp(-uniforms.fogSigmaT * pjDist);
                         radiance += throughput * pjF * pjRadiance * pjCosSurface * pjTransmittance / pjDistSq;
                     }
@@ -193,11 +202,12 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                     glShadowRay.direction = glWi;
                     glShadowRay.min_distance = 0.001f;
                     glShadowRay.max_distance = glDist - 0.002f;
+                    reaimShadowRay(glShadowRay, hitPoint, glDist);
                     intersection_result<instancing, triangle_data> glShadowResult =
                         traceShadowAny(isect, glShadowRay, accelStructure, functionTable);
                     if (glShadowResult.type == intersection_type::none) {
                         float3 glWiLocal = float3(dot(glWi, tangent), dot(glWi, bitangent), dot(glWi, facingNormal));
-                        float3 glF = layeredCoatedConductorF(glWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+                        float3 glF = layeredCoatedConductorF(glWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
                         float glTransmittance = exp(-uniforms.fogSigmaT * glDist);
                         radiance += throughput * glF * glRadiance * glCosSurface * glTransmittance;
                     }
@@ -208,7 +218,7 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
 
     // Continuation ray: pbrt's LayeredBxDF::Sample_f random walk. A failed walk ends the path here (the light samples above were
     // already taken); a smooth coat's mirror reflection - or the whole chain of a delta lobe - is a specular sample (no MIS).
-    LayerSample smp = layeredCoatedConductorSample(woLocal, mat.ior, alpha, conductorEta, conductorK, rngState);
+    LayerSample smp = layeredCoatedConductorSample(woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
     if (!smp.valid) return false;
     float3 beta = smp.f * (abs(smp.wi.z) / smp.pdf);
     float3 newDirLocal = smp.wi;
@@ -219,7 +229,7 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
     if (smp.specular) {
         specularBounce = true;
     } else {
-        bsdfPdf = layeredCoatedConductorPdf(woLocal, newDirLocal, mat.ior, alpha, conductorEta, conductorK);
+        bsdfPdf = layeredCoatedConductorPdf(woLocal, newDirLocal, mat.ior, alpha, conductorEta, conductorK, baseAlpha);
         specularBounce = false;
     }
     return true;
@@ -315,6 +325,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
             shadowRay.direction = wi;
             shadowRay.min_distance = 0.001f;
             shadowRay.max_distance = dist - 0.002f;
+            reaimShadowRay(shadowRay, hitPoint, dist);
             intersection_result<instancing, triangle_data> shadowResult =
                 traceShadowAny(isect, shadowRay, accelStructure, functionTable);
             if (shadowResult.type == intersection_type::none) {
@@ -340,6 +351,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                 plShadowRay.direction = plWi;
                 plShadowRay.min_distance = 0.001f;
                 plShadowRay.max_distance = plDist - 0.002f;
+                reaimShadowRay(plShadowRay, hitPoint, plDist);
                 intersection_result<instancing, triangle_data> plShadowResult =
                     traceShadowAny(isect, plShadowRay, accelStructure, functionTable);
                 if (plShadowResult.type == intersection_type::none) {
@@ -394,6 +406,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                     pjShadowRay.direction = pjWi;
                     pjShadowRay.min_distance = 0.001f;
                     pjShadowRay.max_distance = pjDist - 0.002f;
+                    reaimShadowRay(pjShadowRay, hitPoint, pjDist);
                     intersection_result<instancing, triangle_data> pjShadowResult =
                         traceShadowAny(isect, pjShadowRay, accelStructure, functionTable);
                     if (pjShadowResult.type == intersection_type::none) {
@@ -422,6 +435,7 @@ inline bool shadeVelvet(TriangleMaterial mat, float3 albedo, float3 hitPoint, fl
                     glShadowRay.direction = glWi;
                     glShadowRay.min_distance = 0.001f;
                     glShadowRay.max_distance = glDist - 0.002f;
+                    reaimShadowRay(glShadowRay, hitPoint, glDist);
                     intersection_result<instancing, triangle_data> glShadowResult =
                         traceShadowAny(isect, glShadowRay, accelStructure, functionTable);
                     if (glShadowResult.type == intersection_type::none) {
@@ -1067,6 +1081,7 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
                 shadowRay.direction = wi;
                 shadowRay.min_distance = 0.001f;
                 shadowRay.max_distance = dist - 0.002f;
+                reaimShadowRay(shadowRay, hitPoint, dist);
                 if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
                     float pdfSolidAngle = (distSq / (ls.area * abs(cosLight))) * ls.pmf;
                     float weight = (pdfSolidAngle * pdfSolidAngle) / (pdfSolidAngle * pdfSolidAngle + pdfBsdf * pdfBsdf);
@@ -1091,6 +1106,7 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
                     shadowRay.direction = pWi;
                     shadowRay.min_distance = 0.001f;
                     shadowRay.max_distance = pDist - 0.002f;
+                    reaimShadowRay(shadowRay, hitPoint, pDist);
                     if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none) {
                         float spot = spotLightFalloff(-pWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
                         radiance += throughput * f * float3(pl.emission) * pCos * spot * exp(-uniforms.fogSigmaT * pDist) / pDistSq;
@@ -1139,6 +1155,7 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
                     shadowRay.direction = pWi;
                     shadowRay.min_distance = 0.001f;
                     shadowRay.max_distance = pDist - 0.002f;
+                    reaimShadowRay(shadowRay, hitPoint, pDist);
                     if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none)
                         radiance += throughput * f * pjRadiance * pCos * exp(-uniforms.fogSigmaT * pDist) / pDistSq;
                 }
@@ -1163,6 +1180,7 @@ inline bool shadeMeasured(TriangleMaterial mat, float3 hitPoint, float3 facingNo
                     shadowRay.direction = gWi;
                     shadowRay.min_distance = 0.001f;
                     shadowRay.max_distance = gDist - 0.002f;
+                    reaimShadowRay(shadowRay, hitPoint, gDist);
                     if (traceShadowAny(isect, shadowRay, accelStructure, functionTable).type == intersection_type::none)
                         radiance += throughput * f * glRadiance * gCos * exp(-uniforms.fogSigmaT * gDist) / gDistSq;
                 }
