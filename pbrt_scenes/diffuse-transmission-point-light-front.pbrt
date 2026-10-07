@@ -1,0 +1,21 @@
+# diffuse-transmission-point-light-front.pbrt -- the light-in-front twin of diffuse-transmission-point-light.pbrt (see its header): the point light at z = +3
+# lights the plate on the camera's side, so the picture is the reflection R/pi * E = 0.3 / pi * 10 = 0.9549 at the centre.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 2 ]
+
+Film "rgb" "integer xresolution" [ 16 ] "integer yresolution" [ 16 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+AttributeBegin
+  Translate 0 0 3
+  LightSource "point" "rgb I" [ 90 90 90 ]
+AttributeEnd
+
+Material "diffusetransmission" "rgb reflectance" [ 0.3 0.3 0.3 ] "rgb transmittance" [ 0.5 0.5 0.5 ]
+Shape "trianglemesh" "integer indices" [ 0 1 2  0 2 3 ]
+  "point3 P" [ -20 -20 0   20 -20 0   20 20 0   -20 20 0 ]

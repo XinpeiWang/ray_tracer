@@ -1917,7 +1917,9 @@ __device__ __forceinline__ NeeLightSample wf_nee_pick_light(
 	// needs to test both pointers - not a bare OR, though, since the surface
 	// persistence write below (`restirReservoirs[pixelIndex] = res`) still
 	// assumes restirReservoirs itself is non-null whenever useRestir is true.
-	const bool useRestir = (restirReservoirs != nullptr && depth == 0);
+	// Not for diffuse transmission: the resampling target below is a one-sided cosine proxy, which would give a light on the far side of the surface zero
+	// weight and so never pick it, though the material's BSDF takes light from both sides. Classic light sampling handles it.
+	const bool useRestir = (restirReservoirs != nullptr && depth == 0 && materials[matIdx].type != MaterialType::DiffuseTransmission);
 	if (useRestir) {
 		GpuReservoir res;
 		for (int i = 0; i < kRestirCandidateCount; ++i) {
@@ -2753,6 +2755,8 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		matType == MaterialType::CoatedDiffuse || matType == MaterialType::CoatedConductor ||
 		matType == MaterialType::RoughMetal || matType == MaterialType::Measured);
 	const bool glossy_valid = glossyCtx.valid;
+	// Materials whose BSDF takes light from both sides of the surface: the NEE sites below use |cos| and aim the shadow ray's origin to the light's side.
+	const bool twoSidedNee = (matType == MaterialType::RoughDielectric || matType == MaterialType::DiffuseTransmission);
 	const float3 glossy_tan = glossyCtx.tan;
 	const float3 glossy_bit = glossyCtx.bit;
 	const float glossy_wi_x = glossyCtx.wi_x;
@@ -2904,6 +2908,21 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			if (nf_c <= 0.0f) nf_c = 1e-6f;
 			float fr_l = FrDielectric(cos_l, nfEta);
 			outBsdfVal = (1.0f - fr_l) / (nf_c * 3.14159265f);
+		} else if (matType == MaterialType::DiffuseTransmission) {
+			// pbrt-v4 DiffuseTransmissionBxDF: R/pi for a light on wo's side of the surface, T/pi through it; the BSDF picks between the two cosine lobes
+			// with probabilities pr/(pr+pt) and pt/(pr+pt), so the density at lightDir is that lobe's probability times |cos|/pi (cos_l is |cos| here).
+			const MaterialData& dm = materials[matIdx];
+			const float3 dtR = (dm.textureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, dm.textureIdx, uv_u, uv_v, hit_point) * dm.emissionScale
+				: dm.albedo;
+			const float3 dtT = (dm.transmittanceTextureIdx >= 0)
+				? wf_sample_texture(textures, texturePixels, dm.transmittanceTextureIdx, uv_u, uv_v, hit_point) * dm.transmittanceScale
+				: dm.emission;
+			const float dtPr = fmaxf(dtR.x, fmaxf(dtR.y, dtR.z)), dtPt = fmaxf(dtT.x, fmaxf(dtT.y, dtT.z));
+			const bool reflSide = dot(lightDir, normal) > 0.0f;
+			outBsdfVal = 1.0f / 3.14159265f;
+			outBsdfColor = liftUnboundedRGB(reflSide ? dtR : dtT);
+			outGlossyPdf = (dtPr + dtPt > 0.0f) ? ((reflSide ? dtPr : dtPt) / (dtPr + dtPt)) * cos_l / 3.14159265f : 0.0f;
 		} else if (isPhase) {
 			outBsdfVal = wf_hg_phase_value(dot(phaseWo, lightDir), phaseG);
 			outBsdfColor = attenuation;
@@ -2969,7 +2988,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 	// filled identically by either one by this point.
 	{
 		float raw_cos = dot(to_light, normal);
-		if (haveSample && nee_norm > 0.0f && (isPhase || matType == MaterialType::RoughDielectric || raw_cos > 0.0f)) {
+		if (haveSample && nee_norm > 0.0f && (isPhase || twoSidedNee || raw_cos > 0.0f)) {
 			// A phase function has no hemisphere/cosine restriction (it's
 			// normalized over the full sphere, unlike a surface BRDF) - the
 			// `cos_l` slot is set to 1 so the shared `bsdf_val * cos_l`
@@ -2979,7 +2998,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 			// already handled inside evalGlossyF/RoughDielectricBxDF, not a
 			// zero-below-the-hemisphere cutoff like the other glossy types.
 			float cos_l = isPhase ? 1.0f
-				: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
+				: (twoSidedNee) ? fabsf(raw_cos)
 				: fmaxf(raw_cos, 0.0f);
 			float bsdf_val, glossyPdf;
 			SS bsdf_color;
@@ -3086,7 +3105,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// rationale (matches optix_device_helpers.h's sky-NEE block).
 		float  raw_cos = dot(sky_dir, normal);
 		float  cos_l   = isPhase ? 1.0f
-			: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos)
+			: (twoSidedNee) ? fabsf(raw_cos)
 			: raw_cos;
 		// pdf_sky > 0.0f is REQUIRED here, not just an optimization: a
 		// portal-light NEE sample (wf_sample_sky_nee() -> gpu_portal_sample_Li())
@@ -3099,7 +3118,7 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// `if (portal->sample_li(...) && pdf_portal > 0.0)` guard
 		// (src/TheRestOfYourLife/camera.h) and this file's own
 		// medium_phase_nee_mis()-equivalent pattern elsewhere.
-		if (pdf_sky > 0.0f && (isPhase || matType == MaterialType::RoughDielectric || cos_l > 0.0f)) {
+		if (pdf_sky > 0.0f && (isPhase || twoSidedNee || cos_l > 0.0f)) {
 			float bsdf_val, glossyPdf;
 			SS bsdf_color;
 			wf_local_light_bsdf(cos_l, sky_dir, bsdf_val, bsdf_color, glossyPdf);
@@ -3167,10 +3186,10 @@ __device__ __forceinline__ void wf_finish_material_scatter(
 		// RgbGridMedium/GridMedium's own phase-scatter cases, since those
 		// newly reach this exact gap too.
 		float raw_cos = dot(wi, normal);
-		if (!isPhase && matType != MaterialType::RoughDielectric && raw_cos <= 0.0f) continue;
-		if (!isPhase && matType == MaterialType::RoughDielectric && raw_cos == 0.0f) continue;
+		if (!isPhase && !twoSidedNee && raw_cos <= 0.0f) continue;
+		if (!isPhase && twoSidedNee && raw_cos == 0.0f) continue;
 		float cos_l = isPhase ? 1.0f
-			: (matType == MaterialType::RoughDielectric) ? fabsf(raw_cos) : raw_cos;
+			: (twoSidedNee) ? fabsf(raw_cos) : raw_cos;
 
 		// No MIS weight for punctual (delta) lights, same as every other
 		// material here - the pdf-at-wi output isn't needed here, unlike the
