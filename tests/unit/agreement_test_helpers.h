@@ -17,22 +17,12 @@ extern "C" {
 
 #include "scene_registry.h"
 
-// Resolved by NAME at test-run time rather than a hardcoded id string:
-// pbrt-loaded scenes are numbered by discovery order across every .pbrt
-// pbrt_discover finds (see scene_registry.h's SceneDescriptor::id comment
-// and pbrt_scenes/README.md's "Ids" section), so "example-cornell.pbrt" is
-// not reliably "I1" - a machine with additional downloaded pbrt-v4-scenes
-// collections sitting in pbrt_scenes/ (this repo's own dev machines
-// sometimes do - see that README) sorts differently and shifts every id
-// after whatever sorts earlier. Matching by SceneDescriptor::name (the
-// file's stem) is stable regardless of what else happens to be discovered
-// alongside these 5.
+// Resolved by the scene's FILE NAME at test-run time rather than a hardcoded id string: pbrt-loaded scenes are numbered by discovery order across every
+// .pbrt that pbrt_discover finds (see scene_registry.h's SceneDescriptor::id comment and pbrt_scenes/README.md), so "example-cornell.pbrt" is not
+// reliably "K1" - a machine with additional downloaded pbrt-v4-scenes collections sitting in pbrt_scenes/ sorts differently and shifts every id after
+// whatever sorts earlier. The file's stem is stable regardless of what else happens to be discovered alongside it.
 inline const SceneDescriptor* find_example_scene(const char* stem) {
-	for (const auto& s : get_scene_registry()) {
-		if (s.category == SceneCategories::CustomScenes && s.name && std::string(s.name) == stem)
-			return &s;
-	}
-	return nullptr;
+	return find_scene_by_file_stem(stem);
 }
 
 // Mean of a linear float EXR over its RGB channels (non-finite samples ignored); false if it cannot be read.

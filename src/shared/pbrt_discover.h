@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "pbrt_flatten.h"
+#include "scene_document.h"
 #include "pbrt_scene.h"
 
 namespace pbrt_discover {
@@ -102,6 +103,8 @@ struct Discovered {
 	// directory instead. scene_registry.h uses this - not a per-file guess -
 	// to set SceneDescriptor::requires_files.
 	bool nested = false;
+	// The title the Scene Builder saved in the file (scene_document.h's "# @rt-builder-doc" line); empty for any other file.
+	std::string title;
 	// True for a file the user named explicitly (ray_tracer.exe ... path/to/scene.pbrt, the GUI's Scene Builder) rather than one found by scanning a
 	// scene directory. Such a scene is numbered after every scanned one, so naming a file never shifts the id of a scene that scanning finds.
 	bool userFile = false;
@@ -215,6 +218,11 @@ inline Discovered describe(const std::string &path, const std::string &text) {
 	d.cropX0 = flat.cropX0; d.cropX1 = flat.cropX1;
 	d.cropY0 = flat.cropY0; d.cropY1 = flat.cropY1;
 	d.maxComponentValue = flat.maxComponentValue;
+	{
+		scene_doc::Document builderDoc;
+		std::string ignored;
+		if (scene_doc::fromPbrt(text, builderDoc, ignored)) d.title = builderDoc.title;
+	}
 	d.ok = true;
 	return d;
 }

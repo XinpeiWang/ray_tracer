@@ -931,3 +931,73 @@ TEST(SceneSlugTest, ASceneFoundOnDiskIsKeyedByItsFileName) {
 	EXPECT_EQ(s->category, std::string(SceneCategories::CustomScenes));
 	EXPECT_EQ(s->slug, "chromatic-absorber");
 }
+
+// ===========================================================================
+// Names: what the scene list shows
+// ===========================================================================
+
+TEST(SceneNameTest, PrettyNameMakesAFileStemReadable) {
+	using scene_slugs::prettyName;
+	EXPECT_EQ(prettyName("bdpt-box-room"), "BDPT Box Room");
+	EXPECT_EQ(prettyName("cornell_dof"), "Cornell DoF");
+	EXPECT_EQ(prettyName("rgb-grid-nebula"), "RGB Grid Nebula");
+	EXPECT_EQ(prettyName("glass-sphere-in-the-fog"), "Glass Sphere in the Fog");
+	EXPECT_EQ(prettyName("the-room"), "The Room") << "a small word at the start is still capitalised";
+	EXPECT_EQ(prettyName("frame1266"), "Frame1266");
+	EXPECT_EQ(prettyName("dragon_10"), "Dragon 10");
+	EXPECT_EQ(prettyName("nanovdb-medium"), "NanoVDB Medium");
+	EXPECT_EQ(prettyName("---"), "---") << "nothing to read: the stem is shown as it is";
+}
+
+TEST(SceneNameTest, NoSceneNameDescribesHowItIsStored) {
+	for (const auto& s : get_builtin_scene_registry()) {
+		const std::string name = s.name;
+		EXPECT_EQ(name.find("(pbrt example)"), std::string::npos) << s.id << ": " << name;
+		EXPECT_EQ(name.find(".pbrt"), std::string::npos) << s.id << ": " << name;
+	}
+}
+
+// "(pbrt file)" is only for the six scenes whose plain name a compiled-in scene already has.
+TEST(SceneNameTest, APbrtFileQualifierAppearsOnlyWhereItDisambiguates) {
+	std::set<std::string> plain;
+	for (const auto& s : get_builtin_scene_registry()) plain.insert(s.name);
+	int qualified = 0;
+	for (const auto& s : get_builtin_scene_registry()) {
+		const std::string name = s.name, suffix = " (pbrt file)";
+		if (name.size() > suffix.size() && name.compare(name.size() - suffix.size(), suffix.size(), suffix) == 0) {
+			++qualified;
+			EXPECT_TRUE(plain.count(name.substr(0, name.size() - suffix.size()))) << name << " is qualified but its plain name is free";
+		}
+	}
+	EXPECT_EQ(qualified, 6);
+}
+
+TEST(SceneNameTest, BuiltInNamesAreUniqueAndTheListedNameOfAFileIsNotItsRawStem) {
+	std::set<std::string> names;
+	for (const auto& s : get_scene_registry()) EXPECT_TRUE(names.insert(s.name).second || s.category == std::string(SceneCategories::CustomScenes)) << s.id << ": " << s.name;
+	const SceneDescriptor* s = find_scene("chromatic-absorber");
+	if (!s) GTEST_SKIP() << "pbrt_scenes/ was not discovered - run from the repository root";
+	EXPECT_STREQ(s->name, "Chromatic Absorber");
+}
+
+TEST(SceneNameTest, ASceneBuilderFileIsListedUnderItsTitle) {
+	pbrt_discover::Discovered d;
+	d.name = "my-scene";
+	d.path = "pbrt_scenes/my-scene.pbrt";
+	d.title = "Kitchen at night";
+	EXPECT_EQ(pbrt_scene_registry::displayNameFor(d), "Kitchen at night");
+	d.title.clear();
+	EXPECT_EQ(pbrt_scene_registry::displayNameFor(d), "My Scene");
+	d.nested = true;
+	d.path = "pbrt_scenes/zero-day/frame25.pbrt";
+	d.name = "frame25";
+	EXPECT_EQ(pbrt_scene_registry::displayNameFor(d), "Zero Day: Frame25");
+}
+
+TEST(SceneNameTest, DescribeReadsTheTitleOfASceneBuilderFile) {
+	const std::string text =
+		"# t\n# @rt-builder-doc {\"version\":1,\"title\":\"Kitchen at night\"}\n\nLookAt 0 0 5  0 0 0  0 1 0\nCamera \"perspective\"\nWorldBegin\n";
+	const pbrt_discover::Discovered d = pbrt_discover::describe("kitchen.pbrt", text);
+	EXPECT_EQ(d.title, "Kitchen at night");
+	EXPECT_TRUE(pbrt_discover::describe("plain.pbrt", "LookAt 0 0 5  0 0 0  0 1 0\nCamera \"perspective\"\nWorldBegin\n").title.empty());
+}
