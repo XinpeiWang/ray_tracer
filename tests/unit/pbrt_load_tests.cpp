@@ -16,10 +16,12 @@
 
 #include <cstdio>
 #ifdef _WIN32
+#include <direct.h>
 #include <process.h>
 #else
 #include <unistd.h>
 #endif
+#include <filesystem>
 #include <fstream>
 #include <string>
 
@@ -609,6 +611,36 @@ TEST_F(TempTree, MissingMeshErrorNamesTheFileOnceNotOncePerObjGroup) {
 // ---------------------------------------------------------------------------
 
 namespace {
+// setenv/unsetenv/getcwd/chdir with the Windows CRT's names, so the user-asset tests below run on every platform.
+inline void testSetEnv(const char *name, const char *value) {
+#ifdef _WIN32
+	_putenv_s(name, value);
+#else
+	setenv(name, value, 1);
+#endif
+}
+inline void testUnsetEnv(const char *name) {
+#ifdef _WIN32
+	_putenv_s(name, "");   // an empty value removes the variable
+#else
+	unsetenv(name);
+#endif
+}
+inline const char *testGetCwd(char *buf, size_t n) {
+#ifdef _WIN32
+	return _getcwd(buf, static_cast<int>(n));
+#else
+	return getcwd(buf, n);
+#endif
+}
+inline int testChdir(const char *dir) {
+#ifdef _WIN32
+	return _chdir(dir);
+#else
+	return chdir(dir);
+#endif
+}
+
 // Sets RAY_TRACER_USER_ASSETS and the working directory for one test, and restores both.
 class UserAssetEnv {
 public:
@@ -617,14 +649,14 @@ public:
 		hadOld_ = old != nullptr;
 		if (old) old_ = old;
 		char buf[4096];
-		oldCwd_ = getcwd(buf, sizeof buf) ? buf : "";
-		setenv("RAY_TRACER_USER_ASSETS", userRoot.c_str(), 1);
-		if (chdir(cwd.c_str()) != 0) ADD_FAILURE() << "chdir failed";
+		oldCwd_ = testGetCwd(buf, sizeof buf) ? buf : "";
+		testSetEnv("RAY_TRACER_USER_ASSETS", userRoot.c_str());
+		if (testChdir(cwd.c_str()) != 0) ADD_FAILURE() << "chdir failed";
 	}
 	~UserAssetEnv() {
-		if (!oldCwd_.empty() && chdir(oldCwd_.c_str()) != 0) ADD_FAILURE() << "could not restore the working directory";
-		if (hadOld_) setenv("RAY_TRACER_USER_ASSETS", old_.c_str(), 1);
-		else unsetenv("RAY_TRACER_USER_ASSETS");
+		if (!oldCwd_.empty() && testChdir(oldCwd_.c_str()) != 0) ADD_FAILURE() << "could not restore the working directory";
+		if (hadOld_) testSetEnv("RAY_TRACER_USER_ASSETS", old_.c_str());
+		else testUnsetEnv("RAY_TRACER_USER_ASSETS");
 	}
 private:
 	bool hadOld_ = false;
@@ -632,10 +664,9 @@ private:
 };
 }  // namespace
 
-#ifndef _WIN32   // setenv/chdir/getcwd as written; the behaviour itself is platform independent
 TEST_F(TempTree, MeshFoundUnderTheUserAssetRootWhenNotNextToTheApp) {
 	write("scene.pbrt", "Shape \"plymesh\" \"string filename\" [ \"models/x.obj\" ]\n");
-	std::system(("mkdir -p '" + path("userassets/models/") + "'").c_str());
+	std::filesystem::create_directories(path("userassets/models/"));
 	write("userassets/models/x.obj", "v 0 0 0\nv 1 0 0\nv 0 1 0\nf 1 2 3\n");
 	UserAssetEnv env(path("userassets"), path(""));
 	const pbrt_load::LoadResult r = pbrt_load::loadFile("scene.pbrt");
@@ -645,7 +676,7 @@ TEST_F(TempTree, MeshFoundUnderTheUserAssetRootWhenNotNextToTheApp) {
 
 TEST_F(TempTree, MeshStillMissingWhenTheUserAssetRootLacksIt) {
 	write("scene.pbrt", "Shape \"plymesh\" \"string filename\" [ \"models/x.obj\" ]\n");
-	std::system(("mkdir -p '" + path("userassets/") + "'").c_str());
+	std::filesystem::create_directories(path("userassets/"));
 	UserAssetEnv env(path("userassets"), path(""));
 	const pbrt_load::LoadResult r = pbrt_load::loadFile("scene.pbrt");
 	EXPECT_FALSE(r.ok);
@@ -653,9 +684,8 @@ TEST_F(TempTree, MeshStillMissingWhenTheUserAssetRootLacksIt) {
 
 TEST_F(TempTree, AssetCheckCountsAFileInTheUserAssetRootAsPresent) {
 	write("scene.pbrt", "Shape \"plymesh\" \"string filename\" [ \"models/x.obj\" ]\n");
-	std::system(("mkdir -p '" + path("userassets/models/") + "'").c_str());
+	std::filesystem::create_directories(path("userassets/models/"));
 	write("userassets/models/x.obj", "x");
 	UserAssetEnv env(path("userassets"), path(""));
 	EXPECT_TRUE(pbrt_asset_check::check("scene.pbrt").missing.empty());
 }
-#endif
