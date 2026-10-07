@@ -86,6 +86,14 @@ jobs:
         # this was never actually a Windows-specific issue.
         run: .\tests\build\Release\unit_tests.exe --gtest_color=yes
 
+      - name: Run CPU integrator agreement tests
+        # The CPU path tracer, BDPT, MLT, SPPM and the debug integrators rendered on small pbrt scenes and compared with each other and with closed forms
+        # (tests/unit/cpu_integrator_agreement_tests.cpp; every defect they pin read 1-25% off before it was fixed). Built by the "Build (Release)" step
+        # above (the default target builds everything). From the repo root, like unit_tests, so pbrt_scenes/ resolves. They render, so allow a few
+        # minutes on a hosted runner.
+        timeout-minutes: 20
+        run: .\tests\build\Release\cpu_integrator_tests.exe --gtest_color=yes
+
   metal-poc:
     # Pinned to a specific image, not macos-latest - this job's own
     # sibling above already learned this lesson the hard way once

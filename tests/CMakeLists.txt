@@ -96,7 +96,9 @@ add_executable(unit_tests
     unit/pbrt_discover_tests.cpp
     # pbrt_example_scenes_tests.cpp is deliberately NOT listed here - it's a
     # real end-to-end render-smoke test calling cpu_render_main AND
-    # optix_render_main directly (launcher/cpu_interface.cpp, gpu/optix/
+    # optix_render_main directly (its CPU-only agreement tests live in
+    # cpu_integrator_agreement_tests.cpp, built into the separate
+    # cpu_integrator_tests target at the bottom of this file) (launcher/cpu_interface.cpp, gpu/optix/
     # optix_interface.cpp), which would need this target to link the full
     # cpu_renderer + optix_renderer surface (and, transitively, the OptiX
     # SDK + CUDA Toolkit for the latter) - the same class of dependency the
@@ -232,3 +234,22 @@ endif()
 if(UNIT_TESTS_FAST_COMPILE)
     target_compile_options(unit_tests PRIVATE $<IF:$<CXX_COMPILER_ID:MSVC>,/Od;/Ob0,-O0>)
 endif()
+
+
+# CPU integrator agreement tests: the CPU path tracer, BDPT, MLT, SPPM and the debug integrators rendered on small pbrt scenes and compared with each other and
+# with closed forms (cpu_integrator_agreement_tests.cpp). They call cpu_render_main*() directly, which is why they are not in unit_tests above: this target
+# compiles the CPU renderer itself (cpu_renderer/cpu_interface.cpp + cpu_interface_bdpt.cpp, the same two files cpu_renderer.vcxproj builds) and needs no OptiX
+# SDK or CUDA Toolkit, so GitHub CI can run it. The other agreement tests (pbrt_example_scenes_tests.cpp) compare CPU against the OptiX backends and stay in
+# tests/ray_tracer_tests.vcxproj. Run it from the repository root: the tests find pbrt_scenes/ by a relative path.
+add_executable(cpu_integrator_tests
+    unit/cpu_integrator_agreement_tests.cpp
+    ${CMAKE_SOURCE_DIR}/../cpu_renderer/cpu_interface.cpp
+    ${CMAKE_SOURCE_DIR}/../cpu_renderer/cpu_interface_bdpt.cpp
+    ${CMAKE_SOURCE_DIR}/../src/data/rgb_spectrum_table_data.cpp
+    ${CMAKE_SOURCE_DIR}/../src/external/stb_image_impl.cpp
+    ${CMAKE_SOURCE_DIR}/../src/external/tinyexr_impl.cpp
+    ${CMAKE_SOURCE_DIR}/../src/external/miniz.c
+)
+target_include_directories(cpu_integrator_tests PRIVATE ${COMMON_INCLUDES})
+target_link_libraries(cpu_integrator_tests PRIVATE GTest::gtest_main)
+gtest_discover_tests(cpu_integrator_tests)

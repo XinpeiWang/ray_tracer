@@ -167,6 +167,8 @@ The solution contains the following projects:
    - Unit and integration tests
    - Tests both CPU and GPU renderers
 
+**What GitHub CI runs** (`.github/workflows/unit-tests.yml`, a hosted runner with no GPU, CUDA or OptiX): the portable CMake target `unit_tests` (BVH, materials, cameras, sampling, BDPT/SPPM math, volumetrics, pbrt loading) and, since the CPU renderer itself needs no SDK, `cpu_integrator_tests` (`tests/unit/cpu_integrator_agreement_tests.cpp`): the CPU path tracer, BDPT, MLT, SPPM and `--simplepath`/`--randomwalk` rendered on small pbrt scenes and compared with each other and with closed forms - the tests that pinned the BDPT/MLT/SPPM/diffuse-transmission defects. Both are built by `cmake -B build -A x64` + `cmake --build build --config Release` in `tests/` and run from the repository root. Everything that renders on an OptiX backend (`pbrt_example_scenes_tests.cpp`, the CPU-vs-GPU parity sweeps, the gallery) runs only here, with `scriptsun_tests_parallel.ps1 -Tier Split`; the GPU is never exercised in CI.
+
 ### GUI (External Qt Build)
 
 7. **Qt GUI** (`qt_gui/RayTracerGUI.pro`)
