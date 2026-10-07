@@ -47,9 +47,9 @@ struct CameraConfig {
     double defocus_angle = 0.0;  // 0 = no DOF
     double focus_dist    = 10.0;
     // Camera motion blur (camera::camera_is_animated - see that field's own
-    // comment, camera.h). animated=false (default) leaves every existing
-    // scene's positional brace-initializer untouched - these fields simply
-    // zero-fill. An animated scene always uses its own keyframes regardless
+    // comment, camera.h). animated=false (default) leaves every scene that
+    // does not animate its camera as it was - these fields simply zero-fill.
+    // An animated scene always uses its own keyframes regardless
     // of `mode`/cam_x/y/z overrides (see cpu_interface.cpp's own comment) -
     // a moving camera has no single "current position" for an override to
     // mean.
@@ -64,6 +64,10 @@ struct CameraConfig {
 // doesn't conflict with the CameraConfig field named 'camera'.
 using camera_t = camera;
 
+// One scene, as every part of the program sees it. The fields fall into groups, in this order: identity (id, slug, name, category), what the GUI shows
+// (description, performance, recommended settings, requirements), the camera, the builders that make the scene's world, lights and sky on demand, and
+// what the scene's own file recommends. A descriptor is never built by positional initialisation: the builders below fill it in field by field, so a
+// field can be added anywhere.
 struct SceneDescriptor {
     // Category letter + number within category (e.g. "B10" = 10th
     // Materials scene) - the id used everywhere outside this file: CLI,
@@ -72,6 +76,9 @@ struct SceneDescriptor {
     // generate their id at runtime with unbounded count - see
     // pbrt_scene_registry::append() below.
     std::string id;
+    // The scene's durable key (src/shared/scene_slugs.h): "cornell-box", or a .pbrt file's name. Unlike `id` it does not move when a category is added
+    // or a file is added to pbrt_scenes/, so anything saved or typed by a person should use it. find_scene() accepts it, and the id, everywhere.
+    std::string slug;
     // The OLD flat 0..68 scene_id, kept only so gpu/optix/scene_builder.cpp's
     // large switch(scene_id) doesn't need rewriting into a string-keyed
     // dispatch - build_scene() looks a scene up by `id` via find_scene()
@@ -129,13 +136,8 @@ struct SceneDescriptor {
     // Everything from here down through recommended_light_sampler is the
     // OTHER bucket of "recommended" fields - NEVER auto-applied, unlike
     // recommended_spp/recommended_exposure/camera above. A pbrt-loaded
-    // scene's own Integrator directive - 0/empty for every
-    // hand-built scene above (none of them were ever declared via an
-    // Integrator directive to read in the first place). Deliberately last:
-    // the ~65 hand-built entries in get_builtin_scene_registry() below
-    // construct this struct with POSITIONAL brace-init, so a field inserted
-    // anywhere earlier silently reassigns every value after it to the wrong
-    // member. Not applied automatically (this renderer's CLI integrator/
+    // scene's own Integrator directive; 0/empty when the scene has none.
+    // Not applied automatically (this renderer's CLI integrator/
     // depth selection is a positional argument + explicit flags, not a
     // per-scene default lookup) - cpu_interface.cpp compares against these
     // to warn when what a render actually does diverges from what the scene
@@ -147,29 +149,19 @@ struct SceneDescriptor {
     std::string recommended_integrator;
     // Same shape as recommended_integrator above (empty for every hand-built
     // scene; not auto-applied; cpu_interface.cpp warns rather than switches
-    // samplers) - the loaded scene's own Sampler directive type name. Also
-    // deliberately last, same positional-brace-init reason as
-    // recommended_integrator's own comment.
+    // samplers) - the loaded scene's own Sampler directive type name.
     std::string recommended_sampler;
 
     // LightSource "infinite" "point3 portal[4]" (pbrt-v4's windowed
     // infinite light, visible only through a finite rectangular window) -
     // nullptr unless the loaded scene declared a real portal[4] (see
-    // pbrt_cpu_builder.h's BuildResult::portal comment). Deliberately
-    // last, same positional-brace-init reason as recommended_integrator/
-    // recommended_sampler above - every hand-built scene above leaves this
-    // at its default (empty std::function = nullptr), since none of them
-    // are pbrt-loaded portal-light scenes.
+    // pbrt_cpu_builder.h's BuildResult::portal comment); empty
+    // (std::function = nullptr) otherwise.
     std::function<std::shared_ptr<PortalImageInfiniteLightData<double>>()> build_portal;
 
     // Integrator "string lightsampler" - same "empty for every hand-built
     // scene; not auto-applied; cpu_interface.cpp warns rather than
-    // switches samplers" shape as recommended_sampler above. Deliberately
-    // LAST (after build_portal, not next to recommended_sampler) - same
-    // positional-brace-init fragility reasoning as every other field
-    // added here after the struct's own initial fields: appending keeps
-    // every existing hand-built scene's positional initializer list
-    // referring to the same members it always did.
+    // switches samplers" shape as recommended_sampler above.
     std::string recommended_light_sampler;
 
     // pbrt-v4's own "camera medium" (see pbrt_flatten::FlatScene::
@@ -177,11 +169,7 @@ struct SceneDescriptor {
     // camera_t::camera_medium's own comment, camera.h, for what consumes
     // it) - nullptr unless the loaded scene declared a MediumInterface
     // before its Camera directive (see pbrt_cpu_builder.h's BuildResult::
-    // cameraMedium comment). Deliberately LAST, same positional-brace-init
-    // fragility reasoning as every other field added here after the
-    // struct's own initial fields - every hand-built scene above leaves
-    // this at its default (empty std::function = nullptr), since none of
-    // them are pbrt-loaded camera-medium scenes.
+    // cameraMedium comment); empty (std::function = nullptr) otherwise.
     std::function<std::shared_ptr<ambient_medium>()> build_camera_medium;
 
     // The scene's per-shape homogeneous media with per-channel extinction, for camera::ray_color() to sample (pbrt_cpu_builder.h's
@@ -228,15 +216,8 @@ struct SceneDescriptor {
     // any effect on the selected scene or should warn "has no effect for
     // this scene", matching this project's established convention for a
     // flag that doesn't apply to every scene (see render_options.h's
-    // top-of-file comment). Deliberately LAST, same positional-brace-init
-    // fragility reasoning as every other field added here after the
-    // struct's own initial fields.
+    // top-of-file comment).
     bool is_pbrt_backed = false;
-
-    // The scene's durable key (src/shared/scene_slugs.h): "cornell-box", or a .pbrt file's name. Unlike `id` it does not move when a category is added
-    // or a file is added to pbrt_scenes/, so anything saved or typed by a person should use it. find_scene() accepts it, and the id, everywhere.
-    // LAST, like the fields above it (the built-in entries use positional initialisation).
-    std::string slug;
 };
 
 // The note a non-default integrator prints for a scene with a participating medium whose extinction differs between colour channels, or "" when
@@ -1122,16 +1103,11 @@ inline int scene_count() {
 // own default (main.cpp) when --camera-path/-p isn't passed and no
 // --video-preset already set one.
 //
-// Deliberately NOT a SceneDescriptor field: the ~65 hand-built scene
-// entries in get_builtin_scene_registry() are one large const aggregate-
-// init literal (see this file's own repeated "positional brace-init"
-// warnings on SceneDescriptor's later fields) that can't cheaply grow a
-// new per-entry value without respelling every intervening field for each
-// one. Video-mode path choice is also a purely presentational concern
-// anyway (unlike recommended_spp/exposure, it never changes what's
-// actually rendered, only how a video moves the camera through it), so it
-// lives here as its own small lookup instead - the same "separate,
-// video-specific curated table" spirit as video_preset.h.
+// Deliberately NOT a SceneDescriptor field: video-mode path choice is a
+// purely presentational concern (unlike recommended_spp/exposure, it never
+// changes what's actually rendered, only how a video moves the camera
+// through it), so it lives here as its own small lookup - the same
+// "separate, video-specific curated table" spirit as video_preset.h.
 //
 // A category-letter default (checked before the global "orbit" fallback)
 // covers most of a category at once; individual id overrides handle the
