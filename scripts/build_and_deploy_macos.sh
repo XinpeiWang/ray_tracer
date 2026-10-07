@@ -30,16 +30,19 @@
 # Every scene that does NOT require external files (Basics/Materials/
 # Lights/Cameras/Volumes/Geometry/Textures - the large majority of the
 # registry, procedurally generated) works out of the box from the installed .app with
-# no extra setup. To also render the external-asset scenes, copy this
-# repo's models/ directory into the installed app bundle yourself:
-#   cp -R /path/to/ray_tracer/models "/Applications/RayTracerGUI.app/Contents/MacOS/models"
-# (that exact path - Contents/MacOS/ - matches where the app looks: see
-# mainwindow.cpp's setWorkingDirectory(applicationDirPath()) and
-# launcher/main.cpp's/gpu's kSearchPrefixes, whose first entry is "models/"
-# relative to the CLI's own working directory).
+# no extra setup. For the external-asset scenes the GUI offers a "Download
+# missing files" button: it fetches them from their original sites into a
+# per-user folder (~/Library/Application Support/Ray Tracer/user_assets, see
+# RAY_TRACER_USER_ASSETS) that the renderer also searches, so it works from a
+# read-only disk image too. Copying files by hand into the app's Contents/MacOS/
+# (models/, pbrt_scenes/, ...) still works as well.
 #
 # Usage:
-#   ./scripts/build_and_deploy_macos.sh [--skip-dmg]
+#   ./scripts/build_and_deploy_macos.sh [--arch native|arm64|x86_64|universal] [--skip-dmg]
+#     --arch native     (default) this Mac's own CPU: arm64 on Apple silicon. Fastest to build and run.
+#     --arch universal  arm64 + x86_64 in every binary: one dmg for every Mac (about twice the build time).
+#     --arch x86_64     Intel build; on Apple silicon it runs under Rosetta.
+#   Needs a Qt install that contains the chosen architecture(s) - an official Qt 6 install is universal.
 
 set -euo pipefail
 
@@ -47,12 +50,16 @@ REPO_ROOT="$(cd "$(dirname "${BASH_SOURCE[0]}")/.." && pwd)"
 APP_NAME="RayTracerGUI"
 DEPLOY_DIR="$REPO_ROOT/RayTracer_Package_macOS"
 SKIP_DMG=0
+ARCH_CHOICE=native
 
-for arg in "$@"; do
-	case "$arg" in
+while [[ $# -gt 0 ]]; do
+	case "$1" in
 		--skip-dmg) SKIP_DMG=1 ;;
-		*) echo "Unknown argument: $arg" >&2; exit 1 ;;
+		--arch) [[ $# -ge 2 ]] || { echo "--arch needs a value" >&2; exit 1; }; ARCH_CHOICE="$2"; shift ;;
+		--arch=*) ARCH_CHOICE="${1#--arch=}" ;;
+		*) echo "Unknown argument: $1" >&2; exit 1 ;;
 	esac
+	shift
 done
 
 command -v cmake >/dev/null || { echo "ERROR: cmake not found on PATH" >&2; exit 1; }
@@ -62,43 +69,44 @@ echo "========================================"
 echo "Ray Tracer - macOS build + package"
 echo "========================================"
 
-# The single most important line in this whole script, found the hard way
-# (section 113 in docs/METAL_GPU_FEASIBILITY.md): cpu_renderer/ray_tracer/
-# scene_metadata (built via CMake below) and RayTracerGUI (built via qmake
-# a few steps down) must come out the SAME architecture, or the GUI's own
-# dlopen() of scene_metadata.dylib fails outright with "incompatible
-# architecture" - a real failure a real user hit, invisible to every
-# check this script ran before (it never launched the actual GUI binary
-# and inspected its own dialog, only the CLI). An EARLIER version of this
-# script forced CMake to `$(uname -m)` (the HOST's own native
-# architecture) on the theory that only cmake itself could be the
-# Rosetta-translated, wrong-architecture one - true on SOME machines, but
-# backwards on this one: `qmake`/its whole Qt installation are the
-# x86_64-only (non-universal) side here, and there is no native arm64 Qt
-# install anywhere on this machine to point at instead (installing one is
-# a real, separate, slower undertaking - not something this script does
-# for you). Querying qmake's OWN binary architecture directly and using
-# THAT for both builds - whichever direction the mismatch actually runs -
-# is the only fix that works regardless of which build machine this runs
-# on. `lipo -archs` on a Rosetta-translated x86_64 tool still reports
-# "x86_64" correctly (lipo inspects the FILE's own architecture, not the
-# architecture of the process executing lipo itself).
-QT_TARGET_ARCH="$(lipo -archs "$(command -v qmake)" 2>/dev/null | awk '{print $1}')"
-[[ -n "$QT_TARGET_ARCH" ]] || { echo "ERROR: could not determine qmake's own architecture via 'lipo -archs'" >&2; exit 1; }
-# Build directories are per architecture, so a release build (x86_64 here, Qt is x86_64-only) never shares objects
-# with, or overwrites, a native arm64 development build in build_macos/, and re-running the script is incremental.
-BUILD_DIR="$REPO_ROOT/build_macos_$QT_TARGET_ARCH"
+# The single most important rule in this whole script, found the hard way (section 113 in docs/METAL_GPU_FEASIBILITY.md):
+# cpu_renderer/ray_tracer/scene_metadata (built via CMake below) and RayTracerGUI (built via qmake a few steps down) must
+# come out with the SAME architecture(s), or the GUI's own dlopen() of scene_metadata.dylib fails outright with "incompatible
+# architecture". So ONE choice is made here and handed to both builds (see --arch in the usage above).
+#
+# "native" is decided from the CPU, not `uname -m`, which says x86_64 when this script itself runs under Rosetta
+# (`arch -x86_64 bash ...`, which this script used to need). The Qt install must contain every requested architecture: an
+# official Qt 6 macOS install is universal, and the check below says so clearly when one is not. (An older version of this
+# script took the FIRST architecture `lipo -archs qmake` listed, which for a universal Qt is x86_64, and so built every release
+# for Rosetta although the Qt install was universal all along.)
+HOST_ARCH="$(uname -m)"
+[[ "$(sysctl -n hw.optional.arm64 2>/dev/null || echo 0)" == "1" ]] && HOST_ARCH=arm64
+[[ "$ARCH_CHOICE" == "native" ]] && ARCH_CHOICE="$HOST_ARCH"
+case "$ARCH_CHOICE" in
+	arm64|x86_64) WANT_ARCHS="$ARCH_CHOICE" ;;
+	universal)    WANT_ARCHS="arm64 x86_64" ;;
+	*) echo "ERROR: --arch must be native, arm64, x86_64 or universal (got '$ARCH_CHOICE')" >&2; exit 1 ;;
+esac
+QT_ARCHS="$(lipo -archs "$(command -v qmake)" 2>/dev/null || true)"
+[[ -n "$QT_ARCHS" ]] || { echo "ERROR: could not determine qmake's architectures via 'lipo -archs'" >&2; exit 1; }
+for a in $WANT_ARCHS; do
+	[[ " $QT_ARCHS " == *" $a "* ]] || { echo "ERROR: this Qt install ($(command -v qmake)) has only: $QT_ARCHS - it cannot build $a. Use --arch with one of those, or install a universal Qt 6 (e.g. through aqtinstall or the online installer)." >&2; exit 1; }
+done
+# CMake's list separator is ';', qmake's QMAKE_APPLE_DEVICE_ARCHS is space-separated.
+CMAKE_ARCHS="${WANT_ARCHS// /;}"
+# Build directories are per architecture choice, so a release build never shares objects with a development build of another one,
+# and re-running the script is incremental.
+BUILD_TAG="$ARCH_CHOICE"
+BUILD_DIR="$REPO_ROOT/build_macos_$BUILD_TAG"
 
-if [[ "$QT_TARGET_ARCH" != "$(uname -m)" ]]; then
-	echo "NOTE: this Qt install is $QT_TARGET_ARCH, not this Mac's native $(uname -m) - building"
-	echo "      everything as $QT_TARGET_ARCH to match (runs translated/emulated, slower, but the"
-	echo "      only way to keep the GUI and CLI/dylib loadable together without installing a"
-	echo "      native-architecture Qt)."
+if [[ "$WANT_ARCHS" == "x86_64" && "$HOST_ARCH" == "arm64" ]]; then
+	echo "NOTE: building x86_64 on an Apple-silicon Mac: the result runs under Rosetta (slower, and needs Rosetta installed)."
 fi
+echo "Architectures: $WANT_ARCHS (Qt provides: $QT_ARCHS)"
 
 echo
 echo "[1/5] Building cpu_renderer + ray_tracer CLI + scene_metadata (CMake)..."
-cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$QT_TARGET_ARCH" -DRT_BUILD_METAL=ON
+cmake -S "$REPO_ROOT" -B "$BUILD_DIR" -DCMAKE_BUILD_TYPE=Release -DCMAKE_OSX_ARCHITECTURES="$CMAKE_ARCHS" -DRT_BUILD_METAL=ON
 cmake --build "$BUILD_DIR" --config Release -j"$(sysctl -n hw.ncpu)"
 
 CLI_BIN="$BUILD_DIR/ray_tracer"
@@ -111,12 +119,12 @@ echo "[2/5] Building Qt GUI (qmake + make)..."
 # Per-architecture Qt build directory, for the same reason as BUILD_DIR above: a qmake build dir that has seen
 # objects of the other architecture fails to link ("found architecture x86_64, required arm64"), which used to
 # mean wiping qt_gui/build_macos before every release. Separate dirs make a re-run INCREMENTAL (minutes -> ~1 min).
-GUI_BUILD_DIR="$REPO_ROOT/qt_gui/build_macos_$QT_TARGET_ARCH"
+GUI_BUILD_DIR="$REPO_ROOT/qt_gui/build_macos_$BUILD_TAG"
 mkdir -p "$GUI_BUILD_DIR"
 # RayTracerGUI.pro's DESTDIR puts the .app in RayTracer_Package/ whichever architecture built it, and make would
 # consider an existing .app of the OTHER architecture up to date. Drop it so the (cheap) link always reruns.
 rm -rf "$REPO_ROOT/RayTracer_Package/$APP_NAME.app"
-( cd "$GUI_BUILD_DIR" && qmake ../RayTracerGUI.pro CONFIG+=release && make -j"$(sysctl -n hw.ncpu)" )
+( cd "$GUI_BUILD_DIR" && qmake ../RayTracerGUI.pro CONFIG+=release "QMAKE_APPLE_DEVICE_ARCHS=$WANT_ARCHS" && make -j"$(sysctl -n hw.ncpu)" )
 
 # RayTracerGUI.pro's own DESTDIR ($$PWD/../RayTracer_Package) is NOT
 # inside $GUI_BUILD_DIR - it's unconditional (no macx{}/win32{} split) and
@@ -270,8 +278,8 @@ echo "========================================"
 echo "Done."
 echo "App:  $DEPLOY_DIR/$APP_NAME.app"
 echo "========================================"
-echo "Reminder: scenes that need external mesh files (Sponza, Bistro, the"
-echo "H-family large environments, most single-model scenes, ...) need"
-echo "models/ copied into the installed app's Contents/MacOS/models/ - see"
-echo "this script's own header comment for the exact command and why those"
-echo "assets aren't bundled automatically."
+echo "Architectures: $WANT_ARCHS."
+echo "Reminder: scenes that need external files (Sponza, Bistro, the H-family"
+echo "large environments, most single-model scenes, ...) are not bundled; the"
+echo "app's \"Download missing files\" button fetches them. See this script's"
+echo "header comment."

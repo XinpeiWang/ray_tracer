@@ -43,6 +43,19 @@
 cmake_minimum_required(VERSION 3.14)
 option(RT_BUILD_GPU "Also build the CUDA/OptiX GPU renderer (Windows + NVIDIA GPU + CUDA/OptiX SDK only)" OFF)
 option(RT_BUILD_METAL "Also build the standalone Metal ray tracing proof of concept (macOS + Apple GPU only)" OFF)
+
+# Build for the Mac's real CPU unless the caller chose an architecture. A cmake that is itself an x86_64 binary (the Intel
+# Homebrew in /usr/local, an installer-package cmake) runs under Rosetta on Apple silicon, and the compiler it starts then
+# defaults to x86_64 too - every development build used to be a slower, Rosetta-only x86_64 one without anyone asking for it.
+# `uname -m` (and CMAKE_HOST_SYSTEM_PROCESSOR) are no help: they report the translated process's x86_64. Pass
+# -DCMAKE_OSX_ARCHITECTURES=x86_64 (or "arm64;x86_64" for universal) to override; scripts/build_and_deploy_macos.sh does.
+if(APPLE AND NOT CMAKE_OSX_ARCHITECTURES)
+    execute_process(COMMAND sysctl -n hw.optional.arm64 OUTPUT_VARIABLE RT_HOST_IS_ARM64
+                    OUTPUT_STRIP_TRAILING_WHITESPACE ERROR_QUIET)
+    if(RT_HOST_IS_ARM64 STREQUAL "1")
+        set(CMAKE_OSX_ARCHITECTURES arm64 CACHE STRING "Build architectures for macOS" FORCE)
+    endif()
+endif()
 project(ray_tracer_cpu CXX C)
 
 # Checked (not unconditionally enable_language'd) so RT_BUILD_GPU=ON on a

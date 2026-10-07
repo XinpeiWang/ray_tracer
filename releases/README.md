@@ -172,9 +172,8 @@ RayTracer_Package_macOS/
 ```
 
 External mesh assets (Sponza, Bistro, and most other `requires_files=true`
-scenes in the registry) are NOT bundled - see
-`scripts/build_and_deploy_macos.sh`'s own header comment for why and for
-the exact command to add them back in yourself after installing.
+scenes in the registry) are NOT bundled - the app's "Download missing files"
+button fetches them (see `scripts/build_and_deploy_macos.sh`'s header comment).
 
 ## Distribution
 
