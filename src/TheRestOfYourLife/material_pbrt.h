@@ -1124,27 +1124,24 @@ class diffuse_transmission : public material {
         double pt = std::fmax(std::fmax(t.x(), t.y()), t.z());
         if (pr + pt <= 0.0) return false;
 
-        if (random_double() < pr / (pr + pt)) {
-            // Diffuse reflection: cosine-weighted same hemisphere as normal
-            srec.attenuation  = r;
-            srec.pdf_ptr      = make_shared<cosine_pdf>(rec.normal);
-            srec.skip_pdf     = false;
-        } else {
-            // Diffuse transmission: cosine-weighted opposite hemisphere
-            // Use cosine_pdf around -normal so MIS and PDF evaluation are correct,
-            // matching pbrt-v4 where transmission PDF = pt/(pr+pt) * cos/pi
-            srec.attenuation  = t;
-            srec.pdf_ptr      = make_shared<cosine_pdf>(-rec.normal);
-            srec.skip_pdf     = false;
-        }
+        // The sampling density is the whole mixture (pbrt-v4: reflect with pr / (pr + pt), a cosine lobe about the normal, else transmit with pt / (pr + pt),
+        // a cosine lobe about -normal), so the path weight f * cos / pdf = R (or T) * (cos / pi) / (p_lobe * cos / pi) = R / p_lobe and MIS sees the density
+        // of both lobes at any queried direction. scatter() used to commit to one lobe with a coin flip and hand over only that lobe's cosine density, while
+        // scattering_pdf() already carried the lobe probability: the weight held it twice and a 0.2 / 0.6 surface read a quarter of its reflection.
+        // srec.attenuation stays the colour of the lobe a coin flip lands on; path weights ask scattering_attenuation() for the colour of the direction
+        // actually used.
+        srec.attenuation  = (random_double() < pr / (pr + pt)) ? r : t;
+        srec.pdf_ptr      = make_shared<two_sided_cosine_pdf>(rec.normal, pr / (pr + pt), pt / (pr + pt));
+        srec.skip_pdf     = false;
         return true;
     }
 
     double scattering_pdf(const ray& r_in, const hit_record& rec,
                           const ray& scattered) const override {
-        // pbrt-v4 DiffuseTransmissionBxDF::PDF:
-        //   same hemisphere  -> pr/(pr+pt) * cos(theta)/pi
-        //   opposite hemisphere -> pt/(pr+pt) * cos(theta)/pi
+        // f * |cos| / colour: the BSDF is R / pi on the normal's side and T / pi on the other (pbrt-v4 DiffuseTransmissionBxDF::f), and
+        // scattering_attenuation() supplies R or T for the queried direction. This is NOT the sampling density (that mixture, with the lobe
+        // probabilities pr / (pr + pt) and pt / (pr + pt), is srec.pdf_ptr's two_sided_cosine_pdf): it used to return that density, which put the
+        // lobe probability into every direct-light and BSDF-sampled weight a second time.
         color r = reflectance_at(rec);
         color t = transmittance_at(rec);
         double pr = std::fmax(std::fmax(r.x(), r.y()), r.z());
@@ -1152,10 +1149,7 @@ class diffuse_transmission : public material {
         if (pr + pt <= 0.0) return 0.0;
 
         double cos_theta = dot(rec.normal, unit_vector(scattered.direction()));
-        if (cos_theta > 0.0)
-            return (pr / (pr + pt)) * (cos_theta / pi);   // reflection
-        else
-            return (pt / (pr + pt)) * (-cos_theta / pi);  // transmission
+        return std::fabs(cos_theta) / pi;
     }
 
     // See material::scattering_attenuation()'s own comment for why this
@@ -1184,13 +1178,10 @@ class diffuse_transmission : public material {
     shared_ptr<texture> get_reflectance_texture()   const { return rTex; }
     shared_ptr<texture> get_transmittance_texture() const { return tTex; }
 
-    // See material::is_shadow_transmissive()'s comment - matches
-    // optix_anyhit_shadow.h's MaterialType::DiffuseTransmission skip.
-    // Unconditional, not weighted by R vs T, matching that same GPU
-    // convention: this material is treated as non-occluding outright rather
-    // than probabilistically, regardless of how much of its energy actually
-    // reflects.
-    bool is_shadow_transmissive(const hit_record&) const override { return true; }
+    // Opaque to shadow rays, as in pbrt-v4 (only an interface material, which has no BSDF, lets a shadow ray through). This used to answer true
+    // "to match the GPU's any-hit skip", which made a direct-light sample see the sky straight through a closed shell while a BSDF-sampled ray
+    // from the same vertex could not: MIS then combined two estimators of different integrals (see pbrt_scenes/diffuse-transmission-furnace.pbrt).
+    // A leaf now shadows what is behind it, like any other surface.
 
   private:
     color R;  // reflectance (same-hemisphere diffuse)

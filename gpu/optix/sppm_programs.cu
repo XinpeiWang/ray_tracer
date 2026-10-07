@@ -730,12 +730,14 @@ static __device__ __forceinline__ bool sppm_sample_delta_material(
 		float pr = fmaxf(R.x, fmaxf(R.y, R.z));
 		float pt = fmaxf(T.x, fmaxf(T.y, T.z));
 		if (pr + pt <= 0.0f) return false;
-		if (sppm_rand(seed) < pr / (pr + pt)) {
+		// Weight R / p_lobe (T / p_lobe for transmission): see wavefront_kernels_materials.cu's DiffuseTransmission case.
+		const float p_refl = pr / (pr + pt);
+		if (sppm_rand(seed) < p_refl) {
 			out_dir   = normalize(n + sppm_rand_unit(seed));
-			out_atten = R;
+			out_atten = R / p_refl;
 		} else {
 			out_dir   = normalize(-n + sppm_rand_unit(seed));
-			out_atten = T;
+			out_atten = T / (1.0f - p_refl);
 		}
 		return true;
 	}

@@ -544,6 +544,21 @@ static void expectBdptAgreesWithPathTracer(const char* stem, int depth, double t
 	EXPECT_LT(bdptMean, (1.0 + tol) * pathMean) << stem << ": BDPT too bright vs the path tracer";
 }
 
+// A closed diffuse-transmission shell under a uniform sky (pbrt_scenes/diffuse-transmission-furnace.pbrt, R = 0.2, T = 0.6) has a closed form at every depth:
+// 0.2, 0.56, 0.632, 0.6464, ... -> 0.65. Three defects hid in that one material and each integrator read something different (CPU 0.39, recursive GPU 0.25,
+// --simplepath 1.40 at depth 30): the CPU weight carried the lobe probability pr / (pr + pt) twice (scattering_pdf() and the committed lobe), both GPU backends
+// left it out altogether (weight R instead of R / p_lobe), and shadow rays passed through the shell, so light sampling saw the sky through it while BSDF sampling
+// could not - MIS then mixed two estimators of different integrals (depth 1 read 0.35 on the CPU, whose closed form is 0.2).
+TEST(PbrtBackendAgreementTest, DiffuseTransmissionShellHasItsClosedFormOnEveryBackend) {
+	const double expected[3] = {0.6464, 0.6464, 0.6464};   // depth 4
+	expectChannelMeans("diffuse-transmission-furnace", 256, 4, expected, 0.01, 0.02);
+}
+
+TEST(PbrtBackendAgreementTest, DiffuseTransmissionShellReadsOnlyItsReflectionAtDepthOne) {
+	const double expected[3] = {0.2, 0.2, 0.2};
+	expectChannelMeans("diffuse-transmission-furnace", 256, 1, expected, 0.01, 0.02);
+}
+
 // A closed diffuse sphere lit by a point light at its centre has a closed form at every depth (pbrt_scenes/bdpt-room-furnace.pbrt): after d bounces
 // every wall point reads 0.5 * (1 + 0.5 + ... + 0.5^(d-1)), here 0.9375 at depth 4. It pins the absolute interreflection energy of the CPU and both GPU
 // backends, and of BDPT - which a path-tracer-vs-BDPT comparison alone could not, since the two could be wrong together.

@@ -1,0 +1,18 @@
+# diffuse-transmission-furnace.pbrt -- a closed diffuse-transmission shell under a uniform white sky, with a closed form at every depth.
+#
+# The shell reflects R = 0.2 and transmits T = 0.6. Inside it is a cavity whose wall radiance B satisfies B = T * 1 + R * B (the wall transmits the sky and
+# reflects the cavity's own light), so B = T / (1 - R) = 0.75, and the outside surface the camera sees reads L = R * 1 + T * B = 0.65.
+# After d bounces: B_1 = T, B_{k+1} = T + R B_k, L_d = R + T * B_{d-1}: 0.2, 0.56, 0.632, 0.6464, ... -> 0.65.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 14 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+Material "diffusetransmission" "rgb reflectance" [ 0.2 0.2 0.2 ] "rgb transmittance" [ 0.6 0.6 0.6 ]
+Shape "sphere" "float radius" [ 1 ]

@@ -2026,20 +2026,26 @@ __device__ __forceinline__ void shade_material(
 			float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
 			if (pr + pt <= 0.0f) { scattered = false; break; }
 
-			if (random_float(seed) < pr / (pr + pt)) {
+			// pbrt-v4 samples reflection with probability pr / (pr + pt) (else transmission) from a cosine lobe, so the path weight
+			// f * cos / pdf = R * (cos / pi) / (pr / (pr + pt) * cos / pi) = R / p_lobe. The weight used to be R alone: a 0.2 / 0.6 surface read a
+			// quarter of its reflection and a third of its transmission, on both GPU backends.
+			const float p_refl = pr / (pr + pt);
+			if (random_float(seed) < p_refl) {
 				// Diffuse reflection: cosine-weighted same hemisphere
 				scattered_dir = normalize(normal + random_unit_vector(seed));
 				if (near_zero(scattered_dir)) scattered_dir = normal;
-				attenuation   = R;
+				attenuation   = R / p_refl;
 			} else {
 				// Diffuse transmission: cosine-weighted opposite hemisphere
 				float3 neg_n  = -normal;
 				scattered_dir = normalize(neg_n + random_unit_vector(seed));
 				if (near_zero(scattered_dir)) scattered_dir = neg_n;
-				attenuation   = T_col;
+				attenuation   = T_col / (1.0f - p_refl);
 			}
 			scattered   = true;
-			is_specular = false;
+			// Not a delta BSDF, but flagged like one: no light sampling is done at this vertex (it has no hemisphere-aware NEE here) so the next
+			// emitter hit must be added in full, not MIS-weighted against a light sample that never happened - same as the wavefront backend.
+			is_specular = true;
 			break;
 		}
 

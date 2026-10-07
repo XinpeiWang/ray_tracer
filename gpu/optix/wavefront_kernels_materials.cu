@@ -850,15 +850,18 @@ extern "C" __global__ void evaluate_materials(
 		float pr = fmaxf(R.x, fmaxf(R.y, R.z));
 		float pt = fmaxf(T_col.x, fmaxf(T_col.y, T_col.z));
 		if (pr + pt <= 0.0f) { scattered = false; break; }
-		if (wf_rand(seed) < pr / (pr + pt)) {
+		// Path weight f * cos / pdf = R / p_lobe for a cosine lobe chosen with probability p_lobe (pr / (pr + pt) or pt / (pr + pt)), as pbrt-v4's
+		// DiffuseTransmissionBxDF::Sample_f; the weight used to be R (or T) alone, a factor p_lobe too small (see optix_device_helpers.h).
+		const float p_refl = pr / (pr + pt);
+		if (wf_rand(seed) < p_refl) {
 			scattered_dir = normalize(normal + wf_rand_unit(seed));
 			if (wf_near_zero(scattered_dir)) scattered_dir = normal;
-			attenuation = albedoSpectrum(R);
+			attenuation = albedoSpectrum(R / p_refl);
 		} else {
 			float3 neg_n = -normal;
 			scattered_dir = normalize(neg_n + wf_rand_unit(seed));
 			if (wf_near_zero(scattered_dir)) scattered_dir = neg_n;
-			attenuation = albedoSpectrum(T_col);
+			attenuation = albedoSpectrum(T_col / (1.0f - p_refl));
 		}
 		scattered   = true;
 		is_specular = true;
