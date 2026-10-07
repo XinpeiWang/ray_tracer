@@ -225,6 +225,12 @@ class SPPMSceneAdapter {
 		sppm_bsdf_f(ctx, wo, wi, n, out);
 	}
 
+	// f for light flowing from the wo side to the wi side - what a PHOTON's throughput needs (see sppm_bsdf_f_adjoint()'s comment).
+	void BSDFfAdjoint(int id, const double wo[3], const double wi[3], const double n[3], double out[3]) const {
+		const SPPMShadingContext& ctx = (id == kTransientId) ? transient_ctx_ : durable_ctx_[id];
+		sppm_bsdf_f_adjoint(ctx, wo, wi, n, out);
+	}
+
 	// Near-identical to camera.h's own ray_color() NEE strategy A-1, minus
 	// MIS weighting: SPPM's camera pass calls DirectLight() exactly once at
 	// the recorded visible point with no second, BSDF-sampled continuation
@@ -762,6 +768,10 @@ inline void sppm_photon_pass_mt(std::vector<SPPMPixel<double>>& pixels,
 				                       su1, su2, new_dir, f_val, pdf, is_spec))
 					break;
 				if (pdf <= 0.0) break;
+
+				// Adjoint BSDF value for a photon - see sppm.h's SPPMPhotonPass().
+				if (!is_spec)
+					bdpt_detail::bsdf_f_light(scene, hit.bsdf_id, hit.wo, new_dir, hit.shading_n, f_val, 0);
 
 				double cosI = std::fabs(new_dir[0]*hit.shading_n[0] +
 				                        new_dir[1]*hit.shading_n[1] +
