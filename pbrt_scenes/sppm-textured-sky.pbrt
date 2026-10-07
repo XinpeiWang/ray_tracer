@@ -1,0 +1,24 @@
+# sppm-textured-sky.pbrt -- a checker-textured diffuse sphere under a uniform sky and nothing else; GPU SPPM must agree with the path tracer.
+#
+# GPU SPPM read mat.albedo for every diffuse surface and never sampled the material's texture (a textured sphere rendered in whatever flat colour the
+# material carries: the Earth globe read 0.33x of the path tracer), and it had no sky at all: an escaping ray and a visible point lit by a uniform sky both
+# contributed nothing. With one convex object and a constant sky there is no interreflection, so the radiance of every sphere pixel is exactly the texture value
+# at that point times the sky (rho * L): the frame mean is the checker's mean albedo over the sphere's silhouette times 1, plus 1 for the sky around it.
+# The test compares GPU SPPM with the CPU path tracer, which has the same checker.
+#
+# Original, not derived from any distributed scene, so it carries no licence constraints.
+
+LookAt  0 0 6    0 0 0    0 1 0
+Camera "perspective" "float fov" [ 30 ]
+
+Film "rgb" "integer xresolution" [ 32 ] "integer yresolution" [ 32 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+
+Texture "checks" "spectrum" "checkerboard" "float uscale" [ 8 ] "float vscale" [ 4 ]
+  "rgb tex1" [ 0.9 0.2 0.2 ] "rgb tex2" [ 0.1 0.1 0.8 ]
+Material "diffuse" "texture reflectance" [ "checks" ]
+Shape "sphere" "float radius" [ 1 ]

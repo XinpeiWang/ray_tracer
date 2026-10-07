@@ -45,6 +45,7 @@
 #include "sppm_types.h"
 #include "optix_types.h"
 #include "optix_math_helpers.h"
+#include "wavefront_texture_sample.h"   // wf_sample_texture: the same texture lookup the wavefront kernels use
 #include "math_utils.h"   // cpu_gpu_reflect/cpu_gpu_refract
 #include "fresnel.h"       // FrDielectric
 #include "microfacet.h"    // TrowbridgeReitz
@@ -66,6 +67,7 @@ static __device__ __forceinline__ void* sppmUnpackPointer(unsigned int p0, unsig
 struct SPPMHitPayload {
 	float3 hitPoint;
 	float3 normal;
+	float  u, v;          // surface (u,v), as the other backends compute them: what a texture is looked up with
 	int    materialIdx;
 	bool   hit;
 };
@@ -187,6 +189,10 @@ extern "C" __global__ void __closesthit__sppm_sphere() {
 	bool front_face = dot(ray_dir, outward_normal) < 0.0f;
 	float3 normal = front_face ? outward_normal : -outward_normal;
 
+	// (u,v) from the outward normal, the plain-sphere convention of optix_intersection_sphere.h (theta from the Y pole, phi around it).
+	const float kPi = 3.14159265358979323846f;
+	payload->u = (atan2f(-outward_normal.z, outward_normal.x) + kPi) / (2.0f * kPi);
+	payload->v = acosf(fminf(1.0f, fmaxf(-1.0f, -outward_normal.y))) / kPi;
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
 	payload->materialIdx = sph.materialIdx;
@@ -207,6 +213,11 @@ extern "C" __global__ void __closesthit__sppm_quad() {
 	bool front_face = dot(ray_dir, q.normal) < 0.0f;
 	float3 normal = front_face ? q.normal : -q.normal;
 
+	// (u,v) = the quad's own (alpha, beta), as __intersection__sppm_quad and optix_intersection_quad.h compute them.
+	const float3 planar_vec = hit_point - q.Q;
+	const float w_dot_w = dot(q.w, q.w);
+	payload->u = dot(q.w, cross(planar_vec, q.v)) / w_dot_w;
+	payload->v = dot(q.w, cross(q.u, planar_vec)) / w_dot_w;
 	payload->hitPoint    = hit_point;
 	payload->normal      = normal;
 	payload->materialIdx = q.materialIdx;
@@ -573,8 +584,17 @@ static __device__ __forceinline__ bool sppm_is_delta_material(const MaterialData
 // Lambertian is Phase 1's original, only case; Conductor/RoughMetal are new
 // as of this fix, now reachable here because sppm_is_delta_material() above
 // can classify a glossy instance of either as non-delta.
+// The diffuse colour of a hit: the material's texture at the hit's (u,v) when it has one (scaled by emissionScale, as the other backends do), else its flat
+// albedo. GPU SPPM used to read mat.albedo only, so a textured diffuse surface rendered in whatever flat colour the material carries (an Earth-textured sphere
+// read 0.33x of the path tracer).
+static __device__ __forceinline__ float3 sppm_diffuse_albedo(const MaterialData& mat, float u, float v, const float3& p) {
+	if (mat.textureIdx >= 0 && sppm_params.textures)
+		return wf_sample_texture(sppm_params.textures, sppm_params.texturePixels, mat.textureIdx, u, v, p) * mat.emissionScale;
+	return mat.albedo;
+}
+
 static __device__ __forceinline__ float3 sppm_bsdf_f(
-	const MaterialData& mat, const float3& wo, const float3& wi, const float3& n) {
+	const MaterialData& mat, const float3& wo, const float3& wi, const float3& n, const float3& lambertAlbedo) {
 	if (mat.type == MaterialType::Conductor || mat.type == MaterialType::RoughMetal) {
 		float3 tan_v, bitan;
 		BuildArbitraryTangentFrame(n.x, n.y, n.z, tan_v.x, tan_v.y, tan_v.z, bitan.x, bitan.y, bitan.z);
@@ -606,7 +626,7 @@ static __device__ __forceinline__ float3 sppm_bsdf_f(
 	}
 	// Lambertian fast path (Phase 1's original, only case before this fix).
 	const float inv_pi = 1.0f / 3.14159265358979323846f;
-	return mat.albedo * inv_pi;
+	return lambertAlbedo * inv_pi;
 }
 
 // Importance-samples a new direction + beta multiplier at a Metal/Dielectric/
@@ -811,7 +831,9 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 	if (!gpu_in_crop(sppm_params.camera, (int)idx.x, (int)idx.y)) return;
 	const unsigned int pixelIdx = idx.y * width + idx.x;
 
-	unsigned int seed = sppm_pcg(sppm_pcg(pixelIdx) ^ 0x9E3779B9u);
+	// The iteration index (photonSeedBase, set per iteration by the host) is part of the seed. It used to be the pixel index alone, so every iteration drew the
+	// same light sample, the same sky direction and the same film position: the direct lighting never averaged out over the iterations.
+	unsigned int seed = sppm_pcg(sppm_pcg(pixelIdx ^ (sppm_params.photonSeedBase * 0x85EBCA6Bu)) ^ 0x9E3779B9u);
 
 	SPPMPixelGPU& pixel = sppm_params.pixels[pixelIdx];
 	// pixel.Ld is NOT reset here -- it accumulates across every iteration of
@@ -823,21 +845,37 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 	// starts from zero on iteration 0.
 	pixel.vp_valid = false;
 
-	// Primary ray through the pixel center (no jitter/DOF -- matches
-	// sub-phase 1a's convention; antialiasing isn't the point of Phase 1).
-	// Y is flipped (height-1-idx.y, not idx.y) because image row 0 is the
-	// TOP of the output image but GpuCameraParams::lower_left_corner-based
-	// viewport math has v=0 at the BOTTOM -- same flip optix_raygen.h's own
-	// __raygen__rg applies (its comment: "Flip Y"); missing it here first
-	// showed up as the ceiling light rendering at the bottom of the image.
-	float s = (float(idx.x) + 0.5f) / float(width);
-	float t = (float(height - 1 - idx.y) + 0.5f) / float(height);
-	float3 org = sppm_params.camera.origin;
-	float3 dir = normalize(
-		sppm_params.camera.lower_left_corner
-		+ s * sppm_params.camera.horizontal
-		+ t * sppm_params.camera.vertical
-		- org);
+	// Primary ray through a jittered point of the pixel (a new one every iteration, so the pixel is antialiased by the SPPM iterations themselves, as pbrt's
+	// SPPM does with its filtered camera samples). Y is flipped (height-1-idx.y, not idx.y) because image row 0 is the TOP of the output image but
+	// GpuCameraParams::lower_left_corner-based viewport math has v=0 at the BOTTOM - same flip optix_raygen.h's own __raygen__rg applies (its comment: "Flip
+	// Y"); missing it here first showed up as the ceiling light rendering at the bottom of the image. The camera models are the recursive backend's
+	// (optix_device_helpers.h generate_camera_ray): perspective with thin-lens depth of field, orthographic, and the equirectangular spherical camera; the
+	// equal-area spherical, realistic-lens and animated cameras are not implemented here (the host warns).
+	const GpuCameraParams& cam = sppm_params.camera;
+	float s = (float(idx.x) + sppm_rand(seed)) / float(width);
+	float t = (float(height - 1 - idx.y) + sppm_rand(seed)) / float(height);
+	float3 org, dir;
+	if (cam.kind == CameraKind::Orthographic) {
+		org = cam.lower_left_corner + s * cam.horizontal + t * cam.vertical;
+		dir = cam.w;
+	} else if (cam.kind == CameraKind::Spherical) {
+		const float kPi = 3.14159265358979323846f;
+		const float v_sph = 1.0f - t;   // see generate_camera_ray's Spherical case: undo the flip, theta = v * pi runs from the top row
+		const float theta = kPi * v_sph, phi = 2.0f * kPi * s;
+		const float sin_t = sinf(theta);
+		org = cam.origin;
+		dir = normalize(sin_t * cosf(phi) * cam.su + cosf(theta) * cam.sv + sin_t * sinf(phi) * cam.sw);
+	} else {
+		const float3 pixel_sample = cam.lower_left_corner + s * cam.horizontal + t * cam.vertical;
+		const bool hasDOF = (cam.defocus_disk_u.x != 0.0f || cam.defocus_disk_u.y != 0.0f || cam.defocus_disk_u.z != 0.0f ||
+		                     cam.defocus_disk_v.x != 0.0f || cam.defocus_disk_v.y != 0.0f || cam.defocus_disk_v.z != 0.0f);
+		org = cam.origin;
+		if (hasDOF) {
+			const float r = sqrtf(sppm_rand(seed)), a = 2.0f * 3.14159265358979323846f * sppm_rand(seed);
+			org = cam.origin + (r * cosf(a)) * cam.defocus_disk_u + (r * sinf(a)) * cam.defocus_disk_v;
+		}
+		dir = normalize(pixel_sample - org);
+	}
 
 	float3 beta = make_float3(1.0f, 1.0f, 1.0f);
 	// kMaxMediumBoundaryCrossings (src/shared/cpu_gpu.h) is the one shared
@@ -864,7 +902,12 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 			p0, p1
 		);
 
-		if (!payload.hit) break;  // no sky in Phase 1 -- ray escapes, contributes nothing
+		if (!payload.hit) {
+			// The ray escaped: it sees the uniform sky (camera.backgroundColor, the scene's constant "infinite" light) - directly, or through a chain of
+			// specular bounces, the only way a camera path reaches here (a diffuse visible point ends the walk below and samples the sky with NEE instead).
+			pixel.Ld = pixel.Ld + beta * sppm_params.camera.backgroundColor;
+			break;
+		}
 
 		// Resolved to a real, non-Mix material before any mat.type check
 		// below -- see sppm_resolve_mix_material_index()'s own comment,
@@ -958,6 +1001,7 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 		pixel.vp_wo          = -normalize(dir);
 		pixel.vp_n           = payload.normal;
 		pixel.vp_beta        = beta;
+		pixel.vp_albedo      = sppm_diffuse_albedo(mat, payload.u, payload.v, payload.hitPoint);
 		pixel.vp_materialIdx = payload.materialIdx;
 		pixel.vp_valid       = true;
 
@@ -992,11 +1036,26 @@ extern "C" __global__ void __raygen__sppm_camera_pass() {
 				// visible point). No MIS weight -- see this file's top
 				// comment for why SPPM's single-sample NEE doesn't need
 				// one, unlike the regular path tracers' NEE.
-				float3 bsdf_val = sppm_bsdf_f(mat, pixel.vp_wo, to_light, pixel.vp_n);
+				float3 bsdf_val = sppm_bsdf_f(mat, pixel.vp_wo, to_light, pixel.vp_n, pixel.vp_albedo);
 				float3 Ld_contrib = beta * bsdf_val * cos_l * light_emission / light_pdf;
 
 				if (sppm_trace_shadow_ray(pixel.vp_p + 0.001f * pixel.vp_n, to_light, max_dist - 0.002f)) {
 					pixel.Ld = pixel.Ld + Ld_contrib;
+				}
+			}
+		}
+		// Sky direct lighting at the visible point: one cosine-weighted direction (pdf cos/pi), so f * cos / pdf = f * pi, as a second estimator beside the
+		// area-light sample above (they sample disjoint light sets, so the sum is unbiased). Without it a scene lit by a sky alone rendered black here.
+		{
+			const float3 sky = sppm_params.camera.backgroundColor;
+			if (sky.x > 0.0f || sky.y > 0.0f || sky.z > 0.0f) {
+				const float3 sky_dir = normalize(pixel.vp_n + sppm_rand_unit(seed));
+				const float cos_s = dot(sky_dir, pixel.vp_n);
+				if (cos_s > 1e-4f) {
+					const float3 f_s = sppm_bsdf_f(mat, pixel.vp_wo, sky_dir, pixel.vp_n, pixel.vp_albedo);
+					if (sppm_trace_shadow_ray(pixel.vp_p + 0.001f * pixel.vp_n, sky_dir, 1e30f)) {
+						pixel.Ld = pixel.Ld + beta * f_s * sky * 3.14159265358979323846f;
+					}
 				}
 			}
 		}
@@ -1131,7 +1190,7 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 						float cos_wi = dot(wi, vp.vp_n);
 						if (cos_wi > 0.0f) {
 							const MaterialData& vpMat = sppm_params.materials[vp.vp_materialIdx];
-							float3 f = sppm_bsdf_f(vpMat, vp.vp_wo, wi, vp.vp_n);
+							float3 f = sppm_bsdf_f(vpMat, vp.vp_wo, wi, vp.vp_n, vp.vp_albedo);
 							float3 phi_add = beta * vp.vp_beta * f;
 							atomicAdd(&vp.Phi.x, phi_add.x);
 							atomicAdd(&vp.Phi.y, phi_add.y);
@@ -1174,7 +1233,7 @@ extern "C" __global__ void __raygen__sppm_photon_pass() {
 			// sppm_rand_unit's own comment) -- same technique
 			// wavefront_kernels.cu's Lambertian case already relies on.
 			new_dir = normalize(payload.normal + sppm_rand_unit(seed));
-			beta_new = beta * mat.albedo;
+			beta_new = beta * sppm_diffuse_albedo(mat, payload.u, payload.v, payload.hitPoint);
 		}
 
 		// Russian roulette (mirrors SPPMPhotonPass's pbrt-v4 formula exactly:

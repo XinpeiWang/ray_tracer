@@ -467,6 +467,59 @@ TEST(PbrtBackendAgreementTest, DiffuseTransmissionShellReadsOnlyItsReflectionAtD
 	expectChannelMeans("diffuse-transmission-furnace", 256, 1, expected, 0.01, 0.02);
 }
 
+// GPU SPPM against the CPU: it read 0.33x (Earth globe, spherical-camera panorama) to 0.47x (Perlin spheres) of the path tracer because it never sampled a
+// material's texture and had no sky at all (an escaping ray and a visible point lit by a uniform sky contributed nothing), and its camera-pass seed ignored the
+// SPPM iteration, so every iteration drew the same light sample and film position. A constant sky + one convex diffuse object has no interreflection, so the
+// closed form of the furnace is exact; the textured sphere and the two bundled scenes are compared with the CPU path tracer / CPU SPPM.
+static bool gpuSppmMeans(const std::string& sceneId, int size, int iterations, int photons, int depth, double mean[3]) {
+	const std::string out = "pbrt_gpu_sppm_" + sceneId + ".exr";
+	if (optix_render_main_sppm(size, size, iterations, photons, depth, out.c_str(), sceneId.c_str(), 0.0, 0.0, 0.0) != 0) return false;
+	const bool ok = loadLinearChannelMeans(out, mean);
+	std::remove(out.c_str());
+	return ok;
+}
+
+TEST(PbrtBackendAgreementTest, GpuSppmUniformSkyFurnaceIsExact) {
+	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
+	const SceneDescriptor* s = find_example_scene("path-depth-furnace");
+	if (!s) GTEST_SKIP() << "path-depth-furnace.pbrt was not discovered - is pbrt_scenes/ present?";
+	double m[3];
+	ASSERT_TRUE(gpuSppmMeans(s->id, 32, 100, 20000, 4, m));
+	std::printf("[gpu sppm] sky furnace: %.4f %.4f %.4f (0.5 expected)\n", m[0], m[1], m[2]);
+	for (int c = 0; c < 3; ++c) EXPECT_NEAR(m[c], 0.5, 0.015) << "channel " << c;
+}
+
+TEST(PbrtBackendAgreementTest, GpuSppmSamplesDiffuseTexturesLikeThePathTracer) {
+	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
+	const SceneDescriptor* s = find_example_scene("sppm-textured-sky");
+	if (!s) GTEST_SKIP() << "sppm-textured-sky.pbrt was not discovered - is pbrt_scenes/ present?";
+	ASSERT_EQ(cpu_render_main(32, 32, 256, 4, "pbrt_gpu_sppm_tex_pt.exr", s->id.c_str(), 0.0, 0.0, 0.0), 0);
+	double pt[3], sppm[3];
+	ASSERT_TRUE(loadLinearChannelMeans("pbrt_gpu_sppm_tex_pt.exr", pt));
+	std::remove("pbrt_gpu_sppm_tex_pt.exr");
+	ASSERT_TRUE(gpuSppmMeans(s->id, 32, 100, 20000, 4, sppm));
+	for (int c = 0; c < 3; ++c) {
+		std::printf("[gpu sppm] textured sphere ch%d: sppm %.4f path %.4f (%.1f%%)\n", c, sppm[c], pt[c], 100.0 * sppm[c] / pt[c]);
+		EXPECT_NEAR(sppm[c], pt[c], 0.03 * pt[c]) << "channel " << c;
+	}
+}
+
+TEST(PbrtBackendAgreementTest, GpuSppmAgreesWithCpuSppmOnSkyLitAndSphericalCameraScenes) {
+	if (!optix_is_available()) GTEST_SKIP() << "OptiX not available";
+	// A7: Perlin spheres with emissive lights; D3: a 360-degree spherical camera under a uniform sky. Both read ~0.5x on the GPU before.
+	for (const char* id : {"A7", "D3"}) {
+		ASSERT_EQ(cpu_render_main_sppm(48, 48, 100, 20000, 4, "pbrt_gpu_sppm_cpu.exr", id, 0.0, 0.0, 0.0), 0) << id;
+		double cpu[3], gpu[3];
+		ASSERT_TRUE(loadLinearChannelMeans("pbrt_gpu_sppm_cpu.exr", cpu)) << id;
+		std::remove("pbrt_gpu_sppm_cpu.exr");
+		ASSERT_TRUE(gpuSppmMeans(id, 48, 100, 20000, 4, gpu)) << id;
+		for (int c = 0; c < 3; ++c) {
+			std::printf("[gpu sppm] %s ch%d: gpu %.4f cpu %.4f (%.1f%%)\n", id, c, gpu[c], cpu[c], 100.0 * gpu[c] / cpu[c]);
+			EXPECT_NEAR(gpu[c], cpu[c], 0.06 * cpu[c]) << id << " channel " << c;
+		}
+	}
+}
+
 // A diffuse-transmission plate (R = 0.3, T = 0.5) lit by one point light has a closed form at the centre (pbrt_scenes/diffuse-transmission-point-light*.pbrt):
 // E = I / d^2 = 10, so 0.5 / pi * 10 = 1.5915 seen through the plate from a light behind it and 0.3 / pi * 10 = 0.9549 seen from the lit side. Both GPU backends
 // sampled no light at a diffuse-transmission vertex (a BSDF-only estimator), which cannot find a point light at all: the plate rendered black, in both cases.
