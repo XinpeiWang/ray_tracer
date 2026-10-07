@@ -28,8 +28,12 @@
 //     showroom, sphere light only): floor and sphere-tops facing the light
 //     directly went black under --wavefront while the recursive path
 //     rendered them correctly lit.
-//   - DiffuseTransmission and Interface let light through unattenuated rather than
-//     blocking NEE outright. Dielectric/RoughDielectric/ThinDielectric do NOT: like
+//   - Interface lets light through unattenuated rather than blocking NEE outright
+//     (DiffuseTransmission used to as well; it now blocks, like pbrt-v4, whose only
+//     shadow-transparent surface is the BSDF-less interface material - a closed
+//     diffuse-transmission shell under a sky read 0.35 at depth 1 where the closed form is 0.2,
+//     because NEE saw the sky through it and BSDF sampling could not).
+//     Dielectric/RoughDielectric/ThinDielectric do NOT: like
 //     every pbrt-v4 surface with a material they block shadow rays (VolPathIntegrator::
 //     SampleLd, integrators.cpp:1335), and the glass is lit through its specular BSDF
 //     path instead (matches optix_anyhit_shadow.h). That includes DielectricMedium,
@@ -65,8 +69,7 @@ extern "C" __global__ void __anyhit__wf_shadow_sphere() {
 	// on the sphere's near side and the ray never reaches it - a hit here is a DIFFERENT emitter, or the light's own
 	// far side, in the way. It used to be ignored, so an emissive sphere hanging in front of a lamp cast no shadow
 	// (a dim emissive ball under a quad lamp over a floor: 117% of the CPU on both GPU backends).
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -305,8 +308,7 @@ extern "C" __global__ void __anyhit__wf_shadow_quad() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -325,8 +327,7 @@ extern "C" __global__ void __anyhit__wf_shadow_bilinear_patch() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -370,8 +371,7 @@ extern "C" __global__ void __anyhit__wf_shadow_triangle() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -396,8 +396,7 @@ extern "C" __global__ void __anyhit__wf_shadow_disk() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -418,8 +417,7 @@ extern "C" __global__ void __anyhit__wf_shadow_cylinder() {
 	WfShadowPayload* sp = (WfShadowPayload*)unpackPointer(
 		optixGetPayload_0(), optixGetPayload_1());
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}

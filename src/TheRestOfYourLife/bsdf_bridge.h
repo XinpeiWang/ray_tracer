@@ -407,21 +407,8 @@ inline bool sppm_bsdf_sample_f(const SPPMShadingContext& ctx, const double wo[3]
 	// evaluate f through the SAME formula BSDFf uses (sppm_bsdf_f) so the
 	// two paths can never drift into inconsistent results.
 	vec3 d = srec.pdf_ptr->generate();
-	double p;
-	if (dynamic_cast<const diffuse_transmission*>(ctx.mat.get())) {
-		// srec.pdf_ptr is a plain cosine_pdf over whichever single lobe
-		// scatter() happened to draw (reflection or transmission) - its
-		// value(d) is only that lobe's OWN cos/pi density, missing the
-		// lobe-selection-probability factor (pr/(pr+pt) or pt/(pr+pt)) that
-		// the true overall sampling density needs. The material's own
-		// scattering_pdf() already computes that full, correctly-weighted
-		// density (confirmed by reading material_pbrt.h's
-		// diffuse_transmission::scattering_pdf() directly) - use it instead
-		// of pdf_ptr->value() for this material specifically.
-		p = ctx.mat->scattering_pdf(fake_in, rec, ray(ctx.p, d));
-	} else {
-		p = srec.pdf_ptr->value(d);
-	}
+	// srec.pdf_ptr is the material's own sampling density at any direction (for diffuse_transmission, the mixture of both lobes).
+	const double p = srec.pdf_ptr->value(d);
 	if (p <= 0.0) return false;
 	vec3 dn = unit_vector(d);
 	double wi[3] = { dn.x(), dn.y(), dn.z() };
@@ -478,12 +465,6 @@ inline double sppm_bsdf_pdf(const SPPMShadingContext& ctx, const double wo[3], c
 		flipped.front_face = !ctx.front_face;
 		const double n_flipped[3] = { -n[0], -n[1], -n[2] };
 		return sppm_bsdf_pdf(flipped, wo, wi, n_flipped);
-	}
-	if (auto dt = dynamic_cast<const diffuse_transmission*>(ctx.mat.get())) {
-		hit_record rec = sppm_reconstruct_hit_record(ctx, n);
-		ray fake_in(ctx.p, -vec3(wo[0], wo[1], wo[2]));
-		ray fake_scattered(ctx.p, vec3(wi[0], wi[1], wi[2]));
-		return std::max(0.0, ctx.mat->scattering_pdf(fake_in, rec, fake_scattered));
 	}
 	// measured samples its own VNDF density, not a cosine lobe.
 	if (auto me = dynamic_cast<const measured*>(ctx.mat.get())) {

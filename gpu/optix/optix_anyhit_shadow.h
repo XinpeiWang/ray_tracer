@@ -277,8 +277,7 @@ extern "C" __global__ void __anyhit__shadow_sphere() {
 	}
 
 	// Transmissive materials let light through -- ignore them in shadow rays.
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}
@@ -301,8 +300,7 @@ extern "C" __global__ void __anyhit__shadow_quad() {
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
 	// Transmissive materials let light through -- ignore them in shadow rays
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();  // continue traversal (not an occluder)
 		return;
 	}
@@ -322,8 +320,7 @@ extern "C" __global__ void __anyhit__shadow_bilinear_patch() {
 	int matIdx = patch.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -346,8 +343,7 @@ extern "C" __global__ void __anyhit__shadow_disk() {
 	int matIdx = disk.materialIdx;
 	const MaterialData mat = resolve_mix_material(params.materials[matIdx], matIdx, shadow_hit_point, matIdx);
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -442,8 +438,7 @@ extern "C" __global__ void __anyhit__shadow_cylinder() {
 		return;
 	}
 
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Interface) {
+	if (mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;
 	}
@@ -505,8 +500,7 @@ extern "C" __global__ void __anyhit__shadow_triangle() {
 	// wax, marble - Subsurface is triangle-only in this backend, which is
 	// why only this triangle any-hit needs it, not the sphere one above)
 	// was wrongly reported fully occluded instead of passing through.
-	if (mat.type == MaterialType::DiffuseTransmission ||
-		mat.type == MaterialType::Subsurface ||
+	if (mat.type == MaterialType::Subsurface ||
 		mat.type == MaterialType::Interface) {
 		optixIgnoreIntersection();
 		return;

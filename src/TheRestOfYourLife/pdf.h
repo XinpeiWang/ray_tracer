@@ -58,6 +58,34 @@ class cosine_pdf : public pdf {
 };
 
 
+// The sampling density of pbrt-v4's DiffuseTransmissionBxDF: a cosine lobe about the normal chosen with probability p_reflect and a cosine lobe about
+// -normal with probability p_transmit (pr / (pr + pt) and pt / (pr + pt)). generate() makes that choice itself and value() is the density of the whole
+// mixture at any queried direction - what MIS and the path weight need. A pdf of just the lobe a coin flip in scatter() happened to commit to is not:
+// the weight used to carry the lobe probability twice (once in scattering_pdf(), once through the committed lobe) and a surface reflecting 0.2 and
+// transmitting 0.6 read a quarter of its reflection.
+class two_sided_cosine_pdf : public pdf {
+  public:
+    two_sided_cosine_pdf(const vec3& normal, double p_reflect, double p_transmit)
+      : uvw(normal), p_reflect(p_reflect), p_transmit(p_transmit) {}
+
+    double value(const vec3& direction) const override {
+        const double c = dot(unit_vector(direction), uvw.w());
+        return c > 0.0 ? p_reflect * c / pi : p_transmit * (-c) / pi;
+    }
+
+    vec3 generate() const override {
+        const vec3 d = uvw.transform(random_cosine_direction());
+        const double u = random_double() * (p_reflect + p_transmit);
+        // d is cosine-distributed about +normal; mirrored across the surface plane it is cosine-distributed about -normal.
+        return u < p_reflect ? d : d - 2.0 * dot(d, uvw.w()) * uvw.w();
+    }
+
+  private:
+    onb uvw;
+    double p_reflect, p_transmit;
+};
+
+
 class hittable_pdf : public pdf {
   public:
     hittable_pdf(const hittable& objects, const point3& origin)
