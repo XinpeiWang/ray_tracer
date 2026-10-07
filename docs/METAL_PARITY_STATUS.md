@@ -57,6 +57,7 @@ seeds, and the same bugs are caught: +15% diffuse -> 40 scenes flagged, +8% -> 1
   every scene whose numbers moved should be one you meant to change. Commit it with the change.
 * A different Mac GPU family (M1/M3/M4) should stay inside the tolerance (it only changes float rounding, like a seed change);
   if it does not, that is worth knowing, but re-snapshot only after understanding why.
+* `METAL_PARITY_SPP=<n>` renders both backends at n samples per pixel (a converged reference; not for the gate), `METAL_PARITY_TIMING=1` prints each Metal render's wall time, `METAL_PARITY_ADAPTIVE=1` turns Metal's adaptive sampling on for that render.
 * `METAL_PARITY_GOLDEN=<file>` uses another snapshot, `METAL_PARITY_GOLDEN=off` disables the check, `METAL_PARITY_DUMP=<file>`
   appends the current numbers to a file. CI cannot run it (the GitHub macOS runner has no hardware ray tracing), so it protects
   a developer Mac, like the rest of the sweep.
@@ -90,7 +91,7 @@ materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D check
   a per-sample clamp of 40, because the float32 hair BSDF occasionally yields absurd weights.
 * A shape with `Material "interface"` is transparent (it only bounds a medium), never an opaque gray mesh.
 * Glass shadow rays: clear, thin and rough glass **block** shadow rays (as pbrt-v4 and, since commit 2f8dc3d, the CPU and OptiX do), including a glass sphere that bounds a medium: a scatter vertex inside it cannot see a light through its own shell, so the fog is lit only along specular chains. A boundary that should not block is Material "interface". (Metal used to let shadow rays through such glass with stochastic attenuation and to keep a scattered path's MIS state across the boundary, which only agreed with the CPU for sky lights; a small lamp read ~2x too bright.)
-* Adaptive sampling is **off** unless `RenderOptions::adaptive_sampling` asks for it (as on the CPU). It used to be hard-wired on, and its "mean below 1e-4 after 16 samples" early stop froze every pixel that had not yet seen a rare light path (caustics, a lamp seen through glass): E12 read ~10x too dark in places and kept black pixels at any sample count.
+* Adaptive sampling is **off** unless `RenderOptions::adaptive_sampling` asks for it (as on the CPU). It used to be hard-wired on, and its "mean below 1e-4 after 16 samples" early stop froze every pixel that had not yet seen a rare light path (caustics, a lamp seen through glass): E12 read ~10x too dark in places and kept black pixels at any sample count. Measured with `METAL_PARITY_ADAPTIVE=1 METAL_PARITY_TIMING=1 METAL_PARITY_SPP=4000` (Metal wall time, 60x60, off -> on): it saves little where it matters - Cornell box A1 45.5 -> 44.4 s, fog E1 62.0 -> 61.5 s, F1 54.2 -> 47.3 s, C3 36.3 -> 34.1 s - and helps only scenes that converge quickly (B1 5.1 -> 2.5 s, the white-sky K22 17.1 -> 0.27 s), while costing accuracy where light is rare (E12 mean 0.1129 -> 0.1044, C3 0.1764 -> 0.1638, i.e. -7 to -8%). Timings are single runs on a shared machine (B20 and E12 even came out slower with it on), so read them as orders of magnitude. Default-off is the right call; opt in with `RenderOptions::adaptive_sampling` for flat scenes.
 
 ## Known gaps (`kKnownGapScenes`)
 
