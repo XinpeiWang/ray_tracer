@@ -339,8 +339,19 @@ const char* const kKnownGapScenes[] = {
 	"C17",
 };
 
+// By id, plus by pbrt file for the same scene under its Custom Scenes (K) id - K ids shift whenever a .pbrt is added, so
+// an id alone would let the second entry for portal-light.pbrt show up as an un-triaged FAIL.
+const char* const kKnownGapFiles[] = {"portal-light.pbrt"};
+
 bool is_known_gap_scene(const std::string& id) {
 	for (const char* known : kKnownGapScenes) if (id == known) return true;
+	const char* p = cpu_scene_pbrt_path_by_id(id.c_str());
+	if (!p || !p[0]) return false;
+	const std::string path(p);
+	for (const char* n : kKnownGapFiles) {
+		const std::string name(n);
+		if (path.size() >= name.size() && path.compare(path.size() - name.size(), name.size(), name) == 0) return true;
+	}
 	return false;
 }
 
