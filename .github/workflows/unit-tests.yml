@@ -273,3 +273,13 @@ jobs:
           mkdir build_gui && cd build_gui
           qmake ..\qt_gui\RayTracerGUI.pro CONFIG-=debug_and_release CONFIG+=release || exit /b 1
           nmake || exit /b 1
+
+  build-lists:
+    # The test suite is built by two hand-maintained lists (the MSBuild solution's tests/ray_tracer_tests.vcxproj and the portable
+    # tests/CMakeLists.txt). A test file added to only one is silently never built by the other platform; three had gone missing from the
+    # MSBuild list this way. See scripts/check_build_lists.py. Pure Python, instant.
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - name: Check the test build lists agree
+        run: python3 scripts/check_build_lists.py

@@ -23,3 +23,9 @@ Quickest path if you already have the MSVC solution built:
   on macOS and Windows (`qt-gui` job in `.github/workflows/unit-tests.yml`).
 * `scripts/gui_selftest.py` - starts the built GUI headless in each `RT_GUI_SELFTEST` mode (`ui`, `options`, `builder`, `diagnostics`, and with
   `--live-preview` the Live Preview checks) and fails on a crash, a hang or a wrong result. It works the same on macOS and Windows.
+
+## Keeping the two test builds in step
+
+The suite is built by `tests/ray_tracer_tests.vcxproj` (MSBuild, everything including the OptiX/CUDA tests) and `tests/CMakeLists.txt` (portable;
+macOS and the CI runners). Add a new test file to **both**; a file that needs the OptiX SDK or a real GPU stays out of CMake and goes into
+`tests/portable_build_exclusions.txt` instead. `python3 scripts/check_build_lists.py` (also a CI job) fails when the lists disagree.
