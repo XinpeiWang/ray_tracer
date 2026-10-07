@@ -59,7 +59,7 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 - ✅ **BVH acceleration** on both CPU and GPU (SAH-based CPU BVH; OptiX's native BVH/GAS on GPU) — not a linear scan
 - ✅ **151 built-in scenes plus over 170 bundled pbrt example scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`, `K42`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
 - ✅ **Real triangle meshes**: OBJ loading with BVH, per-face `.mtl` materials, and real `map_Kd` image-texture sampling (not just flat colors) on both CPU and GPU
-- ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — CPU-verified broadly, GPU-verified on one reference scene (see [Known Limitations](#-known-limitations))
+- ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — on the CPU, and on the GPU for sphere/quad scenes (see [Known Limitations](#-known-limitations))
 - ✅ **Bidirectional Path Tracing (BDPT) and Metropolis Light Transport (MLT)**, additional alternative integrators (CPU-only, `--bdpt`/`--mlt`) for scenes with difficult light transport
 - ✅ **Adaptive sampling** (`--adaptive`): stops sampling pixels that have already converged (CPU; opt-in on Metal)
 - ✅ **Volumetric media**: homogeneous participating media, procedural (Perlin-noise) cloud/fog, and heterogeneous NanoVDB grid media (CPU-only)
@@ -791,10 +791,11 @@ External mesh/texture assets (`models/`) come from the Stanford 3D Scanning Repo
 
 Being upfront about what's incomplete rather than overselling:
 
-- **GPU SPPM is scene-limited**: the GPU photon-mapping backend has only been verified end-to-end on one reference scene (Cornell Rough Glass). CPU SPPM works across a much broader set of materials/lights, though it too is primarily verified on lambertian + delta-BSDF scenes.
-- **BDPT and MLT are CPU-only and narrow in scope**: selectable via `--bdpt`/`--mlt`, but there's no GPU (OptiX or Metal) implementation (`--gpu` is ignored with a warning), and both are verified end-to-end on scene A1 (Cornell Box) only — other scenes are unverified. (Area, punctual and sky lights are all handled through the light adapter.)
+- **GPU SPPM is scene-limited**: it handles spheres and quads, quad/sphere area lights, a uniform sky and textured diffuse surfaces; anything else (meshes, instances, point lights, an image sky, ...) is rejected with a reason, so use `--cpu --sppm` instead. Where it runs it agrees with CPU SPPM to within about 2% on the scenes tested and matches closed forms (a furnace, a textured sphere under a sky). Its photon gather radius is a fixed 5 units (the CPU scales it to the scene).
+- **SPPM has no volume model** (neither has pbrt-v4's): fog absorbs correctly but scattering inside it reads too dark, and the CPU warns for scenes with a medium. SPPM also emits photons from area lights only, so sky-lit scenes read 2-3% low against the path tracer.
+- **BDPT and MLT are CPU-only**: selectable via `--bdpt`/`--mlt`, with no GPU (OptiX or Metal) implementation (`--gpu` is ignored with a warning). They are checked against the path tracer and against closed forms on many purpose-built scenes (furnaces, glass, rough conductors, disk/cylinder/cone/paraboloid lights, participating media: see `tests/unit/cpu_integrator_agreement_tests.cpp`) and agree to within about 1-2%. Portal lights and camera media are not supported by them (they warn).
 - **Hair/fur has two different fidelity levels**: scene F4 (Curve Fibers) uses real Bezier curve/strand geometry (`CurveShape`, exact ray-curve intersection on CPU, tessellated bilinear-patch tubes on GPU); the older scene B11 instead applies the Marschner/Chiang BxDF math via a shading-normal proxy on sphere primitives, not actual fiber geometry.
-- **GPU wavefront path tracer is opt-in and less exercised**: enabled via the `--wavefront` flag; the default recursive GPU backend is the primary, best-tested GPU path.
+- **The GPU wavefront path tracer is opt-in**: enabled via `--wavefront`. It is a spectral renderer (four hero wavelengths), so strongly chromatic media read a few percent off the per-channel closed form; the test suite compares it with the CPU and with the default recursive GPU backend, which remains the primary GPU path.
 - **GPU/OptiX rendering is Windows+NVIDIA only, with no fallback**: CUDA/OptiX isn't available on macOS at all (Apple dropped NVIDIA GPU support; Apple Silicon has no CUDA), so that specific backend can't be ported there. macOS instead has its own separate Metal GPU backend (`gpu/metal/`, opt-in via `-DRT_BUILD_METAL=ON`) alongside the CPU renderer/CLI/Qt GUI (see [macOS](#macos)). It matches the CPU renderer on nearly every scene but is not at full parity — `docs/METAL_PARITY_STATUS.md` lists the remaining differences (for example one noise-limited rough-glass scene, and a few integrator-option gaps).
 - **Scenes not flagged as needing files render without a missing mesh**: a self-contained scene that names a mesh which cannot be read skips it with a warning (see "could not be read" in the Log tab) and draws the rest. For a scene flagged "requires external files" any missing mesh now stops the render with an error (exit code 3, "file not found") naming the files, since a statue scene without its statue is not a result; scenes not flagged still render what they can, and the GUI shows which folder they belong in as soon as you select the scene. For the statue models (the "Models" scenes whose files live in this repository's `models/` folder) the GUI also offers a **Download missing files** button: it fetches them from this repository, checks each file's size and SHA-256, and saves them in a per-user folder the renderer also searches (`~/Library/Application Support/Ray Tracer/user_assets` on macOS, set through `RAY_TRACER_USER_ASSETS`), so it works from a read-only disk image too (the list is `qt_gui/downloadable_assets.txt`, regenerated by `scripts/update_asset_manifest.sh`). The large third-party environment scenes (Sponza, Bistro, ...) are not hosted by this project and still have to be copied in by hand.
 
@@ -808,13 +809,7 @@ Being upfront about what's incomplete rather than overselling:
 
 ## 🤝 Contributing
 
-Contributions are welcome! Areas for improvement:
-
-1. **Integrators**: porting BDPT/MLT to GPU, broadening their scene coverage, broadening GPU SPPM scene support
-2. **Geometry**: real curve/hair geometry for scene B11 (scene F4 already has it), more mesh formats
-3. **Scenes**: more example scenes, a scene file format (JSON/XML) instead of hardcoded registry entries
-4. **Portability**: a native arm64 macOS build, Linux support
-5. **Documentation**: tutorials, code comments
+Contributions are welcome. **[CONTRIBUTING.md](CONTRIBUTING.md)** says how to build and test, what a good change looks like (a closed form or a cross-backend check, and a test that fails without the fix), and lists small, self-contained things that need doing. A bug report with a scene that shows the problem is as useful as a patch. Please follow the [code of conduct](CODE_OF_CONDUCT.md).
 
 ## 📝 License
 
