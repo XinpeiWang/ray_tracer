@@ -80,7 +80,7 @@ quad / sphere / disk / cylinder / triangle area lights (all NEE-sampled). Media:
 homogeneous media bounded by interface-material spheres, and **glass spheres that bound a scattering medium**.
 
 Because there are no spare kernel buffers (Metal's 31-slot limit), per-material parameters ride in spare
-`TriangleMaterial` fields. The conventions (documented where each is set in `metal_poc_pbrt_loader.mm`):
+`TriangleMaterial` fields. The conventions (documented where each is set, in `metal_poc_pbrt_materials.mm` and `metal_poc_pbrt_loader.mm`):
 materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D checker, 1 = 3D checker, 2 = marble,
 3 = fbm, 4 = windy, 5 = wrinkled, 6 = dots, 7 = bilerp, 8 = image-in-checker); glass with a medium carries
 `conductorEta` = per-channel sigma_t, `conductorK` = (g, has-medium, chromatic), `transmitColor` = albedo.
