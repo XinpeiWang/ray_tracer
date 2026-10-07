@@ -7,6 +7,19 @@ A physically-based renderer with parallel **CPU**, **GPU (OptiX)** (Windows + NV
 ![OptiX](https://img.shields.io/badge/OptiX-9.1%2B-green.svg)
 ![C++](https://img.shields.io/badge/C%2B%2B-17-blue.svg)
 
+![A Cornell box with a glass sphere, the Stanford bunny in bronze, and glass spheres containing coloured fog, all rendered by this project](docs/gallery/hero.jpg)
+
+## 🖼️ Gallery
+
+Rendered with this project: 720 x 720, 2048 samples per pixel, max depth 12, the OptiX GPU backend on an RTX 5080, with the OptiX AI denoiser at blend 0.1 (so a little grain is kept). The time is the renderer's own "RENDER TIME" (denoising included). Every scene is built in; the id in brackets is the scene id the command line and the GUI use (for example `ray_tracer.exe --gpu --denoise 720 2048 12 A1`).
+
+| | | |
+|:-:|:-:|:-:|
+| <img src="docs/gallery/A1-cornell-box.jpg" width="260"><br>**Cornell box (A1)**<br>glass sphere, aluminium box, caustic<br>6 s | <img src="docs/gallery/A9-final-scene.jpg" width="260"><br>**Final scene (A9)**<br>the "Next Week" cover scene: volumes, earth map, glass, noise<br>15 s | <img src="docs/gallery/G1-stanford-bunny.jpg" width="260"><br>**Stanford bunny (G1)**<br>69k triangles, polished bronze<br>5 s |
+| <img src="docs/gallery/B10-principled-showcase.jpg" width="260"><br>**Principled BSDF (B10)**<br>matte plastic to clear-coated metal<br>4 s | <img src="docs/gallery/E3-glass-with-fog.jpg" width="260"><br>**Glass with fog (E3)**<br>coloured scattering media inside dielectrics<br>3 s | <img src="docs/gallery/A8-cornell-smoke.jpg" width="260"><br>**Cornell smoke (A8)**<br>participating media, multiple scattering<br>8 s |
+| <img src="docs/gallery/B7-coated-conductor.jpg" width="260"><br>**Coated conductor (B7)**<br>pbrt-v4 layered BxDF: lacquered gold<br>22 s | <img src="docs/gallery/D1-depth-of-field.jpg" width="260"><br>**Depth of field (D1)**<br>thin-lens camera<br>3 s | <img src="docs/gallery/F4-curve-fibers.jpg" width="260"><br>**Curve fibres (F4)**<br>real Bezier strand geometry<br>10 s |
+| <img src="docs/gallery/G12-trophy-room.jpg" width="260"><br>**Trophy room (G12)**<br>four meshes, mixed materials<br>4 s | <img src="docs/gallery/B3-rough-glass.jpg" width="260"><br>**Rough glass (B3)**<br>GGX rough dielectric<br>7 s | <img src="docs/gallery/B13-wax-and-jade.jpg" width="260"><br>**Wax and jade (B13)**<br>subsurface-like translucency<br>10 s |
+
 ## 📦 Download & Use (No Build Required!)
 
 **Want to try it without building?** Download the portable release:
