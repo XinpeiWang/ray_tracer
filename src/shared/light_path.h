@@ -209,11 +209,18 @@ CPU_GPU void LightPathTrace(
 		if (scene.SampleCameraConnection(les.surface_hit, uca, ucb, cc) &&
 			cc.pdf > T(0))
 		{
-			// PDF of sampling the connection direction from the light surface.
-			// mirrors pbrt-v4: light.PDF_Li(cs->pLens, -cs->wi)
-			// Pass -cc.wi (direction from camera toward light) as neg_wi.
-			T neg_wi[3] = { -cc.wi[0], -cc.wi[1], -cc.wi[2] };
-			T pdf_li = scene.LightPdfLi(les.light_id, cc.p_lens, neg_wi);
+			// Density of sampling the connection direction from the lens: the light point was drawn with area density pdf_pos, so seen from the lens it is
+			// pdf_pos * dist^2 / |cos at the light| (pbrt-v4's light.PDF_Li(cs->pLens, -cs->wi) for an area light sampled by area). Taken from the sample itself
+			// rather than asking the scene's PDF_Li: a sphere's or cylinder's own PDF_Li is a different density (the visible-cone one), and dividing by it read a
+			// directly visible sphere light at 0.42x and a cylinder at 0.52x of the path tracer; a quad's or disk's coincides with this, which hid it.
+			T pdf_li = T(0);
+			{
+				T ex = les.surface_hit.p[0] - cc.p_lens[0];
+				T ey = les.surface_hit.p[1] - cc.p_lens[1];
+				T ez = les.surface_hit.p[2] - cc.p_lens[2];
+				const T cos_light = std::abs(les.surface_hit.geo_n[0]*cc.wi[0] + les.surface_hit.geo_n[1]*cc.wi[1] + les.surface_hit.geo_n[2]*cc.wi[2]);
+				if (cos_light > T(0)) pdf_li = les.pdf_pos * (ex*ex + ey*ey + ez*ez) / cos_light;
+			}
 			if (pdf_li > T(0)) {
 				// Emitted radiance from light surface toward camera.
 				// mirrors pbrt-v4: Le = light.L(les->intr->p(), n, uv, cs->wi, lambda)
