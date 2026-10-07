@@ -1,9 +1,8 @@
 # Ray Tracer Testing Guide
 
 Complete guide for running and maintaining the ray tracer test suite: a
-large and growing number of tests (4,292 across 570 test suites as of this
-writing - run `--gtest_list_tests` for the live count, it drifts fast), in
-`tests/unit/` and `tests/integration/`.
+large and growing number of tests (run `--gtest_list_tests` for the live
+count), in `tests/unit/` and `tests/integration/`.
 
 ## Two build paths - pick one
 
@@ -51,6 +50,15 @@ use the MSVC path above for full coverage.
 
 `tests/build_and_run_tests.ps1` / `.bat` automate this CMake path (CMake
 configure + Debug/Release build + run).
+
+The same target builds on **macOS** (about 3,570 tests, ~17 s to run; the OptiX/CUDA-dependent files and the few that call the renderer libraries directly are not part of it, see the comment at the top of `tests/CMakeLists.txt`):
+
+```bash
+cmake -S tests -B build_tests -DCMAKE_BUILD_TYPE=Release && cmake --build build_tests -j8 --target unit_tests
+(cd build_tests && ctest --output-on-failure)   # or run from the repo root: build_tests/unit_tests
+```
+
+The Metal tests are separate: `ctest` in a `-DRT_BUILD_METAL=ON` build (see [BUILD.md](../BUILD.md#metal-gpu-opt-in)).
 
 ## Test Structure
 

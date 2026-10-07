@@ -7,7 +7,7 @@
 //   - Detects CUDA GPU availability at runtime
 //   - Routes to GPU or CPU renderer based on command-line flags or availability
 //   - Accepts camera position parameters for configurable viewpoints
-//   - Supports both interactive and command-line modes
+//   - Command-line driven; the Qt GUI (RayTracerGUI) launches it as a subprocess
 //   - Converts output to multiple formats (PPM, PNG)
 //
 // Camera System:

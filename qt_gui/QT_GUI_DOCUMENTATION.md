@@ -132,9 +132,6 @@ cd RayTracer_Package
 
 ## Troubleshooting
 
-See [`QT_GUI_TROUBLESHOOTING.md`](QT_GUI_TROUBLESHOOTING.md) for
-previously-hit issues and their resolutions.
-
 **"Application failed to start"** - missing Qt DLLs/plugins; re-run
 `windeployqt RayTracerGUI.exe --no-translations` in `RayTracer_Package/`.
 

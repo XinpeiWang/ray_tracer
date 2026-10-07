@@ -11,9 +11,9 @@ build, how to test, what a good change looks like, and where help is wanted.
   incremental-build tips are in [BUILD.md](BUILD.md).
 * **macOS (CPU, plus Metal with `-DRT_BUILD_METAL=ON`)** and **no NVIDIA GPU**: the root
   `CMakeLists.txt` builds the CPU renderer and the CLI without CUDA or OptiX; see the
-  [macOS](README.md#macos) section of the README. The CPU renderer is a complete
+  [macOS](BUILD.md#macos-cpu-and-metal-gpu) section of BUILD.md. The CPU renderer is a complete
   renderer, so you can work on most of the code without a GPU.
-* Scenes are listed by id (`A1`, `B3`, `K42`, ...). `ray_tracer.exe --cpu 400 64 8 A1`
+* Scenes have a name (`cornell-box`) and an id (`A1`, `B3`, ...). `ray_tracer.exe --cpu 400 64 8 cornell-box`
   renders one; `--gpu` uses OptiX (Windows) or Metal (macOS). Any `.pbrt` file you drop
   into `pbrt_scenes/` becomes a scene without a rebuild.
 
