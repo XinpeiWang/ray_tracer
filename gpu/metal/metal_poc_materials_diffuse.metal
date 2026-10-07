@@ -262,7 +262,10 @@ inline bool shadeDiffuseTransmission(TriangleMaterial mat, float3 albedo, float3
     float3 lobeNormal = reflect ? facingNormal : -facingNormal;
     rayDir = cosineSampleHemisphere(lobeNormal, rngState);
     rayOrigin = hitPoint + lobeNormal * 0.001f;
-    throughput *= reflect ? albedo : mat.transmitColor;
+    // The lobe was chosen with probability p = pr/(pr+pt) (reflect) or pt/(pr+pt) (transmit), so the sample weight f*cos/pdf is the lobe colour
+    // DIVIDED by p, as in pbrt-v4 (R*(pr+pt)/pr, T*(pr+pt)/pt). Weighting by the bare colour lost a factor 1/p per bounce: a closed
+    // R=0.2, T=0.6 shell under a white sky read 0.05 at depth 1 (closed form 0.2) and 0.26 at depth 8 (0.65).
+    throughput *= (reflect ? albedo : float3(mat.transmitColor)) * (pSum / max(reflect ? pr : pt, 1e-6f));
     // dot(lobeNormal, rayDir) is the LOBE-side cosine (always >= 0, since
     // rayDir was cosine-sampled around lobeNormal) - flooring it before
     // flipping its sign to be relative to `facingNormal` instead
