@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A rough glass sphere in front of a small sphere lamp and nothing else.
+# @rt-performance Fast
 # rough-glass-lamp.pbrt -- a rough glass sphere seen against a small sphere lamp, nothing else in the scene.
 #
 # The lamp is reached mostly by light-sampling (NEE) at the vertices where a ray leaves the glass, which is exactly where

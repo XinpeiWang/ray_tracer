@@ -231,8 +231,11 @@ QString MainWindow::thumbnailCachePath(const QString &sceneId) const {
 // applied one level further out. A little redundant work on the (common)
 // case where the target scene is already in the current bucket/category is
 // a small, one-time cost for a user-initiated action, not a hot path.
-void MainWindow::selectSceneById(const QString &id) {
-	if (!m_sceneCombo || id.isEmpty()) return;
+void MainWindow::selectSceneById(const QString &key) {
+	if (!m_sceneCombo || key.isEmpty()) return;
+	// `key` may be a scene's name ("cornell-box") as well as its id ("A1"); the rest works with the id.
+	const QString resolvedId = SceneMetadataClient::sceneIdForKey(key);
+	const QString id = resolvedId.isEmpty() ? key : resolvedId;
 
 	const QString category = SceneMetadataClient::sceneCategory(id);
 	if (category.isEmpty()) {

@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A lit closed room with a ball of fog whose absorption and scattering both differ by colour. BDPT, MLT and SPPM render it as three one-colour passes.
+# @rt-performance Fast
 # chromatic-fog-room.pbrt -- a lit closed room with a ball of fog whose absorption and scattering both differ by colour.
 #
 # BDPT, MLT and SPPM can only sample ONE extinction for a medium (constant_medium::hit()), so a fog thicker in one channel than another rendered

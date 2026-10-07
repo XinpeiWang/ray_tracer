@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A fog ball that both absorbs and scatters light, beside a bright sphere light. Checks that scattering fog keeps its absorption on the GPU backends.
+# @rt-performance Fast
 # absorbing-fog.pbrt -- regression scene for the GPU ignoring a medium's absorption when it scatters.
 #
 # A fog sphere with BOTH absorption and scattering (sigma_a 0.3, sigma_s 2.0: a collision scatters with

@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A translucent shell (reflects 0.2, transmits 0.6) filling the view inside a closed glowing cube. SPPM must agree with the path tracer.
+# @rt-performance Fast
 # sppm-transmissive-furnace.pbrt -- a diffuse-transmission shell (R = 0.2, T = 0.6) filling the view inside a closed emissive cube; SPPM must agree with the path tracer.
 #
 # The closed form of the shell under a uniform surround is 0.65 (see diffuse-transmission-furnace.pbrt). SPPM started every scene with a gather radius of 10

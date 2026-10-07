@@ -1,4 +1,7 @@
 # @rt-category Test Scenes
+# @rt-description A floor lit only by a cone and a paraboloid that are area lights. The path tracer, BDPT, MLT and SPPM must agree.
+# @rt-gpu no
+# @rt-performance Fast
 # cone-paraboloid-lights.pbrt -- a floor lit only by a cone and a paraboloid that are area lights; --bdpt, --mlt, --sppm and the path tracer must agree.
 #
 # BDPT, MLT and SPPM build their light list from shapes that can sample their own surface (sample_area(), area-uniformly: the adapters take one constant position density

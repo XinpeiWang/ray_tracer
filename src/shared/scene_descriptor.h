@@ -20,17 +20,14 @@
 // (CPU) and gpu/optix/scene_builder.cpp (GPU) #include just for these
 // string constants, without pulling in anything heavier.
 //
-// To add a scene:
-//   1. Add a name constant in SceneNames below
-//   2. Add a builder in src/TheRestOfYourLife/scenes.h (or scenes_book.h/
-//      scenes_advanced.h)
-//   3. Add the scene's row to scene_registry.h (CPU) using the same
-//      SceneNames constant, including its CameraConfig - scene_metadata.dll
-//      serves every field of this row to the GUI live, no separate step
-//      needed here
-//   4. Optionally add a case in gpu/optix/scene_builder.cpp (GPU) and set
-//      scene_registry.h's gpu_compatible = true - scene_metadata.dll picks
-//      this up automatically too
+// To add a scene (docs/SCENE_SELECTION.md has the full list):
+//   1. Put its .pbrt file in pbrt_scenes/
+//   2. Add a name constant in SceneNames below (what the scene shows, not how it is stored)
+//   3. Add its durable name to src/shared/scene_slugs.h (kBuiltin)
+//   4. Add its row to src/TheRestOfYourLife/scene_registry_data.h (build_curated_pbrt_scene_descriptor), using the SceneNames constant
+//   5. Add its technique note to qt_gui/scene_technique_notes.h, keyed by the slug
+// scene_metadata.dll serves every field of the row to the GUI live. A test fixture or a scene of your own needs none of this: a .pbrt file in
+// pbrt_scenes/ is listed on its own (see "# @rt-category" in pbrt_discover.h).
 
 #pragma once
 

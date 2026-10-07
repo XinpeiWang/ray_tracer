@@ -1,6 +1,6 @@
 # Ray Tracer
 
-A physically-based renderer with parallel **CPU**, **GPU (OptiX)** (Windows + NVIDIA) and **GPU (Metal)** (macOS) implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 151 built-in scenes plus over 170 bundled pbrt example scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
+A physically-based renderer with parallel **CPU**, **GPU (OptiX)** (Windows + NVIDIA) and **GPU (Metal)** (macOS) implementations, built up from the "Ray Tracing in One Weekend" book series into a much broader pbrt-v4-style feature set: 151 built-in scenes and 58 test scenes, a wide material library, multiple light types, real triangle-mesh/texture support, BVH acceleration, volumetrics, and an experimental SPPM (photon-mapping) integrator alongside standard path tracing.
 
 ![License](https://img.shields.io/badge/license-MIT-blue.svg)
 ![Platform](https://img.shields.io/badge/platform-Windows%20%7C%20macOS-lightgrey.svg)
@@ -90,7 +90,7 @@ For detailed build instructions, see **[BUILD.md](BUILD.md)**.
 ### Core Rendering
 - ✅ **Path tracing** with next-event estimation and multiple importance sampling (power heuristic)
 - ✅ **BVH acceleration** on both CPU and GPU (SAH-based CPU BVH; OptiX's native BVH/GAS on GPU) — not a linear scan
-- ✅ **151 built-in scenes plus over 170 bundled pbrt example scenes** (category-letter + number ids, e.g. `A1`, `B10`, `G25`, `K42`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
+- ✅ **151 built-in scenes and 58 test scenes** (each has a stable name such as `cornell-box`, and a short id such as `A1`) spanning the "Ray Tracing" book series, a pbrt-v4-style material/light/camera showcase, dozens of real-world statue/object meshes, and several "movie-level" environment scenes (Sponza, Amazon Lumberyard Bistro, Rungholt, Fireplace Room, San Miguel, Sibenik Cathedral, Breakfast Room, Salle de Bain, Gallery) — see [Scenes](#-scenes) below
 - ✅ **Real triangle meshes**: OBJ loading with BVH, per-face `.mtl` materials, and real `map_Kd` image-texture sampling (not just flat colors) on both CPU and GPU
 - ✅ **Stochastic Progressive Photon Mapping (SPPM)**, an alternative integrator for hard caustic/glass scenes a standard path tracer struggles to converge — on the CPU, and on the GPU for sphere/quad scenes (see [Known Limitations](#-known-limitations))
 - ✅ **Bidirectional Path Tracing (BDPT) and Metropolis Light Transport (MLT)**, additional alternative integrators (CPU-only, `--bdpt`/`--mlt`) for scenes with difficult light transport
@@ -469,24 +469,26 @@ Both formats are generated after each render completes.
 
 ## 🖼️ Scenes
 
-151 built-in scenes plus over 170 bundled pbrt example scenes, identified by a
-category letter + number (e.g. `A1`, `B10`, `G25`, `K42`) rather than a flat
-integer, selected via the CLI's scene-id argument or the GUI's scene
-dropdown. Categories: **A** Basics (the book progression), **B** Materials,
+151 built-in scenes and 58 test scenes, each with a stable name (`cornell-box`) and a
+short id (a category letter plus a number: `A1`, `B10`, `G25`), selected via the
+CLI's scene argument (either works, or the path of a `.pbrt` file) or the GUI's
+scene dropdown. Categories: **A** Basics (the book progression), **B** Materials,
 **C** Lights, **D** Cameras, **E** Volumes, **F** Geometry, **G** Models
 (real-world statue/object meshes - Stanford Bunny, Armadillo, Sponza, Bistro,
 San Miguel, and dozens more), **H** Large Scenes ("movie-level" fully
 textured environments), **I** Education (curated demos of specific
 render-option controls), **J** Textures (texture-system demos), **K** Custom
-Scenes (loaded live from the `.pbrt` files in `pbrt_scenes/` - the more than 170
-bundled examples, plus anything you drop in, no code changes or rebuild
-needed; see [`pbrt_scenes/README.md`](pbrt_scenes/README.md)). Every scene
-renders on the CPU renderer; the GUI's scene info shows which ones the GPU
-backends also support - see
-[`docs/SCENE_SELECTION.md`](docs/SCENE_SELECTION.md) for the
-full id scheme, GUI usage, and how to add a new scene, and
-[`src/TheRestOfYourLife/scene_registry.h`](src/TheRestOfYourLife/scene_registry.h)
-for the authoritative per-scene table (description, performance hint,
+Scenes (your own `.pbrt` files and downloaded collections, found live in
+`pbrt_scenes/` with no rebuild; see [`pbrt_scenes/README.md`](pbrt_scenes/README.md))
+and **L** Test Scenes (the closed-form and regression scenes this project's tests
+render). Every scene renders on the CPU renderer; the GUI's scene info shows
+which ones the GPU backends also support - see
+[`docs/SCENE_SELECTION.md`](docs/SCENE_SELECTION.md) for names and ids, the
+header tags a scene file can carry, what "performance" means, and how to add a
+scene, and
+[`src/TheRestOfYourLife/scene_registry_data.h`](src/TheRestOfYourLife/scene_registry_data.h)
+for the authoritative per-scene table (description, performance,
+recommended SPP, camera defaults).
 recommended SPP, camera defaults).
 
 Scenes that import external mesh/texture assets (mostly category **G** and
@@ -632,7 +634,7 @@ ray_tracer/
 │
 ├── models/                        # Mesh (.obj) and texture assets, Git LFS for the large ones
 ├── images/                        # Texture images used by the built-in scenes (earth map, normal/bump maps)
-├── pbrt_scenes/                   # The 170+ bundled .pbrt example scenes (category K) - add your own here
+├── pbrt_scenes/                   # The 58 bundled test scenes (category L) - add your own here
 ├── resources/                     # Application icon and Windows resource files
 │
 ├── tests/                         # Google Test suite (4,300+ tests, growing)

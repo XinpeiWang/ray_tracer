@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A rough copper sphere lit only by a small lamp out of view above the frame, so the whole picture is the sphere's glossy highlight.
+# @rt-performance Fast
 # rough-metal-lamp.pbrt -- a rough copper sphere lit only by a small lamp that is OUT OF VIEW above the frame, so the whole
 # image is the sphere's highlight (nothing but glossy direct light, nothing hides an error in it).
 #

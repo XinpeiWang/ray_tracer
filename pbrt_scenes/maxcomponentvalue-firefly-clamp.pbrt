@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description Uses the Film "maxcomponentvalue" setting to clamp very bright pixels (fireflies). Checks the clamp is applied.
+# @rt-performance Fast
 # maxcomponentvalue-firefly-clamp.pbrt -- exercises Film "float
 # maxcomponentvalue" (camera.h's clamp_sensor_rgb(), gated on scene_registry
 # .h's cam.max_component_value), previously implemented but never exercised

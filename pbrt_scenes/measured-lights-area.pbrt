@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A measured-material floor and sphere lit by a small area light alone.
+# @rt-performance Fast
 # measured-lights-area.pbrt -- measured-lights.pbrt without the point light: the small area light alone.
 #
 # This is the scene whose mean the BSDF-sampling-only estimator could get right (a delta light is invisible to it): that estimator converged

@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A dim glowing sphere hanging between a big quad lamp and a diffuse floor. Its shadow must still fall on the floor.
+# @rt-performance Fast
 # emissive-sphere-occluder.pbrt -- a dim emissive sphere hanging between a big quad lamp and a diffuse floor. Like every
 # pbrt-v4 surface an emitter blocks light: the floor under the ball is in its shadow.
 #

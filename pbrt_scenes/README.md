@@ -12,6 +12,21 @@ repository:
 RAY_TRACER_PBRT_DIR=D:/pbrt-v4-scenes/killeroo ./ray_tracer.exe --cpu 400 64 8 killeroo
 ```
 
+## Saying what a scene is
+
+The bundled test scenes begin with comment lines that tell the renderer about them:
+
+```
+# @rt-category Test Scenes
+# @rt-description A fog ball that scatters but does not absorb, under a white sky.
+# @rt-performance Fast
+```
+
+A scene of your own can do the same (`@rt-category` must be one of the categories in
+[docs/SCENE_SELECTION.md](../docs/SCENE_SELECTION.md); without one it is a Custom Scene). A file
+with no description is listed with its resolution and samples. A scene saved by the Scene
+Builder is listed under the title you gave it.
+
 ## What is read, and when
 
 Listing a scene reads only the part of the file before `WorldBegin` — the

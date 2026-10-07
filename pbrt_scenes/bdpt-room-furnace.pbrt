@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A closed diffuse sphere with a point light at its centre: an interreflection test with an exact answer at every bounce depth.
+# @rt-performance Fast
 # bdpt-room-furnace.pbrt -- a closed diffuse sphere lit by a point light at its centre: an interreflection furnace with a closed-form answer at every depth.
 #
 # Every wall point sees the light along its own normal at distance R = 1, so the direct irradiance is I everywhere, and a sphere's inside sees only

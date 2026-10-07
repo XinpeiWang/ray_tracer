@@ -1,4 +1,6 @@
 # @rt-category Test Scenes
+# @rt-description A small hand-written Cornell box: a good first pbrt scene file to copy and change.
+# @rt-performance Fast
 # example-cornell.pbrt -- a small Cornell box, written by hand.
 #
 # This file exists so the Custom Scenes feature is demonstrable without

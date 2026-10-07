@@ -7,13 +7,8 @@
 // (SceneNames::). Always use SceneNames:: constants here -- never raw
 // string literals -- so a name can never drift between call sites.
 //
-// To add a new scene:
-//   1. Add a SceneNames:: constant in scene_descriptor.h
-//   2. Add a builder function in scenes.h (or scenes_book.h/scenes_advanced.h)
-//   3. Add one SceneDescriptor entry in get_scene_registry() below using SceneNames::
-//   Done -- cpu_interface.cpp's C API and scene_metadata.dll (and through
-//   it, the GUI) pick it up automatically, no other file to touch unless
-//   you're also adding GPU support (see gpu/optix/scene_builder.cpp).
+// To add a new scene: see the list at the top of src/shared/scene_descriptor.h and docs/SCENE_SELECTION.md. cpu_interface.cpp's C API and
+// scene_metadata.dll (and through it, the GUI) pick a row up automatically; GPU support is gpu_compatible plus gpu/optix/pbrt_gpu_builder.h.
 
 #include "../shared/accelerator_override.h"
 #include "../shared/scene_descriptor.h"
@@ -1031,7 +1026,7 @@ inline void append(std::vector<SceneDescriptor>& registry) {
         // used to be the weaker of the two - it could only sample lights that
         // were spheres or parallelograms - which is no longer true and is why
         // this no longer carries a caveat.
-        s.gpu_compatible = true;
+        s.gpu_compatible = d.gpuCompatible;   // true unless the file says "# @rt-gpu no"
 
         // Camera, recommended_spp, lazy-load/cache, and world/lights/sky/
         // punct accessors all come from the file itself - see
