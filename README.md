@@ -42,6 +42,8 @@ See [INSTALL.md](INSTALL.md) for detailed usage instructions.
 
 ## 🔨 Building from Source
 
+**Cloning:** the full history is about 440 MB, because older commits contained generated GPU code and release archives that are no longer tracked. If you only want the code, take a shallow clone: `git clone --depth 1 https://github.com/XinpeiWang/ray_tracer` downloads about 52 MB (150 MB checked out).
+
 **Quick build:**
 ```powershell
 # From Visual Studio Developer PowerShell
