@@ -42,6 +42,8 @@
 
 #include <algorithm>
 #include <cmath>
+#include <iostream>
+#include <mutex>
 
 // ===========================================================================
 // SPPMShadingContext -- captured per-hit shading data, indexed by an opaque
@@ -168,6 +170,18 @@ inline shared_ptr<material> sppm_resolve_material(const shared_ptr<material>& ma
 	w = w < 0.0 ? 0.0 : (w > 1.0 ? 1.0 : w);
 	return (random_double() >= w) ? sppm_resolve_material(mm->get_mat_a(), u, v, p)
 	                               : sppm_resolve_material(mm->get_mat_b(), u, v, p);
+}
+
+// A subsurface material hit under an integrator that has no BSSRDF transport. The default path tracer samples the subsurface exit point after the
+// entry refraction (camera.h::sample_bssrdf_exit); BDPT, MLT, SPPM and the debug integrators go through the BSDF bridge, which sees only the material's
+// smooth dielectric entry interface, so the object renders like solid glass (a wax slab read ~17% brighter than the path tracer). pbrt-v4's own BDPT
+// has no BSSRDF either. Said once, the first time such a hit happens, rather than leaving the image quietly wrong.
+inline void warn_subsurface_unsupported_once(std::once_flag& flag) {
+	std::call_once(flag, [] {
+		std::cerr << "Warning: this scene has a Subsurface material, which --bdpt/--mlt/--sppm/--simplepath/--randomwalk/--lightpath do not model "
+		             "(no BSSRDF transport): it renders as the smooth glass of its entry interface and typically comes out brighter than the default "
+		             "path tracer; use the default path tracer if the subsurface look matters for this render.\n";
+	});
 }
 
 // Reconstructs a synthetic hit_record from a captured shading context plus

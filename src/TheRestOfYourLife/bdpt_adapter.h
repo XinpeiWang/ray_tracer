@@ -360,6 +360,8 @@ class BDPTSceneAdapter {
 			? sppm_resolve_material(rec.mat, rec.u, rec.v, rec.p)
 			: rec.mat;
 
+		if (resolved_mat && resolved_mat->as_subsurface(rec)) warn_subsurface_unsupported_once(subsurfaceWarned_);
+
 		int pool_idx = push_context(SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat, rec.front_face });
 
 		for (int c = 0; c < 3; ++c) hit.p[c] = rec.p[c];
@@ -1284,6 +1286,7 @@ class BDPTSceneAdapter {
 	}
 
   private:
+	mutable std::once_flag subsurfaceWarned_;   // see warn_subsurface_unsupported_once()
 	const hittable_list& world_;
 	const camera&         cam_;
 

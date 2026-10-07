@@ -170,6 +170,8 @@ class SPPMSceneAdapter {
 			? sppm_resolve_material(rec.mat, rec.u, rec.v, rec.p)
 			: rec.mat;
 
+		if (resolved_mat && resolved_mat->as_subsurface(rec)) warn_subsurface_unsupported_once(subsurfaceWarned_);
+
 		// Thread-local, no lock: see this method's own leading comment.
 		transient_ctx_ = SPPMShadingContext{ rec.p, rec.normal, rec.u, rec.v, resolved_mat, rec.front_face };
 
@@ -455,6 +457,7 @@ class SPPMSceneAdapter {
 	// after all camera-pass threads have joined. No concurrent read+write
 	// or write+write to the same index is ever possible, so this needs no
 	// mutex despite being shared across every worker thread.
+	mutable std::once_flag subsurfaceWarned_;   // see warn_subsurface_unsupported_once()
 	mutable std::vector<SPPMShadingContext> durable_ctx_;
 
 	// Per-thread scratch slot for a single, transient shading context --
