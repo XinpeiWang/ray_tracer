@@ -62,8 +62,13 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	}
 
 	// Compute solid angle PDF
-	float cos_theta_max = sqrtf(1.0f - sphere.radius * sphere.radius / dist_sq);
-	float solid_angle = 2.0f * 3.14159265358979323846f * (1.0f - cos_theta_max);
+	// 1 - cos(theta_max) = x / (1 + cos(theta_max)) with x = r^2 / d^2. Written this way (and the closest-approach vector below) because 1 - sqrt(1 - x) and
+	// b^2 - c each subtract two nearly equal float numbers for a distant light (x ~ 4e-5 and |oc|^2 ~ 2.5e5 at 500 units): the recovered surface point was off by
+	// ~0.005 units, the shadow ray stopped 0.002 short of it, hit the light sphere's own surface first and counted as blocked - a light 500 units away lost 20-55%.
+	const float x_sq = sphere.radius * sphere.radius / dist_sq;
+	float cos_theta_max = sqrtf(1.0f - x_sq);
+	const float one_minus_cos = x_sq / (1.0f + cos_theta_max);
+	float solid_angle = 2.0f * 3.14159265358979323846f * one_minus_cos;
 	pdf = 1.0f / solid_angle;
 
 	// Build ONB around direction to sphere
@@ -73,7 +78,7 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	float3 u = cross(w, v);
 
 	// Sample direction within cone
-	float z = 1.0f + random_float(seed) * (cos_theta_max - 1.0f);
+	float z = 1.0f - random_float(seed) * one_minus_cos;
 	float phi = 2.0f * 3.14159265358979323846f * random_float(seed);
 	float r = sqrtf(1.0f - z * z);
 
@@ -84,8 +89,8 @@ __device__ __forceinline__ float3 sample_sphere_light(
 	// the sphere, not an approximation.
 	float3 oc = origin - center;
 	float b = dot(oc, direction);
-	float c = dot(oc, oc) - sphere.radius * sphere.radius;
-	float disc = fmaxf(0.0f, b * b - c);
+	const float3 perp = oc - b * direction;   // closest approach of the ray's line to the centre
+	float disc = fmaxf(0.0f, sphere.radius * sphere.radius - dot(perp, perp));
 	float t_near = -b - sqrtf(disc);
 	float3 point = origin + t_near * direction;
 	float3 local = (point - center) / sphere.radius;

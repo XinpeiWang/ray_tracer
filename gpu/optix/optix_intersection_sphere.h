@@ -300,8 +300,12 @@ extern "C" __global__ void __intersection__sphere() {
 	const float3 oc = ray_orig - center;
 	const float a = dot(ray_dir, ray_dir);
 	const float half_b = dot(oc, ray_dir);
-	const float c = dot(oc, oc) - sphere.radius * sphere.radius;
-	const float discriminant = half_b * half_b - a * c;
+	// pbrt-v4's improved-precision discriminant (Sphere::BasicIntersect): half_b^2 - a*c subtracts two float numbers near |oc|^2 (2.5e5 for a sphere 500 units
+	// away) and so puts the roots ~0.005 units off - enough for a shadow ray to a light sphere to hit its surface before the point it was aimed at and be counted
+	// as blocked. Taking the length of v = oc - (half_b / a) d, the closest approach of the ray's line to the centre, gives a * (r + |v|) * (r - |v|) exactly.
+	const float3 closest = oc - (half_b / a) * ray_dir;
+	const float closest_len = length(closest);
+	const float discriminant = a * (sphere.radius + closest_len) * (sphere.radius - closest_len);
 
 	if (discriminant < 0.0f) return;  // No hit
 
@@ -1279,8 +1283,10 @@ extern "C" __global__ void __closesthit__sphere() {
 			float3 to_center = lightCenter - mis_o;
 			float dist_sq = dot(to_center, to_center);
 			if (dist_sq > lightRadius * lightRadius) {
-				float cos_theta_max = sqrtf(1.0f - lightRadius * lightRadius / dist_sq);
-				float solid_angle = 2.0f * 3.14159265f * (1.0f - cos_theta_max);
+				// Same stable form as sample_sphere_light() (the NEE density this must equal for MIS).
+				const float x_sq = lightRadius * lightRadius / dist_sq;
+				const float cos_theta_max = sqrtf(1.0f - x_sq);
+				float solid_angle = 2.0f * 3.14159265f * (x_sq / (1.0f + cos_theta_max));
 				light_pdf_for_incoming = sel_pdf / solid_angle;
 			}
 		}
