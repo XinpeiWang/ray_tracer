@@ -29,8 +29,18 @@ namespace pbrt_asset_check {
 // folder (models/x.obj under it stands in for models/x.obj next to the app). The GUI exports its location as
 // RAY_TRACER_USER_ASSETS; every process it starts, and the renderer libraries it loads, then look there as a fallback.
 inline std::string userAssetRoot() {
+#ifdef _WIN32
+	// _dupenv_s, not getenv: MSVC rejects getenv (C4996, an error) in a project that does not define _CRT_SECURE_NO_WARNINGS, and the OptiX renderer's project does not.
+	char *root = nullptr;
+	size_t len = 0;
+	std::string value;
+	if (_dupenv_s(&root, &len, "RAY_TRACER_USER_ASSETS") == 0 && root) value = root;
+	std::free(root);
+	return value;
+#else
 	const char *root = std::getenv("RAY_TRACER_USER_ASSETS");
 	return root ? std::string(root) : std::string();
+#endif
 }
 
 // Where `want` - a path as a scene wrote it, relative to `sceneDir` - would be under the user asset root, or "" if there
