@@ -224,6 +224,22 @@ public:
 	// application with a status code. Modes: "ui" (report the Output Mode items), "livepreview" (start Live Preview, let it
 	// render, report frames).
 	void runSelfTest(const QString &mode, const QString &outPrefix);
+	// One function per mode (mainwindow_selftest_modes.cpp; the Live Preview ones are in mainwindow_selftest_live.cpp).
+	void runOptionsSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
+	void runBuilderSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
+	void runDiagnosticsSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
+	void runSceneKeysSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
+	void runDownloadSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
+	void runUiSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	void runLivePreviewSweepSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
+#endif
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	void runLivePreviewDragSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
+#endif
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	void runLivePreviewSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
+#endif
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
 	void selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);      // (mainwindow_selftest_builder3d.cpp)
 	void runTourSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);

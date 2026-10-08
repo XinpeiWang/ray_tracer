@@ -53,6 +53,8 @@ SOURCES += \
 	mainwindow_live_settings.cpp \
 	mainwindow_tabs_render_live.cpp \
 	mainwindow_selftest.cpp \
+	mainwindow_selftest_modes.cpp \
+	mainwindow_selftest_live.cpp \
 	mainwindow_selftest_photo.cpp \
 	mainwindow_photo_install.cpp \
 	mainwindow_my_scenes.cpp \

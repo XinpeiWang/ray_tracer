@@ -1085,7 +1085,7 @@ void MainWindow::balanceActionButtons() {
 	for (QPushButton *b : {m_renderButton, m_stopButton, m_pauseButton, m_abandonButton}) {
 		if (!b) return;
 		b->setStyleSheet(QStringLiteral("padding: 8px 8px;"));   // the usual 18 px each side is room a long translated label needs
-		m_actionButtonLayout->setStretch(i++, std::max(1, b->sizeHint().width()));
+		m_actionButtonLayout->setStretch(i++, (std::max)(1, b->sizeHint().width()));
 	}
 }
 

@@ -23,7 +23,6 @@ func gpu/optix/wavefront_path_tracer.cpp::WavefrontPathTracer::render 1054
 func launcher/launcher_args.h::parse_launch_args 739
 func launcher/main.cpp::render_single_image 390
 func launcher/main.cpp::run_video_render 408
-func qt_gui/mainwindow_selftest.cpp::MainWindow::runSelfTest 512
 func qt_gui/mainwindow_style.cpp::MainWindow::applyTheme 777
 func qt_gui/mainwindow_tabs_render_groups.cpp::MainWindow::buildSamplingGroup 361
 func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildDenoiserLivePreviewSubsection 301
