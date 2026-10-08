@@ -10,6 +10,7 @@
 // file-organization split. RT_GUI_HAVE_GPU-only, like every widget either
 // one builds (this whole file compiles to nothing without it).
 #include "mainwindow.h"
+#include "realtime_preview_session.h"   // RealtimePreviewSession::backendFeatures()
 #include "settings_keys.h"
 
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
@@ -331,10 +332,10 @@ void MainWindow::buildDenoiserLivePreviewSubsection(QWidget *optionsTab) {
 
 	denoiserLivePreviewLayout->addRow(m_liveSvgfTuningGroupBox);
 
-#ifdef Q_OS_MAC
-	// The AI denoiser and SVGF are OptiX features; the Metal Live Preview has neither, so the whole group stays hidden.
-	m_denoiserLivePreviewGroupBox->hide();
-#endif
+	{   // The AI denoiser and SVGF are OptiX features; a library without them (the Metal one) hides the whole group.
+		const RealtimeBackendFeatures features = RealtimePreviewSession::backendFeatures();
+		if (!features.aiDenoiser && !features.svgf) m_denoiserLivePreviewGroupBox->hide();
+	}
 }
 
 void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayout *layout) {
@@ -754,19 +755,24 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
 
-#ifdef Q_OS_MAC
-	// The Metal backend renders plain path-traced frames: it has no AI denoiser, SVGF, ReSTIR, radiance cache, path guiding,
-	// NRC, upscaling or adaptive sampling (those flags are accepted and ignored by realtime_renderer.dylib). Showing controls that
+	// A library with none of the optional features (the Metal one: realtime_backend_features() says so) renders plain path-traced frames: it has no
+	// AI denoiser, SVGF, ReSTIR, radiance cache, path guiding, NRC, upscaling or adaptive sampling (those flags are accepted and ignored by
+	// realtime_renderer.dylib). Showing controls that
 	// do nothing would mislead, so only the grid rows it honours stay visible: row 5 (Depth of Field), row 8 (Exposure,
 	// Samples/Frame), row 9 (Max Bounces, Firefly Clamp), row 10 (Aperture, Focus Distance) row 13 (Smooth noisy pixels) and row 14 (Auto exposure).
-	for (int i = 0; i < liveRenderSettingsGrid->count(); ++i) {
-		int row = 0, col = 0, rowSpan = 0, colSpan = 0;
-		liveRenderSettingsGrid->getItemPosition(i, &row, &col, &rowSpan, &colSpan);
-		if (row != 5 && row != 13 && row != 14 && (row < 8 || row > 10)) {
-			if (QWidget *w = liveRenderSettingsGrid->itemAt(i)->widget()) w->hide();
+	const RealtimeBackendFeatures liveFeatures = RealtimePreviewSession::backendFeatures();
+	const bool hasOptionalFeatures = liveFeatures.aiDenoiser || liveFeatures.svgf || liveFeatures.restirGi || liveFeatures.restirDi || liveFeatures.probeCache ||
+	                                 liveFeatures.pathGuiding || liveFeatures.temporalUpscale || liveFeatures.neuralRadianceCache || liveFeatures.neuralUpscale ||
+	                                 liveFeatures.adaptiveSampling;
+	if (!hasOptionalFeatures) {
+		for (int i = 0; i < liveRenderSettingsGrid->count(); ++i) {
+			int row = 0, col = 0, rowSpan = 0, colSpan = 0;
+			liveRenderSettingsGrid->getItemPosition(i, &row, &col, &rowSpan, &colSpan);
+			if (row != 5 && row != 13 && row != 14 && (row < 8 || row > 10)) {
+				if (QWidget *w = liveRenderSettingsGrid->itemAt(i)->widget()) w->hide();
+			}
 		}
 	}
-#endif
 
 	layout->addWidget(m_liveRenderSettingsGroupBox);
 }

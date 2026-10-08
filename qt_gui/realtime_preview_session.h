@@ -16,6 +16,7 @@
 // plain `inline` outside nvcc, cpu_gpu.h) - safe to include here even
 // though this file is never compiled by nvcc itself.
 #include "../src/shared/adaptive_sampling.h"
+#include "../src/shared/realtime_api.h"   // RealtimeBackendFeatures
 #include "../src/shared/live_spp_scheduler.h"
 
 // ============================================================================
@@ -602,6 +603,9 @@ public:
 	// symbol - callers should grey out/hide the Live Preview UI entirely
 	// when this is false rather than let start() silently fail every frame.
 	static bool isAvailable();
+	// Which optional Live Preview features the loaded library really implements (see src/shared/realtime_api.h): the GUI offers only those controls.
+	// A library without the answer is taken to be the OptiX one, except on a Mac, where it is the Metal one.
+	static RealtimeBackendFeatures backendFeatures();
 
 	void start(const QString &sceneId, int width, int height, double camX, double camY, double camZ,
 			   double lookX, double lookY, double lookZ,

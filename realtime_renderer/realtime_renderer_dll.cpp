@@ -8,53 +8,20 @@
 // can't link the .lib directly - exact same pattern as
 // scene_metadata/scene_metadata_dll.cpp uses for cpu_renderer.lib.
 //
-// Two exports, both direct passthroughs to optix_interface.h - no logic
-// lives in this file.
+// Three exports (declared in src/shared/realtime_api.h), direct passthroughs to optix_interface.h - no logic lives in this file.
 #include "../gpu/optix/optix_interface.h"
-
-// __declspec(dllexport) is MSVC/MinGW-only - matches
-// scene_metadata_dll.cpp's own comment on why this is Windows-specific.
-#if defined(_WIN32)
-#define RT_REALTIME_API extern "C" __declspec(dllexport)
-#else
-#define RT_REALTIME_API extern "C" __attribute__((visibility("default")))
-#endif
+#include "../src/shared/realtime_api.h"   // the one declaration of this library's C ABI: a signature that does not match it fails to compile here
 
 RT_REALTIME_API bool realtime_render_frame(
-	const char* scene_id,
-	int image_width,
-	int image_height,
-	int samples_per_pixel,
-	int max_depth,
-	double cam_x,
-	double cam_y,
-	double cam_z,
-	bool has_custom_lookat,
-	double lookat_x,
-	double lookat_y,
-	double lookat_z,
-	bool denoise,
-	double denoise_blend,
-	float* out_world_pos_buffer,
-	float* out_camera_basis,
-	float* out_rgb_buffer,
-	bool enable_svgf,
-	bool enable_restir_gi,
-	float max_component_value,
-	const SvgfTuningParams* svgf_tuning,
-	bool enable_restir_di,
-	bool enable_probe_cache,
-	bool enable_path_guiding,
-	bool enable_temporal_upscale,
-	int temporal_upscale_factor,
-	unsigned int temporal_jitter_base_index,
-	bool enable_nrc,
-	bool enable_neural_upscale,
-	float* out_neural_upscale_buffer,
-	double aperture_override,
-	double focus_distance_override,
-	bool enable_adaptive_sampling,
-	const unsigned char* in_active_pixel_mask
+	const char* scene_id, int image_width, int image_height, int samples_per_pixel, int max_depth,
+	double cam_x, double cam_y, double cam_z, bool has_custom_lookat, double lookat_x, double lookat_y, double lookat_z,
+	bool denoise, double denoise_blend, float* out_world_pos_buffer, float* out_camera_basis, float* out_rgb_buffer,
+	bool enable_svgf, bool enable_restir_gi, float max_component_value, const SvgfTuningParams* svgf_tuning,
+	bool enable_restir_di, bool enable_probe_cache, bool enable_path_guiding,
+	bool enable_temporal_upscale, int temporal_upscale_factor, unsigned int temporal_jitter_base_index,
+	bool enable_nrc, bool enable_neural_upscale, float* out_neural_upscale_buffer,
+	double aperture_override, double focus_distance_override,
+	bool enable_adaptive_sampling, const unsigned char* in_active_pixel_mask
 ) {
 	return rt_realtime_render_frame(scene_id, image_width, image_height,
 		samples_per_pixel, max_depth, cam_x, cam_y, cam_z,
@@ -70,4 +37,9 @@ RT_REALTIME_API bool realtime_render_frame(
 
 RT_REALTIME_API const char* realtime_get_last_error() {
 	return rt_realtime_get_last_error();
+}
+
+// OptiX has every optional feature of realtime_render_frame().
+RT_REALTIME_API void realtime_backend_features(RealtimeBackendFeatures* out) {
+	if (out) *out = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true};
 }

@@ -1,6 +1,7 @@
 #include "realtime_preview_session.h"
 #include "camera_math.h"
 #include "../src/shared/tone_map.h"
+#include "../src/shared/realtime_api.h"
 #include "cross_abi_library.h"
 
 #include <QCoreApplication>
@@ -15,63 +16,16 @@
 
 namespace {
 
-// bool(const char* scene_id, int w, int h, int spp, int max_depth,
-//      double camX, double camY, double camZ,
-//      bool has_custom_lookat, double lookX, double lookY, double lookZ,
-//      bool denoise, double denoiseBlend,
-//      float* out_world_pos, float* out_camera_basis,
-//      float* out_rgb, bool enable_svgf, bool enable_restir_gi,
-//      float max_component_value, const void* svgf_tuning,
-//      bool enable_restir_di, bool enable_probe_cache, bool enable_path_guiding,
-//      bool enable_temporal_upscale, int temporal_upscale_factor,
-//      unsigned int temporal_jitter_base_index)
-// Must stay byte-for-byte in sync with gpu/optix/optix_interface.h's
-// rt_realtime_render_frame() declaration and realtime_renderer_dll.cpp's own
-// export signature - see this file's own header comment on why there's no
-// shared header/versioning across this boundary. New parameters are always
-// appended at the end, never inserted in the middle - enable_restir_di,
-// enable_probe_cache, enable_path_guiding, the 3 temporal-upscale params,
-// and now enable_adaptive_sampling/in_active_pixel_mask are all appended
-// last for exactly this reason, even though enable_path_guiding logically
-// pairs with enable_probe_cache (it hard-depends on it) rather than sitting
-// at the end.
-typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, double,
-							   bool, double, double, double, bool, double, float*, float*, float*, bool,
-							   bool, float, const void*, bool, bool, bool,
-							   bool, int, unsigned int, bool,
-							   bool, float*,
-							   double, double,
-							   bool, const unsigned char*);
-
-// const char*(void) - see gpu/optix/optix_interface.h's rt_realtime_get_last_error()
-// own comment. Same hand-duplication convention as RenderFrameFn above.
-typedef const char* (*GetLastErrorFn)();
-
-// Mirrors gpu/optix/svgf_tuning_params.h's SvgfTuningParams field-for-field -
-// see that header's own comment on why this boundary hand-duplicates types
-// rather than sharing a header. `const void*` in the typedef above (rather
-// than `const SvgfTuningParams*`) avoids exposing this qt_gui-local type name
-// through the function-pointer type itself; reinterpret_cast<const void*>(&x)
-// at the one real call site (renderLoop(), below) is enough - the ACTUAL
-// receiving side (optix_interface.cpp) casts it back via the real,
-// canonical-layout struct from gpu/optix/svgf_tuning_params.h.
-struct SvgfTuningParams {
-	float temporalAlpha = 0.2f;
-	float maxHistoryLength = 32.0f;
-	float varianceBootstrapFrames = 4.0f;
-	int   varianceBootstrapRadius = 3;
-	float sigmaNormal = 128.0f;
-	float sigmaDepth = 1.0f;
-	float sigmaLuminance = 4.0f;
-	int   atrousRadius = 2;
-	float minAlbedo = 0.02f;
-	int   atrousPasses = 4;
-};
+// The library's C ABI is declared once, in src/shared/realtime_api.h (the OptiX and Metal libraries include it too, so a parameter changed in one
+// place stops compiling in the others). The GUI loads the functions by name at run time.
+using RenderFrameFn = RealtimeRenderFrameFn;
+using GetLastErrorFn = RealtimeGetLastErrorFn;
 
 struct DllHandle {
 	void* module = nullptr;
 	RenderFrameFn renderFrameFn = nullptr;
 	GetLastErrorFn getLastErrorFn = nullptr;
+	RealtimeBackendFeaturesFn featuresFn = nullptr;
 };
 
 #ifdef Q_OS_WIN
@@ -101,6 +55,8 @@ DllHandle& handle() {
 			cross_abi_library::lookupSymbol(h.module, "realtime_render_frame"));
 		h.getLastErrorFn = reinterpret_cast<GetLastErrorFn>(
 			cross_abi_library::lookupSymbol(h.module, "realtime_get_last_error"));
+		h.featuresFn = reinterpret_cast<RealtimeBackendFeaturesFn>(
+			cross_abi_library::lookupSymbol(h.module, "realtime_backend_features"));
 	});
 	return h;
 }
@@ -109,6 +65,20 @@ DllHandle& handle() {
 
 bool RealtimePreviewSession::isAvailable() {
 	return handle().renderFrameFn != nullptr;
+}
+
+RealtimeBackendFeatures RealtimePreviewSession::backendFeatures() {
+	RealtimeBackendFeatures f{};
+	if (const auto fn = handle().featuresFn) {
+		fn(&f);
+		return f;
+	}
+#ifdef Q_OS_MAC
+	f.depthOfFieldOverride = true;   // the Metal library's own set (an older library that cannot say)
+#else
+	f = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true};
+#endif
+	return f;
 }
 
 // ============================================================================
@@ -1024,7 +994,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_denoise, m_denoiseBlend,
 						  m_worldPos.data(), m_cameraBasis.data(),
 						  m_tmp.data(), m_svgf, m_restirGi, static_cast<float>(m_fireflyClamp),
-						  reinterpret_cast<const void*>(&svgfTuning), m_restirDi, m_probeCache, m_pathGuiding,
+						  &svgfTuning, m_restirDi, m_probeCache, m_pathGuiding,
 						  useUpscale, m_upscaleFactor, m_temporalJitterCounter, m_nrc,
 						  m_neuralUpscale, (useUpscale && m_neuralUpscale) ? m_neuralUpscaleOut.data() : nullptr,
 						  m_dofEnabled ? m_aperture : -1.0, m_dofEnabled ? m_focusDistance : -1.0,
