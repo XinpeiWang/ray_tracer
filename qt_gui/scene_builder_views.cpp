@@ -98,12 +98,13 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		m_view3d->frameAll();
 	});
 	planeRow->addSpacing(8);
-	planeRow->addWidget(m_gizmoBar);
-	planeRow->addSpacing(8);
 	planeRow->addWidget(snap);
 	planeRow->addWidget(frame);
 	planeRow->addStretch(1);
 	layoutLayout->addLayout(planeRow);
+	// The tools get a row of their own (only in 3D), so neither row is wider than the column.
+	gizmoLayout->addStretch(1);
+	layoutLayout->addWidget(m_gizmoBar);
 	layoutLayout->addWidget(m_viewStack, 1);
 	m_viewHint->setAlignment(Qt::AlignRight);  // on its own line: a translated hint is too long to share the button row
 	m_viewHint->setWordWrap(true);
