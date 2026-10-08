@@ -1587,6 +1587,18 @@ private:
 	// call site that used to call populateSceneCombo() alone now calls this,
 	// so both views always agree on what's currently filtered in.
 	void populateSceneViews(const QString &category);
+	// Delete the scenes the user made (mainwindow_my_scenes.cpp): the Settings tab shows these buttons under the My Scenes category.
+	QWidget *m_myScenesRow = nullptr;
+	QPushButton *m_deleteSceneButton = nullptr;
+	QPushButton *m_deleteAllScenesButton = nullptr;
+	QString userSceneFileForId(const QString &id) const;
+	QStringList myScenesIds() const;
+	void updateMyScenesButtons(const QString &category);
+	void afterUserScenesRemoved(const QStringList &removedIds, const QString &nextHintId);
+	int deleteUserScenes(const QStringList &ids, const QString &nextHintId, QStringList *failedIds = nullptr);   // no questions asked; the handlers ask first
+	void selfTestDeleteScenes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // mainwindow_selftest_builder3d.cpp
+	void onDeleteSceneClicked();
+	void onDeleteAllMyScenesClicked();
 
 	// Absolute path a scene's cached thumbnail PNG would live at, under
 	// QStandardPaths::CacheLocation + "/thumbnails" (mirrors theme_load.cpp's

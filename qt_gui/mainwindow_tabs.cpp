@@ -212,6 +212,7 @@ void MainWindow::populateSceneGrid(const QString &category) {
 void MainWindow::populateSceneViews(const QString &category) {
 	populateSceneCombo(category);
 	populateSceneGrid(category);
+	updateMyScenesButtons(category);
 }
 
 QString MainWindow::thumbnailCachePath(const QString &sceneId) const {
@@ -521,6 +522,21 @@ void MainWindow::createSettingsTab() {
 	m_sceneViewStack->addWidget(gridPage);
 
 	sceneGroupLayout->addWidget(m_sceneViewStack);
+
+	// Under the My Scenes category only: delete the scene selected above, or every scene the user made (mainwindow_my_scenes.cpp).
+	m_myScenesRow = new QWidget(basicTab);
+	auto *myScenesLayout = new QHBoxLayout(m_myScenesRow);
+	myScenesLayout->setContentsMargins(0, 0, 0, 0);
+	m_deleteSceneButton = new QPushButton(tr("Delete Scene..."), m_myScenesRow);
+	m_deleteAllScenesButton = new QPushButton(tr("Delete All My Scenes..."), m_myScenesRow);
+	m_deleteAllScenesButton->setToolTip(tr("Move every scene you made in the Scene Builder to the Trash"));
+	myScenesLayout->addStretch(1);
+	myScenesLayout->addWidget(m_deleteSceneButton);
+	myScenesLayout->addWidget(m_deleteAllScenesButton);
+	m_myScenesRow->setVisible(false);
+	sceneGroupLayout->addWidget(m_myScenesRow);
+	connect(m_deleteSceneButton, &QPushButton::clicked, this, &MainWindow::onDeleteSceneClicked);
+	connect(m_deleteAllScenesButton, &QPushButton::clicked, this, &MainWindow::onDeleteAllMyScenesClicked);
 
 	// QStackedWidget sizes itself to fit the largest of ALL its pages by
 	// default, not just the current one - m_sceneGrid's 260px minimum

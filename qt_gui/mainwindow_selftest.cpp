@@ -159,6 +159,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		sb->newScene();
 		check(sb->openFile(pbrt, &err) && scene_doc::toJson(sb->document()) == before, "re-opened the saved file unchanged " + err);
 		selfTestSceneList(sb, check);
+		selfTestDeleteScenes(sb, check);
 		selfTestLog(sb, check);
 		selfTestWheelGuard(check);
 		selfTestWindowGeometry(check);

@@ -1076,12 +1076,38 @@ inline const std::vector<SceneDescriptor>& get_scene_registry() {
 // (through scene_metadata_refresh_user_scenes()) after saving one, and find_scene() calls it when it does not know an id or slug. A scene's id is its
 // persistent number (pbrt_discover::userSceneNumber), so it is the same in every process. Safe to call as often as you like; not meant to race with
 // another thread iterating the registry (the GUI calls it from its own thread, and each library has its own registry).
-inline int refresh_user_scenes() {
+//
+// With `prune`, it first drops the entries of user scenes whose file has been deleted (the GUI's "Delete scene" / "Delete all my scenes"), so the list
+// follows the folder in both directions. That moves the later entries down, so it is only asked for by the GUI, from its own thread; find_scene() never
+// prunes, because a SceneDescriptor pointer it has handed out must stay valid.
+inline std::mutex& registry_refresh_mutex() {
+    static std::mutex m;
+    return m;
+}
+
+// Removes the registry entries (and their paths()) of scenes in the per-user folder whose file no longer exists. Returns how many. The caller holds the
+// refresh mutex.
+inline int prune_missing_user_scenes_locked(std::vector<SceneDescriptor>& registry, const std::string& dir) {
+    namespace fs = std::filesystem;
+    const std::string prefix = fs::path(dir).lexically_normal().string();
+    std::set<std::string> gone;
+    for (const auto& kv : pbrt_scene_registry::paths()) {
+        const std::string p = fs::path(kv.second).lexically_normal().string();
+        std::error_code ec;
+        if (p.compare(0, prefix.size(), prefix) == 0 && !fs::exists(kv.second, ec)) gone.insert(kv.first);
+    }
+    if (gone.empty()) return 0;
+    registry.erase(std::remove_if(registry.begin(), registry.end(), [&](const SceneDescriptor& s) { return gone.count(s.id) > 0; }), registry.end());
+    for (const std::string& id : gone) pbrt_scene_registry::paths().erase(id);
+    return static_cast<int>(gone.size());
+}
+
+inline int refresh_user_scenes(bool prune = false) {
     std::vector<SceneDescriptor>& registry = scene_registry_storage();
     const std::string dir = pbrt_discover::userSceneDir();
     if (dir.empty()) return 0;
-    static std::mutex refreshMutex;
-    std::lock_guard<std::mutex> lock(refreshMutex);
+    std::lock_guard<std::mutex> lock(registry_refresh_mutex());
+    if (prune) prune_missing_user_scenes_locked(registry, dir);
     int legacy_id = 0;
     for (const SceneDescriptor& s : registry) legacy_id = std::max(legacy_id, s.legacy_id + 1);
     std::set<std::string> takenSlugs;

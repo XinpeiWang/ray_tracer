@@ -54,6 +54,7 @@ SOURCES += \
 	mainwindow_selftest.cpp \
 	mainwindow_selftest_photo.cpp \
 	mainwindow_photo_install.cpp \
+	mainwindow_my_scenes.cpp \
 	mainwindow_selftest_builder3d.cpp \
 	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
