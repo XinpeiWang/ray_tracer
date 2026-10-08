@@ -938,6 +938,7 @@ bool MetalPocApp::dsFillUniforms(DispatchState& s, int argc, const char** argv) 
         memcpy(uniforms.filterMarginalCDF, &sampler.marginalCDF(), sizeof(uniforms.filterMarginalCDF));
     }
 
+    uniforms.pbrtInstanceFirst = pbrtInstanceFirstId;
     id<MTLBuffer> uniformBuffer = [device newBufferWithBytes:&uniforms length:sizeof(Uniforms) options:MTLResourceStorageModeShared];
     s.uniformBuffer = uniformBuffer;
     return true;

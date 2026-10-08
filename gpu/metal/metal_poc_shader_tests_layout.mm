@@ -35,7 +35,7 @@ int testStructLayouts(id<MTLDevice> device, id<MTLLibrary> library, id<MTLComman
     FIELD_OFFSET(fireflyClamp) FIELD_OFFSET(debugCensus) FIELD_OFFSET(pathRegen) FIELD_OFFSET(fogChromatic) FIELD_OFFSET(fogSigmaT3)
     FIELD_OFFSET(liveWorldPos) FIELD_OFFSET(adaptiveThreshold) FIELD_OFFSET(cameraGlassPrim) FIELD_OFFSET(pbrtHasPortalLight)
     FIELD_OFFSET(pbrtPortalWidth) FIELD_OFFSET(pbrtPortalHeight) FIELD_OFFSET(pbrtPortalScale) FIELD_OFFSET(portalFrameX)
-    FIELD_OFFSET(portalFrameY) FIELD_OFFSET(portalFrameZ) FIELD_OFFSET(portalP0) FIELD_OFFSET(portalP2)
+    FIELD_OFFSET(portalFrameY) FIELD_OFFSET(portalFrameZ) FIELD_OFFSET(portalP0) FIELD_OFFSET(portalP2) FIELD_OFFSET(pbrtInstanceFirst)
 #undef FIELD_OFFSET
 
     Uniforms uniforms{};   // contents are irrelevant: the kernel only takes field addresses

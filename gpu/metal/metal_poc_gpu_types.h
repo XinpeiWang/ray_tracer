@@ -222,6 +222,10 @@ struct Uniforms {
     PackedFloat3 portalFrameZ{0, 0, 1};
     PackedFloat3 portalP0{0, 0, 0};
     PackedFloat3 portalP2{0, 0, 0};
+    // Metal instance id of the first pbrt ObjectInstance placement (they follow the demo room's Suzanne instances); 0xFFFFFFFF = none. An
+    // instance with id >= this is a pbrt group placement: its hit primitive is group-local, InstanceTransform::triBase + primitive_id indexes the
+    // shared triangle arrays, and the shading normal is transformed by the instance's normal matrix.
+    uint32_t pbrtInstanceFirst = 0xFFFFFFFFu;
 };
 
 // Mirrors metal_poc.metal's own LensElement byte-for-byte - a single
@@ -523,6 +527,10 @@ struct InstanceTransform {
     PackedFloat3 col1;
     PackedFloat3 col2;
     PackedFloat3 col3;
+    // pbrt ObjectInstance placements (see Uniforms::pbrtInstanceFirst): the index of this instance's group's first triangle in the shared
+    // vertex/normal/uv/material arrays. For such an instance col0..2 hold the NORMAL matrix (inverse transpose of the linear part), not the
+    // linear part itself - transformNormalByInstance() multiplies by them either way. 0 for every other instance.
+    uint32_t triBase = 0;
 };
 
 // Mirrors metal_poc.metal's DiskData byte-for-byte.

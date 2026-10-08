@@ -942,7 +942,11 @@ kernel void primaryRayKernel(
             // instance_id threshold here (rather than deriving it) is
             // the same "explicitly documented, scene-specific constant"
             // approach this POC already uses for its light geometry.
-            bool isSuzanneInstance = !isSphere && !isDisk && !isCylinder && (result.instance_id >= 2u);
+            // pbrt ObjectInstance placements are instances numbered from uniforms.pbrtInstanceFirst on (see Uniforms::pbrtInstanceFirst); Suzanne's
+            // are the ones between 2 and that. A pbrt placement's primitive id is local to its group's own acceleration structure.
+            bool isTriangleHit = !isSphere && !isDisk && !isCylinder;
+            bool isPbrtInstance = isTriangleHit && (result.instance_id >= uniforms.pbrtInstanceFirst);
+            bool isSuzanneInstance = isTriangleHit && !isPbrtInstance && (result.instance_id >= 2u);
             float3 normal;
             TriangleMaterial mat;
             if (isSphere) {
@@ -984,6 +988,14 @@ kernel void primaryRayKernel(
                 float3 axisPoint = base + dot(hitPoint - base, axis) * axis;
                 normal = normalize(hitPoint - axisPoint);
                 mat = cylinderMaterials[primId];
+            } else if (isPbrtInstance) {
+                // The group's triangles live once in the shared arrays, at triBase + the group-local primitive id; from here on `primId` is that
+                // global index, so every triangle-indexed lookup below (uvs, vertices, triMaterials) works unchanged in OBJECT space. Only the
+                // normal needs the instance's own transform (its normal matrix), as for Suzanne.
+                const InstanceTransform pbrtXf = instanceTransforms[result.instance_id];
+                primId = pbrtXf.triBase + result.primitive_id;
+                normal = transformNormalByInstance(shadingNormalFor(primId, result.triangle_barycentric_coord, normals, vertices), pbrtXf);
+                mat = triMaterials[primId];
             } else if (isSuzanneInstance) {
                 // Object-space normal (Suzanne's own per-vertex data,
                 // just like the non-instanced case below) transformed
@@ -1017,7 +1029,7 @@ kernel void primaryRayKernel(
             // 7's own comment above) - never true for a sphere/disk/
             // Suzanne-instance hit, so this is simply skipped for those.
             // Image bump map ("texture displacement"): perturbs ONLY the shading normal of a triangle hit, like materialType 7 below.
-            if (mat.bumpWidth > 0 && !isBoundingBox && !isSuzanneInstance) {
+            if (mat.bumpWidth > 0 && !isBoundingBox && !isSuzanneInstance && !isPbrtInstance) {
                 const float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 float3 bumpDpdu, bumpDpdv;
                 triangleDpduDpdv(primId, vertices, uvs, facingNormal, bumpDpdu, bumpDpdv);
@@ -1035,7 +1047,7 @@ kernel void primaryRayKernel(
                 }
             }
             CENSUS_PUSH(mat.materialType);
-            if (mat.materialType == METAL_MAT_BUMP_LAMBERTIAN && !isSphere && !isDisk && !isSuzanneInstance) {
+            if (mat.materialType == METAL_MAT_BUMP_LAMBERTIAN && !isSphere && !isDisk && !isSuzanneInstance && !isPbrtInstance) {
                 float2 bumpUV = texCoordFor(primId, result.triangle_barycentric_coord, uvs);
                 float3 tangent = tangentFor(primId, vertices, uvs);
                 facingNormal = proceduralBumpNormal(facingNormal, tangent, bumpUV, mat.roughness);
