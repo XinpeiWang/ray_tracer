@@ -55,7 +55,7 @@ ray_tracer/
 │   ├── mainwindow_slots.cpp      # Signal/slot handlers
 │   ├── mainwindow_style.cpp      # Theme/QSS application
 │   ├── scene_builder_*.cpp/.h    # The Scene Builder tab (widget, property panel, shared helpers); the
-│   │                              #   scene model and pbrt writer are src/shared/scene_document.h
+│   │                              #   scene model, JSON, checks and pbrt writer are src/shared/scene_{model,json,validate,pbrt_writer}.h (scene_document.h includes them)
 │   ├── scene_layout_view.*       # The Scene Builder's 2D layout view
 │   ├── scene_technique_notes.h   # Per-scene "what technique does this show" text (translated)
 │   ├── translations/             # raytracer_{es,fr,ja,zh_CN}.ts - UI translations (lupdate/lrelease)

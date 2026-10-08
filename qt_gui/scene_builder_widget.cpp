@@ -333,214 +333,9 @@ void SceneBuilderWidget::resetPaneSizes() {
 	window_geometry::saveSplitter(m_centreSplit, "builder/centreSplit");
 }
 
-// ---- document state -------------------------------------------------------------------------------------------------------------
-
-void SceneBuilderWidget::newScene() {
-	flushEditLog();
-	m_logPending = false;
-	AppLog::info(QStringLiteral("builder"), QStringLiteral("new scene (the starter scene)"));
-	m_doc = scene_doc::makeStarterScene();
-	m_path.clear();
-	m_listedPath.clear();
-	m_dirty = false;
-	m_undo.clear();
-	m_redo.clear();
-	m_lastEditKey.clear();
-	m_sel = {SelKind::None, 0};
-	clearAutosave();
-	rebuildList();
-	setSelection(m_sel);
-	frameViews();
-	refreshProblems();
-	updateTitle();
-	updateActions();
-}
-
-bool SceneBuilderWidget::openFile(const QString &path, QString *error) {
-	flushEditLog();
-	QFile f(path);
-	if (!f.open(QIODevice::ReadOnly)) {
-		if (error) *error = tr("Cannot open %1.").arg(path);
-		AppLog::error(QStringLiteral("builder"), QStringLiteral("open %1: cannot open the file (%2)").arg(path, f.errorString()));
-		return false;
-	}
-	const std::string text = f.readAll().toStdString();
-	Document d;
-	std::string err;
-	if (!scene_doc::fromPbrt(text, d, err)) {
-		if (error) *error = QString::fromStdString(err);
-		AppLog::error(QStringLiteral("builder"), QStringLiteral("open %1: not a Scene Builder scene: %2").arg(path, QString::fromStdString(err)));
-		return false;
-	}
-	AppLog::info(QStringLiteral("builder"), QStringLiteral("open %1: \"%2\", %3 objects, %4 lights").arg(path, QString::fromStdString(d.title)).arg(d.objects.size()).arg(d.lights.size()));
-	m_logPending = false;
-	m_doc = std::move(d);
-	m_path = path;
-	// A file opened from the scene-list folder is a listed scene: adding it again offers to update it.
-	m_listedPath = QFileInfo(path).absolutePath() == QFileInfo(sceneListFolder() + "/x").absolutePath() ? path : QString();
-	m_dirty = false;
-	m_undo.clear();
-	m_redo.clear();
-	m_lastEditKey.clear();
-	m_sel = {SelKind::None, 0};
-	clearAutosave();
-	rebuildList();
-	setSelection(m_sel);
-	frameViews();
-	refreshProblems();
-	updateTitle();
-	updateActions();
-	return true;
-}
-
-// Writes the scene as pbrt text to `path`, without touching which file the document belongs to.
-static bool writeSceneText(const Document &doc, const QString &path) {
-	const std::string text = scene_doc::toPbrt(doc);
-	return writeFileAtomically(path, QByteArray::fromRawData(text.data(), static_cast<qsizetype>(text.size())));   // the old file survives a failed write
-}
-
-bool SceneBuilderWidget::saveFile(const QString &path) {
-	flushEditLog();
-	if (!writeSceneText(m_doc, path)) {
-		AppLog::error(QStringLiteral("builder"), QStringLiteral("save %1: could not write the file").arg(path));
-		return false;
-	}
-	AppLog::info(QStringLiteral("builder"), QStringLiteral("save %1: \"%2\", %3 objects, %4 lights").arg(path, QString::fromStdString(m_doc.title)).arg(m_doc.objects.size()).arg(m_doc.lights.size()));
-	m_path = path;
-	m_dirty = false;
-	clearAutosave();
-	updateTitle();
-	return true;
-}
-
-bool SceneBuilderWidget::confirmDiscard() {
-	if (!m_dirty) return true;
-	const auto answer = QMessageBox::question(this, tr("Unsaved changes"), tr("The scene has changes that are not saved. Save them first?"),
-	                                          QMessageBox::Save | QMessageBox::Discard | QMessageBox::Cancel, QMessageBox::Save);
-	if (answer == QMessageBox::Cancel) return false;
-	if (answer == QMessageBox::Save) {
-		onSaveClicked();
-		return !m_dirty;
-	}
-	return true;
-}
-
-void SceneBuilderWidget::onOpenClicked() {
-	if (!confirmDiscard()) return;
-	const QString path = QFileDialog::getOpenFileName(this, tr("Open a Scene Builder scene"), m_path.isEmpty() ? QDir::homePath() : QFileInfo(m_path).absolutePath(),
-	                                                  tr("pbrt scenes (*.pbrt)"));
-	if (path.isEmpty()) return;
-	QString error;
-	if (!openFile(path, &error)) QMessageBox::warning(this, tr("Cannot open the scene"), error);
-}
-
-void SceneBuilderWidget::onSaveClicked() {
-	if (m_path.isEmpty()) {
-		onSaveAsClicked();
-		return;
-	}
-	if (!saveFile(m_path)) QMessageBox::warning(this, tr("Cannot save"), tr("Could not write %1.").arg(m_path));
-	else emit statusMessage(tr("Saved %1").arg(m_path));
-}
-
-void SceneBuilderWidget::onSaveAsClicked() {
-	QString start = m_path;
-	if (start.isEmpty()) start = QDir::homePath() + "/" + QString::fromStdString(m_doc.title).replace(QRegularExpression("[^A-Za-z0-9_-]+"), "-") + ".pbrt";
-	QString path = QFileDialog::getSaveFileName(this, tr("Save the scene"), start, tr("pbrt scenes (*.pbrt)"));
-	if (path.isEmpty()) return;
-	if (!path.endsWith(".pbrt", Qt::CaseInsensitive)) path += ".pbrt";
-	if (!saveFile(path)) QMessageBox::warning(this, tr("Cannot save"), tr("Could not write %1.").arg(path));
-	else emit statusMessage(tr("Saved %1").arg(path));
-}
-
-// Where "Add to scene list" saves: the per-user folder <data>/user_scenes (pbrt_discover::userSceneDir), always. That is the only folder the scene list can grow
-// from while the program runs (refresh_user_scenes() rescans it, and gives each scene a persistent id), it is always writable, and it never writes into the
-// program's own folder (a macOS .app bundle's seal breaks if you do; a disk image is read-only). A scene saved into the program's pbrt_scenes folder would
-// only be listed after a restart, and its id would shift the ids of the scenes found after it. RAY_TRACER_PBRT_DIR still names a folder to use instead.
-QString SceneBuilderWidget::sceneListFolder() {
-	const QString env = qEnvironmentVariable("RAY_TRACER_PBRT_DIR");
-	if (!env.isEmpty() && QDir(env).exists() && QFileInfo(env).isWritable()) return QDir(env).absolutePath();
-	const QString user = QString::fromStdString(pbrt_asset_check::userSceneDir());
-	if (!user.isEmpty() && QDir().mkpath(user)) return user;
-	return QString();
-}
-
-QString SceneBuilderWidget::addToSceneList(QString *error, bool update) {
-	const QString folder = sceneListFolder();
-	flushEditLog();
-	if (folder.isEmpty()) {
-		AppLog::error(QStringLiteral("builder"), QStringLiteral("add to scene list: no writable scenes folder"));
-		if (error) *error = tr("The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the "
-		                       "environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.");
-		return QString();
-	}
-	QString name = QString::fromStdString(m_doc.title).trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
-	name.remove(QRegularExpression("^-+|-+$"));
-	if (name.isEmpty()) name = "my-scene";
-	QString path = folder + "/" + name + ".pbrt";
-	if (update && !m_listedPath.isEmpty() && QFileInfo::exists(m_listedPath)) {
-		path = m_listedPath;   // the listing this document already has
-	} else {
-		// A name already taken (by another scene, or by an earlier listing of this one) is never overwritten: the copy gets the next free name.
-		for (int n = 2; QFileInfo::exists(path); ++n) path = folder + "/" + name + "-" + QString::number(n) + ".pbrt";
-	}
-	// A copy for the scene list: the document keeps its own file and its unsaved state.
-	if (!writeSceneText(m_doc, path)) {
-		AppLog::error(QStringLiteral("builder"), QStringLiteral("add to scene list: could not write %1").arg(path));
-		if (error) *error = tr("Could not write %1.").arg(path);
-		return QString();
-	}
-	AppLog::info(QStringLiteral("builder"), QStringLiteral("add to scene list: wrote %1 (%2)").arg(path, update ? QStringLiteral("updating the existing listing") : QStringLiteral("as a new scene")));
-	m_listedPath = path;
-	return path;
-}
-
-void SceneBuilderWidget::onSaveToSceneListClicked() {
-	const QString folder = sceneListFolder();
-	if (folder.isEmpty()) {
-		QString why;
-		addToSceneList(&why);
-		QMessageBox::information(this, tr("No scenes folder"), why);
-		return;
-	}
-	// Already listed once (or opened from the list): ask whether this is an update of that scene or a new one. Otherwise there is nothing to ask - a
-	// name that is taken just gets the next free one.
-	bool update = false;
-	if (!m_listedPath.isEmpty() && QFileInfo::exists(m_listedPath)) {
-		QMessageBox box(QMessageBox::Question, tr("Add to the scene list"),
-		                tr("This scene is already in the list as \"%1\".").arg(QFileInfo(m_listedPath).completeBaseName()), QMessageBox::NoButton, this);
-		QPushButton *asNew = box.addButton(tr("Add as a new scene"), QMessageBox::AcceptRole);
-		QPushButton *updateIt = box.addButton(tr("Update the existing one"), QMessageBox::DestructiveRole);
-		box.addButton(QMessageBox::Cancel);
-		box.setDefaultButton(asNew);
-		box.exec();
-		if (box.clickedButton() == updateIt) update = true;
-		else if (box.clickedButton() != asNew) return;
-	}
-	QString error;
-	const QString path = addToSceneList(&error, update);
-	if (path.isEmpty()) {
-		QMessageBox::warning(this, tr("Cannot save"), error);
-		return;
-	}
-	emit sceneListed(path);   // the main window lists it and selects it - no restart needed
-	QMessageBox::information(this, tr("Added to the scene list"),
-	                         tr("Saved a copy as %1.\n\nIt is in the scene list now (Settings tab, My Scenes).").arg(path));
-}
-
 // ---- undo, autosave -------------------------------------------------------------------------------------------------------------
 
-void SceneBuilderWidget::pushUndo() {
-	m_undo.append(QString::fromStdString(scene_doc::toJson(m_doc)));
-	// At most 200 steps, and at most ~32 MB of snapshots: a big scene must not make a long editing session eat memory.
-	qint64 bytes = 0;
-	for (const QString &snap : m_undo) bytes += snap.size() * qint64(sizeof(QChar));
-	while (m_undo.size() > 1 && (m_undo.size() > 200 || bytes > (qint64(32) << 20))) {
-		bytes -= m_undo.first().size() * qint64(sizeof(QChar));
-		m_undo.removeFirst();
-	}
-	m_redo.clear();
-}
+void SceneBuilderWidget::pushUndo() { m_history.record(scene_doc::toJson(m_doc)); }
 
 void SceneBuilderWidget::edit(const QString &key, const std::function<void()> &mutate) {
 	const bool merge = !key.isEmpty() && key == m_lastEditKey && (key.startsWith("drag#") || (m_editClock.isValid() && m_editClock.elapsed() < 1200));
@@ -569,10 +364,10 @@ void SceneBuilderWidget::flushEditLog() {
 	if (!what.empty()) AppLog::info(QStringLiteral("builder"), QStringLiteral("edit: %1").arg(QString::fromStdString(what)));
 }
 
-bool SceneBuilderWidget::restore(const QString &json) {
+bool SceneBuilderWidget::restore(const std::string &json) {
 	Document d;
 	std::string err;
-	if (!scene_doc::fromJson(json.toStdString(), d, err)) return false;
+	if (!scene_doc::fromJson(json, d, err)) return false;
 	m_doc = std::move(d);
 	if (m_sel.kind == SelKind::Object && m_sel.index >= static_cast<int>(m_doc.objects.size())) m_sel = {SelKind::None, 0};
 	if (m_sel.kind == SelKind::Light && m_sel.index >= static_cast<int>(m_doc.lights.size())) m_sel = {SelKind::None, 0};
@@ -584,31 +379,29 @@ bool SceneBuilderWidget::restore(const QString &json) {
 }
 
 bool SceneBuilderWidget::undo() {
-	if (m_undo.isEmpty()) return false;
+	if (!m_history.canUndo()) return false;
 	flushEditLog();
 	const scene_doc::Document before = m_doc;
-	const QString now = QString::fromStdString(scene_doc::toJson(m_doc));
-	if (!restore(m_undo.last())) {   // the step stays in the list if it cannot be read back
+	std::string now = scene_doc::toJson(m_doc);
+	if (!restore(m_history.undoTop())) {   // the step stays in the list if it cannot be read back
 		AppLog::error(QStringLiteral("builder"), QStringLiteral("undo: the saved step could not be read back"));
 		return false;
 	}
-	m_undo.removeLast();
-	m_redo.append(now);
+	m_history.undone(std::move(now));
 	AppLog::info(QStringLiteral("builder"), QStringLiteral("undo: %1").arg(QString::fromStdString(scene_doc::describeChange(before, m_doc))));
 	return true;
 }
 
 bool SceneBuilderWidget::redo() {
-	if (m_redo.isEmpty()) return false;
+	if (!m_history.canRedo()) return false;
 	flushEditLog();
 	const scene_doc::Document before = m_doc;
-	const QString now = QString::fromStdString(scene_doc::toJson(m_doc));
-	if (!restore(m_redo.last())) {
+	std::string now = scene_doc::toJson(m_doc);
+	if (!restore(m_history.redoTop())) {
 		AppLog::error(QStringLiteral("builder"), QStringLiteral("redo: the saved step could not be read back"));
 		return false;
 	}
-	m_redo.removeLast();
-	m_undo.append(now);
+	m_history.redone(std::move(now));
 	AppLog::info(QStringLiteral("builder"), QStringLiteral("redo: %1").arg(QString::fromStdString(scene_doc::describeChange(before, m_doc))));
 	return true;
 }
@@ -621,60 +414,6 @@ void SceneBuilderWidget::documentChanged() {
 	updateActions();
 	updateViews();
 	scheduleAutosave();
-}
-
-// Where the unsaved scene is kept while it is being edited (RAY_TRACER_STATE_DIR names another folder, for tests).
-static QString autosavePath() {
-	const QString env = qEnvironmentVariable("RAY_TRACER_STATE_DIR");
-	const QString dir = env.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : env;
-	QDir().mkpath(dir);
-	return dir + "/scene_builder_autosave.pbrt";
-}
-
-bool SceneBuilderWidget::hasAutosave() { return QFileInfo::exists(autosavePath()); }
-
-// "Start fresh" after a crash: the autosave is renamed, not deleted - if it was the scene that crashed the program, the user can still open it by hand.
-QString SceneBuilderWidget::setAsideAutosave() {
-	const QString path = autosavePath();
-	if (!QFileInfo::exists(path)) return QString();
-	const QString aside = QFileInfo(path).absolutePath() + "/scene_builder_autosave.set-aside-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") + ".pbrt";
-	return QFile::rename(path, aside) ? aside : QString();
-}
-
-void SceneBuilderWidget::scheduleAutosave() {
-	if (m_autosaveEnabled) m_autosaveTimer->start();
-}
-
-void SceneBuilderWidget::writeAutosave() {
-	if (!m_autosaveEnabled || !m_dirty) return;
-	const std::string text = scene_doc::toPbrt(m_doc);
-	writeFileAtomically(autosavePath(), QByteArray::fromRawData(text.data(), static_cast<qsizetype>(text.size())));
-}
-
-void SceneBuilderWidget::clearAutosave() {
-	if (m_autosaveEnabled) QFile::remove(autosavePath());
-}
-
-// A scene that was being edited when the program closed comes back, marked unsaved.
-bool SceneBuilderWidget::loadAutosave() {
-	QFile f(autosavePath());
-	if (!f.exists() || !f.open(QIODevice::ReadOnly)) return false;
-	Document d;
-	std::string err;
-	if (!scene_doc::fromPbrt(f.readAll().toStdString(), d, err)) return false;
-	m_doc = std::move(d);
-	m_path.clear();
-	m_dirty = true;
-	m_undo.clear();
-	m_redo.clear();
-	m_lastEditKey.clear();
-	rebuildList();
-	setSelection({SelKind::None, 0});
-	frameViews();
-	refreshProblems();
-	updateTitle();
-	updateActions();
-	return true;
 }
 
 // ---- list, selection ------------------------------------------------------------------------------------------------------------
@@ -857,8 +596,8 @@ void SceneBuilderWidget::updateActions() {
 	const bool item = (m_sel.kind == SelKind::Object || m_sel.kind == SelKind::Light);
 	m_deleteButton->setEnabled(item);
 	m_duplicateButton->setEnabled(item);
-	m_undoButton->setEnabled(!m_undo.isEmpty());
-	m_redoButton->setEnabled(!m_redo.isEmpty());
+	m_undoButton->setEnabled(m_history.canUndo());
+	m_redoButton->setEnabled(m_history.canRedo());
 	const bool ok = !scene_doc::hasErrors(m_problems);   // from the last refreshProblems(): the document has not changed since
 	m_previewButton->setEnabled(ok || m_process);
 	m_finalButton->setEnabled(ok && !m_process);
@@ -897,139 +636,6 @@ void SceneBuilderWidget::refreshProblems() {
 		html += QString("<p style='margin:2px 0'><b>%1</b> %2</p>").arg(error ? tr("Fix this:") : tr("Note:"), QString::fromStdString(p.message).toHtmlEscaped());
 	}
 	m_problemsLabel->setText(html);
-}
-
-// ---- inspector ------------------------------------------------------------------------------------------------------------------
-
-// ---- rendering -------------------------------------------------------------------------------------------------------------------
-
-void SceneBuilderWidget::setUseGpu(bool on) { m_gpuCheck->setChecked(on); }
-
-void SceneBuilderWidget::setSceneName(const QString &text) {
-	const std::string name = text.toStdString();
-	if (name == m_doc.title) return;
-	edit(QStringLiteral("title"), [&]() { m_doc.title = name; });
-}
-void SceneBuilderWidget::startPreview(const std::function<void(bool, const QString &)> &done) {
-	static const int widths[3] = {480, 720, 960};
-	static const int spps[3] = {16, 64, 256};
-	const int q = std::clamp(m_qualityCombo->currentData().toInt(), 0, 2);
-	const double aspect = m_doc.render.width > 0 ? double(m_doc.render.height) / m_doc.render.width : 0.75;
-	const int w = widths[q];
-	const int h = std::max(1, static_cast<int>(std::lround(w * aspect)));
-	runRender(w, h, spps[q], false, QString(), done);
-}
-
-void SceneBuilderWidget::onRenderFinalClicked() {
-	QString start = m_path.isEmpty() ? QDir::homePath() + "/render.png" : QFileInfo(m_path).absolutePath() + "/" + QFileInfo(m_path).completeBaseName() + ".png";
-	QString png = QFileDialog::getSaveFileName(this, tr("Save the rendered picture"), start, tr("PNG images (*.png)"));
-	if (png.isEmpty()) return;
-	if (!png.endsWith(".png", Qt::CaseInsensitive)) png += ".png";
-	runRender(m_doc.render.width, m_doc.render.height, m_doc.render.samples, true, png, [this](bool ok, const QString &msg) {
-		if (!ok) QMessageBox::warning(this, tr("The render failed"), msg);
-	});
-}
-
-void SceneBuilderWidget::runRender(int width, int height, int samples, bool toFinalFile, const QString &finalPng,
-                                   const std::function<void(bool, const QString &)> &done) {
-	auto fail = [&](const QString &msg) {
-		AppLog::warn(QStringLiteral("builder-render"), QStringLiteral("not started: %1").arg(msg));
-		m_previewStatus->setText(msg);
-		if (done) done(false, msg);
-	};
-	if (m_process) return fail(tr("A render is already running."));
-	const auto problems = scene_doc::validate(m_doc);
-	if (scene_doc::hasErrors(problems)) return fail(tr("Fix the problems listed under the properties first."));
-	if (!QFileInfo::exists(launcherPath())) return fail(tr("The renderer (%1) was not found next to the program.").arg(launcherPath()));
-
-	const QString dir = workFolder();
-	const QString scene = dir + "/scene.pbrt";
-	const QString base = dir + (toFinalFile ? "/final" : "/preview");
-	QFile::remove(base + ".ppm");
-	QFile::remove(base + ".png");
-	{
-		QFile f(scene);
-		if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return fail(tr("Could not write %1.").arg(scene));
-		const std::string text = scene_doc::toPbrt(m_doc);
-		f.write(text.data(), static_cast<qint64>(text.size()));
-	}
-
-	QStringList args;
-	args << (m_gpuCheck->isChecked() ? "--gpu" : "--cpu") << "--output" << base + ".ppm" << "--height" << QString::number(height)
-	     << QString::number(width) << QString::number(samples) << QString::number(m_doc.render.maxDepth) << scene;
-
-	m_pendingFinalPng = toFinalFile ? finalPng : QString();
-	m_previewPng = base + ".png";
-	m_pendingDone = done;
-	m_renderLog.clear();
-	m_cancelRequested = false;
-	m_renderClock.start();
-	m_process = new QProcess(this);
-	m_process->setProcessChannelMode(QProcess::MergedChannels);
-	m_process->setWorkingDirectory(QCoreApplication::applicationDirPath());
-	connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() {
-		m_renderLog += QString::fromUtf8(m_process->readAll());
-		if (m_renderLog.size() > 20000) m_renderLog.remove(0, m_renderLog.size() - 20000);
-	});
-	connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
-		if (e == QProcess::FailedToStart) onPreviewFinished(-1);
-	});
-	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus st) {
-		onPreviewFinished(st == QProcess::NormalExit ? code : -2);
-	});
-	AppLog::info(QStringLiteral("builder-render"), QStringLiteral("start (%1): %2 %3").arg(toFinalFile ? QStringLiteral("final picture -> ") + finalPng : QStringLiteral("preview"), launcherPath(), args.join(QLatin1Char(' '))));
-	for (const auto &problem : problems) AppLog::warn(QStringLiteral("builder-render"), QStringLiteral("scene note: %1").arg(QString::fromStdString(problem.message)));
-	m_previewButton->setText(tr("Cancel"));
-	m_previewButton->setEnabled(true);
-	m_finalButton->setEnabled(false);
-	m_previewStatus->setText(tr("Rendering %1 x %2, %3 samples...").arg(width).arg(height).arg(samples));
-	m_process->start(launcherPath(), args);
-}
-
-void SceneBuilderWidget::onPreviewFinished(int exitCode) {
-	QProcess *p = m_process;
-	if (!p) return;
-	m_process = nullptr;
-	p->disconnect(this);
-	p->deleteLater();
-	const auto done = m_pendingDone;
-	m_pendingDone = nullptr;
-	m_previewButton->setText(tr("Preview"));
-	updateActions();
-
-	const double secs = m_renderClock.elapsed() / 1000.0;
-	QPixmap pix(m_previewPng);
-	AppLog::write(exitCode != 0 || pix.isNull() ? log_format::Level::Error : log_format::Level::Info, QStringLiteral("builder-render"),
-	              QStringLiteral("finished: exit code %1%2, %3 s, picture %4").arg(exitCode).arg(exitCode == -2 ? (m_cancelRequested ? QStringLiteral(" (cancelled)") : QStringLiteral(" (crashed or killed)")) : exitCode == -1 ? QStringLiteral(" (could not start)") : QString())
-	                  .arg(secs, 0, 'f', 1).arg(pix.isNull() ? QStringLiteral("missing") : QStringLiteral("%1 x %2").arg(pix.width()).arg(pix.height())));
-	if (exitCode != 0 || pix.isNull()) {
-		for (const QString &line : m_renderLog.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts).mid(std::max<qsizetype>(0, m_renderLog.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts).size() - 25)))
-			AppLog::error(QStringLiteral("builder-render"), QStringLiteral("renderer output: %1").arg(line));
-	}
-	if (exitCode != 0 || pix.isNull()) {
-		QString tail;
-		const QStringList lines = m_renderLog.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);
-		for (int i = std::max(0, static_cast<int>(lines.size()) - 6); i < lines.size(); ++i) tail += lines[i] + "\n";
-		const QString msg = (exitCode == -2 && m_cancelRequested) ? tr("The render was cancelled.") : exitCode == -2 ? tr("The renderer stopped unexpectedly.") : tr("The renderer did not produce a picture (exit code %1).\n%2").arg(exitCode).arg(tail.trimmed());
-		m_previewStatus->setText((exitCode == -2 && m_cancelRequested) ? msg : tr("The render failed."));
-		if (done) done(false, msg);
-		return;
-	}
-	m_previewPixmap = pix;
-	updatePreviewPixmap();
-	QString message = tr("Done in %1 s (%2 x %3).").arg(secs, 0, 'f', 1).arg(pix.width()).arg(pix.height());
-	if (!m_pendingFinalPng.isEmpty()) {
-		QFile::remove(m_pendingFinalPng);
-		if (QFile::copy(m_previewPng, m_pendingFinalPng)) message += " " + tr("Saved %1.").arg(m_pendingFinalPng);
-		else message += " " + tr("Could not save to %1.").arg(m_pendingFinalPng);
-	}
-	m_previewStatus->setText(message);
-	if (done) done(true, message);
-}
-
-void SceneBuilderWidget::updatePreviewPixmap() {
-	if (m_previewPixmap.isNull()) return;
-	m_previewLabel->setPixmap(m_previewPixmap.scaled(m_previewLabel->size(), Qt::KeepAspectRatio, Qt::SmoothTransformation));
 }
 
 bool SceneBuilderWidget::eventFilter(QObject *watched, QEvent *event) {

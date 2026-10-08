@@ -196,6 +196,7 @@
     <ClCompile Include="unit\log_format_tests.cpp" />
     <ClCompile Include="unit\job_queue_tests.cpp" />
     <ClCompile Include="unit\scene_gizmo_tests.cpp" />
+    <ClCompile Include="unit\snapshot_history_tests.cpp" />
     <ClCompile Include="unit\pbrt_quadify_tests.cpp" />
     <ClCompile Include="unit\pbrt_subdiv_tests.cpp" />
     <!-- The GUI's palette tables. Qt-free precisely so this MSVC binary can

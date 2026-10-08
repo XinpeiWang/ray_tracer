@@ -72,11 +72,16 @@ SOURCES += \
 	recent_renders.cpp \
 	win_taskbar.cpp \
 	scene_builder_widget.cpp \
+	scene_builder_files.cpp \
+	scene_builder_autosave.cpp \
+	scene_builder_render.cpp \
 	scene_builder_inspector.cpp \
 	scene_builder_photo.cpp \
 	photo_import.cpp \
 	scene_builder_views.cpp \
 	scene_3d_view.cpp \
+	scene_3d_view_input.cpp \
+	scene_3d_view_meshes.cpp \
 	stb_image_impl.cpp \
 	scene_layout_view.cpp
 
@@ -110,6 +115,7 @@ HEADERS += \
 	scene_builder_common.h \
 	photo_import.h \
 	scene_3d_view.h \
+	scene_3d_view_internal.h \
 	scene_layout_view.h
 
 # scene_metadata.dll/.dylib/.so (loaded dynamically at runtime - see

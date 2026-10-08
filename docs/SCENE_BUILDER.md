@@ -140,7 +140,7 @@ The scene's **name** is the field at the top right of the tab (it is also the *T
 
 ## How it is checked
 
-The scene model, the pbrt writer, the checks and the JSON are in `src/shared/scene_document.h` (standard library only) with tests in `tests/unit/scene_builder_tests.cpp`:
+The scene model (`scene_model.h`), the JSON (`scene_json.h`), the checks (`scene_validate.h`) and the pbrt writer (`scene_pbrt_writer.h`) are in `src/shared/`, all pulled in by `scene_document.h` (standard library only); the undo and redo lists are `snapshot_history.h` with tests in `tests/unit/scene_builder_tests.cpp`:
 
 * a document survives a round trip through JSON and through the pbrt text;
 * every shape, material and light loads in the renderer;
