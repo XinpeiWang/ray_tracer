@@ -2,10 +2,14 @@
 // runSelfTest() in mainwindow_selftest.cpp. A pure split of what used to be one 500-line function.
 
 #include "mainwindow.h"
+#include "../src/shared/oidn_runtime.h"
+#include "denoiser_installer.h"
+#include "live_ai_denoise.h"
 #include "app_log.h"
 #include "../src/shared/pbrt_asset_check.h"
 
 #include <QApplication>
+#include <QMessageBox>
 #include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
@@ -44,8 +48,28 @@ void MainWindow::runOptionsSelfTest(const std::function<void(const QString &)> &
 		log(QString("tab %1: %2").arg(i).arg(m_tabWidget->tabText(i)));
 		if (m_tabWidget->tabText(i).contains("Render Options")) m_tabWidget->setCurrentIndex(i);
 	}
-	QTimer::singleShot(800, this, [this, shot]() {
+	QTimer::singleShot(800, this, [this, shot, log]() {
 		shot("options");
+#ifdef Q_OS_MAC
+		// Ticking "AI denoise" (Live Preview) with no denoiser library present offers to download it; declining must untick the box again and not leave it
+		// remembered as on. (Skipped when this machine has the library, or the app cannot install it.)
+		QCheckBox *aiBox = nullptr;
+		for (QCheckBox *c : findChildren<QCheckBox *>())
+			if (c->text() == tr("AI denoise")) aiBox = c;
+		if (aiBox && !oidn_runtime::available() && denoiser_installer::isSupportedHere()) {
+			QTimer::singleShot(400, this, []() {
+				if (auto *question = qobject_cast<QMessageBox *>(QApplication::activeModalWidget()))
+					for (QAbstractButton *b : question->buttons())
+						if (question->buttonRole(b) == QMessageBox::NoRole) b->click();
+			});
+			aiBox->setChecked(true);   // returns once the question is answered
+			const bool untickedAgain = !aiBox->isChecked() && !live_ai_denoise::savedEnabled();
+			log(QString("%1: declining the denoiser download unticks \"AI denoise\" and does not remember it").arg(untickedAgain ? "ok" : "FAIL"));
+			if (!untickedAgain) { QApplication::exit(1); return; }
+		} else {
+			log("skipped: the AI denoise download prompt (the denoiser library is present here, or not installable on this platform)");
+		}
+#endif
 		// ...and scrolled to the bottom, where the Live Preview Settings group is.
 		QList<QScrollArea *> areas = m_tabWidget->currentWidget()->findChildren<QScrollArea *>();
 		if (auto *self = qobject_cast<QScrollArea *>(m_tabWidget->currentWidget())) areas.prepend(self);

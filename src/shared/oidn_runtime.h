@@ -16,6 +16,7 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <mutex>
 #include <string>
 #include <vector>
 
@@ -150,54 +151,70 @@ inline void closeLibrary(void* handle) {
 #endif
 }
 
-inline Api& api() {
-	static Api a = []() {
-		Api x;
-		for (const std::string& path : candidates()) {
-			if (!fileExists(path)) continue;
-			std::string why;
-			x.handle = openLibrary(path, why);
-			if (!x.handle) {
-				x.error = std::string("could not load ") + path + ": " + why;
-				continue;
-			}
-			x.path = path;
-			break;
-		}
+inline Api loadApi() {
+	Api x;
+	for (const std::string& path : candidates()) {
+		if (!fileExists(path)) continue;
+		std::string why;
+		x.handle = openLibrary(path, why);
 		if (!x.handle) {
-			if (x.error.empty()) x.error = std::string("Open Image Denoise (") + libraryName() + ") was not found; install it from the Diagnostics tab or set RT_OIDN_DIR";
-			return x;
+			x.error = std::string("could not load ") + path + ": " + why;
+			continue;
 		}
-		auto sym = [&](const char* n) { return librarySymbol(x.handle, n); };
-#define RT_OIDN_BIND(field, name) *reinterpret_cast<void**>(&x.field) = sym(name)
-		RT_OIDN_BIND(newDevice, "oidnNewDevice");
-		RT_OIDN_BIND(commitDevice, "oidnCommitDevice");
-		RT_OIDN_BIND(getDeviceError, "oidnGetDeviceError");
-		RT_OIDN_BIND(releaseDevice, "oidnReleaseDevice");
-		RT_OIDN_BIND(newBuffer, "oidnNewBuffer");
-		RT_OIDN_BIND(writeBuffer, "oidnWriteBuffer");
-		RT_OIDN_BIND(readBuffer, "oidnReadBuffer");
-		RT_OIDN_BIND(releaseBuffer, "oidnReleaseBuffer");
-		RT_OIDN_BIND(newFilter, "oidnNewFilter");
-		RT_OIDN_BIND(setFilterImage, "oidnSetFilterImage");
-		RT_OIDN_BIND(setFilterBool, "oidnSetFilterBool");
-		RT_OIDN_BIND(setFilterInt, "oidnSetFilterInt");
-		RT_OIDN_BIND(commitFilter, "oidnCommitFilter");
-		RT_OIDN_BIND(executeFilter, "oidnExecuteFilter");
-		RT_OIDN_BIND(releaseFilter, "oidnReleaseFilter");
-#undef RT_OIDN_BIND
-		if (!x.newDevice || !x.commitDevice || !x.getDeviceError || !x.releaseDevice || !x.newBuffer || !x.writeBuffer || !x.readBuffer || !x.releaseBuffer ||
-		    !x.newFilter || !x.setFilterImage || !x.setFilterBool || !x.setFilterInt || !x.commitFilter || !x.executeFilter || !x.releaseFilter) {
-			x.error = std::string(x.path) + " is not an Open Image Denoise 2.x library (an entry point is missing)";
-			closeLibrary(x.handle);
-			x.handle = nullptr;
-		}
+		x.path = path;
+		break;
+	}
+	if (!x.handle) {
+		if (x.error.empty()) x.error = std::string("Open Image Denoise (") + libraryName() + ") was not found; install it from the Diagnostics tab or set RT_OIDN_DIR";
 		return x;
-	}();
-	return a;
+	}
+	auto sym = [&](const char* n) { return librarySymbol(x.handle, n); };
+#define RT_OIDN_BIND(field, name) *reinterpret_cast<void**>(&x.field) = sym(name)
+	RT_OIDN_BIND(newDevice, "oidnNewDevice");
+	RT_OIDN_BIND(commitDevice, "oidnCommitDevice");
+	RT_OIDN_BIND(getDeviceError, "oidnGetDeviceError");
+	RT_OIDN_BIND(releaseDevice, "oidnReleaseDevice");
+	RT_OIDN_BIND(newBuffer, "oidnNewBuffer");
+	RT_OIDN_BIND(writeBuffer, "oidnWriteBuffer");
+	RT_OIDN_BIND(readBuffer, "oidnReadBuffer");
+	RT_OIDN_BIND(releaseBuffer, "oidnReleaseBuffer");
+	RT_OIDN_BIND(newFilter, "oidnNewFilter");
+	RT_OIDN_BIND(setFilterImage, "oidnSetFilterImage");
+	RT_OIDN_BIND(setFilterBool, "oidnSetFilterBool");
+	RT_OIDN_BIND(setFilterInt, "oidnSetFilterInt");
+	RT_OIDN_BIND(commitFilter, "oidnCommitFilter");
+	RT_OIDN_BIND(executeFilter, "oidnExecuteFilter");
+	RT_OIDN_BIND(releaseFilter, "oidnReleaseFilter");
+#undef RT_OIDN_BIND
+	if (!x.newDevice || !x.commitDevice || !x.getDeviceError || !x.releaseDevice || !x.newBuffer || !x.writeBuffer || !x.readBuffer || !x.releaseBuffer ||
+	    !x.newFilter || !x.setFilterImage || !x.setFilterBool || !x.setFilterInt || !x.commitFilter || !x.executeFilter || !x.releaseFilter) {
+		x.error = std::string(x.path) + " is not an Open Image Denoise 2.x library (an entry point is missing)";
+		closeLibrary(x.handle);
+		x.handle = nullptr;
+	}
+	return x;
+}
+
+// The loaded library (or why there is none). Looked for once, the first time it is needed; rescan() makes the next call look again (after the GUI installed it).
+inline std::mutex& apiMutex() { static std::mutex m; return m; }
+inline bool& apiTried() { static bool t = false; return t; }
+inline Api& apiStorage() { static Api a; return a; }
+inline Api& api() {
+	std::lock_guard<std::mutex> lock(apiMutex());
+	if (!apiTried()) {
+		apiStorage() = loadApi();
+		apiTried() = true;
+	}
+	return apiStorage();
 }
 
 }  // namespace detail
+
+// Looks for the library again the next time it is needed, if none was loaded yet (call after installing it). A loaded one is kept.
+inline void rescan() {
+	std::lock_guard<std::mutex> lock(detail::apiMutex());
+	if (!detail::apiStorage().handle) detail::apiTried() = false;
+}
 
 // True when an OIDN library was found and loaded.
 inline bool available() { return detail::api().handle != nullptr; }

@@ -1630,7 +1630,7 @@ private:
 	void afterUserScenesRemoved(const QStringList &removedIds, const QString &nextHintId);
 	int deleteUserScenes(const QStringList &ids, const QString &nextHintId, QStringList *failedIds = nullptr);   // no questions asked; the handlers ask first
 	void selfTestDeleteScenes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // mainwindow_selftest_builder3d.cpp
-	void onDenoiseToggled(bool on);   // mainwindow_denoiser.cpp: on a Mac, offers to download the denoiser the first time
+	void onDenoiseToggled(bool on); void offerDenoiserInstall(const std::function<void()> &onDeclined, const std::function<void()> &onInstalled);   // mainwindow_denoiser.cpp: on a Mac, offers to download the denoiser the first time
 	void onDeleteSceneClicked();
 	void onDeleteAllMyScenesClicked();
 

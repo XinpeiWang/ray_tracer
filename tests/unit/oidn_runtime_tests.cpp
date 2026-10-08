@@ -162,3 +162,26 @@ TEST(OidnSessionTest, AnOpenSessionDenoisesRepeatedlyAndCanBeReopenedAtAnotherSi
 	s.close();
 	EXPECT_FALSE(s.isOpen());
 }
+
+// ---- rescan(): the library installed after the first look is found without restarting ----
+
+TEST(OidnRuntimeTest, RescanFindsALibraryThatAppearedAfterTheFirstLook) {
+	// Run on its own (--gtest_filter=*Rescan*) with RT_OIDN_DIR unset and RT_OIDN_RESCAN_DIR pointing at an OIDN release: the first look finds nothing, the
+	// folder is then "installed" (RT_OIDN_DIR set), and only after rescan() is the library found. Skipped otherwise.
+	const char* later = std::getenv("RT_OIDN_RESCAN_DIR");
+	if (!later || std::getenv("RT_OIDN_DIR")) GTEST_SKIP() << "needs RT_OIDN_RESCAN_DIR set and RT_OIDN_DIR unset";
+	if (oidn_runtime::available()) GTEST_SKIP() << "a library is already installed here: " << oidn_runtime::libraryPath();
+	EXPECT_FALSE(oidn_runtime::available());
+#if defined(_WIN32)
+	_putenv_s("RT_OIDN_DIR", later);
+#else
+	setenv("RT_OIDN_DIR", later, 1);
+#endif
+	EXPECT_FALSE(oidn_runtime::available()) << "without a rescan the first answer stands";
+	oidn_runtime::rescan();
+	EXPECT_TRUE(oidn_runtime::available()) << oidn_runtime::unavailableReason();
+	const std::string path = oidn_runtime::libraryPath();
+	oidn_runtime::rescan();   // a loaded library is kept, not reloaded
+	EXPECT_TRUE(oidn_runtime::available());
+	EXPECT_EQ(oidn_runtime::libraryPath(), path);
+}

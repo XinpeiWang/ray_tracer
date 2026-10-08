@@ -12,12 +12,20 @@
 
 void MainWindow::onDenoiseToggled(bool on) {
 	if (!on || !denoiser_installer::isSupportedHere() || denoiser_installer::isInstalled()) return;
+	offerDenoiserInstall(
+		[this]() {
+			const QSignalBlocker blocker(m_denoiseCheck);
+			m_denoiseCheck->setChecked(false);
+			m_denoiseBlendSpin->setEnabled(false);
+		},
+		[this]() { updateRenderOptionsEnabled(); });
+}
+
+// Asks whether to download the denoiser and, if so, does it with a progress dialog. `onDeclined` runs when it was declined, cancelled or failed (the caller
+// unticks its box); `onInstalled` when it is there. Shared by the finished-render "AI denoiser" box and the Live Preview "AI denoise" box.
+void MainWindow::offerDenoiserInstall(const std::function<void()> &onDeclined, const std::function<void()> &onInstalled) {
 	if (m_denoiserInstaller && m_denoiserInstaller->isRunning()) return;
-	auto untick = [this]() {
-		const QSignalBlocker blocker(m_denoiseCheck);
-		m_denoiseCheck->setChecked(false);
-		m_denoiseBlendSpin->setEnabled(false);
-	};
+	const auto untick = onDeclined;
 	const auto choice = QMessageBox::question(this, tr("Install the denoiser"),
 		tr("The AI denoiser is Intel's Open Image Denoise (open source, Apache-2.0). It is not part of this app: it is downloaded once (%1) from its own release page "
 		   "on GitHub (github.com/RenderKit/oidn), checked against a known checksum, and kept in your user folder.\n\nDownload it now?")
@@ -38,12 +46,12 @@ void MainWindow::onDenoiseToggled(bool on) {
 		dialog->setValue(percent);
 		dialog->setLabelText(text);
 	});
-	connect(m_denoiserInstaller, &denoiser_installer::Installer::finished, dialog, [this, dialog, untick](bool ok, const QString &message) {
+	connect(m_denoiserInstaller, &denoiser_installer::Installer::finished, dialog, [this, dialog, untick, onInstalled](bool ok, const QString &message) {
 		disconnect(m_denoiserInstaller, nullptr, dialog, nullptr);
 		dialog->close();
 		if (ok) {
 			statusBar()->showMessage(message, 6000);
-			updateRenderOptionsEnabled();
+			onInstalled();
 			return;
 		}
 		untick();
