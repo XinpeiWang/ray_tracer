@@ -16,7 +16,9 @@ On the command line the same flag works: `ray_tracer --gpu --denoise 800 16 8 co
 
 The denoiser works on the linear HDR image before tone mapping, so it also applies to `.exr` output. `--denoise-blend` mixes some of the original grain back (0 = fully denoised, 1 = untouched), as with OptiX. When the denoiser runs, the Metal PNG's small built-in blur (see `RT_METAL_POST_EFFECTS` in METAL_BACKEND.md) is skipped.
 
-What it does not do yet: Live Preview on a Mac is not denoised, and the denoiser sees only the colour image, so very fine texture can be smoothed along with the noise at low sample counts; raise the blend or the sample count if that matters.
+Live Preview on a Mac has its own switch, **AI denoise** (Live Preview settings, Mac only): the accumulated picture is run through the same library for the display, in full while it has up to 32 samples and fading out to nothing at 512, so a settled picture is exactly what was rendered (nothing is changed in the accumulation). It uses `oidn_runtime::Session`, which keeps the OIDN device, buffers and filter open between frames (about 10 ms per 400x400 frame at the Fast quality, measured on an M2), and replaces "Smooth noisy pixels" while it is on. Without the library the picture is shown undenoised and the status line says so.
+
+What it does not do yet: the denoiser sees only the colour image, so very fine texture can be smoothed along with the noise at low sample counts; raise the blend or the sample count if that matters.
 
 ## On the CPU, and on Windows
 

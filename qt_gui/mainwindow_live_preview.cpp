@@ -2,6 +2,7 @@
 // controls to the running session (split out of mainwindow_tabs_render.cpp; nothing changed). Compiled only where Live Preview exists.
 
 #include "mainwindow.h"
+#include "live_ai_denoise.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"
 #include "settings_keys.h"
@@ -421,6 +422,7 @@ void MainWindow::pushLiveAutoExposureToSession() {
 void MainWindow::pushLiveSmoothNoiseToSession() {
 	if (!m_livePreviewSession) return;
 	m_livePreviewSession->setSmoothLowSample(m_liveSmoothNoise);
+	m_livePreviewSession->setAiDenoise(live_ai_denoise::savedEnabled());   // (the Mac-only display options travel together)
 }
 
 void MainWindow::pushLiveDofToSession() {

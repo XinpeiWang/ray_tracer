@@ -794,6 +794,47 @@ void RealtimePreviewWorker::setSmoothLowSample(bool enabled) {
 	m_smoothLowSample = enabled;   // display only: no accumulation reset
 }
 
+void RealtimePreviewWorker::setAiDenoise(bool enabled) {
+	m_aiDenoise = enabled;   // display only: no accumulation reset
+	if (enabled) m_aiDenoiseUnavailable = false;   // try again (the library may have been installed since)
+	if (!enabled) m_aiSession.close();
+}
+
+// Samples (not batches) below which the AI denoise is shown in full, and above which it is gone: in between the denoised picture is mixed with the
+// accumulated one, so a settled picture is exactly what was rendered and nothing pops when the denoise lets go.
+constexpr int kAiDenoiseFullSamples = 32;
+constexpr int kAiDenoiseOffSamples = 512;
+
+// Builds m_aiDisplay from m_accum: the accumulated picture run through Open Image Denoise (colour only, its fastest setting), mixed back with the
+// accumulated one by how many samples it has. Returns false (and leaves m_aiDisplay alone) when OIDN is not there or fails, with the reason sent to the
+// status line once.
+bool RealtimePreviewWorker::aiDenoiseAccum() {
+	if (m_aiDenoiseUnavailable) return false;
+	if (!m_aiSession.isOpen() || m_aiSession.width() != m_width || m_aiSession.height() != m_height) {
+		std::string error;
+		if (!m_aiSession.open(m_width, m_height, oidn_runtime::Session::Quality::Fast, error)) {
+			m_aiDenoiseUnavailable = true;
+			emit statusChanged(QStringLiteral("AI denoise is on but Open Image Denoise is not available (%1). Install it from the Diagnostics tab.").arg(QString::fromStdString(error)));
+			return false;
+		}
+	}
+	const size_t n = static_cast<size_t>(m_width) * m_height * 3;
+	m_aiOut.resize(n);
+	std::string error;
+	if (!m_aiSession.run(m_accum.data(), m_aiOut.data(), error)) {
+		m_aiDenoiseUnavailable = true;
+		emit statusChanged(QStringLiteral("AI denoise failed: %1").arg(QString::fromStdString(error)));
+		return false;
+	}
+	const int samples = m_sampleCount * m_spp;
+	const float w = samples <= kAiDenoiseFullSamples ? 1.0f
+	                : samples >= kAiDenoiseOffSamples ? 0.0f
+	                : static_cast<float>(kAiDenoiseOffSamples - samples) / static_cast<float>(kAiDenoiseOffSamples - kAiDenoiseFullSamples);
+	m_aiDisplay.resize(n);
+	for (size_t i = 0; i < n; ++i) m_aiDisplay[i] = m_accum[i] + w * (m_aiOut[i] - m_accum[i]);
+	return true;
+}
+
 void RealtimePreviewWorker::setSppAndMaxDepth(int spp, int maxDepth) {
 	if (!m_running) return;
 	m_spp = spp;
@@ -1336,9 +1377,11 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 				updateAutoExposure();
 				// Pixels with few samples may be shown smoothed (smoothLowSampleAccum()); m_accum itself is never altered.
 				// m_sampleCount is the minimum over all pixels: once even the weakest pixel is past the threshold there is nothing to do.
-				const bool smoothNow = m_smoothLowSample && m_sampleCount < kSmoothFullSamples;
+				// The AI denoise (when on and available) supersedes the cheaper smoothing; both are display only.
+				const bool aiNow = m_aiDenoise && m_sampleCount * m_spp < kAiDenoiseOffSamples && aiDenoiseAccum();
+				const bool smoothNow = !aiNow && m_smoothLowSample && m_sampleCount < kSmoothFullSamples;
 				if (smoothNow) smoothLowSampleAccum();
-				const std::vector<float>& displaySource = smoothNow ? m_smoothed : m_accum;
+				const std::vector<float>& displaySource = aiNow ? m_aiDisplay : (smoothNow ? m_smoothed : m_accum);
 				for (int y = 0; y < m_height; ++y) {
 					uchar* row = m_displayImage.scanLine(y);
 					for (int x = 0; x < m_width; ++x) {
@@ -1496,6 +1539,10 @@ void RealtimePreviewSession::setDof(bool enabled, double aperture, double focusD
 
 void RealtimePreviewSession::setAutoExposure(bool enabled) {
 	QMetaObject::invokeMethod(m_worker, "setAutoExposure", Qt::QueuedConnection, Q_ARG(bool, enabled));
+}
+
+void RealtimePreviewSession::setAiDenoise(bool enabled) {
+	QMetaObject::invokeMethod(m_worker, "setAiDenoise", Qt::QueuedConnection, Q_ARG(bool, enabled));
 }
 
 void RealtimePreviewSession::setSmoothLowSample(bool enabled) {

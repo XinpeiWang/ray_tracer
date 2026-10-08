@@ -311,7 +311,7 @@ void MainWindow::selfTestLog(SceneBuilderWidget *sb, const std::function<void(bo
 			scene_doc::Document d = scene_doc::makeStarterScene();
 			scene_doc::Object o = scene_doc::makeObject(scene_doc::ShapeKind::Mesh, "Unreadable mesh");
 			o.meshFile = bad.toStdString();
-			o.material.imageFile = "C:/rt_no_such_folder/missing_picture.png";   // a picture that is not there: the scene gets a note
+			o.material.imageFile = QDir::temp().absoluteFilePath("rt_no_such_folder/missing_picture.png").toStdString();   // an absolute path to a picture that is not there (a "C:/..." path is only absolute on Windows): the scene gets a note
 			d.objects.push_back(o);
 			const QString scenePath = QDir::temp().absoluteFilePath("rt_selftest_unreadable.pbrt");
 			QFile f(scenePath);
