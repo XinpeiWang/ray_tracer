@@ -67,6 +67,15 @@ SceneBuilderWidget::SceneBuilderWidget(QWidget *parent) : QWidget(parent) {
 	if (!(m_autosaveEnabled && loadAutosave())) newScene();
 }
 
+void SceneBuilderWidget::showEvent(QShowEvent *e) {
+	QWidget::showEvent(e);
+	// The three buttons above the list must fit whatever language and theme padding is in use, so size the panel
+	// from their (now styled) size hints instead of a fixed number.
+	if (!m_leftPanel) return;
+	const int need = m_addButton->sizeHint().width() + m_duplicateButton->sizeHint().width() + m_deleteButton->sizeHint().width() + 2 * 10;
+	if (need > m_leftPanel->minimumWidth()) m_leftPanel->setMinimumWidth(need);
+}
+
 SceneBuilderWidget::~SceneBuilderWidget() {
 	if (m_process) {
 		m_process->disconnect(this);
@@ -163,6 +172,8 @@ void SceneBuilderWidget::buildUi() {
 	m_list = new QListWidget(left);
 	leftLayout->addWidget(m_list, 1);
 	left->setMinimumWidth(300);
+	m_leftPanel = left;
+	m_addButton = addB;
 	connect(m_list, &QListWidget::currentRowChanged, this, [this](int) { onListSelectionChanged(); });
 	connect(m_deleteButton, &QPushButton::clicked, this, [this]() { deleteSelected(); });
 	connect(m_duplicateButton, &QPushButton::clicked, this, [this]() {
@@ -224,9 +235,10 @@ void SceneBuilderWidget::buildUi() {
 	planeRow->addWidget(snap);
 	planeRow->addWidget(frame);
 	planeRow->addStretch(1);
-	planeRow->addWidget(hint);
 	layoutLayout->addLayout(planeRow);
 	layoutLayout->addWidget(m_view, 1);
+	hint->setAlignment(Qt::AlignRight);  // on its own line: a translated hint is too long to share the button row
+	layoutLayout->addWidget(hint);
 	m_view->setDocument(&m_doc);
 	connect(m_view, &SceneLayoutView::selectionRequested, this, [this](const BuilderSelection &s) { setSelection(s); });
 	connect(m_view, &SceneLayoutView::dragBegan, this, [this]() {
