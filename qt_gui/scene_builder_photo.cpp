@@ -125,7 +125,7 @@ bool SceneBuilderWidget::importPhoto(const QString &photo, QString *error) {
 		Object o = scene_doc::makeObject(ShapeKind::Mesh, uniqueName(baseName.isEmpty() ? tr("Photo object") : baseName, names).toStdString());
 		o.meshFile = QDir::toNativeSeparators(outFolder + "/mesh.obj").toStdString();
 		o.material.imageFile = QDir::toNativeSeparators(outFolder + "/texture.png").toStdString();
-		const scene_doc::Float3 c = m_view->centerInWorld();
+		const scene_doc::Float3 c = dropPoint();
 		o.position = {c.x, 0.0, c.z};  // the mesh stands on y = 0, about 2 units tall
 		m_doc.objects.push_back(o);
 		m_sel = {SelKind::Object, static_cast<int>(m_doc.objects.size()) - 1};

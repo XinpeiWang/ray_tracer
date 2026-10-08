@@ -45,6 +45,7 @@ SOURCES += \
 	mainwindow_selftest.cpp \
 	mainwindow_selftest_photo.cpp \
 	mainwindow_photo_install.cpp \
+	mainwindow_selftest_builder3d.cpp \
 	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
@@ -68,6 +69,8 @@ SOURCES += \
 	scene_builder_inspector.cpp \
 	scene_builder_photo.cpp \
 	photo_import.cpp \
+	scene_builder_views.cpp \
+	scene_3d_view.cpp \
 	scene_layout_view.cpp
 
 HEADERS += \
@@ -91,6 +94,7 @@ HEADERS += \
 	scene_builder_widget.h \
 	scene_builder_common.h \
 	photo_import.h \
+	scene_3d_view.h \
 	scene_layout_view.h
 
 # scene_metadata.dll/.dylib/.so (loaded dynamically at runtime - see

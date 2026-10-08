@@ -28,6 +28,9 @@ class QListWidget;
 class QProcess;
 class QPushButton;
 class QScrollArea;
+class QStackedWidget;
+class QVBoxLayout;
+class Scene3DView;
 class QTimer;
 
 #include "scene_layout_view.h"
@@ -46,6 +49,10 @@ public:
 	bool saveFile(const QString &path);
 	void selectObject(int index);
 	bool dragObjectForTest(int index, const QPointF &deltaPx);
+	// The 3D view, for the self-test: show it (or go back to the 2D views), drag an object on the floor, or along one axis arrow of the selected item.
+	void show3dView(bool on);
+	bool dragObject3dForTest(int index, const QPointF &deltaPx);
+	bool dragAxis3dForTest(int index, int axis, double pixels);
 	void addObject(scene_doc::ShapeKind shape);
 	void addLight(scene_doc::LightKind kind);
 	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
@@ -159,6 +166,15 @@ private:
 	QString m_listedPath;
 	QListWidget *m_list = nullptr;
 	SceneLayoutView *m_view = nullptr;
+	Scene3DView *m_view3d = nullptr;
+	QStackedWidget *m_viewStack = nullptr;  // m_view (Top / Front / Side) or m_view3d, one at a time
+	QLabel *m_viewHint = nullptr;
+	// scene_builder_views.cpp: building the views, and doing one thing to both (they follow the same document and selection).
+	void createViews(QWidget *layoutBox, QVBoxLayout *layoutLayout);
+	void updateViews();
+	void selectInViews(const BuilderSelection &s);
+	void frameViews();
+	scene_doc::Float3 dropPoint() const;  // where a new object goes: the middle of the view on show
 	QWidget *m_inspectorHost = nullptr;
 	QScrollArea *m_inspectorScroll = nullptr;
 	QLabel *m_problemsLabel = nullptr;
