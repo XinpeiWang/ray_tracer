@@ -7,6 +7,7 @@
 #include "scene_layout_view.h"
 
 #include <QApplication>
+#include <QAbstractButton>
 #include <QButtonGroup>
 #include <QCheckBox>
 #include <QHBoxLayout>
@@ -38,6 +39,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	auto *gizmoLayout = new QHBoxLayout(m_gizmoBar);
 	gizmoLayout->setContentsMargins(0, 0, 0, 0);
 	auto *gizmoGroup = new QButtonGroup(this);
+	m_gizmoGroup = gizmoGroup;
 	gizmoGroup->setExclusive(true);
 	const std::pair<QString, QString> tools[] = {{tr("Move"), tr("Move (W): drag an object, or an arrow to move along one axis")},
 	                                             {tr("Rotate"), tr("Rotate (E): drag a ring to turn the object about that axis")},
@@ -179,6 +181,17 @@ void SceneBuilderWidget::updateViews() {
 void SceneBuilderWidget::selectInViews(const BuilderSelection &s) {
 	m_view->setSelection(s);
 	m_view3d->setSelection(s);
+	updateGizmoButtons(s);
+}
+
+// Rotate and Scale turn and resize OBJECTS: for a light or the camera (or nothing) the view uses Move whatever was chosen, so the other two buttons are
+// greyed and Move shows pressed, instead of a pressed Rotate beside arrows. The choice itself is kept for the next object picked.
+void SceneBuilderWidget::updateGizmoButtons(const BuilderSelection &s) {
+	if (!m_gizmoGroup) return;
+	const bool object = s.kind == SelKind::Object;
+	for (int i = 1; i <= 2; ++i)
+		if (QAbstractButton *b = m_gizmoGroup->button(i)) b->setEnabled(object);
+	if (QAbstractButton *b = m_gizmoGroup->button(object ? static_cast<int>(m_view3d->gizmoMode()) : 0)) b->setChecked(true);
 }
 
 Float3 SceneBuilderWidget::dropPoint() const {
@@ -274,3 +287,8 @@ bool SceneBuilderWidget::dragScale3dForTest(int index, int axis, double ratio) {
 	return before.radius != after.radius || before.radius2 != after.radius2 || before.height != after.height || before.meshScale != after.meshScale || before.size.x != after.size.x ||
 	       before.size.y != after.size.y || before.size.z != after.size.z;
 }
+
+void SceneBuilderWidget::orbit3dForTest(double yawDeg, double pitchDeg) { m_view3d->orbitForTest(yawDeg, pitchDeg); }
+bool SceneBuilderWidget::meshReadyForTest(const QString &path) const { return m_view3d->meshPreviewReady(path.toStdString()); }
+bool SceneBuilderWidget::gizmoButtonEnabled(int tool) const { return m_gizmoGroup && m_gizmoGroup->button(tool) && m_gizmoGroup->button(tool)->isEnabled(); }
+int SceneBuilderWidget::gizmoButtonChecked() const { return m_gizmoGroup ? m_gizmoGroup->checkedId() : -1; }

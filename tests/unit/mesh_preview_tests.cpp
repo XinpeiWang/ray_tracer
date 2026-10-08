@@ -70,3 +70,28 @@ TEST(MeshPreviewTest, ProblemsAreReportedNotThrown) {
 	EXPECT_FALSE(tooBig.ok);
 	EXPECT_NE(tooBig.error.find("too big"), std::string::npos);
 }
+
+TEST(MeshPreviewTest, ACorruptVertexDoesNotPoisonTheBounds) {
+	// the FIRST vertex is NaN (it used to seed the box) and a later one is infinite: both are left out
+	const std::string path = writeFile("mesh_preview_test_nan.obj", "v nan 0 0\nv 1 2 3\nv 3 4 5\nv inf 0 0\nv 2 3 4\nf 2 3 5\n");
+	const mesh_preview::MeshPreview m = mesh_preview::load(path);
+	std::remove(path.c_str());
+	ASSERT_TRUE(m.ok) << m.error;
+	for (int a = 0; a < 3; ++a) {
+		EXPECT_TRUE(std::isfinite(m.lo[a]) && std::isfinite(m.hi[a])) << a;
+		EXPECT_DOUBLE_EQ(m.lo[a], 1.0 + a);
+		EXPECT_DOUBLE_EQ(m.hi[a], 3.0 + a);
+	}
+	EXPECT_EQ(m.samples.size(), 9u) << "the three usable vertices";
+	for (float v : m.samples) EXPECT_TRUE(std::isfinite(v));
+}
+
+TEST(MeshPreviewTest, AFileWithNoUsableVertexIsAnErrorNotABoxOfNaN) {
+	const std::string path = writeFile("mesh_preview_test_allnan.obj", "v nan nan nan\nv inf 0 0\nv 0 0 0\nf 1 2 3\n");
+	// the third vertex is fine, so make it bad too
+	{ std::ofstream out(path, std::ios::binary); out << "v nan nan nan\nv inf 0 0\nv -inf 1 1\nf 1 2 3\n"; }
+	const mesh_preview::MeshPreview m = mesh_preview::load(path);
+	std::remove(path.c_str());
+	EXPECT_FALSE(m.ok);
+	EXPECT_FALSE(m.error.empty());
+}

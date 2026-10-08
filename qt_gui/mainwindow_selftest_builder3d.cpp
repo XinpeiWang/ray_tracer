@@ -20,6 +20,9 @@
 #include <QVBoxLayout>
 #include <QWheelEvent>
 #include <QFileInfo>
+#include <QCoreApplication>
+#include <QEventLoop>
+#include <QThread>
 #include <QDir>
 #include <QFile>
 #include <QMouseEvent>
@@ -86,6 +89,31 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			const scene_doc::Float3 after = sb->document().objects[2].position;
 			check(after.x == before.x && after.y == before.y && after.z == before.z, QString("back where it was after %1").arg(names[axis]));
 		}
+		// Move: a press on the middle of the SELECTED object (where all three arrows start) is a free move on the floor, not an axis drag.
+		{
+			sb->selectObject(2);
+			const scene_doc::Float3 b0 = sb->document().objects[2].position;
+			check(sb->dragObject3dForTest(2, QPointF(70, 45)), "dragging the middle of the selected ball moves it");
+			const scene_doc::Float3 b1 = sb->document().objects[2].position;
+			check(b1.x != b0.x && b1.z != b0.z && b1.y == b0.y, "on the floor in both X and Z, not locked to one axis by an arrow");
+			check(sb->undo(), "undo");
+		}
+		// The tool buttons follow what can be turned: a light or the camera has only Move, so Rotate and Scale are greyed and Move shows pressed.
+		{
+			sb->selectObject(3);
+			check(sb->gizmoButtonEnabled(1) && sb->gizmoButtonEnabled(2), "Rotate and Scale are available for an object");
+			sb->selectCameraForTest();
+			check(!sb->gizmoButtonEnabled(1) && !sb->gizmoButtonEnabled(2) && sb->gizmoButtonEnabled(0) && sb->gizmoButtonChecked() == 0, "...but not for the camera, which shows Move");
+			sb->selectObject(3);
+			check(sb->gizmoButtonEnabled(1), "and are back for an object");
+		}
+		// A new object is dropped near what the camera looks at even when the camera is almost level with the floor (it used to land near the horizon).
+		{
+			sb->orbit3dForTest(30.0, 1.0);
+			const scene_doc::Float3 drop = sb->dropPointForTest();
+			check(std::fabs(drop.x) < 30 && std::fabs(drop.z) < 30 && drop.y == 0.0, QString("the drop point stays near the scene with a level camera (%1, %2)").arg(drop.x).arg(drop.z));
+			sb->orbit3dForTest(30.0, 25.0);
+		}
 		// Rotate: the red box (object 3) turned 30 degrees about each world axis by dragging its ring, from whatever angles it already has.
 		for (int axis = 0; axis < 3; ++axis) {
 			const scene_doc::Float3 r0 = sb->document().objects[3].rotation;
@@ -149,6 +177,17 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			check(sb->openFile(scenePath, &err), "opened it " + err);
 			sb->selectObject(static_cast<int>(sb->document().objects.size()) - 1);
 			QFile::remove(scenePath);
+		}
+		// The mesh is read on a worker thread: it is ready a moment after the scene opens (and nothing waited for it).
+		{
+			const QString objPath = QDir::tempPath() + "/builder3d_selftest_mesh.obj";
+			bool ready = false;
+			for (int i = 0; i < 100 && !ready; ++i) {
+				QCoreApplication::processEvents(QEventLoop::AllEvents, 50);
+				ready = sb->meshReadyForTest(objPath);
+				if (!ready) QThread::msleep(20);
+			}
+			check(ready, "the mesh preview was read in the background");
 		}
 		QTimer::singleShot(400, this, [this, shot, log, ok, sb]() {
 			shot("builder3d");
