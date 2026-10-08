@@ -49,6 +49,12 @@ void save(const QWidget *window) {
 
 void forget() { QSettings s = settings(); s.remove(kGeometryKey); }
 
+void forgetSplitters() {
+	QSettings s = settings();
+	s.remove(QStringLiteral("builder/mainSplit"));
+	s.remove(QStringLiteral("builder/centreSplit"));
+}
+
 void restoreSplitter(QSplitter *splitter, const char *key) {
 	const QByteArray saved = settings().value(QString::fromLatin1(key)).toByteArray();
 	if (saved.isEmpty()) return;

@@ -27,6 +27,10 @@ One line per entry, so `grep` and `tail` work: `2026-10-07 22:08:58.028 [INFO ] 
 | `qt` and other Qt categories | Qt's own warnings. |
 | (no category) | Anything the renderer libraries print on stderr while they run inside the program (Live Preview, the Metal and OptiX backends), when the program was not started from a terminal. |
 
+## After a crash
+
+If the previous run did not exit cleanly, the next start asks before it loads anything: **Start normally** (the default; the unsaved Scene Builder scene is restored), **Start fresh** (resets the window layout and sets the unsaved scene aside - renamed to `scene_builder_autosave.set-aside-<time>.pbrt`, never deleted - for a program that keeps stopping at start), or **Show Log Folder**. `RAY_TRACER_NO_CRASH_PROMPT=1` skips the question.
+
 ## For developers
 
 * `qt_gui/app_log.h` is the API (`AppLog::info("category", "text")`); `qt_gui/ui_logger.h` hooks every control as it is first shown, so a new control is logged without any code. `src/shared/log_format.h` (one-line entries, rotation) and `src/shared/scene_doc_diff.h` (the builder's change descriptions) are Qt-free and unit-tested.

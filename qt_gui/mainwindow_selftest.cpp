@@ -162,6 +162,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		selfTestLog(sb, check);
 		selfTestWheelGuard(check);
 		selfTestWindowGeometry(check);
+		selfTestCrashRecovery(check);
 		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
 		sb->newScene();
 		sb->selectObject(2);

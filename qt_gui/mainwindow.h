@@ -221,6 +221,7 @@ public:
 	void runSelfTest(const QString &mode, const QString &outPrefix);
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
 	void selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);      // (mainwindow_selftest_builder3d.cpp)
+	void selfTestCrashRecovery(const std::function<void(bool, const QString &)> &check);
 	void selfTestWindowGeometry(const std::function<void(bool, const QString &)> &check);
 	void selfTestWheelGuard(const std::function<void(bool, const QString &)> &check);
 	void selfTestLog(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);
