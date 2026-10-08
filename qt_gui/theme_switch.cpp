@@ -9,6 +9,7 @@
 #include <QMenuBar>
 #include <QSettings>
 #include <QStatusBar>
+#include <QTextEdit>
 
 // ============================================================================
 // Theme selection and persistence
@@ -93,6 +94,14 @@ void MainWindow::restyleThemedWidgets() {
 	// would silently miss the next one added.
 	for (QComboBox *combo : findChildren<QComboBox *>())
 		applyComboPopupPalette(combo);
+
+	// A text view's placeholder ("Click Run Diagnostics...") was drawn in a colour the style sheet left too close to the surface to read, so the empty
+	// Diagnostics pane looked broken rather than waiting for a click. Say which colour it should be.
+	for (QTextEdit *edit : findChildren<QTextEdit *>()) {
+		QPalette pal = edit->palette();
+		pal.setColor(QPalette::PlaceholderText, p.textMuted);
+		edit->setPalette(pal);
+	}
 
 	// Icons are monochrome silhouettes recoloured at runtime, so they follow
 	// the scheme like any other painted element. Without this a light theme

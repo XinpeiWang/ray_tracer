@@ -132,17 +132,22 @@ void SceneBuilderWidget::buildUi() {
 	m_titleEdit = new QLineEdit(this);
 	m_titleEdit->setPlaceholderText(tr("Scene name"));
 	m_titleEdit->setToolTip(tr("The name of this scene, shown in the scene list"));
-	m_titleEdit->setMinimumWidth(180);
-	m_titleEdit->setMaximumWidth(280);
+	m_titleEdit->setMinimumWidth(150);
+	m_titleEdit->setMaximumWidth(320);
 	for (QPushButton *b : {newB, openB, saveB, saveAsB, listB}) bar->addWidget(b);
 	bar->addSpacing(12);
 	bar->addWidget(m_undoButton);
 	bar->addWidget(m_redoButton);
 	bar->addStretch(1);
-	bar->addWidget(new QLabel(tr("Name:"), this));
-	bar->addWidget(m_titleEdit);
-	bar->addWidget(m_titleLabel);
 	root->addLayout(bar);
+	// The scene's name and where it is saved get a row of their own: beside the buttons they were squeezed over each other (and the buttons clipped) at an
+	// ordinary window width. The status text may be cut short instead of widening the page; its tooltip has all of it.
+	auto *nameRow = new QHBoxLayout;
+	nameRow->addWidget(new QLabel(tr("Name:"), this));
+	nameRow->addWidget(m_titleEdit);
+	m_titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
+	nameRow->addWidget(m_titleLabel, 1);
+	root->addLayout(nameRow);
 	connect(m_titleEdit, &QLineEdit::textEdited, this, &SceneBuilderWidget::setSceneName);
 	connect(newB, &QPushButton::clicked, this, [this]() { if (confirmDiscard()) newScene(); });
 	connect(openB, &QPushButton::clicked, this, &SceneBuilderWidget::onOpenClicked);
@@ -316,7 +321,7 @@ void SceneBuilderWidget::buildUi() {
 	split->setStretchFactor(0, 0);
 	split->setStretchFactor(1, 1);
 	split->setStretchFactor(2, 0);
-	split->setSizes({270, 640, 420});
+	split->setSizes({240, 560, 360});
 	m_mainSplit = split;
 	m_centreSplit = centre;
 	// The panes come back as the user left them (not under the self-test, which compares screenshots).
@@ -327,7 +332,7 @@ void SceneBuilderWidget::buildUi() {
 }
 
 void SceneBuilderWidget::resetPaneSizes() {
-	if (m_mainSplit) m_mainSplit->setSizes({270, 640, 420});
+	if (m_mainSplit) m_mainSplit->setSizes({240, 560, 360});
 	if (m_centreSplit) m_centreSplit->setSizes({820, 740});
 	window_geometry::saveSplitter(m_mainSplit, "builder/mainSplit");
 	window_geometry::saveSplitter(m_centreSplit, "builder/centreSplit");
@@ -614,6 +619,7 @@ void SceneBuilderWidget::updateTitle() {
 	                          .arg(file, m_dirty ? " *" : "")
 	                          .arg(m_doc.objects.size())
 	                          .arg(m_doc.lights.size()));
+	m_titleLabel->setToolTip(m_titleLabel->text());   // the label is cut short when the page is narrow
 }
 
 QString SceneBuilderWidget::problemsText() const {

@@ -40,6 +40,7 @@
 #include <QToolButton>
 #include <QHeaderView>
 #include <QTableView>
+#include "app_log.h"
 #include <QSettings>
 #include <QStatusBar>
 #include <QWheelEvent>
@@ -263,8 +264,18 @@ void MainWindow::createLogTab() {
 	clearButton->setStyleSheet(logBtnStyle);
 	connect(clearButton, &QPushButton::clicked, this, &MainWindow::clearLog);
 
+	// This pane is only the current session's render output; the program's own log file (every operation, kept after it closes) is one click away.
+	QPushButton *logFolderButton = new QPushButton(tr("Show Log &Folder"));
+	icon_tint::apply(logFolderButton, ":/icons/folder.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	logFolderButton->setStyleSheet(logBtnStyle);
+	logFolderButton->setToolTip(tr("Open the folder holding the program's log file (send it with a bug report)"));
+	connect(logFolderButton, &QPushButton::clicked, this, []() {
+		if (!AppLog::folderPath().isEmpty()) QDesktopServices::openUrl(QUrl::fromLocalFile(AppLog::folderPath()));
+	});
+
 	btnLayout->addWidget(copyButton);
 	btnLayout->addWidget(saveButton);
+	btnLayout->addWidget(logFolderButton);
 	btnLayout->addStretch();
 	btnLayout->addWidget(clearButton);
 	layout->addLayout(btnLayout);
@@ -292,6 +303,7 @@ void MainWindow::createDiagnosticsTab() {
 	m_diagTextEdit->viewport()->installEventFilter(
 		new CtrlWheelFontStep([this](int step) { changeLogFontSize(step); }, m_diagTextEdit));
 	applyLogFontSize();  // both views exist now; the log tab is created first so its delta is already loaded
+	showDiagnosticsHint();
 
 	QHBoxLayout *btnLayout = new QHBoxLayout();
 	btnLayout->setContentsMargins(0, 4, 0, 0);
