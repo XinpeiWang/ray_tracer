@@ -4,6 +4,7 @@
 #include "mainwindow.h"
 
 #include "scene_builder_widget.h"
+#include "scene_3d_view.h"
 #include "app_log.h"
 #include "window_geometry.h"
 #include "atomic_file.h"
@@ -17,6 +18,8 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QKeyEvent>
+#include <QListWidget>
 #include <QRegularExpression>
 #include <QTextEdit>
 #include <QComboBox>
@@ -281,7 +284,61 @@ void MainWindow::selfTestLog(SceneBuilderWidget *sb, const std::function<void(bo
 		// The log file (app_log.h) has what was just done: the session header, the tab change, the edits (as readable differences), the save and the open.
 		for (QCheckBox *box : sb->findChildren<QCheckBox *>())
 			if (box->text() == SceneBuilderWidget::tr("Snap to grid")) { box->click(); box->click(); }   // a real click on a real control, off and on again
+		// What the user does in the editor besides editing: picking things, deleting from the middle of the list, the 3D tool keys, scenes with problems,
+		// a mesh the 3D view cannot read, and the last edit before the widget goes away.
+		sb->addObject(scene_doc::ShapeKind::Box);
+		sb->addObject(scene_doc::ShapeKind::Sphere);
+		sb->addObject(scene_doc::ShapeKind::Box);
+		if (QListWidget *list = sb->findChild<QListWidget *>()) {
+			list->setCurrentRow(0);
+			list->setCurrentRow(2);   // a click on the second item of the list (row 0 is "Camera and image")
+		}
+		const int middle = std::max(0, static_cast<int>(sb->document().objects.size()) - 2);
+		const QString middleName = QString::fromStdString(sb->document().objects[middle].name);
+		sb->selectObject(middle);
+		sb->deleteSelected();
+		sb->undo();   // (undo writes the pending edit to the log first)
+		sb->show3dView(true);
+		if (Scene3DView *view = sb->findChild<Scene3DView *>()) {
+			QKeyEvent e(QEvent::KeyPress, Qt::Key_E, Qt::NoModifier);
+			QCoreApplication::sendEvent(view, &e);
+			QKeyEvent r(QEvent::KeyPress, Qt::Key_W, Qt::NoModifier);
+			QCoreApplication::sendEvent(view, &r);
+		}
+		{
+			const QString bad = QDir::temp().absoluteFilePath("rt_selftest_unreadable.ply");
+			QFile(bad).open(QIODevice::WriteOnly);   // an empty file: not a mesh
+			scene_doc::Document d = scene_doc::makeStarterScene();
+			scene_doc::Object o = scene_doc::makeObject(scene_doc::ShapeKind::Mesh, "Unreadable mesh");
+			o.meshFile = bad.toStdString();
+			o.material.imageFile = "C:/rt_no_such_folder/missing_picture.png";   // a picture that is not there: the scene gets a note
+			d.objects.push_back(o);
+			const QString scenePath = QDir::temp().absoluteFilePath("rt_selftest_unreadable.pbrt");
+			QFile f(scenePath);
+			if (f.open(QIODevice::WriteOnly)) {
+				const std::string t = scene_doc::toPbrt(d);
+				f.write(t.data(), static_cast<qint64>(t.size()));
+			}
+			f.close();
+			sb->openFile(scenePath);
+			QEventLoop wait;
+			QTimer::singleShot(900, &wait, &QEventLoop::quit);
+			wait.exec();
+			QFile::remove(scenePath);
+			QFile::remove(bad);
+		}
+		{
+			auto *temp = new SceneBuilderWidget();
+			temp->setSceneName("quit-test-title");
+			delete temp;   // the edit was still waiting for its pause when the widget went away
+		}
 		const QString text = AppLog::tail(3000).join('\n');
+		check(text.contains("builder: select: object '") && text.contains("(list)"), "the log records picking an item in the list");
+		check(text.contains("-1 object (" + middleName + ")"), "the log names the object that was deleted from the middle of the list: " + middleName);
+		check(text.contains("3D view: tool Rotate (E key)") && text.contains("3D view: tool Move (W key)"), "the log records the 3D tool keys");
+		check(text.contains("builder: scene problem - ") && text.contains("missing_picture.png"), "the log records a problem (a missing picture) the scene has");
+		check(text.contains("3D view: cannot show the mesh ") && text.contains("rt_selftest_unreadable.ply"), "the log says which mesh the 3D view cannot show");
+		check(text.contains("title '") && text.contains("-> 'quit-test-title'"), "the last edit is in the log although the widget was destroyed straight after it");
 		check(!AppLog::filePath().isEmpty() && QFileInfo::exists(AppLog::filePath()), "the log file exists: " + AppLog::filePath());
 		check(text.contains("[session]") || text.contains("session: started"), "the log has the session header");
 		check(text.contains("startup: ") && text.contains("startup: window up "), "the log has the start-up timings and when the window was up");

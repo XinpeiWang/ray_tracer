@@ -58,9 +58,13 @@ void listChanges(std::vector<std::string>& parts, const char* what, const std::v
 	if (a.size() != b.size()) {
 		std::string names;
 		const std::vector<T>& bigger = a.size() < b.size() ? b : a;
-		const std::size_t from = std::min(a.size(), b.size());
-		for (std::size_t i = from; i < bigger.size(); ++i) names += (names.empty() ? "" : ", ") + bigger[i].name;
-		parts.push_back(std::string(a.size() < b.size() ? "+" : "-") + std::to_string(bigger.size() - from) + " " + what + (bigger.size() - from == 1 ? "" : "s") + " (" + names + ")");
+		const std::vector<T>& smaller = a.size() < b.size() ? a : b;
+		const std::size_t count = bigger.size() - smaller.size();
+		// The items that came or went are the first ones where the two lists stop agreeing (a deleted middle item is not the last one).
+		std::size_t from = 0;
+		while (from < smaller.size() && fieldsOf(smaller[from]) == fieldsOf(bigger[from])) ++from;
+		for (std::size_t i = from; i < from + count && i < bigger.size(); ++i) names += (names.empty() ? "" : ", ") + bigger[i].name;
+		parts.push_back(std::string(a.size() < b.size() ? "+" : "-") + std::to_string(count) + " " + what + (count == 1 ? "" : "s") + " (" + names + ")");
 		return;
 	}
 	for (std::size_t i = 0; i < a.size(); ++i) {
