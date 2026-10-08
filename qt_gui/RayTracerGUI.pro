@@ -38,6 +38,8 @@ DESTDIR = $$PWD/../RayTracer_Package
 # Source files
 SOURCES += \
 	main.cpp \
+	app_log.cpp \
+	ui_logger.cpp \
 	mainwindow.cpp \
 	mainwindow_tabs.cpp \
 	mainwindow_tabs_render.cpp \
@@ -75,6 +77,8 @@ SOURCES += \
 	scene_layout_view.cpp
 
 HEADERS += \
+	app_log.h \
+	ui_logger.h \
 	mainwindow.h \
 	mainwindow_widgets.h \
 	mainwindow_jobtypes.h \

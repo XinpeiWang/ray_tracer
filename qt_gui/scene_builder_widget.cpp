@@ -2,6 +2,8 @@
 #include "scene_builder_widget.h"
 
 #include "scene_builder_common.h"
+#include "app_log.h"
+#include "../src/shared/scene_doc_diff.h"
 #include "../src/shared/pbrt_asset_check.h"
 
 #include <QApplication>
@@ -313,6 +315,9 @@ void SceneBuilderWidget::buildUi() {
 // ---- document state -------------------------------------------------------------------------------------------------------------
 
 void SceneBuilderWidget::newScene() {
+	flushEditLog();
+	m_logPending = false;
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("new scene (the starter scene)"));
 	m_doc = scene_doc::makeStarterScene();
 	m_path.clear();
 	m_listedPath.clear();
@@ -331,9 +336,11 @@ void SceneBuilderWidget::newScene() {
 }
 
 bool SceneBuilderWidget::openFile(const QString &path, QString *error) {
+	flushEditLog();
 	QFile f(path);
 	if (!f.open(QIODevice::ReadOnly)) {
 		if (error) *error = tr("Cannot open %1.").arg(path);
+		AppLog::error(QStringLiteral("builder"), QStringLiteral("open %1: cannot open the file (%2)").arg(path, f.errorString()));
 		return false;
 	}
 	const std::string text = f.readAll().toStdString();
@@ -341,8 +348,11 @@ bool SceneBuilderWidget::openFile(const QString &path, QString *error) {
 	std::string err;
 	if (!scene_doc::fromPbrt(text, d, err)) {
 		if (error) *error = QString::fromStdString(err);
+		AppLog::error(QStringLiteral("builder"), QStringLiteral("open %1: not a Scene Builder scene: %2").arg(path, QString::fromStdString(err)));
 		return false;
 	}
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("open %1: \"%2\", %3 objects, %4 lights").arg(path, QString::fromStdString(d.title)).arg(d.objects.size()).arg(d.lights.size()));
+	m_logPending = false;
 	m_doc = std::move(d);
 	m_path = path;
 	// A file opened from the scene-list folder is a listed scene: adding it again offers to update it.
@@ -373,7 +383,12 @@ static bool writeSceneText(const Document &doc, const QString &path) {
 }
 
 bool SceneBuilderWidget::saveFile(const QString &path) {
-	if (!writeSceneText(m_doc, path)) return false;
+	flushEditLog();
+	if (!writeSceneText(m_doc, path)) {
+		AppLog::error(QStringLiteral("builder"), QStringLiteral("save %1: could not write the file").arg(path));
+		return false;
+	}
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("save %1: \"%2\", %3 objects, %4 lights").arg(path, QString::fromStdString(m_doc.title)).arg(m_doc.objects.size()).arg(m_doc.lights.size()));
 	m_path = path;
 	m_dirty = false;
 	clearAutosave();
@@ -435,7 +450,9 @@ QString SceneBuilderWidget::sceneListFolder() {
 
 QString SceneBuilderWidget::addToSceneList(QString *error, bool update) {
 	const QString folder = sceneListFolder();
+	flushEditLog();
 	if (folder.isEmpty()) {
+		AppLog::error(QStringLiteral("builder"), QStringLiteral("add to scene list: no writable scenes folder"));
 		if (error) *error = tr("The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the "
 		                       "environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.");
 		return QString();
@@ -452,9 +469,11 @@ QString SceneBuilderWidget::addToSceneList(QString *error, bool update) {
 	}
 	// A copy for the scene list: the document keeps its own file and its unsaved state.
 	if (!writeSceneText(m_doc, path)) {
+		AppLog::error(QStringLiteral("builder"), QStringLiteral("add to scene list: could not write %1").arg(path));
 		if (error) *error = tr("Could not write %1.").arg(path);
 		return QString();
 	}
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("add to scene list: wrote %1 (%2)").arg(path, update ? QStringLiteral("updating the existing listing") : QStringLiteral("as a new scene")));
 	m_listedPath = path;
 	return path;
 }
@@ -502,11 +521,29 @@ void SceneBuilderWidget::pushUndo() {
 
 void SceneBuilderWidget::edit(const QString &key, const std::function<void()> &mutate) {
 	const bool merge = !key.isEmpty() && key == m_lastEditKey && (key.startsWith("drag#") || (m_editClock.isValid() && m_editClock.elapsed() < 1200));
-	if (!merge) pushUndo();
+	if (!merge) {
+		flushEditLog();
+		m_logBase = m_doc;
+		m_logPending = true;
+		pushUndo();
+	}
 	mutate();
 	m_lastEditKey = key;
 	m_editClock.restart();
+	if (!m_logTimer) {
+		m_logTimer = new QTimer(this);
+		m_logTimer->setSingleShot(true);
+		connect(m_logTimer, &QTimer::timeout, this, &SceneBuilderWidget::flushEditLog);
+	}
+	m_logTimer->start(800);   // a drag or typing is one entry, written when it pauses
 	documentChanged();
+}
+
+void SceneBuilderWidget::flushEditLog() {
+	if (!m_logPending) return;
+	m_logPending = false;
+	const std::string what = scene_doc::describeChange(m_logBase, m_doc);
+	if (!what.empty()) AppLog::info(QStringLiteral("builder"), QStringLiteral("edit: %1").arg(QString::fromStdString(what)));
 }
 
 void SceneBuilderWidget::restore(const QString &json) {
@@ -524,19 +561,25 @@ void SceneBuilderWidget::restore(const QString &json) {
 
 bool SceneBuilderWidget::undo() {
 	if (m_undo.isEmpty()) return false;
+	flushEditLog();
+	const scene_doc::Document before = m_doc;
 	const QString now = QString::fromStdString(scene_doc::toJson(m_doc));
 	const QString prev = m_undo.takeLast();
 	m_redo.append(now);
 	restore(prev);
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("undo: %1").arg(QString::fromStdString(scene_doc::describeChange(before, m_doc))));
 	return true;
 }
 
 bool SceneBuilderWidget::redo() {
 	if (m_redo.isEmpty()) return false;
+	flushEditLog();
+	const scene_doc::Document before = m_doc;
 	const QString now = QString::fromStdString(scene_doc::toJson(m_doc));
 	const QString next = m_redo.takeLast();
 	m_undo.append(now);
 	restore(next);
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("redo: %1").arg(QString::fromStdString(scene_doc::describeChange(before, m_doc))));
 	return true;
 }
 
@@ -846,6 +889,7 @@ void SceneBuilderWidget::onRenderFinalClicked() {
 void SceneBuilderWidget::runRender(int width, int height, int samples, bool toFinalFile, const QString &finalPng,
                                    const std::function<void(bool, const QString &)> &done) {
 	auto fail = [&](const QString &msg) {
+		AppLog::warn(QStringLiteral("builder-render"), QStringLiteral("not started: %1").arg(msg));
 		m_previewStatus->setText(msg);
 		if (done) done(false, msg);
 	};
@@ -889,6 +933,8 @@ void SceneBuilderWidget::runRender(int width, int height, int samples, bool toFi
 	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus st) {
 		onPreviewFinished(st == QProcess::NormalExit ? code : -2);
 	});
+	AppLog::info(QStringLiteral("builder-render"), QStringLiteral("start (%1): %2 %3").arg(toFinalFile ? QStringLiteral("final picture -> ") + finalPng : QStringLiteral("preview"), launcherPath(), args.join(QLatin1Char(' '))));
+	for (const auto &problem : problems) AppLog::warn(QStringLiteral("builder-render"), QStringLiteral("scene note: %1").arg(QString::fromStdString(problem.message)));
 	m_previewButton->setText(tr("Cancel"));
 	m_previewButton->setEnabled(true);
 	m_finalButton->setEnabled(false);
@@ -909,6 +955,13 @@ void SceneBuilderWidget::onPreviewFinished(int exitCode) {
 
 	const double secs = m_renderClock.elapsed() / 1000.0;
 	QPixmap pix(m_previewPng);
+	AppLog::write(exitCode != 0 || pix.isNull() ? log_format::Level::Error : log_format::Level::Info, QStringLiteral("builder-render"),
+	              QStringLiteral("finished: exit code %1%2, %3 s, picture %4").arg(exitCode).arg(exitCode == -2 ? (m_cancelRequested ? QStringLiteral(" (cancelled)") : QStringLiteral(" (crashed or killed)")) : exitCode == -1 ? QStringLiteral(" (could not start)") : QString())
+	                  .arg(secs, 0, 'f', 1).arg(pix.isNull() ? QStringLiteral("missing") : QStringLiteral("%1 x %2").arg(pix.width()).arg(pix.height())));
+	if (exitCode != 0 || pix.isNull()) {
+		for (const QString &line : m_renderLog.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts).mid(std::max<qsizetype>(0, m_renderLog.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts).size() - 25)))
+			AppLog::error(QStringLiteral("builder-render"), QStringLiteral("renderer output: %1").arg(line));
+	}
 	if (exitCode != 0 || pix.isNull()) {
 		QString tail;
 		const QStringList lines = m_renderLog.split(QRegularExpression("[\r\n]+"), Qt::SkipEmptyParts);

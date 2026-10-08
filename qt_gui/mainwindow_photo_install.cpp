@@ -1,6 +1,7 @@
 // The Diagnostics tab's "Install Photo Helper" button: after Run Diagnostics shows the Photo helper section with something missing, this runs
 // scripts/setup_photo_to_mesh.ps1 (photo_import.h's PhotoHelperInstaller) behind a confirmation and a progress window, then runs the
 // diagnostics again so the report shows the result.
+#include "app_log.h"
 #include "mainwindow.h"
 
 #include "photo_import.h"
@@ -94,6 +95,9 @@ void MainWindow::startPhotoHelperInstall(bool confirm, const std::function<void(
 	connect(installer, &QObject::destroyed, this, [this]() { m_photoInstaller = nullptr; });
 	connect(installer, &PhotoHelperInstaller::line, log, &QPlainTextEdit::appendPlainText);
 	connect(installer, &PhotoHelperInstaller::status, statusLabel, &QLabel::setText);
+	// The installer's output is kept in the log file too: a failed 5 GB install is hard to reproduce.
+	connect(installer, &PhotoHelperInstaller::line, this, [](const QString &line) { AppLog::info(QStringLiteral("photo-install"), line); });
+	connect(installer, &PhotoHelperInstaller::status, this, [](const QString &text) { AppLog::info(QStringLiteral("photo-install"), QStringLiteral("status: %1").arg(text)); });
 	connect(button, &QPushButton::clicked, dialog, [installer, dialog, button]() {
 		if (installer->isRunning()) {
 			button->setEnabled(false);
@@ -103,6 +107,9 @@ void MainWindow::startPhotoHelperInstall(bool confirm, const std::function<void(
 		}
 	});
 	connect(dialog, &QDialog::rejected, installer, [installer]() { if (installer->isRunning()) installer->cancel(); });
+	connect(installer, &PhotoHelperInstaller::finished, this, [](bool ok, const QString &message) {
+		AppLog::write(ok ? log_format::Level::Info : log_format::Level::Error, QStringLiteral("photo-install"), QStringLiteral("finished: %1: %2").arg(ok ? QStringLiteral("ok") : QStringLiteral("failed"), message));
+	});
 	connect(installer, &PhotoHelperInstaller::finished, this, [this, dialog, statusLabel, bar, button, confirm, onDone](bool ok, const QString &message) {
 		m_photoInstaller = nullptr;
 		bar->setRange(0, 1);

@@ -51,6 +51,8 @@ That renders the Cornell box (A1) at 400 px with 128 samples per pixel and depth
 
 The GUI has a **Scene Builder** tab: add spheres, boxes, quads, cylinders, cones, pyramids, stairs, ramps, tori, capsules, domes, tubes, ready-made props (table, chair, tree, snowman, ...), meshes and lights, pick materials (matte, metal, glass, glossy paint, translucent) and colours, drag things around in a top, front or side view, press Preview, and save the result as an ordinary `.pbrt` file that the renderer and any pbrt-compatible tool can read. See [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
 
+The GUI keeps a log file of everything it does (every click and choice, the Scene Builder's edits, render commands and results, errors, and a note when the last run crashed): *Help > Show Log Folder*, and `docs/LOGGING.md` says what is in it. Send it with a bug report.
+
 ![The Scene Builder tab](docs/gallery/scene-builder.jpg)
 
 ## 📦 Download & Use (No Build Required!)

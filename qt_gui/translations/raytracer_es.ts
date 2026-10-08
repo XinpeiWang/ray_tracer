@@ -522,17 +522,17 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="179"/>
+        <location filename="../mainwindow_actions.cpp" line="190"/>
         <source>Increase Log Font Size</source>
         <translation>Aumentar tamaño de fuente del registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="183"/>
+        <location filename="../mainwindow_actions.cpp" line="194"/>
         <source>Decrease Log Font Size</source>
         <translation>Reducir tamaño de fuente del registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="187"/>
+        <location filename="../mainwindow_actions.cpp" line="198"/>
         <source>Reset Log Font Size</source>
         <translation>Restablecer tamaño de fuente del registro</translation>
     </message>
@@ -596,7 +596,7 @@
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1225"/>
-        <location filename="../mainwindow_slots.cpp" line="2049"/>
+        <location filename="../mainwindow_slots.cpp" line="2071"/>
         <source>START &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO</translation>
     </message>
@@ -614,21 +614,21 @@
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1253"/>
-        <location filename="../mainwindow_actions.cpp" line="69"/>
+        <location filename="../mainwindow_actions.cpp" line="70"/>
         <source>Stop the running render and discard its output</source>
         <translation>Detiene el renderizado en curso y descarta su resultado</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1266"/>
-        <location filename="../mainwindow_slots.cpp" line="428"/>
-        <location filename="../mainwindow_slots.cpp" line="937"/>
+        <location filename="../mainwindow_slots.cpp" line="429"/>
+        <location filename="../mainwindow_slots.cpp" line="945"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>&amp;PAUSAR RENDERIZADO</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1272"/>
-        <location filename="../mainwindow_actions.cpp" line="78"/>
-        <location filename="../mainwindow_slots.cpp" line="939"/>
+        <location filename="../mainwindow_actions.cpp" line="79"/>
+        <location filename="../mainwindow_slots.cpp" line="947"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>Pausa el renderizado en curso tal cual está - Reanudar continúa desde exactamente los mismos píxeles</translation>
     </message>
@@ -639,305 +639,315 @@
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1288"/>
-        <location filename="../mainwindow_actions.cpp" line="83"/>
+        <location filename="../mainwindow_actions.cpp" line="84"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>Descarta la salida del renderizado en curso e inicia inmediatamente el siguiente trabajo en cola</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="47"/>
+        <location filename="../mainwindow_actions.cpp" line="48"/>
         <source>&amp;Render Image</source>
         <translation>&amp;Renderizar imagen</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="50"/>
+        <location filename="../mainwindow_actions.cpp" line="51"/>
         <source>Render the selected scene with the current settings</source>
         <translation>Renderiza la escena seleccionada con la configuración actual</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="56"/>
+        <location filename="../mainwindow_actions.cpp" line="57"/>
         <source>Render &amp;Video</source>
         <translation>Renderizar &amp;Vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="59"/>
+        <location filename="../mainwindow_actions.cpp" line="60"/>
         <source>Render the camera path frame by frame and assemble a video</source>
         <translation>Renderiza la trayectoria de la cámara fotograma a fotograma y ensambla un vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="65"/>
+        <location filename="../mainwindow_actions.cpp" line="66"/>
         <source>&amp;Stop Render</source>
         <translation>&amp;Detener renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="76"/>
-        <location filename="../mainwindow_slots.cpp" line="431"/>
-        <location filename="../mainwindow_slots.cpp" line="941"/>
+        <location filename="../mainwindow_actions.cpp" line="77"/>
+        <location filename="../mainwindow_slots.cpp" line="432"/>
+        <location filename="../mainwindow_slots.cpp" line="949"/>
         <source>&amp;Pause Render</source>
         <translation>&amp;Pausar renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="81"/>
+        <location filename="../mainwindow_actions.cpp" line="82"/>
         <source>&amp;Abandon &amp;&amp; Start Next</source>
         <translation>&amp;Descartar e iniciar el siguiente</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="86"/>
+        <location filename="../mainwindow_actions.cpp" line="87"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1571"/>
         <source>Open Output &amp;Folder</source>
         <translation>Abrir &amp;carpeta de salida</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="89"/>
+        <location filename="../mainwindow_actions.cpp" line="90"/>
         <source>Show the folder containing the active Preview tab&apos;s render</source>
         <translation>Muestra la carpeta que contiene el renderizado de la pestaña Vista previa activa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="96"/>
+        <location filename="../mainwindow_actions.cpp" line="97"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1583"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Abrir en el &amp;visor predeterminado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="98"/>
+        <location filename="../mainwindow_actions.cpp" line="99"/>
         <source>Open the active Preview tab&apos;s render in the system viewer</source>
         <translation>Abre el renderizado de la pestaña Vista previa activa en el visor del sistema</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="105"/>
+        <location filename="../mainwindow_actions.cpp" line="106"/>
         <source>&amp;Copy Log</source>
         <translation>&amp;Copiar registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="108"/>
+        <location filename="../mainwindow_actions.cpp" line="109"/>
         <source>Copy the entire log to the clipboard</source>
         <translation>Copia todo el registro al portapapeles</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="111"/>
+        <location filename="../mainwindow_actions.cpp" line="112"/>
         <location filename="../mainwindow_tabs_output.cpp" line="233"/>
         <source>&amp;Save Log…</source>
         <translation>&amp;Guardar registro…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="119"/>
+        <location filename="../mainwindow_actions.cpp" line="120"/>
         <source>Write the log to a text file</source>
         <translation>Escribe el registro en un archivo de texto</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="122"/>
+        <location filename="../mainwindow_actions.cpp" line="123"/>
         <location filename="../mainwindow_tabs_output.cpp" line="238"/>
         <source>C&amp;lear Log</source>
         <translation>&amp;Borrar registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="125"/>
+        <location filename="../mainwindow_actions.cpp" line="126"/>
         <source>Clear the log pane</source>
         <translation>Borra el panel de registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="128"/>
+        <location filename="../mainwindow_actions.cpp" line="129"/>
         <source>&amp;About Ray Tracer</source>
         <translation>&amp;Acerca de Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="130"/>
+        <location filename="../mainwindow_actions.cpp" line="131"/>
         <source>Version and project information</source>
         <translation>Información de versión y del proyecto</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="133"/>
+        <location filename="../mainwindow_actions.cpp" line="135"/>
+        <source>Show &amp;Log Folder</source>
+        <translation>Mostrar carpeta de &amp;registros</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_actions.cpp" line="136"/>
+        <source>Open the folder holding the program&apos;s log file (send it with a bug report)</source>
+        <translation>Abre la carpeta con el archivo de registro del programa (envíalo con un informe de error)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_actions.cpp" line="144"/>
         <source>About &amp;Qt</source>
         <translation>Acerca de &amp;Qt</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="136"/>
+        <location filename="../mainwindow_actions.cpp" line="147"/>
         <source>&amp;Quit</source>
         <translation>&amp;Salir</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="138"/>
+        <location filename="../mainwindow_actions.cpp" line="149"/>
         <source>Exit the application</source>
         <translation>Cierra la aplicación</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="145"/>
+        <location filename="../mainwindow_actions.cpp" line="156"/>
         <source>&amp;File</source>
         <translation>&amp;Archivo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="153"/>
+        <location filename="../mainwindow_actions.cpp" line="164"/>
         <source>&amp;Render</source>
         <translation>&amp;Renderizar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="161"/>
+        <location filename="../mainwindow_actions.cpp" line="172"/>
         <source>&amp;View</source>
         <translation>&amp;Ver</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="199"/>
+        <location filename="../mainwindow_actions.cpp" line="210"/>
         <source>&amp;Help</source>
         <translation>A&amp;yuda</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="358"/>
+        <location filename="../mainwindow_actions.cpp" line="370"/>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;151 built-in scenes and 58 test scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
         <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un path tracer físicamente realista con motores paralelos para CPU y GPU, desarrollado a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta convertirse en un conjunto de funciones al estilo de pbrt-v4.&lt;/p&gt;&lt;p&gt;151 escenas integradas y 58 escenas de prueba, una amplia biblioteca de BxDF, varios tipos de luces y cámaras, compatibilidad con mallas de triángulos y texturas, aceleración BVH, volumetría y una selección de integradores además del path tracing estándar: photon mapping SPPM, path tracing bidireccional (BDPT), Metropolis Light Transport y varios integradores de referencia y depuración (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Esta ventana ejecuta &lt;code&gt;%1&lt;/code&gt; como subproceso.&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="235"/>
+        <location filename="../mainwindow_actions.cpp" line="247"/>
         <source>GPU (OptiX)</source>
         <translation>GPU (OptiX)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="238"/>
-        <location filename="../mainwindow_slots.cpp" line="490"/>
+        <location filename="../mainwindow_actions.cpp" line="250"/>
+        <location filename="../mainwindow_slots.cpp" line="491"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="235"/>
+        <location filename="../mainwindow_actions.cpp" line="247"/>
         <source>GPU (OptiX, Wavefront)</source>
         <translation>GPU (OptiX, Wavefront)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="236"/>
+        <location filename="../mainwindow_actions.cpp" line="248"/>
         <source>GPU (Metal)</source>
         <translation>GPU (Metal)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="251"/>
+        <location filename="../mainwindow_actions.cpp" line="263"/>
         <source>%1x%2  ·  %3 spp</source>
         <translation>%1x%2  ·  %3 spp</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="292"/>
+        <location filename="../mainwindow_actions.cpp" line="304"/>
         <source>Save Log</source>
         <translation>Guardar registro</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="294"/>
-        <location filename="../mainwindow_actions.cpp" line="337"/>
+        <location filename="../mainwindow_actions.cpp" line="306"/>
+        <location filename="../mainwindow_actions.cpp" line="349"/>
         <source>Text Files (*.txt);;All Files (*.*)</source>
         <translation>Archivos de texto (*.txt);;Todos los archivos (*.*)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="301"/>
+        <location filename="../mainwindow_actions.cpp" line="313"/>
         <source>[ERROR] Could not write log to %1: %2</source>
         <translation>[ERROR] No se pudo escribir el registro en %1: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="308"/>
+        <location filename="../mainwindow_actions.cpp" line="320"/>
         <source>[INFO] Log saved to %1</source>
         <translation>[INFO] Registro guardado en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="335"/>
+        <location filename="../mainwindow_actions.cpp" line="347"/>
         <source>Save Diagnostics Report</source>
         <translation>Guardar informe de diagnóstico</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="342"/>
+        <location filename="../mainwindow_actions.cpp" line="354"/>
         <source>Save Failed</source>
         <translation>Error al guardar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="343"/>
+        <location filename="../mainwindow_actions.cpp" line="355"/>
         <source>Could not write diagnostics report to %1: %2</source>
         <translation>No se pudo escribir el informe de diagnóstico en %1: %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="357"/>
+        <location filename="../mainwindow_actions.cpp" line="369"/>
         <source>About Ray Tracer</source>
         <translation>Acerca de Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="439"/>
+        <location filename="../mainwindow_slots.cpp" line="440"/>
         <source>Rendering video frames...</source>
         <translation>Renderizando fotogramas de vídeo…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="439"/>
+        <location filename="../mainwindow_slots.cpp" line="440"/>
         <source>Rendering...</source>
         <translation>Renderizando…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="440"/>
+        <location filename="../mainwindow_slots.cpp" line="441"/>
         <source> (%1 more queued)</source>
         <translation> (%1 más en cola)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="477"/>
+        <location filename="../mainwindow_slots.cpp" line="478"/>
         <source> · SPPM</source>
         <translation> · SPPM</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="478"/>
+        <location filename="../mainwindow_slots.cpp" line="479"/>
         <source> · BDPT</source>
         <translation> · BDPT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="479"/>
+        <location filename="../mainwindow_slots.cpp" line="480"/>
         <source> · MLT</source>
         <translation> · MLT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="480"/>
+        <location filename="../mainwindow_slots.cpp" line="481"/>
         <source> · RandomWalk</source>
         <translation> · RandomWalk</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="481"/>
+        <location filename="../mainwindow_slots.cpp" line="482"/>
         <source> · AO</source>
         <translation> · AO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="482"/>
+        <location filename="../mainwindow_slots.cpp" line="483"/>
         <source> · SimplePath</source>
         <translation> · SimplePath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="483"/>
+        <location filename="../mainwindow_slots.cpp" line="484"/>
         <source> · SimpleVolPath</source>
         <translation> · SimpleVolPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="484"/>
+        <location filename="../mainwindow_slots.cpp" line="485"/>
         <source> · LightPath</source>
         <translation> · LightPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="490"/>
+        <location filename="../mainwindow_slots.cpp" line="491"/>
         <source>GPU-WF</source>
         <translation>GPU-WF</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="490"/>
+        <location filename="../mainwindow_slots.cpp" line="491"/>
         <source>GPU</source>
         <translation>GPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="495"/>
+        <location filename="../mainwindow_slots.cpp" line="496"/>
         <source> · Video (%1f)</source>
         <translation> · Vídeo (%1f)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="514"/>
+        <location filename="../mainwindow_slots.cpp" line="515"/>
         <source>Render Queue (%1)</source>
         <translation>Cola de renderizado (%1)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="532"/>
+        <location filename="../mainwindow_slots.cpp" line="533"/>
         <source>Clear Render Queue</source>
         <translation>Vaciar cola de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="501"/>
+        <location filename="../mainwindow_slots.cpp" line="502"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="533"/>
+        <location filename="../mainwindow_slots.cpp" line="534"/>
         <source>Remove all %n queued render(s)? This can&apos;t be undone.</source>
         <translation>
             <numerusform>¿Eliminar el %n renderizado en cola? Esto no se puede deshacer.</numerusform>
@@ -945,12 +955,12 @@
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="549"/>
+        <location filename="../mainwindow_slots.cpp" line="550"/>
         <source>Running diagnostics...</source>
         <translation>Ejecutando diagnóstico…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="628"/>
+        <location filename="../mainwindow_slots.cpp" line="636"/>
         <source>Diagnostics failed:
 
 %1</source>
@@ -959,256 +969,261 @@
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="825"/>
+        <location filename="../mainwindow_slots.cpp" line="833"/>
         <source>Thumbnail generation finished.</source>
         <translation>Generación de miniaturas finalizada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="869"/>
+        <location filename="../mainwindow_slots.cpp" line="877"/>
         <source>Stopping render...</source>
         <translation>Deteniendo renderizado…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1138"/>
+        <location filename="../mainwindow_slots.cpp" line="1146"/>
         <source>&lt;b&gt;Description:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Descripción:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1147"/>
+        <location filename="../mainwindow_slots.cpp" line="1155"/>
         <source>&lt;b&gt;Recommended SPP:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;SPP recomendado:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1148"/>
+        <location filename="../mainwindow_slots.cpp" line="1156"/>
         <source>&lt;b&gt;GPU Support:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Compatibilidad con GPU:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1148"/>
+        <location filename="../mainwindow_slots.cpp" line="1156"/>
         <source>Yes</source>
         <translation>Sí</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1148"/>
+        <location filename="../mainwindow_slots.cpp" line="1156"/>
         <source>CPU only</source>
         <translation>Solo CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1201"/>
+        <location filename="../mainwindow_slots.cpp" line="1209"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requires external files&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requiere archivos externos&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1206"/>
+        <location filename="../mainwindow_slots.cpp" line="1214"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; CPU renderer only&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Solo renderizador CPU&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1243"/>
+        <location filename="../mainwindow_slots.cpp" line="1251"/>
         <source>Integrator &quot;%1&quot;</source>
         <translation>Integrador &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1248"/>
+        <location filename="../mainwindow_slots.cpp" line="1256"/>
         <source>Sampler &quot;%1&quot;</source>
         <translation>Muestreador &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1253"/>
+        <location filename="../mainwindow_slots.cpp" line="1261"/>
         <source>Light Sampler &quot;%1&quot;</source>
         <translation>Muestreador de luces &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1266"/>
+        <location filename="../mainwindow_slots.cpp" line="1274"/>
         <source>, </source>
         <translation>, </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1353"/>
+        <location filename="../mainwindow_slots.cpp" line="1361"/>
         <source>No scenes in this category.</source>
         <translation>No hay escenas en esta categoría.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1354"/>
+        <location filename="../mainwindow_slots.cpp" line="1362"/>
         <source>No scenes match &quot;%1&quot; in this category.</source>
         <translation>Ninguna escena coincide con &quot;%1&quot; en esta categoría.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1518"/>
+        <location filename="../mainwindow_slots.cpp" line="1526"/>
         <source>Rendering... %1%</source>
         <translation>Renderizando… %1%</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1569"/>
+        <location filename="../mainwindow_slots.cpp" line="1577"/>
         <source>✅ %1 - Total time: %2 seconds</source>
         <translation>✅ %1 - Tiempo total: %2 segundos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1572"/>
+        <location filename="../mainwindow_slots.cpp" line="1580"/>
         <source>Video frames rendered successfully. Starting video assembly...</source>
         <translation>Los fotogramas de vídeo se renderizaron correctamente. Iniciando el ensamblado del vídeo…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1573"/>
+        <location filename="../mainwindow_slots.cpp" line="1581"/>
         <source>⚙️ Assembling video from frames...</source>
         <translation>⚙️ Ensamblando el vídeo a partir de los fotogramas…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1263"/>
+        <location filename="../mainwindow_slots.cpp" line="1271"/>
         <source>⚠ This scene&apos;s file recommends %1, but the Render Options tab is currently set to the default(s) instead - click Apply, or change it there yourself, to match the scene&apos;s own settings.</source>
         <translation>⚠ El archivo de esta escena recomienda %1, pero la pestaña Opciones de renderizado está actualmente configurada con los valores predeterminados en su lugar - haz clic en Aplicar, o cámbialo allí tú mismo, para coincidir con la configuración propia de la escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1604"/>
+        <location filename="../mainwindow_slots.cpp" line="1612"/>
         <source>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</source>
         <translation>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1619"/>
-        <location filename="../mainwindow_slots.cpp" line="1634"/>
+        <location filename="../mainwindow_slots.cpp" line="1627"/>
+        <location filename="../mainwindow_slots.cpp" line="1642"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ Renderizado completo (%1s)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1620"/>
+        <location filename="../mainwindow_slots.cpp" line="1628"/>
         <source>Warning: preview image failed to load at %1</source>
         <translation>Advertencia: no se pudo cargar la imagen de vista previa en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1635"/>
+        <location filename="../mainwindow_slots.cpp" line="1643"/>
         <source>Warning: output file not found at %1</source>
         <translation>Advertencia: no se encontró el archivo de salida en %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1650"/>
+        <location filename="../mainwindow_slots.cpp" line="1658"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1655"/>
-        <location filename="../mainwindow_slots.cpp" line="2245"/>
+        <location filename="../mainwindow_slots.cpp" line="1663"/>
+        <location filename="../mainwindow_slots.cpp" line="2267"/>
         <source>Render Failed</source>
         <translation>Error de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1675"/>
+        <location filename="../mainwindow_slots.cpp" line="1683"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>Detenido - %1 más en cola (haz clic en Iniciar renderizado para continuar)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1801"/>
+        <location filename="../mainwindow_slots.cpp" line="1823"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>Renderizando  ·  %1%  ·  transcurrido %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1811"/>
+        <location filename="../mainwindow_slots.cpp" line="1833"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1819"/>
+        <location filename="../mainwindow_slots.cpp" line="1841"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  ETA %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1822"/>
+        <location filename="../mainwindow_slots.cpp" line="1844"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  ETA --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1845"/>
+        <location filename="../mainwindow_slots.cpp" line="1867"/>
         <source>Render complete</source>
         <translation>Renderizado completo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1846"/>
+        <location filename="../mainwindow_slots.cpp" line="1868"/>
         <source>Render stopped</source>
         <translation>Renderizado detenido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1846"/>
+        <location filename="../mainwindow_slots.cpp" line="1868"/>
         <source>Render failed</source>
         <translation>Renderizado fallido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1848"/>
+        <location filename="../mainwindow_slots.cpp" line="1870"/>
         <source>Finished in %1 seconds</source>
         <translation>Finalizado en %1 segundos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1863"/>
+        <location filename="../mainwindow_slots.cpp" line="1885"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1872"/>
+        <location filename="../mainwindow_slots.cpp" line="1894"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[DEBUG] No hay bandeja del sistema disponible; se omite la notificación de finalización</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1876"/>
+        <location filename="../mainwindow_slots.cpp" line="1898"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[DEBUG] La bandeja del sistema no admite mensajes; se omite la notificación</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2030"/>
+        <location filename="../mainwindow_slots.cpp" line="2052"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO DE VÍDEO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2035"/>
+        <location filename="../mainwindow_slots.cpp" line="2057"/>
         <source>Ready to render video frames</source>
         <translation>Listo para renderizar fotogramas de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2054"/>
+        <location filename="../mainwindow_slots.cpp" line="2076"/>
         <location filename="../mainwindow_tabs_output.cpp" line="74"/>
         <source>Ready to render</source>
         <translation>Listo para renderizar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2068"/>
+        <location filename="../mainwindow_slots.cpp" line="2090"/>
         <source>Mode changed to: %1</source>
         <translation>Modo cambiado a: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2064"/>
+        <location filename="../mainwindow_slots.cpp" line="2086"/>
         <source>Video Generation</source>
         <translation>Generación de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="129"/>
+        <location filename="../mainwindow_slots.cpp" line="130"/>
         <source>Can&apos;t start a render - no scene is selected (try clearing the search box).</source>
         <translation>No se puede iniciar un renderizado: no hay ninguna escena seleccionada (prueba a vaciar el cuadro de búsqueda).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="684"/>
+        <location filename="../mainwindow_slots.cpp" line="617"/>
+        <source>(could not be created)</source>
+        <translation>(no se pudo crear)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="692"/>
         <source>Can&apos;t generate thumbnails while a render is in progress or queued.</source>
         <translation>No se pueden generar miniaturas mientras hay un renderizado en curso o en cola.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="693"/>
-        <location filename="../mainwindow_slots.cpp" line="851"/>
+        <location filename="../mainwindow_slots.cpp" line="701"/>
+        <location filename="../mainwindow_slots.cpp" line="859"/>
         <source>Nothing to generate thumbnails for in the current view.</source>
         <translation>No hay nada para lo que generar miniaturas en la vista actual.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="756"/>
+        <location filename="../mainwindow_slots.cpp" line="764"/>
         <source>Resume</source>
         <translation>Reanudar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="800"/>
+        <location filename="../mainwindow_slots.cpp" line="808"/>
         <source>Generating thumbnail %1 of %2: %3</source>
         <translation>Generando miniatura %1 de %2: %3</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="824"/>
+        <location filename="../mainwindow_slots.cpp" line="832"/>
         <source>Thumbnail generation finished - %1 failed.</source>
         <translation>Generación de miniaturas finalizada - %1 fallo(s).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="846"/>
+        <location filename="../mainwindow_slots.cpp" line="854"/>
         <source>Creates a small preview image for each ready-to-render scene in the CURRENT view that
 doesn&apos;t already have one saved. Runs on the CPU only, at low resolution - it can still take a
 while for a &quot;Very Slow&quot; whole-environment scene, since loading and BVH-building a
@@ -1222,62 +1237,62 @@ de la propia miniatura.
 Use los controles de pausa/detener si una categoría resulta tardar demasiado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="899"/>
+        <location filename="../mainwindow_slots.cpp" line="907"/>
         <source>Abandoning render...</source>
         <translation>Descartando renderizado...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="918"/>
+        <location filename="../mainwindow_slots.cpp" line="926"/>
         <source>&amp;RESUME RENDER</source>
         <translation>&amp;REANUDAR RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="920"/>
+        <location filename="../mainwindow_slots.cpp" line="928"/>
         <source>Resume the paused render from the exact same pixels</source>
         <translation>Reanuda el renderizado pausado desde exactamente los mismos píxeles</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="922"/>
+        <location filename="../mainwindow_slots.cpp" line="930"/>
         <source>&amp;Resume Render</source>
         <translation>&amp;Reanudar renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="925"/>
+        <location filename="../mainwindow_slots.cpp" line="933"/>
         <source>⏸ Paused</source>
         <translation>⏸ Pausado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1141"/>
+        <location filename="../mainwindow_slots.cpp" line="1149"/>
         <source>under 10 s</source>
         <translation>menos de 10 s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1142"/>
+        <location filename="../mainwindow_slots.cpp" line="1150"/>
         <source>10 to 30 s</source>
         <translation>10 a 30 s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1143"/>
+        <location filename="../mainwindow_slots.cpp" line="1151"/>
         <source>30 s to 2 min</source>
         <translation>30 s a 2 min</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1144"/>
+        <location filename="../mainwindow_slots.cpp" line="1152"/>
         <source>over 2 min</source>
         <translation>más de 2 min</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1145"/>
+        <location filename="../mainwindow_slots.cpp" line="1153"/>
         <source>not measured</source>
         <translation>sin medir</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1146"/>
+        <location filename="../mainwindow_slots.cpp" line="1154"/>
         <source>&lt;b&gt;Performance:&lt;/b&gt; %1 (%2)&lt;br&gt;</source>
         <translation>&lt;b&gt;Rendimiento:&lt;/b&gt; %1 (%2)&lt;br&gt;</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="1174"/>
+        <location filename="../mainwindow_slots.cpp" line="1182"/>
         <source>Download %n missing file(s) (%1)</source>
         <translation>
             <numerusform>Descargar %n archivo faltante (%1)</numerusform>
@@ -1285,99 +1300,99 @@ Use los controles de pausa/detener si una categoría resulta tardar demasiado.</
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1184"/>
+        <location filename="../mainwindow_slots.cpp" line="1192"/>
         <source>Download &quot;%1&quot; (%2)</source>
         <translation>Descargar «%1» (%2)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1191"/>
+        <location filename="../mainwindow_slots.cpp" line="1199"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; This scene&apos;s file was not found: %2&lt;/b&gt;&lt;br&gt;Expected in: %3&lt;br&gt;Rendering this scene will fail until it is installed.</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; No se encontró el archivo de esta escena: %2&lt;/b&gt;&lt;br&gt;Debería estar en: %3&lt;br&gt;Esta escena no se podrá renderizar hasta que se instale.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1195"/>
+        <location filename="../mainwindow_slots.cpp" line="1203"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Missing external files: %2 of %3 not found (first: %4)&lt;/b&gt;&lt;br&gt;Put them in: %5&lt;br&gt;Rendering this scene will fail until they are installed.</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Faltan archivos externos: no se encuentran %2 de %3 (el primero: %4)&lt;/b&gt;&lt;br&gt;Colócalos en: %5&lt;br&gt;Esta escena no se podrá renderizar hasta que se instalen.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1556"/>
+        <location filename="../mainwindow_slots.cpp" line="1564"/>
         <source>Render stopped by user</source>
         <translation>Renderizado detenido por el usuario</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1557"/>
+        <location filename="../mainwindow_slots.cpp" line="1565"/>
         <source>Render abandoned by user</source>
         <translation>Renderizado abandonado por el usuario</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2033"/>
+        <location filename="../mainwindow_slots.cpp" line="2055"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
         <translation>Renderiza la trayectoria de cámara fotograma a fotograma y ensambla un vídeo. En su lugar, se pone en cola si ya hay un renderizado en curso.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2039"/>
+        <location filename="../mainwindow_slots.cpp" line="2061"/>
         <source>START LIVE &amp;PREVIEW</source>
         <translation>INICIAR &amp;VISTA PREVIA EN VIVO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2042"/>
+        <location filename="../mainwindow_slots.cpp" line="2064"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
         <translation>Inicia una vista previa interactiva por GPU que puedes orbitar/hacer zoom con el ratón. Desactivada mientras haya un renderizado por lotes en curso.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2044"/>
+        <location filename="../mainwindow_slots.cpp" line="2066"/>
         <source>Ready to start live preview</source>
         <translation>Listo para iniciar la vista previa en vivo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2052"/>
+        <location filename="../mainwindow_slots.cpp" line="2074"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
         <translation>Renderiza la escena seleccionada con la configuración actual. En su lugar, se pone en cola si ya hay un renderizado en curso.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2063"/>
+        <location filename="../mainwindow_slots.cpp" line="2085"/>
         <source>Single Image</source>
         <translation>Imagen única</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2066"/>
+        <location filename="../mainwindow_slots.cpp" line="2088"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1716"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="42"/>
         <source>Live Preview</source>
         <translation>Vista previa en vivo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2178"/>
+        <location filename="../mainwindow_slots.cpp" line="2200"/>
         <source>Integrator changed to: %1</source>
         <translation>Integrador cambiado a: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2226"/>
+        <location filename="../mainwindow_slots.cpp" line="2248"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ No se encontró el archivo de vídeo; buscando fotogramas…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2227"/>
+        <location filename="../mainwindow_slots.cpp" line="2249"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>ADVERTENCIA: no se encontró el archivo de vídeo en ninguna de las ubicaciones esperadas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2236"/>
+        <location filename="../mainwindow_slots.cpp" line="2258"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ Se encontraron %1 fotogramas pero ningún archivo de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2237"/>
+        <location filename="../mainwindow_slots.cpp" line="2259"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>Los fotogramas se renderizaron (%1 archivos), pero es posible que el ensamblado del vídeo haya fallado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2238"/>
+        <location filename="../mainwindow_slots.cpp" line="2260"/>
         <source>Video Not Created</source>
         <translation>Vídeo no creado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2239"/>
+        <location filename="../mainwindow_slots.cpp" line="2261"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -1390,17 +1405,17 @@ Vídeo esperado en: %2
 Revisa el registro de renderizado para ver errores de ffmpeg.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2243"/>
+        <location filename="../mainwindow_slots.cpp" line="2265"/>
         <source>❌ No frames or video found</source>
         <translation>❌ No se encontraron fotogramas ni vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2244"/>
+        <location filename="../mainwindow_slots.cpp" line="2266"/>
         <source>ERROR: No frames or video file found</source>
         <translation>ERROR: no se encontraron fotogramas ni archivo de vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2246"/>
+        <location filename="../mainwindow_slots.cpp" line="2268"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -1409,22 +1424,22 @@ Please check the render log for errors.</source>
 Revisa el registro de renderizado para ver los errores.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2249"/>
+        <location filename="../mainwindow_slots.cpp" line="2271"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ No se encontró el directorio de fotogramas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2250"/>
+        <location filename="../mainwindow_slots.cpp" line="2272"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>ERROR: no se encontró el directorio de fotogramas: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2251"/>
+        <location filename="../mainwindow_slots.cpp" line="2273"/>
         <source>Directory Not Found</source>
         <translation>Directorio no encontrado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2252"/>
+        <location filename="../mainwindow_slots.cpp" line="2274"/>
         <source>Frames directory not found:
 %1
 
@@ -1435,37 +1450,37 @@ The render may have failed to create output.</source>
 Es posible que el renderizado no haya podido generar la salida.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2258"/>
+        <location filename="../mainwindow_slots.cpp" line="2280"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ ¡Vídeo creado correctamente!</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2259"/>
+        <location filename="../mainwindow_slots.cpp" line="2281"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ Vídeo ensamblado correctamente: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2260"/>
+        <location filename="../mainwindow_slots.cpp" line="2282"/>
         <source>Video size: %1 MB</source>
         <translation>Tamaño del vídeo: %1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2281"/>
+        <location filename="../mainwindow_slots.cpp" line="2303"/>
         <source>%1 (Video)</source>
         <translation>%1 (Vídeo)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2283"/>
+        <location filename="../mainwindow_slots.cpp" line="2305"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3 fotogramas  •  %4spp · %5%6</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2295"/>
+        <location filename="../mainwindow_slots.cpp" line="2317"/>
         <source>Playing video inline: %1</source>
         <translation>Reproduciendo vídeo insertado: %1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2320"/>
+        <location filename="../mainwindow_slots.cpp" line="2342"/>
         <source>… and %n more</source>
         <translation>
             <numerusform>… y %n más</numerusform>
@@ -1473,19 +1488,19 @@ Es posible que el renderizado no haya podido generar la salida.</translation>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2321"/>
-        <location filename="../mainwindow_slots.cpp" line="2334"/>
-        <location filename="../mainwindow_slots.cpp" line="2366"/>
-        <location filename="../mainwindow_slots.cpp" line="2397"/>
-        <location filename="../mainwindow_slots.cpp" line="2413"/>
-        <location filename="../mainwindow_slots.cpp" line="2421"/>
-        <location filename="../mainwindow_slots.cpp" line="2453"/>
-        <location filename="../mainwindow_slots.cpp" line="2459"/>
+        <location filename="../mainwindow_slots.cpp" line="2343"/>
+        <location filename="../mainwindow_slots.cpp" line="2356"/>
+        <location filename="../mainwindow_slots.cpp" line="2388"/>
+        <location filename="../mainwindow_slots.cpp" line="2419"/>
+        <location filename="../mainwindow_slots.cpp" line="2435"/>
+        <location filename="../mainwindow_slots.cpp" line="2443"/>
+        <location filename="../mainwindow_slots.cpp" line="2475"/>
+        <location filename="../mainwindow_slots.cpp" line="2481"/>
         <source>Download missing files</source>
         <translation>Descargar archivos faltantes</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2322"/>
+        <location filename="../mainwindow_slots.cpp" line="2344"/>
         <source>Download %n file(s) (%1) from %2?
 
 %3
@@ -1508,76 +1523,76 @@ Se guardarán en:
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2333"/>
-        <location filename="../mainwindow_slots.cpp" line="2420"/>
-        <location filename="../mainwindow_slots.cpp" line="2436"/>
+        <location filename="../mainwindow_slots.cpp" line="2355"/>
+        <location filename="../mainwindow_slots.cpp" line="2442"/>
+        <location filename="../mainwindow_slots.cpp" line="2458"/>
         <source>Downloading…</source>
         <translation>Descargando…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="24"/>
+        <location filename="../mainwindow_photo_install.cpp" line="25"/>
         <source>The photo helper is being installed.</source>
         <translation>Se está instalando el asistente de fotos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="25"/>
+        <location filename="../mainwindow_photo_install.cpp" line="26"/>
         <source>Wait for the diagnostics to finish.</source>
         <translation>Espera a que terminen los diagnósticos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="26"/>
+        <location filename="../mainwindow_photo_install.cpp" line="27"/>
         <source>Run Diagnostics first: it shows what the photo helper is missing.</source>
         <translation>Ejecuta primero el diagnóstico: muestra qué le falta al asistente de fotos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="27"/>
+        <location filename="../mainwindow_photo_install.cpp" line="28"/>
         <source>Nothing is missing: the photo helper is installed.</source>
         <translation>No falta nada: el asistente de fotos está instalado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="28"/>
+        <location filename="../mainwindow_photo_install.cpp" line="29"/>
         <source>Download and install what the photo helper is missing:
 %1</source>
         <translation>Descargar e instalar lo que le falta al asistente de fotos:
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="42"/>
+        <location filename="../mainwindow_photo_install.cpp" line="43"/>
         <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
         <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh) junto al programa.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="47"/>
+        <location filename="../mainwindow_photo_install.cpp" line="48"/>
         <source>The script that will run (PowerShell, with the execution policy bypassed):</source>
         <translation>El script que se ejecutará (PowerShell, con la directiva de ejecución omitida):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="48"/>
+        <location filename="../mainwindow_photo_install.cpp" line="49"/>
         <source>PyTorch (from download.pytorch.org)</source>
         <translation>PyTorch (de download.pytorch.org)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="49"/>
+        <location filename="../mainwindow_photo_install.cpp" line="50"/>
         <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
         <translation>Requiere Python 3.10 a 3.12 y git en el PATH</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="51"/>
+        <location filename="../mainwindow_photo_install.cpp" line="52"/>
         <source>The script that will run (bash):</source>
         <translation>El script que se ejecutará (bash):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="52"/>
+        <location filename="../mainwindow_photo_install.cpp" line="53"/>
         <source>PyTorch (from PyPI)</source>
         <translation>PyTorch (de PyPI)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="53"/>
+        <location filename="../mainwindow_photo_install.cpp" line="54"/>
         <source>It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)</source>
         <translation>Requiere Python 3.10 a 3.12 (por ejemplo brew install python@3.12) y git (xcode-select --install)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="56"/>
+        <location filename="../mainwindow_photo_install.cpp" line="57"/>
         <source>Install the photo helper?
 
 This downloads about 5 GB and installs it for your user only, in %1:
@@ -1608,47 +1623,47 @@ Falta ahora:
 %3</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="42"/>
-        <location filename="../mainwindow_photo_install.cpp" line="63"/>
+        <location filename="../mainwindow_photo_install.cpp" line="43"/>
+        <location filename="../mainwindow_photo_install.cpp" line="64"/>
         <source>Install the photo helper</source>
         <translation>Instalar el asistente de fotos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="68"/>
+        <location filename="../mainwindow_photo_install.cpp" line="69"/>
         <source>Installing the photo helper</source>
         <translation>Instalando el asistente de fotos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="85"/>
-        <location filename="../mainwindow_slots.cpp" line="2333"/>
-        <location filename="../mainwindow_slots.cpp" line="2420"/>
+        <location filename="../mainwindow_photo_install.cpp" line="86"/>
+        <location filename="../mainwindow_slots.cpp" line="2355"/>
+        <location filename="../mainwindow_slots.cpp" line="2442"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="110"/>
+        <location filename="../mainwindow_photo_install.cpp" line="117"/>
         <source>Installed. Running the diagnostics again to check it...</source>
         <translation>Instalado. Ejecutando de nuevo los diagnósticos para comprobarlo...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="110"/>
+        <location filename="../mainwindow_photo_install.cpp" line="117"/>
         <source>The installation did not finish: %1</source>
         <translation>La instalación no terminó: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="111"/>
+        <location filename="../mainwindow_photo_install.cpp" line="118"/>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2349"/>
-        <location filename="../mainwindow_slots.cpp" line="2436"/>
+        <location filename="../mainwindow_slots.cpp" line="2371"/>
+        <location filename="../mainwindow_slots.cpp" line="2458"/>
         <source>Downloading %1…</source>
         <translation>Descargando %1…</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2363"/>
-        <location filename="../mainwindow_slots.cpp" line="2450"/>
+        <location filename="../mainwindow_slots.cpp" line="2385"/>
+        <location filename="../mainwindow_slots.cpp" line="2472"/>
         <source>Downloaded %n file(s).</source>
         <translation>
             <numerusform>Se descargó %n archivo.</numerusform>
@@ -1656,13 +1671,13 @@ Falta ahora:
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2365"/>
-        <location filename="../mainwindow_slots.cpp" line="2452"/>
+        <location filename="../mainwindow_slots.cpp" line="2387"/>
+        <location filename="../mainwindow_slots.cpp" line="2474"/>
         <source>Download failed: %1</source>
         <translation>Error en la descarga: %1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2371"/>
+        <location filename="../mainwindow_slots.cpp" line="2393"/>
         <source>Downloading %n file(s) (%1) from %2…</source>
         <translation>
             <numerusform>Descargando %n archivo (%1) de %2…</numerusform>
@@ -1670,12 +1685,12 @@ Falta ahora:
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2394"/>
+        <location filename="../mainwindow_slots.cpp" line="2416"/>
         <source>There is not enough free disk space for &quot;%1&quot;: it needs about %2 and %3 is available in %4.</source>
         <translation>No hay espacio libre suficiente en el disco para «%1»: necesita unos %2 y hay %3 disponibles en %4.</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2407"/>
+        <location filename="../mainwindow_slots.cpp" line="2429"/>
         <source>Download &quot;%1&quot;?
 
 %2
@@ -1707,7 +1722,7 @@ Origen: %7</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2412"/>
+        <location filename="../mainwindow_slots.cpp" line="2434"/>
         <source>
 
 This is a large download and may take a while.</source>
@@ -1716,7 +1731,7 @@ This is a large download and may take a while.</source>
 Es una descarga grande y puede tardar un rato.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2460"/>
+        <location filename="../mainwindow_slots.cpp" line="2482"/>
         <source>The scene was downloaded. It appears with its own camera and settings after the app restarts. Restart now?
 
 (A render in progress or queued jobs would be lost.)</source>
@@ -1725,7 +1740,7 @@ Es una descarga grande y puede tardar un rato.</translation>
 (Se perdería un renderizado en curso o los trabajos en cola.)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2466"/>
+        <location filename="../mainwindow_slots.cpp" line="2488"/>
         <source>Downloading &quot;%1&quot; (%2)…</source>
         <translation>Descargando «%1» (%2)…</translation>
     </message>
@@ -4107,7 +4122,7 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>Selecciona primero una escena</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="71"/>
+        <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1833"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
@@ -4138,8 +4153,8 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>&lt;b&gt;Por qué se ve así&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="717"/>
-        <location filename="../mainwindow_slots.cpp" line="756"/>
+        <location filename="../mainwindow_slots.cpp" line="725"/>
+        <location filename="../mainwindow_slots.cpp" line="764"/>
         <location filename="../mainwindow_tabs.cpp" line="512"/>
         <location filename="../mainwindow_tabs_render.cpp" line="2684"/>
         <location filename="../mainwindow_tabs_render.cpp" line="2697"/>
@@ -5770,7 +5785,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="434"/>
-        <location filename="../scene_builder_widget.cpp" line="711"/>
+        <location filename="../scene_builder_widget.cpp" line="756"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Mallas (*.ply *.obj)</translation>
     </message>
@@ -5858,117 +5873,117 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Brillo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="113"/>
+        <location filename="../scene_builder_widget.cpp" line="115"/>
         <source>New</source>
         <translation>Nueva</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="113"/>
+        <location filename="../scene_builder_widget.cpp" line="115"/>
         <source>Start again from the example scene</source>
         <translation>Empezar de nuevo desde la escena de ejemplo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="114"/>
+        <location filename="../scene_builder_widget.cpp" line="116"/>
         <source>Open...</source>
         <translation>Abrir...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="114"/>
+        <location filename="../scene_builder_widget.cpp" line="116"/>
         <source>Open a .pbrt file saved by the Scene Builder</source>
         <translation>Abrir un archivo .pbrt guardado por el Constructor de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="115"/>
+        <location filename="../scene_builder_widget.cpp" line="117"/>
         <source>Save</source>
         <translation>Guardar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="115"/>
+        <location filename="../scene_builder_widget.cpp" line="117"/>
         <source>Save the scene as a .pbrt file</source>
         <translation>Guardar la escena como archivo .pbrt</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="116"/>
+        <location filename="../scene_builder_widget.cpp" line="118"/>
         <source>Save As...</source>
         <translation>Guardar como...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="116"/>
+        <location filename="../scene_builder_widget.cpp" line="118"/>
         <source>Save the scene under a new name</source>
         <translation>Guardar la escena con un nombre nuevo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="117"/>
+        <location filename="../scene_builder_widget.cpp" line="119"/>
         <source>Add to scene list</source>
         <translation>Añadir a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="118"/>
+        <location filename="../scene_builder_widget.cpp" line="120"/>
         <source>Undo</source>
         <translation>Deshacer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="119"/>
+        <location filename="../scene_builder_widget.cpp" line="121"/>
         <source>Redo</source>
         <translation>Rehacer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="124"/>
+        <location filename="../scene_builder_widget.cpp" line="126"/>
         <source>Scene name</source>
         <translation>Nombre de la escena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="125"/>
+        <location filename="../scene_builder_widget.cpp" line="127"/>
         <source>The name of this scene, shown in the scene list</source>
         <translation>El nombre de esta escena, que se muestra en la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="133"/>
+        <location filename="../scene_builder_widget.cpp" line="135"/>
         <source>Name:</source>
         <translation>Nombre:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="153"/>
+        <location filename="../scene_builder_widget.cpp" line="155"/>
         <source>Add</source>
         <translation>Añadir</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="156"/>
+        <location filename="../scene_builder_widget.cpp" line="158"/>
         <source>Objects</source>
         <translation>Objetos</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="159"/>
+        <location filename="../scene_builder_widget.cpp" line="161"/>
         <source>Props (several objects at once)</source>
         <translation>Accesorios (varios objetos a la vez)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="161"/>
+        <location filename="../scene_builder_widget.cpp" line="163"/>
         <source>More</source>
         <translation>Más</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="162"/>
+        <location filename="../scene_builder_widget.cpp" line="164"/>
         <source>Object from a photo...</source>
         <translation>Objeto a partir de una foto...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="163"/>
+        <location filename="../scene_builder_widget.cpp" line="165"/>
         <source>Light panel (emitting quad)</source>
         <translation>Panel de luz (cuadrilátero emisor)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="172"/>
+        <location filename="../scene_builder_widget.cpp" line="174"/>
         <source>Lights</source>
         <translation>Luces</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="176"/>
+        <location filename="../scene_builder_widget.cpp" line="178"/>
         <source>Duplicate</source>
         <translation>Duplicar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="177"/>
+        <location filename="../scene_builder_widget.cpp" line="179"/>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
@@ -6023,6 +6038,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Mira la escena desde cualquier lado y mueve las cosas en 3D</translation>
     </message>
     <message>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="200"/>
         <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>Ajustar a la cuadrícula</translation>
@@ -6038,144 +6054,140 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Encuadrar todo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="237"/>
+        <location filename="../scene_builder_widget.cpp" line="239"/>
         <source>Draft</source>
         <translation>Borrador</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="238"/>
+        <location filename="../scene_builder_widget.cpp" line="240"/>
         <source>Good</source>
         <translation>Buena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="239"/>
+        <location filename="../scene_builder_widget.cpp" line="241"/>
         <source>Best</source>
         <translation>Óptima</translation>
     </message>
     <message>
-        <source>Draft: 320 pixels wide, 16 samples. Good: 480 wide, 64 samples. Best: 640 wide, 256 samples.</source>
-        <translation type="vanished">Borrador: 320 píxeles de ancho, 16 muestras. Buena: 480 de ancho, 64 muestras. Óptima: 640 de ancho, 256 muestras.</translation>
-    </message>
-    <message>
-        <location filename="../scene_builder_widget.cpp" line="242"/>
+        <location filename="../scene_builder_widget.cpp" line="244"/>
         <source>Use the GPU</source>
         <translation>Usar la GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="243"/>
+        <location filename="../scene_builder_widget.cpp" line="245"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>Renderizar en la tarjeta gráfica (NVIDIA OptiX en Windows, Metal en Mac). Mucho más rápido para imágenes grandes; requiere una GPU compatible.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="244"/>
-        <location filename="../scene_builder_widget.cpp" line="905"/>
+        <location filename="../scene_builder_widget.cpp" line="246"/>
+        <location filename="../scene_builder_widget.cpp" line="953"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="246"/>
+        <location filename="../scene_builder_widget.cpp" line="248"/>
         <source>Render picture...</source>
         <translation>Renderizar imagen...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="248"/>
+        <location filename="../scene_builder_widget.cpp" line="250"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>Renderizar con el tamaño de imagen y el número de muestras fijados en Cámara, y guardar la imagen como PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="250"/>
+        <location filename="../scene_builder_widget.cpp" line="252"/>
         <source>Quality:</source>
         <translation>Calidad:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="261"/>
+        <location filename="../scene_builder_widget.cpp" line="263"/>
         <source>Press Preview to see the scene.</source>
         <translation>Pulsa Vista previa para ver la escena.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="334"/>
+        <location filename="../scene_builder_widget.cpp" line="342"/>
         <source>Cannot open %1.</source>
         <translation>No se puede abrir %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="384"/>
+        <location filename="../scene_builder_widget.cpp" line="401"/>
         <source>Unsaved changes</source>
         <translation>Cambios sin guardar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="384"/>
+        <location filename="../scene_builder_widget.cpp" line="401"/>
         <source>The scene has changes that are not saved. Save them first?</source>
         <translation>La escena tiene cambios sin guardar. ¿Guardarlos primero?</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="396"/>
+        <location filename="../scene_builder_widget.cpp" line="413"/>
         <source>Open a Scene Builder scene</source>
         <translation>Abrir una escena del Constructor de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="397"/>
-        <location filename="../scene_builder_widget.cpp" line="415"/>
+        <location filename="../scene_builder_widget.cpp" line="414"/>
+        <location filename="../scene_builder_widget.cpp" line="432"/>
         <source>pbrt scenes (*.pbrt)</source>
         <translation>Escenas pbrt (*.pbrt)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="400"/>
+        <location filename="../scene_builder_widget.cpp" line="417"/>
         <source>Cannot open the scene</source>
         <translation>No se puede abrir la escena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="408"/>
-        <location filename="../scene_builder_widget.cpp" line="418"/>
-        <location filename="../scene_builder_widget.cpp" line="485"/>
+        <location filename="../scene_builder_widget.cpp" line="425"/>
+        <location filename="../scene_builder_widget.cpp" line="435"/>
+        <location filename="../scene_builder_widget.cpp" line="506"/>
         <source>Cannot save</source>
         <translation>No se puede guardar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="408"/>
-        <location filename="../scene_builder_widget.cpp" line="418"/>
-        <location filename="../scene_builder_widget.cpp" line="453"/>
-        <location filename="../scene_builder_widget.cpp" line="862"/>
+        <location filename="../scene_builder_widget.cpp" line="425"/>
+        <location filename="../scene_builder_widget.cpp" line="435"/>
+        <location filename="../scene_builder_widget.cpp" line="473"/>
+        <location filename="../scene_builder_widget.cpp" line="908"/>
         <source>Could not write %1.</source>
         <translation>No se pudo escribir %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="409"/>
-        <location filename="../scene_builder_widget.cpp" line="419"/>
+        <location filename="../scene_builder_widget.cpp" line="426"/>
+        <location filename="../scene_builder_widget.cpp" line="436"/>
         <source>Saved %1</source>
         <translation>Se guardó %1</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="415"/>
+        <location filename="../scene_builder_widget.cpp" line="432"/>
         <source>Save the scene</source>
         <translation>Guardar la escena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="465"/>
+        <location filename="../scene_builder_widget.cpp" line="486"/>
         <source>No scenes folder</source>
         <translation>No hay carpeta de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="472"/>
+        <location filename="../scene_builder_widget.cpp" line="493"/>
         <source>Add to the scene list</source>
         <translation>Añadir a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="473"/>
+        <location filename="../scene_builder_widget.cpp" line="494"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>Esta escena ya está en la lista como «%1».</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="474"/>
+        <location filename="../scene_builder_widget.cpp" line="495"/>
         <source>Add as a new scene</source>
         <translation>Añadir como escena nueva</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="475"/>
+        <location filename="../scene_builder_widget.cpp" line="496"/>
         <source>Update the existing one</source>
         <translation>Actualizar la existente</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="490"/>
+        <location filename="../scene_builder_widget.cpp" line="511"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -6184,112 +6196,112 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="786"/>
+        <location filename="../scene_builder_widget.cpp" line="831"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objetos, %4 luces</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="711"/>
+        <location filename="../scene_builder_widget.cpp" line="756"/>
         <source>Choose a mesh</source>
         <translation>Elegir una malla</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="437"/>
+        <location filename="../scene_builder_widget.cpp" line="456"/>
         <source>The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.</source>
         <translation>No se encontró la carpeta de escenas (pbrt_scenes) junto al programa. Usa Guardar como para dejar el archivo donde quieras, y define la variable de entorno RAY_TRACER_PBRT_DIR con esa carpeta para que el programa la incluya en la lista.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="117"/>
+        <location filename="../scene_builder_widget.cpp" line="119"/>
         <source>Save the scene into the scenes folder so it shows up in the Settings tab</source>
         <translation>Guardar la escena en la carpeta de escenas para que aparezca en la pestaña Configuración</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="118"/>
+        <location filename="../scene_builder_widget.cpp" line="120"/>
         <source>Undo the last change (%1)</source>
         <translation>Deshacer el último cambio (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="119"/>
+        <location filename="../scene_builder_widget.cpp" line="121"/>
         <source>Redo (%1)</source>
         <translation>Rehacer (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="241"/>
+        <location filename="../scene_builder_widget.cpp" line="243"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>Borrador: 480 píxeles de ancho, 16 muestras. Buena: 720 de ancho, 64 muestras. Óptima: 960 de ancho, 256 muestras.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="489"/>
+        <location filename="../scene_builder_widget.cpp" line="510"/>
         <source>Added to the scene list</source>
         <translation>Añadida a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="602"/>
+        <location filename="../scene_builder_widget.cpp" line="647"/>
         <source>Camera and image</source>
         <translation>Cámara e imagen</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="623"/>
+        <location filename="../scene_builder_widget.cpp" line="668"/>
         <source>, light</source>
         <translation>, luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="780"/>
+        <location filename="../scene_builder_widget.cpp" line="825"/>
         <source>not saved yet</source>
         <translation>sin guardar todavía</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="802"/>
+        <location filename="../scene_builder_widget.cpp" line="847"/>
         <source>No problems found.</source>
         <translation>No se encontraron problemas.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="808"/>
+        <location filename="../scene_builder_widget.cpp" line="853"/>
         <source>Fix this:</source>
         <translation>Corrige esto:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="808"/>
+        <location filename="../scene_builder_widget.cpp" line="853"/>
         <source>Note:</source>
         <translation>Nota:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="836"/>
+        <location filename="../scene_builder_widget.cpp" line="881"/>
         <source>Save the rendered picture</source>
         <translation>Guardar la imagen renderizada</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="836"/>
+        <location filename="../scene_builder_widget.cpp" line="881"/>
         <source>PNG images (*.png)</source>
         <translation>Imágenes PNG (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="840"/>
+        <location filename="../scene_builder_widget.cpp" line="885"/>
         <source>The render failed</source>
         <translation>Error de renderizado</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="850"/>
+        <location filename="../scene_builder_widget.cpp" line="896"/>
         <source>A render is already running.</source>
         <translation>Ya hay un renderizado en curso.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="852"/>
+        <location filename="../scene_builder_widget.cpp" line="898"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>Corrige primero los problemas indicados en las propiedades.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="853"/>
+        <location filename="../scene_builder_widget.cpp" line="899"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>No se encontró el renderizador (%1) junto al programa.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="34"/>
+        <location filename="../scene_builder_photo.cpp" line="35"/>
         <source>Photo helper not installed</source>
         <translation>Asistente de fotos no instalado</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="35"/>
+        <location filename="../scene_builder_photo.cpp" line="36"/>
         <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an graphics card - NVIDIA on Windows, Apple silicon on a Mac - is strongly recommended).
 
 %1
@@ -6310,12 +6322,12 @@ Para configurarlo, usa la pestaña Diagnóstico: Ejecutar diagnóstico y luego I
 Después vuelve a elegir esta opción. La guía (docs/PHOTO_TO_SCENE.md) explica qué hace y cuáles son sus límites.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="52"/>
+        <location filename="../scene_builder_photo.cpp" line="53"/>
         <source>Object from a photo</source>
         <translation>Objeto a partir de una foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="53"/>
+        <location filename="../scene_builder_photo.cpp" line="54"/>
         <source>One photo is turned into a 3D object by an AI model running on this computer; the photo is not uploaded anywhere.
 
 The shape is a guess: the back is invented and fine detail is soft. It works best on one object against a plain background. The first run downloads the model (about 1.7 GB) and can take several minutes.</source>
@@ -6324,95 +6336,95 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 La forma es una suposición: la parte trasera es inventada y los detalles finos salen suaves. Funciona mejor con un solo objeto sobre un fondo liso. La primera vez se descarga el modelo (unos 1,7 GB) y puede tardar varios minutos.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="57"/>
+        <location filename="../scene_builder_photo.cpp" line="58"/>
         <source>Do not show this again</source>
         <translation>No volver a mostrar este mensaje</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="63"/>
+        <location filename="../scene_builder_photo.cpp" line="64"/>
         <source>Choose a photo</source>
         <translation>Elegir una foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="63"/>
+        <location filename="../scene_builder_photo.cpp" line="64"/>
         <source>Photos (*.png *.jpg *.jpeg *.bmp *.webp)</source>
         <translation>Fotos (*.png *.jpg *.jpeg *.bmp *.webp)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="66"/>
+        <location filename="../scene_builder_photo.cpp" line="67"/>
         <source>Could not make the object</source>
         <translation>No se pudo crear el objeto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="81"/>
+        <location filename="../scene_builder_photo.cpp" line="83"/>
         <source>Could not create the folder %1.</source>
         <translation>No se pudo crear la carpeta %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="85"/>
-        <location filename="../scene_builder_widget.cpp" line="890"/>
+        <location filename="../scene_builder_photo.cpp" line="87"/>
+        <location filename="../scene_builder_widget.cpp" line="938"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="85"/>
+        <location filename="../scene_builder_photo.cpp" line="87"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="86"/>
+        <location filename="../scene_builder_photo.cpp" line="88"/>
         <source>Making a 3D object from the photo</source>
         <translation>Creando un objeto 3D a partir de la foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="125"/>
+        <location filename="../scene_builder_photo.cpp" line="129"/>
         <source>Photo object</source>
         <translation>Objeto de foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="135"/>
+        <location filename="../scene_builder_photo.cpp" line="139"/>
         <source>Added %1 from the photo. The shape is a guess; check it from every side.</source>
         <translation>Se añadió %1 a partir de la foto. La forma es una suposición; revísala desde todos los lados.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="893"/>
+        <location filename="../scene_builder_widget.cpp" line="941"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>Renderizando %1 x %2, %3 muestras...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="914"/>
+        <location filename="../scene_builder_widget.cpp" line="969"/>
         <source>The render was cancelled.</source>
         <translation>Se canceló el renderizado.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="914"/>
+        <location filename="../scene_builder_widget.cpp" line="969"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>El renderizador se detuvo inesperadamente.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="914"/>
+        <location filename="../scene_builder_widget.cpp" line="969"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>El renderizador no produjo ninguna imagen (código de salida %1).
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="915"/>
+        <location filename="../scene_builder_widget.cpp" line="970"/>
         <source>The render failed.</source>
         <translation>Falló el renderizado.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="921"/>
+        <location filename="../scene_builder_widget.cpp" line="976"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>Terminado en %1 s (%2 x %3).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="924"/>
+        <location filename="../scene_builder_widget.cpp" line="979"/>
         <source>Saved %1.</source>
         <translation>Se guardó %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="925"/>
+        <location filename="../scene_builder_widget.cpp" line="980"/>
         <source>Could not save to %1.</source>
         <translation>No se pudo guardar en %1.</translation>
     </message>

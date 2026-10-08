@@ -1,5 +1,6 @@
 // The Scene Builder's "Object from a photo" (Add menu): one photo -> a textured mesh through the optional photo helper (photo_import.h).
 #include "scene_builder_widget.h"
+#include "app_log.h"
 
 #include "photo_import.h"
 #include "scene_builder_common.h"
@@ -70,6 +71,7 @@ void SceneBuilderWidget::addObjectFromPhoto() {
 // user cancelled) if there is no object to add.
 bool SceneBuilderWidget::importPhoto(const QString &photo, QString *error) {
 	const photo_import::Setup setup = photo_import::locate();
+	AppLog::info(QStringLiteral("photo"), QStringLiteral("object from a photo: %1 (helper %2)").arg(photo, setup.ready ? QStringLiteral("ready") : QStringLiteral("not ready: ") + setup.why));
 	if (!setup.ready) {
 		if (error) *error = setup.why;
 		return false;
@@ -113,6 +115,8 @@ bool SceneBuilderWidget::importPhoto(const QString &photo, QString *error) {
 	disconnect(cancelConnection);
 	progress.close();
 
+	AppLog::write(ok ? log_format::Level::Info : cancelled ? log_format::Level::Warn : log_format::Level::Error, QStringLiteral("photo"),
+	              QStringLiteral("%1: %2").arg(ok ? QStringLiteral("done") : cancelled ? QStringLiteral("cancelled by the user") : QStringLiteral("failed"), message));
 	if (!ok) {
 		QDir(outFolder).removeRecursively();
 		if (error) *error = cancelled ? QString() : message;

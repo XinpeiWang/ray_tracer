@@ -4,8 +4,11 @@
 #include "mainwindow.h"
 
 #include "scene_builder_widget.h"
+#include "app_log.h"
 
 #include <QApplication>
+#include <QCheckBox>
+#include <QFileInfo>
 #include <QDir>
 #include <QFile>
 #include <QMouseEvent>
@@ -154,4 +157,55 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			QApplication::exit(ok ? 0 : 1);
 		});
 	});
+}
+
+// Part of the "builder" mode: every ready-made shape and prop can be added, leaves the scene without problems, and is one undo step each.
+void MainWindow::selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check) {
+	// Every ready-made shape can be added (and drawn in the layout and 3D views), leaves the scene without problems, and is one undo step each.
+	{
+		const size_t before = sb->document().objects.size();
+		size_t added = 0;
+		for (scene_doc::ShapeKind k : scene_doc::allShapeKinds()) {
+			if (k == scene_doc::ShapeKind::Mesh) continue;   // needs a file
+			sb->addObject(k);
+			++added;
+		}
+		check(sb->document().objects.size() == before + added, QString("added all %1 ready-made shapes").arg(added));
+		check(sb->problemsText().isEmpty(), "the ready-made shapes give no problems or notes");
+		// And every prop (several objects in one step, a second copy named apart).
+		const size_t withShapes = sb->document().objects.size();
+		for (scene_doc::PropKind k : scene_doc::allPropKinds()) sb->addProp(k);
+		size_t propObjects = 0;
+		for (scene_doc::PropKind k : scene_doc::allPropKinds()) propObjects += scene_doc::makeProp(k).size();
+		check(sb->document().objects.size() == withShapes + propObjects, QString("added all %1 props (%2 objects)").arg(scene_doc::allPropKinds().size()).arg(propObjects));
+		sb->addProp(scene_doc::PropKind::Table);
+		check(sb->document().objects.back().name.find("Table leg") != std::string::npos && sb->document().objects.back().name.back() == '2', "a second table is named apart (\"... 2\")");
+		check(sb->problemsText().isEmpty(), "the props give no problems or notes");
+		bool propsUndone = true;
+		for (size_t n = 0; n <= scene_doc::allPropKinds().size(); ++n) propsUndone = sb->undo() && propsUndone;
+		check(propsUndone && sb->document().objects.size() == withShapes, "each prop is one undo step");
+		bool allUndone = true;
+		for (size_t n = 0; n < added; ++n) allUndone = sb->undo() && allUndone;
+		check(allUndone && sb->document().objects.size() == before, "undo removes them one by one");
+		for (size_t n = 0; n < added; ++n) sb->redo();
+		for (size_t n = 0; n < added; ++n) sb->undo();
+	}
+}
+
+// Part of the "builder" mode: the log file has what was just done.
+void MainWindow::selfTestLog(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check) {
+	{
+		// The log file (app_log.h) has what was just done: the session header, the tab change, the edits (as readable differences), the save and the open.
+		for (QCheckBox *box : sb->findChildren<QCheckBox *>())
+			if (box->text() == SceneBuilderWidget::tr("Snap to grid")) { box->click(); box->click(); }   // a real click on a real control, off and on again
+		const QString text = AppLog::tail(3000).join('\n');
+		check(!AppLog::filePath().isEmpty() && QFileInfo::exists(AppLog::filePath()), "the log file exists: " + AppLog::filePath());
+		check(text.contains("[session]") || text.contains("session: started"), "the log has the session header");
+		check(text.contains("ui: tab \"") , "the log records the tab change");
+		check(text.contains("ui: Scene Builder > click \"Snap to grid\" -> off") && text.contains("click \"Snap to grid\" -> on"), "the log records a click on a checkbox, with its tab and new state");
+		check(text.contains("builder: edit: ") && text.contains("+1 object (") , "the log records the added object as a readable edit");
+		check(text.contains("builder: undo: ") && text.contains("builder: redo: "), "the log records undo and redo");
+		check(text.contains("builder: save ") && text.contains("builder: open "), "the log records the save and the open");
+		check(!text.contains("\n\n") && !AppLog::previousSessionEndedUnexpectedly(), "one entry per line, and the previous session ended cleanly");
+	}
 }

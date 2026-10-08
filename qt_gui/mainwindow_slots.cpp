@@ -4,6 +4,7 @@
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
 #include "render_output_parser.h"
+#include "app_log.h"
 #include "camera_math.h"
 #include "../src/shared/video_preset.h"
 #include "../src/shared/scene_descriptor.h"
@@ -576,6 +577,7 @@ void MainWindow::onRunDiagnosticsClicked() {
 
 void MainWindow::onDiagnosticsReportReady(const QString &report) {
 	m_lastDiagReport = report;
+	for (const QString &line : report.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) AppLog::info(QStringLiteral("diagnostics"), line);
 	rebuildDiagPane();
 
 	// The CLI's report has no network facts (and cannot - the point is whether THIS app can reach the download server), so
@@ -610,6 +612,12 @@ void MainWindow::startPhotoHelperCheck() {
 			if (!m_lastDiagReport.isEmpty()) {
 				if (!m_lastDiagReport.endsWith(QLatin1Char('\n'))) m_lastDiagReport += QLatin1Char('\n');
 				m_lastDiagReport += section;
+				// The last section: where this program's own log is, so a report and its log travel together.
+				m_lastDiagReport += QStringLiteral("\n=== Log file ===\n  %1\n  Help > Show Log Folder opens it. Send it with a bug report: it lists what the program did, in order.\n")
+				                        .arg(QDir::toNativeSeparators(AppLog::filePath().isEmpty() ? tr("(could not be created)") : AppLog::filePath()));
+				if (AppLog::previousSessionEndedUnexpectedly())
+					m_lastDiagReport += QStringLiteral("  The previous session did not exit cleanly (see the log).\n");
+				for (const QString &line : section.split(QLatin1Char('\n'), Qt::SkipEmptyParts)) AppLog::info(QStringLiteral("diagnostics"), line);
 				rebuildDiagPane();
 			}
 			if (m_runDiagnosticsButton && !diagnosticsBusy()) m_runDiagnosticsButton->setEnabled(true);
@@ -1677,10 +1685,24 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 }
 
 void MainWindow::onLogMessage(const QString &message) {
-	if (!m_logTextEdit) return;
-
 	QString msg = message.trimmed();
 	if (msg.isEmpty()) return;
+
+	// Every line the pane shows is also kept in the log file, which outlives the pane. A render prints a "Scanlines remaining" line per scanline: one in
+	// twenty-five is enough there.
+	{
+		static int scanlineLines = 0;
+		const bool progressTick = msg.startsWith(QLatin1String("Scanlines remaining:"));
+		if (!progressTick || (++scanlineLines % 25) == 1) {
+			const render_output::LogCategory c = render_output::classifyLogLine(msg.toStdString());
+			if (c.severity != render_output::LogSeverity::Separator)
+				AppLog::write(c.severity == render_output::LogSeverity::Error ? log_format::Level::Error
+				              : c.severity == render_output::LogSeverity::Warning ? log_format::Level::Warn
+				              : c.severity == render_output::LogSeverity::Debug ? log_format::Level::Debug : log_format::Level::Info,
+				              QStringLiteral("pane"), msg);
+		}
+	}
+	if (!m_logTextEdit) return;
 
 	// Timestamp prefix (HH:mm:ss)
 	QString ts = QTime::currentTime().toString("HH:mm:ss");

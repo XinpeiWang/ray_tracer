@@ -216,6 +216,8 @@ public:
 	// render, report frames).
 	void runSelfTest(const QString &mode, const QString &outPrefix);
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
+	void selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);      // (mainwindow_selftest_builder3d.cpp)
+	void selfTestLog(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);
 	void runInstallPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 	void runBuilder3dSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_builder3d.cpp
 	void runPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
@@ -543,6 +545,7 @@ private:
 	QAction *m_actClearLog = nullptr;
 	QAction *m_actAbout = nullptr;
 	QAction *m_actAboutQt = nullptr;
+	QAction *m_actShowLogs = nullptr;   // Help > Show Log Folder
 	QAction *m_actQuit = nullptr;
 
 	// Status bar: permanent widgets carry ambient state that would otherwise
