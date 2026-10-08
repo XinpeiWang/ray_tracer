@@ -22,6 +22,10 @@ void MainWindow::runPhotoSelfTest(const std::function<void(const QString &)> &lo
 		ok = ok && cond;
 	};
 	QString err;
+	// A photo that does not exist must fail with the helper's own words, not silently (a closing progress window once looked like a cancel).
+	QString badError;
+	const bool badOk = sb && sb->importPhoto("C:/no/such/photo_for_the_selftest.png", &badError);
+	check(sb && !badOk && !badError.isEmpty(), "a missing photo fails with a message: " + badError.left(100));
 	const QString photo = qEnvironmentVariable("RT_GUI_SELFTEST_PHOTO");
 	check(sb && sb->importPhoto(photo, &err), "made an object from " + photo + " " + err);
 	if (sb && ok) {
@@ -91,7 +95,7 @@ void MainWindow::runInstallPhotoSelfTest(const std::function<void(const QString 
 			if (failScript.isEmpty()) { poll->stop(); log(*ok ? "RESULT: OK" : "RESULT: FAIL"); QApplication::exit(*ok ? 0 : 1); return; }
 			qputenv("RAY_TRACER_PHOTO3D_SETUP", failScript.toLocal8Bit());
 			startPhotoHelperInstall(false, [=](bool done, const QString &message) {
-				check(!done && !message.isEmpty(), "a failing installer reports failure with its output: " + message.left(120));
+				check(!done && message.contains("ERROR: no network (CRLF)"), "a failing installer reports failure with the last lines of its output, CRLF or not: " + message.left(120));
 				*stage = 4;
 			});
 		} else if (*stage == 4) {

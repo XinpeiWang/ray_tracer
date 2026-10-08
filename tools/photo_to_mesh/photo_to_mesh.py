@@ -88,6 +88,21 @@ def bake_vertex_colours(np, uvs, indices, colours, size):
     return tex[nearest[0], nearest[1]]
 
 
+def orient_mesh(np, verts, faces):
+    """Puts TripoSR's mesh where the Scene Builder wants it: Y up, standing on y = 0, centred on x and z, 2 units tall, front towards +Z,
+    triangles facing outward. TripoSR's output has Z up and the object's front facing +X; (x, y, z) -> (y, z, x) is a turn (not a mirror
+    image) that stands it up with its front facing +Z. verts is (n, 3) floats, faces (m, 3) ints; returns new arrays."""
+    verts = np.asarray(verts, dtype=np.float64)[:, [1, 2, 0]]
+    verts = verts - [(verts[:, 0].min() + verts[:, 0].max()) / 2, verts[:, 1].min(), (verts[:, 2].min() + verts[:, 2].max()) / 2]
+    verts = verts * (2.0 / max(verts[:, 1].max(), 1e-9))
+    faces = np.asarray(faces, dtype=np.int64)
+    # A negative enclosed volume means the winding came out inside-out.
+    v0, v1, v2 = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]
+    if np.einsum("ij,ij->", v0, np.cross(v1, v2)) < 0:
+        faces = np.ascontiguousarray(faces[:, ::-1])
+    return verts, faces
+
+
 def check_environment(triposr_arg):
     """Prints one "Key: value" fact per line about everything the helper needs, for the Diagnostics tab. The wording is what the
     tab colours by: "present" / "available" are good, "missing" / "not available" / "not usable" are problems."""
@@ -220,7 +235,6 @@ def main():
         arr = np.array(rgba).astype(np.float32) / 255.0
         arr = arr[:, :, :3] * arr[:, :, 3:4] + (1 - arr[:, :, 3:4]) * 0.5  # grey background, as the model expects
         prepared = Image.fromarray((arr * 255.0).astype(np.uint8))
-    prepared.save(os.path.join(args.out, "input_prepared.png"))
 
     progress(35, "Guessing the 3D shape")
     with torch.no_grad():
@@ -234,16 +248,7 @@ def main():
     if len(faces) == 0:
         fail("the model found no object in the photo. Try a clearer photo of one object on a plain background.")
 
-    # TripoSR's output has Z up and the front of the object facing +X. The renderer is Y up and the Scene Builder's camera looks from +Z:
-    # (x, y, z) -> (y, z, x) is a turn (not a mirror image) that stands the object up with its front facing +Z.
-    verts = verts[:, [1, 2, 0]]
-    verts -= [(verts[:, 0].min() + verts[:, 0].max()) / 2, verts[:, 1].min(), (verts[:, 2].min() + verts[:, 2].max()) / 2]
-    height = verts[:, 1].max()
-    verts *= 2.0 / max(height, 1e-9)
-    # Outward-facing triangles: a negative enclosed volume means the winding came out inside-out.
-    v0, v1, v2 = verts[faces[:, 0]], verts[faces[:, 1]], verts[faces[:, 2]]
-    if np.einsum("ij,ij->", v0, np.cross(v1, v2)) < 0:
-        faces = faces[:, ::-1]
+    verts, faces = orient_mesh(np, verts, faces)
 
     progress(72, "Unwrapping the surface")
     vmapping, indices, uvs = xatlas.parametrize(verts.astype(np.float32), faces.astype(np.uint32))

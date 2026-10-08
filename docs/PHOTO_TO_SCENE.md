@@ -20,7 +20,10 @@ A diffuse or glossy-paint material can be coloured by a picture instead of a fla
 - On a **sphere**, the picture wraps around it (its poles are on the Z axis, so with the default camera you look at a pole).
 - On a **mesh**, the mesh's own texture coordinates decide where the picture goes. A mesh without them shows one colour.
 - The picture is read as an ordinary (sRGB) picture, so what you see is the colour you put in.
-- The scene file stores the picture's path. Keep the picture where it is, or choose it again after moving the scene.
+- The scene file stores the picture's path. Keep the picture where it is, or choose it again after moving the scene. The Scene Builder warns when a
+  picture, mesh or sky file it points to is no longer there (the renderer would otherwise just render without it).
+- A phone photo is often stored sideways with a rotation tag that the renderer ignores. When a picture has one, the Scene Builder saves an upright PNG
+  copy under its data folder (`pictures\`) and uses that, so the picture is the right way up and a quad takes the right shape.
 
 For a sky, give the **Sky** light an image instead (an equirectangular panorama).
 
@@ -57,7 +60,7 @@ An NVIDIA card with about 6 GB of memory makes a photo take seconds; on the proc
 CUDA, and the helper has not been tried there.
 
 **From the program (Windows).** Open the **Diagnostics** tab, press **Run Diagnostics**, and if its *Photo helper* section
-lists something missing, press **Install Photo Helper...**. It says what will be downloaded and from where, asks you to confirm, runs the same
+lists something missing, press **Install Photo Helper...**. It says what will be downloaded and from where, shows the exact script it will run, asks you to confirm, runs the same
 setup script with its output in a window (Cancel stops it and everything it started), and runs the diagnostics again when it is done, so the
 report shows the result. It needs Python 3.10 to 3.12 and git on your PATH; on macOS and Linux the button is disabled and the guide's other steps apply.
 
@@ -76,6 +79,9 @@ setup script. Keep the folder name short: PyTorch's folders are deep and Windows
 Each photo's result is kept in the program's per-user data folder, in `photo_meshes\<photo name>-<date and time>\`
 (on Windows `%APPDATA%\Ray Tracer Project\Ray Tracer\photo_meshes`), as `mesh.obj` and `texture.png`. A saved scene points at
 those files, so keep that folder (or copy the two files and choose them again) if you move the scene to another computer.
+
+The Diagnostics report's *Saved Photo Objects* line says how many of these folders there are and how much space they take. Nothing deletes them
+automatically (a saved scene may point into one), so delete the ones no scene uses when you want the space back.
 
 You can also run the helper by itself:
 
@@ -133,3 +139,12 @@ Things that do not carry over yet:
 One photo does not hold enough information to rebuild a room: depth is ambiguous and everything hidden is unknown. Research
 systems guess room layouts, but they are not reliable enough to ship. Neural scene models (NeRF, Gaussian splatting) give
 beautiful new views of a scene but are not geometry and materials a path tracer can re-light, so they are not offered here.
+
+## For developers
+
+- The helper's pure parts have tests that need no model: `%LOCALAPPDATA%\RayTracerPhoto\venv\Scripts\python.exe -m unittest tools/photo_to_mesh/test_photo_to_mesh.py`
+  (mesh orientation, the colour baker, the `--check` report; they skip without numpy and scipy).
+- The Qt-free text handling (`src/shared/photo_helper_report.h`: progress lines, the missing-facts parser, the line splitter that copes with
+  `\n`, `\r\n`, PowerShell's `\r\r\n` and pip's lone `\r`) is in `tests/unit/photo_helper_report_tests.cpp`.
+- The GUI self-test modes `photo` (needs the helper installed) and `installphoto` (stand-in installer scripts) drive the whole flow without dialogs; see
+  `qt_gui/mainwindow_selftest_photo.cpp`.

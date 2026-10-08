@@ -41,6 +41,11 @@ void MainWindow::onInstallPhotoHelperClicked() {
 void MainWindow::startPhotoHelperInstall(bool confirm, const std::function<void(bool, const QString &)> &onDone) {
 	if (m_photoInstaller && m_photoInstaller->isRunning()) return;
 	if (confirm) {
+		const QString script = photo_import::setupScript();
+		if (script.isEmpty()) {
+			QMessageBox::warning(this, tr("Install the photo helper"), tr("The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program."));
+			return;
+		}
 		const QStringList missing = photo_import::missingFacts(m_lastDiagReport);
 		const QString question =
 		    tr("Install the photo helper?\n\nThis downloads about 5 GB and installs it for your user only, in %1:\n"
@@ -48,8 +53,8 @@ void MainWindow::startPhotoHelperInstall(bool confirm, const std::function<void(
 		       "  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)\n"
 		       "  - the background-removal model, about 176 MB (from GitHub)\n\n"
 		       "It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.\n\n"
-		       "Missing now:\n%2")
-		        .arg(QDir::toNativeSeparators(photo_import::environmentFolder()), missing.join('\n'));
+		       "Missing now:\n%2\n\nThe script that will run (PowerShell, with the execution policy bypassed):\n%3")
+		        .arg(QDir::toNativeSeparators(photo_import::environmentFolder()), missing.join('\n'), QDir::toNativeSeparators(script));
 		if (QMessageBox::question(this, tr("Install the photo helper"), question, QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
 	}
 

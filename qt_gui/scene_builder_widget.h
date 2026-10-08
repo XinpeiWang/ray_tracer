@@ -50,6 +50,8 @@ public:
 	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
 	// Runs the helper on one photo (progress dialog) and adds the mesh. False with `error` set (empty when cancelled) if nothing was added.
 	bool importPhoto(const QString &photo, QString *error);
+	// See scene_builder_inspector.cpp: an upright copy of a picture whose EXIF tag asks for a rotation (the renderer ignores that tag).
+	static QString uprightPictureCopy(const QString &path, QSize *size);
 	void deleteSelected();
 	bool undo();
 	bool redo();
