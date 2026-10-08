@@ -1349,6 +1349,7 @@ private:
 	QDoubleSpinBox *m_exposureSpin;     // --exposure (default path tracer only)
 	QComboBox *m_tonemapCombo;          // --tonemap (default path tracer only)
 	QCheckBox *m_statsCheck;            // --stats (default path tracer only)
+	QCheckBox *m_aovsCheck = nullptr;   // --aovs (any backend; single images)
 	QCheckBox *m_denoiseCheck;          // --denoise (GPU only, both backends)
 	// --denoise-blend (GPU only, both backends) - spinbox only enabled/
 	// emitted when m_denoiseCheck is checked, same enable-a-sibling-
@@ -1621,9 +1622,7 @@ private:
 	void populateSceneViews(const QString &category);
 	// Delete the scenes the user made (mainwindow_my_scenes.cpp): the Settings tab shows these buttons under the My Scenes category.
 	denoiser_installer::Installer *m_denoiserInstaller = nullptr;
-	QWidget *m_myScenesRow = nullptr;
-	QPushButton *m_deleteSceneButton = nullptr;
-	QPushButton *m_deleteAllScenesButton = nullptr;
+	QWidget *m_myScenesRow = nullptr; QPushButton *m_deleteSceneButton = nullptr, *m_deleteAllScenesButton = nullptr;
 	QString userSceneFileForId(const QString &id) const;
 	QStringList myScenesIds() const;
 	void updateMyScenesButtons(const QString &category);

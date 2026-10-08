@@ -18,7 +18,8 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 
 * **Metal PNGs no longer get a vignette or a colour shift.** They were added to every Mac render (corners 18% darker, red and blue shifted apart) although the CPU and OptiX renderers add neither, so the same scene looked different on a Mac. They are opt-in now (`RT_METAL_POST_EFFECTS=vignette,aberration`); the light bilateral blur stays on by default until the Mac has a real denoiser.
 * **AI denoising on a Mac.** The Metal renderer can now denoise with Intel's Open Image Denoise (`--denoise`, or the **AI denoiser** box in Render Options): a render with a handful of samples per pixel comes out clean. The library (~50 MB) is not inside the app: ticking the box offers to download it once from OIDN's own release page (checksum-verified). See [docs/DENOISING.md](docs/DENOISING.md).
-* `--max-component-value` (the explicit firefly clamp) now works on Metal too.
+* `--maxcomponentvalue` (the explicit firefly clamp) now works on Metal too.
+* **Render passes (AOVs).** `--aovs` (or **Also write render passes** in Render Options) writes albedo, normal, depth, uv and a coverage alpha next to the image: merged into the same file for an `.exr` output (a multilayer EXR with the render's R G B), else into `<name>.aovs.exr`. Works with every renderer. See [docs/RENDER_PASSES.md](docs/RENDER_PASSES.md).
 
 ### Scenes
 

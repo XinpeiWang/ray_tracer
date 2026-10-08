@@ -426,7 +426,9 @@ void MainWindow::runQueueSelfTest(const std::function<void(const QString &)> &lo
 	m_heightSpinBox->setValue(48);
 	m_samplesSpinBox->setValue(1);
 	m_maxDepthSpinBox->setValue(2);
+	m_aovsCheck->setChecked(true);   // the first job also writes the render passes
 	onRenderClicked();
+	m_aovsCheck->setChecked(false);
 	onRenderClicked();   // while the first one renders: queued behind it
 	if (m_queueModel->rowCount() != 2 || !m_queueModel->isRunning() || m_queueModel->waitingCount() != 1) {
 		fail(QString("after two clicks the queue should be one running and one waiting (rows %1, running %2, waiting %3)")
@@ -449,6 +451,14 @@ void MainWindow::runQueueSelfTest(const std::function<void(const QString &)> &lo
 			check(!time.isEmpty(), QString("row %1 shows how long it took: %2").arg(row + 1).arg(time));
 		}
 		check(m_queueClearFinishedButton->isEnabled() && !m_queueClearButton->isEnabled(), "Clear Finished is available, Clear Queue is not (nothing waits)");
+		{
+			// The first job asked for the render passes (--aovs): they are beside its image, in <stem>.aovs.exr; the second did not ask.
+			const QFileInfo first(m_queueModel->queue().entries()[0].job.outputPath), second(m_queueModel->queue().entries()[1].job.outputPath);
+			const QString firstPasses = first.absolutePath() + "/" + first.completeBaseName() + ".aovs.exr", secondPasses = second.absolutePath() + "/" + second.completeBaseName() + ".aovs.exr";
+			check(QFileInfo::exists(firstPasses) && QFileInfo(firstPasses).size() > 1000, "the first job wrote its render passes: " + firstPasses);
+			check(!QFileInfo::exists(secondPasses), "the second job, which did not ask, wrote none");
+			QFile::remove(firstPasses);
+		}
 		if (m_progressTabIndex >= 0) m_tabWidget->setCurrentIndex(m_progressTabIndex);   // a finished render switches to Preview: look at the queue
 		QApplication::processEvents();
 		shot("queue");

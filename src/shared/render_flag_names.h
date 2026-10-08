@@ -37,6 +37,7 @@ namespace render_flags {
 	constexpr const char* kExposure      = "--exposure";
 	constexpr const char* kSampler       = "--sampler";
 	constexpr const char* kAdaptive      = "--adaptive";
+	constexpr const char* kAovs          = "--aovs";
 	constexpr const char* kAdaptiveThreshold = "--adaptive-threshold";
 	constexpr const char* kTimeLimit     = "--time-limit";
 	constexpr const char* kLightSampler  = "--lightsampler";

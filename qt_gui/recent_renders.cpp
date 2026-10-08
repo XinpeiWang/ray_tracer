@@ -75,6 +75,7 @@ void writeEntry(QSettings &settings, const RecentRenderEntry &entry) {
 	settings.setValue("denoise", entry.advancedFlags.denoise);
 	settings.setValue("denoiseBlend", entry.advancedFlags.denoiseBlend);
 	settings.setValue("stats", entry.advancedFlags.stats);
+	settings.setValue("aovs", entry.advancedFlags.aovs);
 	settings.setValue("optixValidate", entry.advancedFlags.optixValidate);
 	settings.setValue("exposure", entry.advancedFlags.exposure);
 	settings.setValue("sampler", entry.advancedFlags.sampler);
@@ -180,6 +181,7 @@ RecentRenderEntry readEntry(QSettings &settings) {
 	if (settings.contains("denoise")) entry.advancedFlags.denoise = settings.value("denoise").toBool();
 	if (settings.contains("denoiseBlend")) entry.advancedFlags.denoiseBlend = settings.value("denoiseBlend").toDouble();
 	if (settings.contains("stats")) entry.advancedFlags.stats = settings.value("stats").toBool();
+	if (settings.contains("aovs")) entry.advancedFlags.aovs = settings.value("aovs").toBool();
 	if (settings.contains("optixValidate")) entry.advancedFlags.optixValidate = settings.value("optixValidate").toBool();
 	if (settings.contains("exposure")) entry.advancedFlags.exposure = settings.value("exposure").toDouble();
 	if (settings.contains("sampler")) entry.advancedFlags.sampler = settings.value("sampler").toString();

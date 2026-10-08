@@ -884,6 +884,25 @@ void MainWindow::buildPostProcessingGroup(QWidget *optionsTab, QVBoxLayout *layo
 		"bright straight to flat white, which can look harsh.")),
 		m_tonemapCombo);
 
+	m_aovsCheck = new QCheckBox(tr("Also write render passes (albedo, normal, depth)"), optionsTab);
+	m_aovsCheck->setToolTip(
+		tr("Also writes what is at each pixel - the surface colour (albedo),\n"
+		"its direction (normal), the distance from the camera (depth) and\n"
+		"its texture coordinates - for compositing. Into the image's own\n"
+		"file when the output is .exr (a multilayer EXR), else into a\n"
+		"separate <name>.aovs.exr next to it. Works with every renderer."));
+	styleCheckBox(m_aovsCheck);
+	outputLayout->addRow(checkboxWithInfo(m_aovsCheck,
+		tr("A render pass shows one property of the scene instead of the "
+		"finished lit picture. These are the ones compositing programs "
+		"(Blender, Nuke, After Effects) ask for: albedo (the colour of "
+		"each surface, without lighting), normal (which way each surface "
+		"faces), depth (how far away it is) and UV (its texture "
+		"coordinates), plus an alpha that is 0 where the camera sees only "
+		"the background.\n\n"
+		"They are computed separately from the render, so they cost "
+		"little and never change the picture. Choose an .exr output "
+		"(Settings tab) to get everything in a single file.")));
 	m_statsCheck = new QCheckBox(tr("Print render stats"), optionsTab);
 	m_statsCheck->setToolTip(
 		tr("Print a small end-of-render statistics summary (rays cast,\n"

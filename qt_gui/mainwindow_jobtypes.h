@@ -104,6 +104,7 @@ struct AdvancedRenderFlags {
 	// differs from 0.0, and only alongside --denoise itself.
 	double denoiseBlend = 0.0;
 	bool stats = false;
+	bool aovs = false;   // --aovs: also write the render passes (albedo, normal, depth, uv, coverage)
 	bool optixValidate = false;
 	double exposure = 1.0;
 	QString sampler;

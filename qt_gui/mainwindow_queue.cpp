@@ -129,6 +129,7 @@ RenderJob MainWindow::captureRenderJob() {
 	job.advancedFlags.denoise = m_denoiseCheck->isEnabled() && m_denoiseCheck->isChecked();
 	job.advancedFlags.denoiseBlend = m_denoiseBlendSpin->isEnabled() ? m_denoiseBlendSpin->value() : 0.0;
 	job.advancedFlags.stats = m_statsCheck->isEnabled() && m_statsCheck->isChecked();
+	job.advancedFlags.aovs = m_aovsCheck && m_aovsCheck->isEnabled() && m_aovsCheck->isChecked();
 	job.advancedFlags.optixValidate = m_optixValidateCheck->isEnabled() && m_optixValidateCheck->isChecked();
 	job.advancedFlags.exposure = m_exposureSpin->isEnabled() ? m_exposureSpin->value() : 1.0;
 	job.advancedFlags.sampler = m_samplerCombo->isEnabled() ? m_samplerCombo->currentData().toString() : QString();

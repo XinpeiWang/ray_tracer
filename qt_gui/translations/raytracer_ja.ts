@@ -4,17 +4,17 @@
 <context>
     <name>DiagnosticsRunner</name>
     <message>
-        <location filename="../mainwindow.cpp" line="736"/>
+        <location filename="../mainwindow.cpp" line="737"/>
         <source>Failed to start ray_tracer.exe: %1</source>
         <translation>ray_tracer.exe を起動できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="746"/>
+        <location filename="../mainwindow.cpp" line="747"/>
         <source>Diagnostics process crashed (exit code %1)</source>
         <translation>診断プロセスがクラッシュしました（終了コード %1）</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="748"/>
+        <location filename="../mainwindow.cpp" line="749"/>
         <source>Diagnostics process exited with code %1:
 %2</source>
         <translation>診断プロセスがコード %1 で終了しました:
@@ -584,60 +584,60 @@
         <translation>言語(&amp;L)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="926"/>
+        <location filename="../mainwindow.cpp" line="927"/>
         <source>Ray Tracer - Path Tracing Renderer</source>
         <translation>Ray Tracer - パストレーシングレンダラー</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1022"/>
+        <location filename="../mainwindow.cpp" line="1023"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1262"/>
+        <location filename="../mainwindow.cpp" line="1263"/>
         <location filename="../mainwindow_slots.cpp" line="342"/>
         <source>START &amp;RENDER</source>
         <translation>レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1272"/>
+        <location filename="../mainwindow.cpp" line="1273"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>現在の設定で選択したシーンをレンダリングします
 (すでにレンダリング中の場合はキューに追加されます)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1283"/>
+        <location filename="../mainwindow.cpp" line="1284"/>
         <source>S&amp;TOP RENDER</source>
         <translation>レンダリング停止(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1290"/>
+        <location filename="../mainwindow.cpp" line="1291"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>実行中のレンダリングを停止し、出力を破棄します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1303"/>
-        <location filename="../mainwindow_queue.cpp" line="347"/>
+        <location filename="../mainwindow.cpp" line="1304"/>
+        <location filename="../mainwindow_queue.cpp" line="348"/>
         <location filename="../mainwindow_slots.cpp" line="120"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>レンダリングを一時停止(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1309"/>
+        <location filename="../mainwindow.cpp" line="1310"/>
         <location filename="../mainwindow_actions.cpp" line="80"/>
         <location filename="../mainwindow_slots.cpp" line="122"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>実行中のレンダリングをその場で一時停止します - 「再開」は全く同じピクセルから続行します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1318"/>
+        <location filename="../mainwindow.cpp" line="1319"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>破棄して次へ進む(&amp;N)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1325"/>
+        <location filename="../mainwindow.cpp" line="1326"/>
         <location filename="../mainwindow_actions.cpp" line="85"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>実行中のレンダリングの出力を破棄し、キュー内の次のジョブをただちに開始します</translation>
@@ -669,7 +669,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="78"/>
-        <location filename="../mainwindow_queue.cpp" line="350"/>
+        <location filename="../mainwindow_queue.cpp" line="351"/>
         <location filename="../mainwindow_slots.cpp" line="124"/>
         <source>&amp;Pause Render</source>
         <translation>レンダリングを一時停止(&amp;P)</translation>
@@ -811,7 +811,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="255"/>
-        <location filename="../mainwindow_queue.cpp" line="412"/>
+        <location filename="../mainwindow_queue.cpp" line="413"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
@@ -872,87 +872,87 @@
         <translation>Ray Tracerについて</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="358"/>
+        <location filename="../mainwindow_queue.cpp" line="359"/>
         <source>Rendering video frames...</source>
         <translation>動画フレームをレンダリング中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="358"/>
+        <location filename="../mainwindow_queue.cpp" line="359"/>
         <source>Rendering...</source>
         <translation>レンダリング中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="359"/>
+        <location filename="../mainwindow_queue.cpp" line="360"/>
         <source> (%1 more queued)</source>
         <translation> (他に%1件がキュー待ち)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="399"/>
+        <location filename="../mainwindow_queue.cpp" line="400"/>
         <source> · SPPM</source>
         <translation> · SPPM</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="400"/>
+        <location filename="../mainwindow_queue.cpp" line="401"/>
         <source> · BDPT</source>
         <translation> · BDPT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="401"/>
+        <location filename="../mainwindow_queue.cpp" line="402"/>
         <source> · MLT</source>
         <translation> · MLT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="402"/>
+        <location filename="../mainwindow_queue.cpp" line="403"/>
         <source> · RandomWalk</source>
         <translation> · RandomWalk</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="403"/>
+        <location filename="../mainwindow_queue.cpp" line="404"/>
         <source> · AO</source>
         <translation> · AO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="404"/>
+        <location filename="../mainwindow_queue.cpp" line="405"/>
         <source> · SimplePath</source>
         <translation> · SimplePath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="405"/>
+        <location filename="../mainwindow_queue.cpp" line="406"/>
         <source> · SimpleVolPath</source>
         <translation> · SimpleVolPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="406"/>
+        <location filename="../mainwindow_queue.cpp" line="407"/>
         <source> · LightPath</source>
         <translation> · LightPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="412"/>
+        <location filename="../mainwindow_queue.cpp" line="413"/>
         <source>GPU-WF</source>
         <translation>GPU-WF</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="412"/>
+        <location filename="../mainwindow_queue.cpp" line="413"/>
         <source>GPU</source>
         <translation>GPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="417"/>
+        <location filename="../mainwindow_queue.cpp" line="418"/>
         <source> · Video (%1f)</source>
         <translation> · 動画 (%1f)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="493"/>
+        <location filename="../mainwindow_queue.cpp" line="494"/>
         <source>Clear Render Queue</source>
         <translation>レンダリングキューをクリア</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="423"/>
+        <location filename="../mainwindow_queue.cpp" line="424"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_queue.cpp" line="494"/>
+        <location filename="../mainwindow_queue.cpp" line="495"/>
         <source>Remove all %n queued render(s)? This can&apos;t be undone.</source>
         <translation>
             <numerusform>キュー内の %n 件のレンダリングをすべて削除しますか？この操作は元に戻せません。</numerusform>
@@ -1196,7 +1196,7 @@
         <translation>レンダリングを開始できません。シーンが選択されていません（検索ボックスをクリアしてみてください）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="432"/>
+        <location filename="../mainwindow_queue.cpp" line="433"/>
         <source>Render Queue (%1 waiting)</source>
         <translation>レンダーキュー (待機中 %1 件)</translation>
     </message>
@@ -3021,17 +3021,17 @@ X/Y/Zフィールドやプリセットで気に入ったアングルを見つけ
         <translation>後処理と診断</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="938"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="957"/>
         <source>Denoiser</source>
         <translation>デノイザー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="941"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="960"/>
         <source>Every render mode&apos;s own denoiser settings, gathered in one place. Image/Video and Live Preview each have independent controls below - only the subsection for the currently selected Output Mode is active.</source>
         <translation>各レンダリングモード固有のデノイザー設定を一箇所にまとめたものです。画像/動画とライブプレビューには、それぞれ下に独立したコントロールがあります——現在選択されている出力モードに対応するサブセクションだけが有効になります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="950"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="969"/>
         <source>Image &amp; Video</source>
         <translation>画像＆動画</translation>
     </message>
@@ -3299,7 +3299,7 @@ SVGFデノイザー: もう一つの、実験的なノイズ低減フィルタ�
         <translation>ファイアフライクランプ(--maxcomponentvalue)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="960"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="979"/>
         <source>OptiX AI denoiser (GPU only)</source>
         <translation>OptiX AIデノイザー(GPUのみ)</translation>
     </message>
@@ -3423,22 +3423,22 @@ rather than per whole sample). Not implemented under Metal
         <translation>トーンマッピング:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="887"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="906"/>
         <source>Print render stats</source>
         <translation>レンダリング統計を出力</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="901"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="920"/>
         <source>OptiX validation mode (slower, debugging only)</source>
         <translation>OptiX検証モード(低速・デバッグ専用)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1039"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1058"/>
         <source>Crop Window</source>
         <translation>クロップウィンドウ</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1051"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1070"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>フレームの一部のみをレンダリング(--crop)</translation>
     </message>
@@ -3728,7 +3728,7 @@ GPU default path tracer only.</source>
         <translation>最終的な明るさ・コントラスト調整の前に適用される、一律の明るさの倍率です(1.0で変化なし)。CPU・GPUいずれの既定のパストレーサーにのみ有効です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="903"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="922"/>
         <source>Turns on extra GPU-side correctness checks, which have a real
 performance cost each time the GPU runs. OptiX GPU only (not
 available under Metal, macOS GPU rendering), meant for
@@ -3736,7 +3736,7 @@ debugging, not routine use.</source>
         <translation>GPU 側の追加の正確性チェックを有効にします。GPU が実行されるたびに実際の性能コストがかかります。OptiX GPU 専用（Metal、つまり macOS の GPU レンダリングでは利用できません）で、通常の使用ではなくデバッグ用です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="909"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="928"/>
         <source>Turns on extra correctness checks inside the GPU rendering process itself, catching certain kinds of bugs that would otherwise silently produce a wrong image or crash unpredictably.
 
 It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
@@ -3745,7 +3745,7 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>GPU レンダリング処理そのものの内部で追加の正確性チェックを有効にし、放っておくと誤った画像を黙って生成したり予測できないクラッシュを起こしたりするような種類のバグを検出します。レンダラー自身の GPU コードを開発する人向けのデバッグ補助であり、通常のレンダリングには役立ちません。性能コストが実際にかかり、正しいレンダリングの見た目は変わりません。OptiX GPU バックエンド（Windows）専用で、Metal には相当する機能がないため、macOS でレンダラーを GPU にしてもグレーアウトのままです。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="970"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="989"/>
         <source>Runs an AI denoiser on the finished render to smooth out
 graininess, using extra information about each pixel&apos;s base
 color and surface direction to do a better job than a plain
@@ -3755,7 +3755,7 @@ each have their own denoiser) - not available under Metal
         <translation>完成したレンダリングに AI デノイザーをかけて粒状感を滑らかにします。単純なぼかしよりうまく処理できるよう、各ピクセルの基本色や表面の向きに関する追加情報を使います。OptiX GPU 専用で、両方の GPU モードに対応します（再帰とウェーブフロントにはそれぞれ専用のデノイザーがあります）。Metal（macOS の GPU レンダリング）では利用できません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1053"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1072"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
 only; works on the CPU and both GPU backends (OptiX and
@@ -3763,7 +3763,7 @@ Metal). Pixels outside the rectangle are left black.</source>
         <translation>フレームの一部の矩形だけにレンダリングを制限します。矩形は画像全体に対する 0〜1 の割合で指定します。デフォルトのパストレーサー専用で、CPU と両方の GPU バックエンド（OptiX と Metal）で動作します。矩形の外側のピクセルは黒のままになります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1239"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1258"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Default path tracer only. On the GPU (both OptiX and
 Metal) renders are already repeatable by default; the seed picks a
@@ -3895,14 +3895,37 @@ ACES rolls off bright highlights gently, the way film does, giving a soft, filmi
 ACESはフィルムのように明るいハイライトを緩やかに丸め、柔らかくフィルムのような見た目にします。Reinhardは、より単純で古くからある明るさの圧縮方法です。Noneは明るすぎる部分をそのまま真っ白に切り詰めるだけなので、きつい印象になることがあります。</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="887"/>
+        <source>Also write render passes (albedo, normal, depth)</source>
+        <translation>レンダーパス (アルベド、法線、深度) も書き出す</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="889"/>
+        <source>Also writes what is at each pixel - the surface colour (albedo),
+its direction (normal), the distance from the camera (depth) and
+its texture coordinates - for compositing. Into the image&apos;s own
+file when the output is .exr (a multilayer EXR), else into a
+separate &lt;name&gt;.aovs.exr next to it. Works with every renderer.</source>
+        <translation>各ピクセルにあるもの、つまり表面の色 (アルベド)、向き (法線)、カメラからの距離 (深度)、テクスチャ座標を、コンポジット用に書き出します。出力が .exr の場合は画像と同じファイル (マルチレイヤー EXR) に、それ以外は隣の &lt;名前&gt;.aovs.exr に書き出します。すべてのレンダラーで使えます。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="896"/>
+        <source>A render pass shows one property of the scene instead of the finished lit picture. These are the ones compositing programs (Blender, Nuke, After Effects) ask for: albedo (the colour of each surface, without lighting), normal (which way each surface faces), depth (how far away it is) and UV (its texture coordinates), plus an alpha that is 0 where the camera sees only the background.
+
+They are computed separately from the render, so they cost little and never change the picture. Choose an .exr output (Settings tab) to get everything in a single file.</source>
+        <translation>レンダーパスは、ライティング済みの完成画像ではなく、シーンの 1 つの性質を表示します。コンポジットソフト (Blender、Nuke、After Effects) が求めるのは、アルベド (照明なしの各面の色)、法線 (各面の向き)、深度 (距離)、UV (テクスチャ座標)、そしてカメラに背景しか見えない場所で 0 になるアルファです。
+
+レンダリングとは別に計算されるため負荷は小さく、画像が変わることはありません。すべてを 1 つのファイルにまとめるには、.exr 出力 (設定タブ) を選んでください。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="908"/>
         <source>Print a small end-of-render statistics summary (rays cast,
 bounces, shadow rays, samples/sec) to the Log tab. Purely
 informational - it never changes the rendered image.</source>
         <translation>レンダリング終了時に、簡単な統計情報の要約(発射した光線数、バウンス数、シャドウレイの数、1秒あたりのサンプル数)を「ログ」タブに表示します。あくまで情報提供のためのもので、レンダリングされる画像には一切影響しません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="894"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="913"/>
         <source>Prints a short summary after the render finishes - how many rays were cast, how many bounces happened, how many shadow rays were traced (rays checking whether a point can see a light), and samples per second.
 
 Purely informational: it never changes the rendered image, it just tells you what the renderer actually did.</source>
@@ -3911,12 +3934,12 @@ Purely informational: it never changes the rendered image, it just tells you wha
 あくまで情報提供のためのもので、レンダリングされる画像を変えることはありません。レンダラーが実際に何を行ったかを伝えるだけです。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="958"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="977"/>
         <source>AI denoiser (Open Image Denoise)</source>
         <translation>AI デノイザー (Open Image Denoise)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="964"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="983"/>
         <source>Runs Intel&apos;s Open Image Denoise on the finished render to smooth
 out graininess - a few samples per pixel then look like many.
 Works with the GPU (Metal) renderer. The first time you tick it
@@ -3925,7 +3948,7 @@ you are asked to download the denoiser (about 50 MB, once).</source>
 GPU (Metal) レンダラーで使えます。初めてオンにしたときに、デノイザーのダウンロード (約 50 MB、1 回のみ) を求められます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="985"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1004"/>
         <source>Blends between the grainy original and the fully denoised
 result (0.0 = fully denoised, 1.0 = original grainy image).
 Raise this toward 1.0 to keep back more fine texture/grain that
@@ -3933,7 +3956,7 @@ full-strength denoising can smooth away.</source>
         <translation>ノイズが残った元の画像と、完全にデノイズされた結果との間をブレンドします(0.0で完全にデノイズ、1.0で元のノイズが残った画像)。1.0に近づけるほど、フル強度のデノイズでは失われてしまう細かいテクスチャやノイズを多く残せます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="999"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1018"/>
         <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
 
 A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
@@ -3946,12 +3969,12 @@ Grayed out? This needs the GPU renderer - switch Renderer to GPU on the Settings
 グレー表示ですか? GPU レンダラーが必要です。設定タブでレンダラーを GPU に切り替えてください。Windows では NVIDIA の OptiX デノイザー (両方の GPU モード)、Mac では Metal レンダラーと Intel の Open Image Denoise です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1042"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1061"/>
         <source>Render only a rectangular slice of the full frame, given as fractions from 0 to 1 of the image&apos;s width and height - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>画像の幅・高さに対する0から1の割合で指定した、フレーム全体の中の矩形領域だけをレンダリングします。画像全体のコストをかけずに、シーンの特定の部分だけを素早く試しレンダリングしたいときに便利です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1059"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1078"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame&apos;s width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total number of samples cleans up much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -3964,63 +3987,63 @@ Off by default (the full frame). If a loaded .pbrt scene file already requests i
 既定ではオフ(フレーム全体)です。読み込んだ.pbrtシーンファイルがすでに独自のクロップ領域を指定している場合、これをオンにすると下の矩形設定で上書きされます。オフのままにしておくと、シーン自身の指定(あれば)がそのまま使われます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1103"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1122"/>
         <source>Left (X0):</source>
         <translation>左(X0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1104"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1123"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>クロップ矩形の左端で、フレーム全体の幅に対する割合として表されます（0 = 左端、1 = 右端）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1106"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1125"/>
         <source>Top (Y0):</source>
         <translation>上(Y0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1107"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1126"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>クロップ矩形の上端で、フレーム全体の高さに対する割合として表されます（0 = 上端、1 = 下端）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1109"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1128"/>
         <source>Right (X1):</source>
         <translation>右(X1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1110"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1129"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>クロップ矩形の右端で、フレーム全体の幅に対する割合として表されます——何かをレンダリングするには「左（X0）」より大きい必要があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1112"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1131"/>
         <source>Bottom (Y1):</source>
         <translation>下(Y1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1113"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1132"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>クロップ矩形の下端で、フレーム全体の高さに対する割合として表されます——何かをレンダリングするには「上（Y0）」より大きい必要があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1156"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1175"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="480"/>
         <source>Depth of Field</source>
         <translation>被写界深度</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1159"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1178"/>
         <source>Override the active scene&apos;s own camera lens diameter/focus distance without editing its scene file - only affects scenes loaded from a scene file; built-in demo-gallery scenes keep their own fixed camera.</source>
         <translation>現在使用しているシーン自身のカメラのレンズ径・ピント距離を、シーンファイルを直接編集することなく上書きします。シーンファイルから読み込んだシーンにのみ影響し、内蔵デモギャラリーのシーンは常に自身の固定カメラを使用します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1168"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1187"/>
         <source>Override depth of field (--aperture/--focus-distance)</source>
         <translation>被写界深度を上書き(--aperture/--focus-distance)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1170"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1189"/>
         <source>Sets the camera&apos;s lens diameter and focus distance, overriding
 whatever the scene&apos;s own Camera directive requests. Only affects
 scenes loaded from a scene file - has no effect on the built-in
@@ -4028,7 +4051,7 @@ demo gallery, which keeps its own fixed camera.</source>
         <translation>シーン自身のCameraディレクティブが指定する内容を上書きして、カメラのレンズ径とピント距離を設定します。シーンファイルから読み込んだシーンにのみ影響し、常に固定カメラを使用する内蔵デモギャラリーには影響しません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1176"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1195"/>
         <source>Thin-lens depth-of-field blur is already fully supported for any scene loaded from a scene file - a &quot;lensradius&quot;/&quot;focaldistance&quot; Camera directive in the file is all it takes. This lets you set or change that without hand-editing the file: Aperture is the lens diameter in world units (0 = pinhole-sharp, no blur), and Focus Distance is how far away the plane of sharp focus sits.
 
 Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loaded from a scene file - the built-in demo gallery&apos;s scenes keep their own author-chosen fixed camera regardless of this setting.</source>
@@ -4037,44 +4060,44 @@ Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loa
 既定ではオフ(シーン自身のカメラをそのまま使用)です。シーンファイルから読み込んだシーンにのみ影響し、内蔵デモギャラリーのシーンは、この設定に関わらず作者が選んだ固定カメラをそのまま使用します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1213"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="664"/>
         <source>Aperture:</source>
         <translation>絞り:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1195"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1214"/>
         <source>Lens diameter in world units - larger values blur more. 0 means pinhole-sharp (no blur).</source>
         <translation>ワールド単位でのレンズ径です。値が大きいほどぼけが強くなります。0にするとピンホールのようにくっきりし、ぼけがなくなります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1206"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1225"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="681"/>
         <source>Focus Distance:</source>
         <translation>ピント距離:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1207"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
         <source>Distance from the camera to the plane of sharp focus, in world units.</source>
         <translation>カメラからピントが合う面までの距離を、ワールド単位で指定します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1245"/>
         <source>Reproducibility</source>
         <translation>再現性</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1229"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1248"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>乱数シードを固定することで、後の実行でもレンダリングをピクセル単位で正確に再現できるようにします——ランダムなノイズの違いに惑わされずに設定変更を比較したい場合に便利です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1237"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1256"/>
         <source>Reproducible render (--seed)</source>
         <translation>再現可能なレンダリング(--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1245"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1264"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -4083,12 +4106,12 @@ Off by default (genuinely random every render).</source>
 既定では無効です(毎回本当にランダムなレンダリングになります)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1265"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1284"/>
         <source>Seed:</source>
         <translation>シード:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1266"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1285"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>レンダリングの乱数生成器の種として使用される特定の整数です。上の「再現可能なレンダリング」がチェックされている場合にのみ有効です——同じシーン/設定で同じシードを使えば、常にピクセル単位で同一のノイズが生成されます。</translation>
     </message>
@@ -4209,7 +4232,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>進捗</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="432"/>
+        <location filename="../mainwindow_queue.cpp" line="433"/>
         <location filename="../mainwindow_tabs_output.cpp" line="100"/>
         <source>Render Queue</source>
         <translation>レンダリングキュー</translation>
@@ -4728,38 +4751,38 @@ CPU専用です。実際の大きさや形を持つ光源にのみ対応して�
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;使用した設定&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="332"/>
+        <location filename="../recent_renders.cpp" line="334"/>
         <source>just now</source>
         <translation>たった今</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="333"/>
+        <location filename="../recent_renders.cpp" line="335"/>
         <source>%1 min ago</source>
         <translation>%1分前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="334"/>
+        <location filename="../recent_renders.cpp" line="336"/>
         <source>%1 hr ago</source>
         <translation>%1時間前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="335"/>
+        <location filename="../recent_renders.cpp" line="337"/>
         <source>%1 days ago</source>
         <translation>%1日前</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="342"/>
+        <location filename="../recent_renders.cpp" line="344"/>
         <source>%1%2 — %3</source>
         <translation>%1%2 — %3</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="344"/>
-        <location filename="../recent_renders.cpp" line="349"/>
+        <location filename="../recent_renders.cpp" line="346"/>
+        <location filename="../recent_renders.cpp" line="351"/>
         <source> · Video</source>
         <translation> · 動画</translation>
     </message>
     <message>
-        <location filename="../recent_renders.cpp" line="352"/>
+        <location filename="../recent_renders.cpp" line="354"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7 — %8</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7 — %8</translation>
     </message>
@@ -5647,27 +5670,27 @@ If the program keeps stopping at start, choose Start fresh: it resets the window
 <context>
     <name>RenderController</name>
     <message>
-        <location filename="../mainwindow.cpp" line="553"/>
+        <location filename="../mainwindow.cpp" line="554"/>
         <source>Failed to start renderer: %1</source>
         <translation>レンダラーを起動できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="634"/>
+        <location filename="../mainwindow.cpp" line="635"/>
         <source>Render completed successfully!</source>
         <translation>レンダリングが正常に完了しました！</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="671"/>
+        <location filename="../mainwindow.cpp" line="672"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Troubleshooting:&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;トラブルシューティング:&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="673"/>
+        <location filename="../mainwindow.cpp" line="674"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;small&gt;Error Code: %1 | Category: %2&lt;/small&gt;</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;small&gt;エラーコード: %1 | カテゴリ: %2&lt;/small&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="675"/>
+        <location filename="../mainwindow.cpp" line="676"/>
         <source>
 
 Output:
