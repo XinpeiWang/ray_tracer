@@ -63,6 +63,7 @@ signals:
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
+	void showEvent(QShowEvent *e) override;
 	bool eventFilter(QObject *watched, QEvent *event) override;
 
 private slots:
@@ -145,6 +146,8 @@ private:
 	QPushButton *m_finalButton = nullptr;
 	QPushButton *m_deleteButton = nullptr;
 	QPushButton *m_duplicateButton = nullptr;
+	QPushButton *m_addButton = nullptr;
+	QWidget *m_leftPanel = nullptr;  // the list column; widened to fit its buttons when shown
 	QPushButton *m_undoButton = nullptr;
 	QPushButton *m_redoButton = nullptr;
 
