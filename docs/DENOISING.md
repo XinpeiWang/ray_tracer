@@ -26,7 +26,7 @@ What it does not do yet: the denoiser sees only the colour image, so very fine t
 
 In the GUI, choose the CPU renderer and tick **AI denoiser**: the first time, the app asks to download Open Image Denoise (about 57 MB, from its own release page on GitHub, checked against a pinned checksum) and keeps it in your user folder (`<user assets>/denoiser/bin`). On the command line the loader looks in `$RT_OIDN_DIR` (the unpacked release, or its `bin/` or `lib/`) and then there. On Windows with a GPU the OptiX denoiser is still what `--gpu --denoise` uses.
 
-`--denoise-guides` (CPU only) also gives the denoiser each pixel's first-hit surface colour and normal (seen through mirrors and glass). Measured against a 1024-sample reference at 8 samples per pixel: it cuts the error of textured diffuse scenes (checkers 1.8x, marble 1.2x) and raises it on glossy ones (rough metal 2x worse), because the denoiser then smooths reflections it takes for noise. So it is off by default; try it on a scene of matte, textured surfaces.
+On the CPU the denoiser is also given each pixel's first-hit surface colour and normal, but only when every visible surface is matte (a Lambertian material or a light, no mirror or glass, not a panorama camera): measured against a 1024-sample reference at 8 samples per pixel, that cuts the error of textured diffuse scenes (checkers 1.8x, marble 1.4x), while with glossy surfaces around the same extra input smooths reflections it takes for noise (rough metal 2x worse at first, about 10% worse after the fixes below). `--denoise-guides` forces it on for any scene. (The guides treat sky and background as flat bright surfaces: that alone took the rough-metal error from 2x worse to about 10% worse.)
 
 ## For developers
 

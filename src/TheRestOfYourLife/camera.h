@@ -259,7 +259,7 @@ class camera {
     // or written. Colour only. If the library is missing the render says so and goes on undenoised. denoise_keep is the share of the original image kept
     // (RenderOptions::denoise_blend: 0 = fully denoised).
     bool   denoise = false;
-    bool   denoise_guides = false;   // also pass first-hit surface colour and normal to the denoiser (see render_denoise_guides())
+    bool   denoise_guides = false;   // always pass first-hit surface colour and normal to the denoiser; by default only when every visible surface is matte
     float  denoise_keep = 0.0f;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
@@ -524,7 +524,10 @@ class camera {
     // - omitting it silently under-exposes every RealisticCamera render.
     // --denoise's guides: per pixel, the surface colour and the unit normal at the first hit (a few jittered camera rays, hits only), RGB triples, row-major,
     // as Open Image Denoise's "albedo" and "normal" inputs. A pixel nothing is hit at stays 0. Cheap: no light transport.
-    void render_denoise_guides(const hittable& world, std::vector<float>& albedo, std::vector<float>& normal) const;
+    // Returns whether every surface it saw was matte (a Lambertian material or a light, with no mirror or glass in between): the guides only help the denoiser
+    // then (measured against a high-sample reference: checkers and marble better, glossy metal and glass worse), so render() uses them only for such scenes
+    // unless denoise_guides forces them.
+    bool render_denoise_guides(const hittable& world, std::vector<float>& albedo, std::vector<float>& normal) const;
 
     ray get_ray(int i, int j, int /*s_i*/, int /*s_j*/, const vec3& offset,
                 double* out_camera_weight = nullptr) const;
