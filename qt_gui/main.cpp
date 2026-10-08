@@ -8,6 +8,7 @@
 #include <QCoreApplication>
 #include <QSettings>
 #include <QStandardPaths>
+#include <QTemporaryDir>
 #include "settings_keys.h"
 #include "app_log.h"
 #include "ui_logger.h"
@@ -58,6 +59,11 @@ int main(int argc, char *argv[]) {
 	// the application (see pbrt_asset_check.h). Per-user, so it works when the app itself is read-only (a mounted disk
 	// image) or in a protected folder. Exported through the environment so the ray_tracer subprocess and the renderer
 	// libraries loaded into this process agree on it; an explicit value (tests, power users) wins.
+	// A self-test (RT_GUI_SELFTEST) never touches the real per-user folder: it saves scenes into the scene list and deletes them again, so it gets a
+	// throwaway one, removed when the program ends (scripts/gui_selftest.py sets its own).
+	QTemporaryDir selfTestAssets;
+	if (!qEnvironmentVariableIsSet("RAY_TRACER_USER_ASSETS") && qEnvironmentVariableIsSet("RT_GUI_SELFTEST") && selfTestAssets.isValid())
+		qputenv("RAY_TRACER_USER_ASSETS", selfTestAssets.path().toUtf8());
 	if (!qEnvironmentVariableIsSet("RAY_TRACER_USER_ASSETS"))
 		qputenv("RAY_TRACER_USER_ASSETS", (QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/user_assets")).toUtf8());
 

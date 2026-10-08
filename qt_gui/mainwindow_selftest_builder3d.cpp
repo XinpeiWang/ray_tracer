@@ -508,11 +508,23 @@ void MainWindow::selfTestDeleteScenes(SceneBuilderWidget *sb, const std::functio
 	check(m_sceneCombo->currentData().toString() == idB, "the selection moved to the neighbouring scene");
 	check(m_sceneCombo->findData(idA) < 0, "and the scene picker no longer offers the deleted one");
 	check(!userSceneFileForId(idA).isEmpty() == false, "its file is no longer found");
-	QStringList mine = myScenesIds();
-	check(deleteUserScenes(mine, QString()) == mine.size() && myScenesIds().isEmpty(), "Delete All My Scenes removes every scene the user made");
+	// "My Scenes" also lists scenes found elsewhere (e.g. .pbrt files a developer keeps in the pbrt_scenes folder); those are not the Scene Builder's to delete,
+	// so Delete All must remove exactly the ones in the scene-list folder and leave the rest alone.
+	const QStringList mine = myScenesIds();
+	QStringList deletable;
+	for (const QString &id : mine)
+		if (!userSceneFileForId(id).isEmpty()) deletable << id;
+	const int removed = deleteUserScenes(mine, QString());
+	const QStringList left = myScenesIds();
+	check(removed == deletable.size() && left.size() == mine.size() - deletable.size(), "Delete All My Scenes removes every scene the Scene Builder saved, and only those");
 	check(!QFile::exists(fileB), "including the file");
 	bool tabStillThere = false;
 	for (int i = 0; m_sceneCategoryTabs && i < m_sceneCategoryTabs->count(); ++i) tabStillThere = tabStillThere || m_sceneCategoryTabs->tabData(i).toString() == QString("My Scenes");
-	check(!tabStillThere, "the My Scenes tab is gone when none are left");
-	check(!m_sceneCombo->currentData().toString().isEmpty() && m_myScenesRow->isHidden(), "a built-in scene is selected and the delete buttons are hidden");
+	if (left.isEmpty()) {
+		check(!tabStillThere, "the My Scenes tab is gone when none are left");
+		check(!m_sceneCombo->currentData().toString().isEmpty() && m_myScenesRow->isHidden(), "a built-in scene is selected and the delete buttons are hidden");
+	} else {
+		check(tabStillThere, "the My Scenes tab stays while scenes that are not the Scene Builder's are listed");
+		check(!m_sceneCombo->currentData().toString().isEmpty(), "and a scene is selected");
+	}
 }
