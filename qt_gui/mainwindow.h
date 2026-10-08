@@ -215,6 +215,7 @@ public:
 	// application with a status code. Modes: "ui" (report the Output Mode items), "livepreview" (start Live Preview, let it
 	// render, report frames).
 	void runSelfTest(const QString &mode, const QString &outPrefix);
+	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
 	void runInstallPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 	void runPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 
