@@ -5875,13 +5875,13 @@ Output:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="485"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="536"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>等待中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="503"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="554"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 秒</translation>
@@ -6081,6 +6081,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="322"/>
+        <location filename="../scene_builder_inspector.cpp" line="520"/>
         <source>Preset</source>
         <translation>预设</translation>
     </message>
@@ -6103,7 +6104,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     <message>
         <location filename="../scene_builder_inspector.cpp" line="356"/>
         <location filename="../scene_builder_inspector.cpp" line="364"/>
-        <location filename="../scene_builder_inspector.cpp" line="498"/>
+        <location filename="../scene_builder_inspector.cpp" line="536"/>
         <source>Colour</source>
         <translation>颜色</translation>
     </message>
@@ -6257,7 +6258,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="446"/>
-        <location filename="../scene_builder_widget.cpp" line="565"/>
+        <location filename="../scene_builder_widget.cpp" line="592"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>网格 (*.ply *.obj)</translation>
     </message>
@@ -6285,7 +6286,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="457"/>
-        <location filename="../scene_builder_inspector.cpp" line="499"/>
+        <location filename="../scene_builder_inspector.cpp" line="537"/>
         <source>Strength</source>
         <translation>强度</translation>
     </message>
@@ -6325,22 +6326,82 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>朝向</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="493"/>
+        <location filename="../scene_builder_inspector.cpp" line="494"/>
+        <source>Sun &amp;&amp; sky (a clear sky for a time of day)</source>
+        <translation>太阳与天空（随时间变化的晴朗天空）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="510"/>
+        <source>Time of day...</source>
+        <translation>时间...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="511"/>
+        <source>Sunrise</source>
+        <translation>日出</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="511"/>
+        <source>Morning</source>
+        <translation>上午</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="511"/>
+        <source>Noon</source>
+        <translation>正午</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="512"/>
+        <source>Afternoon</source>
+        <translation>下午</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="512"/>
+        <source>Sunset</source>
+        <translation>日落</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="521"/>
+        <source>Sun height</source>
+        <translation>太阳高度</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="522"/>
+        <source>Sun direction</source>
+        <translation>太阳方向</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="523"/>
+        <source>Haze</source>
+        <translation>雾霾</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="524"/>
+        <source>Ground brightness</source>
+        <translation>地面亮度</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="525"/>
+        <source>The sky picture and the Sun light are made from these settings; change the sun here rather than moving the Sun light. Direction 0 is towards +X, 90 away from the starting camera, 180 towards -X, 270 behind it. Brightness 1 is a daylight scene.</source>
+        <translation>天空图像和太阳光由这些设置生成；请在这里调整太阳，而不是移动太阳光。方向 0 朝向 +X，90 远离初始相机，180 朝向 -X，270 在相机后方。亮度 1 为白天场景。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="530"/>
         <source>Sky image</source>
         <translation>天空图像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="493"/>
+        <location filename="../scene_builder_inspector.cpp" line="530"/>
         <source>Images (*.exr *.hdr *.png *.jpg *.jpeg)</source>
         <translation>图像 (*.exr *.hdr *.png *.jpg *.jpeg)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="494"/>
+        <location filename="../scene_builder_inspector.cpp" line="531"/>
         <source>Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama.</source>
         <translation>图像留空则使用纯色天空。图像应为等距柱状（经纬度）全景图。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="499"/>
+        <location filename="../scene_builder_inspector.cpp" line="537"/>
         <source>Brightness</source>
         <translation>亮度</translation>
     </message>
@@ -6510,7 +6571,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>从任意角度查看场景，并在 3D 中移动物体</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="286"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="337"/>
         <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>吸附到网格</translation>
@@ -6610,14 +6671,14 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     <message>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
-        <location filename="../scene_builder_files.cpp" line="246"/>
+        <location filename="../scene_builder_files.cpp" line="255"/>
         <source>Cannot save</source>
         <translation>无法保存</translation>
     </message>
     <message>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
-        <location filename="../scene_builder_files.cpp" line="213"/>
+        <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_render.cpp" line="112"/>
         <source>Could not write %1.</source>
         <translation>无法写入 %1。</translation>
@@ -6634,32 +6695,32 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>保存场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="226"/>
+        <location filename="../scene_builder_files.cpp" line="235"/>
         <source>No scenes folder</source>
         <translation>没有场景文件夹</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="233"/>
+        <location filename="../scene_builder_files.cpp" line="242"/>
         <source>Add to the scene list</source>
         <translation>添加到场景列表</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="234"/>
+        <location filename="../scene_builder_files.cpp" line="243"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>此场景已在列表中，名称为“%1”。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="235"/>
+        <location filename="../scene_builder_files.cpp" line="244"/>
         <source>Add as a new scene</source>
         <translation>添加为新场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="236"/>
+        <location filename="../scene_builder_files.cpp" line="245"/>
         <source>Update the existing one</source>
         <translation>更新现有场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="251"/>
+        <location filename="../scene_builder_files.cpp" line="260"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -6668,17 +6729,17 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 它现在已在场景列表中（“设置”标签页，我的场景）。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="640"/>
+        <location filename="../scene_builder_widget.cpp" line="667"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 个物体，%4 个光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="565"/>
+        <location filename="../scene_builder_widget.cpp" line="592"/>
         <source>Choose a mesh</source>
         <translation>选择网格</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="196"/>
+        <location filename="../scene_builder_files.cpp" line="205"/>
         <source>The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.</source>
         <translation>在程序旁边找不到场景文件夹 (pbrt_scenes)。可以用“另存为”把文件放到任意位置，并将环境变量 RAY_TRACER_PBRT_DIR 设为该文件夹，程序就会把它列出来。</translation>
     </message>
@@ -6703,37 +6764,37 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>草稿：宽 480 像素，16 个采样。良好：宽 720，64 个采样。最佳：宽 960，256 个采样。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="250"/>
+        <location filename="../scene_builder_files.cpp" line="259"/>
         <source>Added to the scene list</source>
         <translation>已添加到场景列表</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="438"/>
+        <location filename="../scene_builder_widget.cpp" line="461"/>
         <source>Camera and image</source>
         <translation>相机与画面</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="459"/>
+        <location filename="../scene_builder_widget.cpp" line="482"/>
         <source>, light</source>
         <translation>，光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="634"/>
+        <location filename="../scene_builder_widget.cpp" line="661"/>
         <source>not saved yet</source>
         <translation>尚未保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="668"/>
+        <location filename="../scene_builder_widget.cpp" line="695"/>
         <source>No problems found.</source>
         <translation>未发现问题。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="674"/>
+        <location filename="../scene_builder_widget.cpp" line="701"/>
         <source>Fix this:</source>
         <translation>请修复：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="674"/>
+        <location filename="../scene_builder_widget.cpp" line="701"/>
         <source>Note:</source>
         <translation>注意：</translation>
     </message>

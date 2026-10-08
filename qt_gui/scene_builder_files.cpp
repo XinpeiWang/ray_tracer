@@ -188,6 +188,15 @@ QString SceneBuilderWidget::sceneListFolder() {
 	return QString();
 }
 
+// The generated sky pictures (Sun & sky) live beside the per-user scenes: <data>/skies, found from the same per-user root.
+QString SceneBuilderWidget::skyImageFolder() {
+	const QString scenes = QString::fromStdString(pbrt_asset_check::userSceneDir());
+	const QString folder = !scenes.isEmpty() ? QFileInfo(scenes).dir().filePath(QStringLiteral("skies"))
+	                                         : QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + QStringLiteral("/user_assets/skies");
+	QDir().mkpath(folder);
+	return folder;
+}
+
 QString SceneBuilderWidget::addToSceneList(QString *error, bool update) {
 	const QString folder = sceneListFolder();
 	flushEditLog();

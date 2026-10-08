@@ -190,6 +190,7 @@
     <ClCompile Include="unit\pbrt_instance_tests.cpp" />
     <ClCompile Include="unit\pbrt_load_tests.cpp" />
     <ClCompile Include="unit\scene_builder_tests.cpp" />
+    <ClCompile Include="unit\scene_sky_tests.cpp" />
     <ClCompile Include="unit\aov_pass_tests.cpp" />
     <ClCompile Include="unit\photo_helper_report_tests.cpp" />
     <ClCompile Include="unit\scene_view_math_tests.cpp" />
