@@ -24,6 +24,7 @@
 #include <QMenu>
 #include <QMessageBox>
 #include <QMouseEvent>
+#include <QImageReader>
 #include <QPainter>
 #include <QPixmap>
 #include <QProcess>
@@ -211,23 +212,41 @@ void SceneBuilderWidget::addText(QFormLayout *f, const QString &label, const std
 	f->addRow(label, e);
 }
 
-void SceneBuilderWidget::addFile(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, const QString &filter) {
+void SceneBuilderWidget::addFile(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, const QString &filter, bool clearable,
+                                 const std::function<void(const QString &)> &alsoApply) {
 	auto *row = new QWidget;
 	auto *h = new QHBoxLayout(row);
 	h->setContentsMargins(0, 0, 0, 0);
 	auto *e = new QLineEdit;
 	e->setReadOnly(true);
+	e->setMinimumWidth(40);  // the buttons keep their size; the path gives way
 	if (std::string *v = ref()) e->setText(QString::fromStdString(*v));
 	auto *browse = new QPushButton(tr("Browse..."));
+	browse->setStyleSheet("padding: 6px 10px;");  // compact: the row shares a narrow panel with a label and a second button
 	browse->setAutoDefault(false);
-	connect(browse, &QPushButton::clicked, this, [this, ref, e, filter]() {
+	connect(browse, &QPushButton::clicked, this, [this, ref, e, filter, alsoApply]() {
 		const QString p = QFileDialog::getOpenFileName(this, tr("Choose a file"), e->text(), filter);
 		if (p.isEmpty()) return;
-		edit(QString(), [&]() { if (std::string *v = ref()) *v = p.toStdString(); });
+		edit(QString(), [&]() {
+			if (std::string *v = ref()) *v = p.toStdString();
+			if (alsoApply) alsoApply(p);
+		});
 		e->setText(p);
+		if (alsoApply) QTimer::singleShot(0, this, [this]() { rebuildInspector(); });  // what the choice changed is shown in other rows
 	});
 	h->addWidget(e, 1);
 	h->addWidget(browse);
+	if (clearable) {
+		auto *clear = new QPushButton(tr("Clear"));
+		clear->setStyleSheet("padding: 6px 10px;");
+		clear->setAutoDefault(false);
+		clear->setEnabled(!e->text().isEmpty());
+		connect(clear, &QPushButton::clicked, this, [this, ref]() {
+			edit(QString(), [&]() { if (std::string *v = ref()) v->clear(); });
+			QTimer::singleShot(0, this, [this]() { rebuildInspector(); });
+		});
+		h->addWidget(clear);
+	}
 	f->addRow(label, row);
 }
 
@@ -281,8 +300,19 @@ void SceneBuilderWidget::inspectMaterial(QFormLayout *f, int i) {
 	f->addRow(tr("Type"), kind);
 	auto mat = [this, i]() -> scene_doc::Material * { return i < static_cast<int>(m_doc.objects.size()) ? &m_doc.objects[i].material : nullptr; };
 	const scene_doc::Material &m = m_doc.objects[i].material;
+	// A picture can colour a diffuse or glossy-paint surface. Choosing one for a quad also gives the quad the picture's shape.
+	const auto addPicture = [&]() {
+		addFile(f, tr("Picture"), [mat]() { return mat() ? &mat()->imageFile : nullptr; }, tr("Images (*.png *.jpg *.jpeg *.bmp *.tga *.exr *.hdr)"), true,
+		        [this, i](const QString &path) {
+			        if (i >= static_cast<int>(m_doc.objects.size()) || m_doc.objects[i].shape != ShapeKind::Quad) return;
+			        const QSize px = QImageReader(path).size();
+			        if (px.isValid() && px.width() > 0) m_doc.objects[i].size.z = m_doc.objects[i].size.x * px.height() / px.width();
+		        });
+	};
 	switch (m.kind) {
 		case MaterialKind::Diffuse:
+			addPicture();
+			if (!m.imageFile.empty()) break;  // the picture is the colour
 			addColor(f, m.checker ? tr("Colour A") : tr("Colour"), [mat]() { return mat() ? &mat()->color : nullptr; });
 			addBool(f, tr("Checker pattern"), [mat]() { return mat() ? &mat()->checker : nullptr; }, true);
 			if (m.checker) {
@@ -299,7 +329,8 @@ void SceneBuilderWidget::inspectMaterial(QFormLayout *f, int i) {
 			addNum(f, tr("Roughness"), [mat]() { return mat() ? &mat()->roughness : nullptr; }, 0, 1, 0.02, 2);
 			break;
 		case MaterialKind::CoatedDiffuse:
-			addColor(f, tr("Paint colour"), [mat]() { return mat() ? &mat()->color : nullptr; });
+			addPicture();
+			if (m.imageFile.empty()) addColor(f, tr("Paint colour"), [mat]() { return mat() ? &mat()->color : nullptr; });
 			addNum(f, tr("Coat index of refraction"), [mat]() { return mat() ? &mat()->ior : nullptr; }, 1.0, 3.0, 0.05, 2);
 			addNum(f, tr("Coat roughness"), [mat]() { return mat() ? &mat()->roughness : nullptr; }, 0, 1, 0.02, 2);
 			break;
@@ -346,7 +377,7 @@ void SceneBuilderWidget::inspectObject(QFormLayout *f, int i) {
 			addNum(f, tr("Depth (Z)"), [obj]() { return obj() ? &obj()->size.z : nullptr; }, 0.001, 10000, 0.5);
 			break;
 		case ShapeKind::Mesh:
-			addFile(f, tr("Mesh file"), [obj]() { return obj() ? &obj()->meshFile : nullptr; }, tr("PLY meshes (*.ply)"));
+			addFile(f, tr("Mesh file"), [obj]() { return obj() ? &obj()->meshFile : nullptr; }, tr("Meshes (*.ply *.obj)"));
 			addNum(f, tr("Scale"), [obj]() { return obj() ? &obj()->meshScale : nullptr; }, 0.0001, 10000, 0.1, 4);
 			break;
 	}

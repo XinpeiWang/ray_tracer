@@ -9,6 +9,7 @@ A guide to this folder and the other documents. The repository's front page is t
 | [INSTALL.md](../INSTALL.md) | Using the portable release package |
 | [SCENE_SELECTION.md](SCENE_SELECTION.md) | Scene names and ids, categories, what a scene's info means, header tags, adding a scene |
 | [SCENE_BUILDER.md](SCENE_BUILDER.md) | The GUI's Scene Builder: build a scene and save a `.pbrt` |
+| [PHOTO_TO_SCENE.md](PHOTO_TO_SCENE.md) | Pictures as textures, one photo to a 3D object, and bringing in a photo scan |
 | [VIDEO_GENERATION.md](VIDEO_GENERATION.md) | Camera paths, frames, assembling an MP4 |
 | [MAC_LIVE_PREVIEW.md](MAC_LIVE_PREVIEW.md) | The macOS interactive Live Preview |
 | [ERROR_CODE_REFERENCE.md](ERROR_CODE_REFERENCE.md) | Every error code, what it means, what to try |

@@ -213,6 +213,7 @@ public:
 	// application with a status code. Modes: "ui" (report the Output Mode items), "livepreview" (start Live Preview, let it
 	// render, report frames).
 	void runSelfTest(const QString &mode, const QString &outPrefix);
+	void runPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 
 	// Called from main.cpp, before any MainWindow exists, to decide which
 	// QTranslator (if any) to install - see language_switch.cpp's own

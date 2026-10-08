@@ -9,6 +9,8 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 ### New
 
 * **Scene Builder** (GUI tab): build a scene from shapes, materials and lights, drag things around in a layout view, preview it, and save an ordinary `.pbrt` file. [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
+* **Pictures in the Scene Builder**: a diffuse or glossy-paint material can take an image instead of a colour, on any shape (on a quad the picture is upright and the quad takes its shape). Meshes can be `.obj` as well as `.ply`.
+* **Object from a photo** (Scene Builder, Add menu): one photo becomes a textured 3D mesh, made on your own computer by the open TripoSR model (nothing is uploaded). It is an optional helper set up once with `scripts/setup_photo_to_mesh.ps1` (about 5 GB; an NVIDIA card makes a photo take about half a minute). The shape is a guess, the back is invented. [docs/PHOTO_TO_SCENE.md](docs/PHOTO_TO_SCENE.md) also covers bringing in a many-photo scan from COLMAP or Meshroom.
 * The command line takes a `.pbrt` path where a scene id goes (`ray_tracer.exe --cpu 800 64 8 my-scene.pbrt`) and `--height N` for a non-square picture.
 
 ### Scenes
