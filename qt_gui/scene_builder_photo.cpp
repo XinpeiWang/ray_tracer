@@ -33,10 +33,15 @@ void SceneBuilderWidget::addObjectFromPhoto() {
 	if (!setup.ready) {
 		QMessageBox box(QMessageBox::Information, tr("Photo helper not installed"),
 		                tr("Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an "
-		                   "NVIDIA graphics card is strongly recommended).\n\n%1\n\nTo set it up, run this in PowerShell from the program's folder:\n\n"
-		                   "powershell -ExecutionPolicy Bypass -File scripts\\setup_photo_to_mesh.ps1\n\nThen choose this again. The guide (docs/PHOTO_TO_SCENE.md) "
-		                   "explains what it does and where its limits are.")
-		                    .arg(setup.why),
+		                   "graphics card - NVIDIA on Windows, Apple silicon on a Mac - is strongly recommended).\n\n%1\n\n"
+		                   "To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helper. Or run this once yourself:\n\n%2\n\n"
+		                   "Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.")
+		                    .arg(setup.why,
+#ifdef Q_OS_WIN
+		                         QStringLiteral("powershell -ExecutionPolicy Bypass -File scripts\\setup_photo_to_mesh.ps1")),
+#else
+		                         QStringLiteral("bash scripts/setup_photo_to_mesh.sh")),
+#endif
 		                QMessageBox::Ok, this);
 		box.exec();
 		return;

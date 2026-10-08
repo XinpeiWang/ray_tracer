@@ -56,8 +56,7 @@ This needs Python 3.10, 3.11 or 3.12 and git on your PATH. It makes a private Py
 finds an NVIDIA card, otherwise the processor-only build), installs TripoSR at the version this was tested with, and downloads the
 model weights (about 1.7 GB, from Hugging Face) and the background-removal model (U2-Net, Apache-2.0, about 176 MB). Then use the menu as above.
 
-An NVIDIA card with about 6 GB of memory makes a photo take seconds; on the processor it takes several minutes. A Mac has no
-CUDA, and the helper has not been tried there.
+An NVIDIA card with about 6 GB of memory makes a photo take seconds; on the processor it takes several minutes. On a Mac see the next section.
 
 **From the program (Windows).** Open the **Diagnostics** tab, press **Run Diagnostics**, and if its *Photo helper* section
 lists something missing, press **Install Photo Helper...**. It says what will be downloaded and from where, shows the exact script it will run, asks you to confirm, runs the same
@@ -73,6 +72,20 @@ shows up there instead of as a failed import halfway through a photo. The same l
 
 If you keep the environment somewhere else, set `RAY_TRACER_PHOTO3D_PYTHON` to its `python.exe` and pass `-Folder` to the
 setup script. Keep the folder name short: PyTorch's folders are deep and Windows stops at 260 characters.
+
+### On a Mac
+
+The same helper works on macOS; the installer is a bash script that ships inside the app (`Contents/MacOS/scripts/setup_photo_to_mesh.sh`). The easiest way is the **Diagnostics** tab: *Run Diagnostics*, then *Install Photo Helper* (it asks first, shows the output while it runs, and Cancel stops it and everything it started). Or run it yourself:
+
+```bash
+bash "/Applications/RayTracerGUI.app/Contents/MacOS/scripts/setup_photo_to_mesh.sh"
+```
+
+It needs **Python 3.10, 3.11 or 3.12** and **git**, which a Mac does not have by default: `brew install python.12`, or the installer from python.org, and `xcode-select --install` for git. The environment goes to `~/Library/Application Support/RayTracerPhoto` (set `RAY_TRACER_PHOTO3D_PYTHON` to its `venv/bin/python` if you keep it elsewhere).
+
+- **Apple silicon** uses the Apple GPU through PyTorch's MPS backend; if MPS cannot run something the helper says so and finishes on the processor (several minutes). `PYTORCH_ENABLE_MPS_FALLBACK=1` is set for it.
+- **Intel Macs** get PyTorch 2.2.2, the last version built for them, and always run on the processor (several minutes per photo).
+- The results folder is `~/Library/Application Support/Ray Tracer Project/Ray Tracer/photo_meshes`.
 
 ### Where things go
 
@@ -146,5 +159,5 @@ beautiful new views of a scene but are not geometry and materials a path tracer 
   (mesh orientation, the colour baker, the `--check` report; they skip without numpy and scipy).
 - The Qt-free text handling (`src/shared/photo_helper_report.h`: progress lines, the missing-facts parser, the line splitter that copes with
   `\n`, `\r\n`, PowerShell's `\r\r\n` and pip's lone `\r`) is in `tests/unit/photo_helper_report_tests.cpp`.
-- The GUI self-test modes `photo` (needs the helper installed) and `installphoto` (stand-in installer scripts) drive the whole flow without dialogs; see
+- The GUI self-test modes `photo` (needs the helper installed) and `installphoto` (stand-in installer scripts, incl. Cancel; `python3 scripts/gui_selftest.py APP --modes installphoto`) drive the whole flow without dialogs; see
   `qt_gui/mainwindow_selftest_photo.cpp`.

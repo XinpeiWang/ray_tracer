@@ -8,6 +8,7 @@
 #include <QApplication>
 #include <QDialog>
 #include <QDir>
+#include <QFontDatabase>
 #include <QLabel>
 #include <QMessageBox>
 #include <QPlainTextEdit>
@@ -19,17 +20,12 @@ void MainWindow::updateInstallPhotoButton() {
 	if (!m_installPhotoHelperButton) return;
 	const bool installing = m_photoInstaller && m_photoInstaller->isRunning();
 	const QStringList missing = diagnosticsBusy() ? QStringList() : photo_import::missingFacts(m_lastDiagReport);
-#ifdef Q_OS_WIN
 	const bool canInstall = !missing.isEmpty() && !diagnosticsBusy() && !installing;
 	if (installing) m_installPhotoHelperButton->setToolTip(tr("The photo helper is being installed."));
 	else if (diagnosticsBusy()) m_installPhotoHelperButton->setToolTip(tr("Wait for the diagnostics to finish."));
 	else if (!m_lastDiagReport.contains("=== Photo helper")) m_installPhotoHelperButton->setToolTip(tr("Run Diagnostics first: it shows what the photo helper is missing."));
 	else if (missing.isEmpty()) m_installPhotoHelperButton->setToolTip(tr("Nothing is missing: the photo helper is installed."));
 	else m_installPhotoHelperButton->setToolTip(tr("Download and install what the photo helper is missing:\n%1").arg(missing.join('\n')));
-#else
-	const bool canInstall = false;
-	m_installPhotoHelperButton->setToolTip(tr("The installer is for Windows. On other systems see docs/PHOTO_TO_SCENE.md."));
-#endif
 	m_installPhotoHelperButton->setEnabled(canInstall);
 }
 
@@ -43,18 +39,27 @@ void MainWindow::startPhotoHelperInstall(bool confirm, const std::function<void(
 	if (confirm) {
 		const QString script = photo_import::setupScript();
 		if (script.isEmpty()) {
-			QMessageBox::warning(this, tr("Install the photo helper"), tr("The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program."));
+			QMessageBox::warning(this, tr("Install the photo helper"), tr("The installer script (scripts/setup_photo_to_mesh) was not found next to the program."));
 			return;
 		}
 		const QStringList missing = photo_import::missingFacts(m_lastDiagReport);
+#ifdef Q_OS_WIN
+		const QString runner = tr("The script that will run (PowerShell, with the execution policy bypassed):");
+		const QString pytorchFrom = tr("PyTorch (from download.pytorch.org)");
+		const QString pythonNeeds = tr("It needs Python 3.10 to 3.12 and git on your PATH");
+#else
+		const QString runner = tr("The script that will run (bash):");
+		const QString pytorchFrom = tr("PyTorch (from PyPI)");
+		const QString pythonNeeds = tr("It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)");
+#endif
 		const QString question =
 		    tr("Install the photo helper?\n\nThis downloads about 5 GB and installs it for your user only, in %1:\n"
-		       "  - PyTorch (from download.pytorch.org) and the Python packages the helper needs (from PyPI)\n"
+		       "  - %4 and the Python packages the helper needs (from PyPI)\n"
 		       "  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)\n"
 		       "  - the background-removal model, about 176 MB (from GitHub)\n\n"
-		       "It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.\n\n"
-		       "Missing now:\n%2\n\nThe script that will run (PowerShell, with the execution policy bypassed):\n%3")
-		        .arg(QDir::toNativeSeparators(photo_import::environmentFolder()), missing.join('\n'), QDir::toNativeSeparators(script));
+		       "%5 and takes several minutes. You can keep using the program meanwhile.\n\n"
+		       "Missing now:\n%2\n\n%6\n%3")
+		        .arg(QDir::toNativeSeparators(photo_import::environmentFolder()), missing.join('\n'), QDir::toNativeSeparators(script), pytorchFrom, pythonNeeds, runner);
 		if (QMessageBox::question(this, tr("Install the photo helper"), question, QMessageBox::Yes | QMessageBox::Cancel, QMessageBox::Cancel) != QMessageBox::Yes) return;
 	}
 
@@ -72,7 +77,11 @@ void MainWindow::startPhotoHelperInstall(bool confirm, const std::function<void(
 	log->setReadOnly(true);
 	log->setMaximumBlockCount(3000);
 	log->setLineWrapMode(QPlainTextEdit::NoWrap);
+	#ifdef Q_OS_WIN
 	log->setFont(QFont("Consolas", 9));
+#else
+	log->setFont(QFontDatabase::systemFont(QFontDatabase::FixedFont));
+#endif
 	auto *button = new QPushButton(tr("Cancel"), dialog);
 	button->setAutoDefault(false);
 	layout->addWidget(statusLabel);
