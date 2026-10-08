@@ -119,6 +119,72 @@ inline bool closestOnLine(const Ray& r, const V3& p, const V3& dir, double& t) {
 	return true;
 }
 
+// A 3x3 rotation matrix, row-major: m[row][col].
+struct Mat3 {
+	double m[3][3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+	V3 operator*(const V3& v) const {
+		return {m[0][0] * v.x + m[0][1] * v.y + m[0][2] * v.z, m[1][0] * v.x + m[1][1] * v.y + m[1][2] * v.z, m[2][0] * v.x + m[2][1] * v.y + m[2][2] * v.z};
+	}
+	Mat3 operator*(const Mat3& o) const {
+		Mat3 r;
+		for (int i = 0; i < 3; ++i)
+			for (int j = 0; j < 3; ++j) r.m[i][j] = m[i][0] * o.m[0][j] + m[i][1] * o.m[1][j] + m[i][2] * o.m[2][j];
+		return r;
+	}
+};
+
+// A turn of `deg` degrees about a unit `axis` (right-handed: counter-clockwise looking back down the axis).
+inline Mat3 axisAngle(const V3& axis, double deg) {
+	const double a = deg * kPi / 180.0, c = std::cos(a), s = std::sin(a), t = 1.0 - c;
+	const V3 u = normalize(axis);
+	Mat3 r;
+	r.m[0][0] = t * u.x * u.x + c;       r.m[0][1] = t * u.x * u.y - s * u.z; r.m[0][2] = t * u.x * u.z + s * u.y;
+	r.m[1][0] = t * u.x * u.y + s * u.z; r.m[1][1] = t * u.y * u.y + c;       r.m[1][2] = t * u.y * u.z - s * u.x;
+	r.m[2][0] = t * u.x * u.z - s * u.y; r.m[2][1] = t * u.y * u.z + s * u.x; r.m[2][2] = t * u.z * u.z + c;
+	return r;
+}
+
+// What the scene file does with an object's three rotation angles: a turn about world X, then one about Y, then one about Z (p' = Rz * Ry * Rx * p).
+inline Mat3 rotationXYZ(const V3& deg) { return axisAngle({0, 0, 1}, deg.z) * axisAngle({0, 1, 0}, deg.y) * axisAngle({1, 0, 0}, deg.x); }
+
+// The three angles (degrees) that rotationXYZ turns into `r`. Straight up or down (|y| = 90) many triples give the same matrix; this picks z = 0 then.
+inline V3 eulerXYZ(const Mat3& r) {
+	const double sy = -r.m[2][0];
+	const double y = std::asin(sy < -1.0 ? -1.0 : (sy > 1.0 ? 1.0 : sy));
+	double x, z;
+	if (std::abs(sy) < 0.999999) {
+		x = std::atan2(r.m[2][1], r.m[2][2]);
+		z = std::atan2(r.m[1][0], r.m[0][0]);
+	} else {
+		x = std::atan2(-r.m[1][2], r.m[1][1]);
+		z = 0.0;
+	}
+	return {x * 180.0 / kPi, y * 180.0 / kPi, z * 180.0 / kPi};
+}
+
+// The angles an object ends up with after being turned `deg` degrees about a fixed WORLD axis (the ring being dragged), whatever its current angles are.
+inline V3 turnAboutWorldAxis(const V3& currentDeg, const V3& worldAxis, double deg) { return eulerXYZ(axisAngle(worldAxis, deg) * rotationXYZ(currentDeg)); }
+
+// The angle, in degrees and round `axis` from `refDir` (a unit vector in the plane), of the point where the ray meets the plane through `center`
+// with normal `axis`. This is what turning an object by dragging a ring needs. False when the ray runs parallel to the plane or meets it behind the eye.
+inline bool angleAround(const Ray& r, const V3& center, const V3& axis, const V3& refDir, double& deg) {
+	V3 hit;
+	if (!rayPlane(r, center, axis, hit)) return false;
+	const V3 v = hit - center;
+	const double x = dot(v, refDir), y = dot(v, cross(axis, refDir));
+	if (x == 0.0 && y == 0.0) return false;
+	deg = std::atan2(y, x) * 180.0 / kPi;
+	return true;
+}
+
+// The difference between two angles in degrees, wrapped to (-180, 180]: turning from 170 to -170 is +20, not -340.
+inline double angleDelta(double fromDeg, double toDeg) {
+	double d = std::fmod(toDeg - fromDeg, 360.0);
+	if (d > 180.0) d -= 360.0;
+	if (d <= -180.0) d += 360.0;
+	return d;
+}
+
 // Clips a polygon given in camera space to the depth >= nearPlane half space (Sutherland-Hodgman), so a face that passes behind the camera is cut
 // instead of being projected with a flipped sign.
 inline std::vector<V3> clipNear(const std::vector<V3>& poly, double nearPlane) {

@@ -1550,9 +1550,74 @@ Se guardarán en:
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="31"/>
+        <location filename="../mainwindow_photo_install.cpp" line="42"/>
+        <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
+        <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh) junto al programa.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="47"/>
+        <source>The script that will run (PowerShell, with the execution policy bypassed):</source>
+        <translation>El script que se ejecutará (PowerShell, con la directiva de ejecución omitida):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="48"/>
+        <source>PyTorch (from download.pytorch.org)</source>
+        <translation>PyTorch (de download.pytorch.org)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="49"/>
+        <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
+        <translation>Requiere Python 3.10 a 3.12 y git en el PATH</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="51"/>
+        <source>The script that will run (bash):</source>
+        <translation>El script que se ejecutará (bash):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="52"/>
+        <source>PyTorch (from PyPI)</source>
+        <translation>PyTorch (de PyPI)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="53"/>
+        <source>It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)</source>
+        <translation>Requiere Python 3.10 a 3.12 (por ejemplo brew install python@3.12) y git (xcode-select --install)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="56"/>
+        <source>Install the photo helper?
+
+This downloads about 5 GB and installs it for your user only, in %1:
+  - %4 and the Python packages the helper needs (from PyPI)
+  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
+  - the background-removal model, about 176 MB (from GitHub)
+
+%5 and takes several minutes. You can keep using the program meanwhile.
+
+Missing now:
+%2
+
+%6
+%3</source>
+        <translation>¿Instalar el asistente de fotos?
+
+Se descargan unos 5 GB y se instala solo para tu usuario, en %1:
+  - %4 y los paquetes de Python que necesita el asistente (de PyPI)
+  - el código de TripoSR (de GitHub) y sus pesos del modelo, unos 1,7 GB (de Hugging Face)
+  - el modelo de eliminación de fondo, unos 176 MB (de GitHub)
+
+%5 y tarda varios minutos. Puedes seguir usando el programa mientras tanto.
+
+Falta ahora:
+%2
+
+%6
+%3</translation>
+    </message>
+    <message>
         <source>The installer is for Windows. On other systems see docs/PHOTO_TO_SCENE.md.</source>
-        <translation>El instalador es para Windows. En otros sistemas consulta docs/PHOTO_TO_SCENE.md.</translation>
+        <translation type="vanished">El instalador es para Windows. En otros sistemas consulta docs/PHOTO_TO_SCENE.md.</translation>
     </message>
     <message>
         <source>Install the photo helper?
@@ -1579,18 +1644,16 @@ Falta ahora:
 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="46"/>
-        <location filename="../mainwindow_photo_install.cpp" line="58"/>
+        <location filename="../mainwindow_photo_install.cpp" line="42"/>
+        <location filename="../mainwindow_photo_install.cpp" line="63"/>
         <source>Install the photo helper</source>
         <translation>Instalar el asistente de fotos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="46"/>
         <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
+        <translation type="vanished">No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="51"/>
         <source>Install the photo helper?
 
 This downloads about 5 GB and installs it for your user only, in %1:
@@ -1605,7 +1668,7 @@ Missing now:
 
 The script that will run (PowerShell, with the execution policy bypassed):
 %3</source>
-        <translation>¿Instalar el asistente de fotos?
+        <translation type="vanished">¿Instalar el asistente de fotos?
 
 Se descargan unos 5 GB y se instala solo para tu usuario, en %1:
   - PyTorch (de download.pytorch.org) y los paquetes de Python que necesita el asistente (de PyPI)
@@ -1621,29 +1684,29 @@ El script que se ejecutará (PowerShell, con la directiva de ejecución omitida)
 %3</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="63"/>
+        <location filename="../mainwindow_photo_install.cpp" line="68"/>
         <source>Installing the photo helper</source>
         <translation>Instalando el asistente de fotos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="76"/>
+        <location filename="../mainwindow_photo_install.cpp" line="85"/>
         <location filename="../mainwindow_slots.cpp" line="2333"/>
         <location filename="../mainwindow_slots.cpp" line="2420"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="101"/>
+        <location filename="../mainwindow_photo_install.cpp" line="110"/>
         <source>Installed. Running the diagnostics again to check it...</source>
         <translation>Instalado. Ejecutando de nuevo los diagnósticos para comprobarlo...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="101"/>
+        <location filename="../mainwindow_photo_install.cpp" line="110"/>
         <source>The installation did not finish: %1</source>
         <translation>La instalación no terminó: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="102"/>
+        <location filename="../mainwindow_photo_install.cpp" line="111"/>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
@@ -4114,7 +4177,7 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>Selecciona primero una escena</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="66"/>
+        <location filename="../mainwindow_photo_install.cpp" line="71"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1833"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
@@ -4676,40 +4739,48 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
 <context>
     <name>PhotoHelperInstaller</name>
     <message>
-        <location filename="../photo_import.cpp" line="129"/>
+        <location filename="../photo_import.cpp" line="126"/>
+        <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
+        <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh) junto al programa.</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="139"/>
         <source>Cancelled.</source>
         <translation>Cancelado.</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="130"/>
+        <location filename="../photo_import.cpp" line="140"/>
         <source>The installer stopped (exit code %1).</source>
         <translation>El instalador se detuvo (código de salida %1).</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="142"/>
-        <source>Could not start PowerShell to run the installer.</source>
-        <translation>No se pudo iniciar PowerShell para ejecutar el instalador.</translation>
+        <location filename="../photo_import.cpp" line="152"/>
+        <source>Could not start the installer (PowerShell on Windows, bash elsewhere).</source>
+        <translation>No se pudo iniciar el instalador (PowerShell en Windows, bash en los demás sistemas).</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="116"/>
+        <source>Could not start PowerShell to run the installer.</source>
+        <translation type="vanished">No se pudo iniciar PowerShell para ejecutar el instalador.</translation>
+    </message>
+    <message>
         <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
+        <translation type="vanished">No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
     </message>
 </context>
 <context>
     <name>PhotoToMeshJob</name>
     <message>
-        <location filename="../photo_import.cpp" line="277"/>
+        <location filename="../photo_import.cpp" line="300"/>
         <source>Could not start the photo helper (%1).</source>
         <translation>No se pudo iniciar el asistente de fotos (%1).</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="314"/>
+        <location filename="../photo_import.cpp" line="337"/>
         <source>Cancelled.</source>
         <translation>Cancelado.</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="323"/>
+        <location filename="../photo_import.cpp" line="346"/>
         <source>The helper stopped unexpectedly (exit code %1).</source>
         <translation>El asistente se detuvo inesperadamente (código de salida %1).</translation>
     </message>
@@ -5337,23 +5408,23 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
         <translation>Translúcido (papel, hojas)</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="55"/>
-        <location filename="../photo_import.cpp" line="60"/>
+        <location filename="../photo_import.cpp" line="61"/>
+        <location filename="../photo_import.cpp" line="66"/>
         <source>none yet</source>
         <translation>ninguno todavía</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="61"/>
+        <location filename="../photo_import.cpp" line="67"/>
         <source>%1 folders, %2 MB</source>
         <translation>%1 carpetas, %2 MB</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="78"/>
+        <location filename="../photo_import.cpp" line="84"/>
         <source>The helper script (tools/photo_to_mesh/photo_to_mesh.py) was not found next to the program.</source>
         <translation>No se encontró el script del asistente (tools/photo_to_mesh/photo_to_mesh.py) junto al programa.</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="80"/>
+        <location filename="../photo_import.cpp" line="86"/>
         <source>The photo helper has not been set up on this computer yet.</source>
         <translation>El asistente de fotos aún no se ha configurado en este equipo.</translation>
     </message>
@@ -5395,7 +5466,7 @@ Salida:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="435"/>
+        <location filename="../scene_3d_view.cpp" line="567"/>
         <source>Camera</source>
         <translation>Cámara</translation>
     </message>
@@ -5662,6 +5733,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="409"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>Escala</translation>
     </message>
@@ -5862,54 +5934,83 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Eliminar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="35"/>
-        <location filename="../scene_builder_views.cpp" line="153"/>
         <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation>Arrastra el fondo: orbitar. Arrastre con el botón derecho: desplazar. Rueda: zoom. Arrastra una flecha para mover a lo largo de un eje; arrastra un objeto con Mayús para elevarlo.</translation>
+        <translation type="vanished">Arrastra el fondo: orbitar. Arrastre con el botón derecho: desplazar. Rueda: zoom. Arrastra una flecha para mover a lo largo de un eje; arrastra un objeto con Mayús para elevarlo.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="35"/>
+        <location filename="../scene_builder_views.cpp" line="192"/>
+        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
+        <translation>Arrastra el fondo: orbitar. Arrastre con el botón derecho: desplazar. Rueda: zoom. Elige Mover, Girar o Escalar (W, E, R) y arrastra las flechas, los anillos o los cuadrados; arrastra un objeto con Mayús para elevarlo.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move</source>
+        <translation>Mover</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move (W): drag an object, or an arrow to move along one axis</source>
+        <translation>Mover (W): arrastra un objeto, o una flecha para mover a lo largo de un eje</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate</source>
+        <translation>Girar</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate (E): drag a ring to turn the object about that axis</source>
+        <translation>Girar (E): arrastra un anillo para girar el objeto sobre ese eje</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="44"/>
+        <source>Scale (R): drag a square handle to stretch the object along that axis</source>
+        <translation>Escalar (R): arrastra un cuadrado para estirar el objeto a lo largo de ese eje</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Top</source>
         <translation>Superior</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Front</source>
         <translation>Frontal</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Side</source>
         <translation>Lateral</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="52"/>
+        <location filename="../scene_builder_views.cpp" line="75"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="55"/>
+        <location filename="../scene_builder_views.cpp" line="78"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>Mira la escena desde cualquier lado y mueve las cosas en 3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="63"/>
+        <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>Ajustar a la cuadrícula</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="65"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Dragging moves things in steps of 0.25. Hold Alt to drag freely.</source>
         <translation>Al arrastrar, los objetos se mueven en pasos de 0,25. Mantén pulsada Alt para arrastrar libremente.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="70"/>
+        <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Frame all</source>
         <translation>Encuadrar todo</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="34"/>
-        <location filename="../scene_builder_views.cpp" line="154"/>
+        <location filename="../scene_builder_views.cpp" line="193"/>
         <source>Wheel: zoom. Right-drag: pan.</source>
         <translation>Rueda: zoom. Arrastre con el botón derecho: desplazar.</translation>
     </message>
@@ -6183,7 +6284,6 @@ Reinicia el programa para verla en la lista de escenas (pestaña Configuración,
         <translation>Asistente de fotos no instalado</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="35"/>
         <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an NVIDIA graphics card is strongly recommended).
 
 %1
@@ -6193,7 +6293,7 @@ To set it up, run this in PowerShell from the program&apos;s folder:
 powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
 
 Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation>Convertir una foto en un objeto 3D requiere un asistente opcional: un modelo de IA que se ejecuta en tu propio equipo (unos 5 GB de instalación; se recomienda encarecidamente una tarjeta gráfica NVIDIA).
+        <translation type="vanished">Convertir una foto en un objeto 3D requiere un asistente opcional: un modelo de IA que se ejecuta en tu propio equipo (unos 5 GB de instalación; se recomienda encarecidamente una tarjeta gráfica NVIDIA).
 
 %1
 
@@ -6204,12 +6304,33 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
 Después vuelve a elegir esta opción. La guía (docs/PHOTO_TO_SCENE.md) explica qué hace y cuáles son sus límites.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="47"/>
+        <location filename="../scene_builder_photo.cpp" line="35"/>
+        <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an graphics card - NVIDIA on Windows, Apple silicon on a Mac - is strongly recommended).
+
+%1
+
+To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helper. Or run this once yourself:
+
+%2
+
+Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
+        <translation>Convertir una foto en un objeto 3D requiere un asistente opcional: un modelo de IA que se ejecuta en tu propio equipo (unos 5 GB de instalación; se recomienda encarecidamente una tarjeta gráfica: NVIDIA en Windows, Apple silicon en un Mac).
+
+%1
+
+Para configurarlo, usa la pestaña Diagnóstico: Ejecutar diagnóstico y luego Instalar asistente de fotos. O ejecuta esto una vez tú mismo:
+
+%2
+
+Después vuelve a elegir esta opción. La guía (docs/PHOTO_TO_SCENE.md) explica qué hace y cuáles son sus límites.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_photo.cpp" line="52"/>
         <source>Object from a photo</source>
         <translation>Objeto a partir de una foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="48"/>
+        <location filename="../scene_builder_photo.cpp" line="53"/>
         <source>One photo is turned into a 3D object by an AI model running on this computer; the photo is not uploaded anywhere.
 
 The shape is a guess: the back is invented and fine detail is soft. It works best on one object against a plain background. The first run downloads the model (about 1.7 GB) and can take several minutes.</source>
@@ -6218,53 +6339,53 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 La forma es una suposición: la parte trasera es inventada y los detalles finos salen suaves. Funciona mejor con un solo objeto sobre un fondo liso. La primera vez se descarga el modelo (unos 1,7 GB) y puede tardar varios minutos.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="52"/>
+        <location filename="../scene_builder_photo.cpp" line="57"/>
         <source>Do not show this again</source>
         <translation>No volver a mostrar este mensaje</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="58"/>
+        <location filename="../scene_builder_photo.cpp" line="63"/>
         <source>Choose a photo</source>
         <translation>Elegir una foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="58"/>
+        <location filename="../scene_builder_photo.cpp" line="63"/>
         <source>Photos (*.png *.jpg *.jpeg *.bmp *.webp)</source>
         <translation>Fotos (*.png *.jpg *.jpeg *.bmp *.webp)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="61"/>
+        <location filename="../scene_builder_photo.cpp" line="66"/>
         <source>Could not make the object</source>
         <translation>No se pudo crear el objeto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="76"/>
+        <location filename="../scene_builder_photo.cpp" line="81"/>
         <source>Could not create the folder %1.</source>
         <translation>No se pudo crear la carpeta %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="80"/>
+        <location filename="../scene_builder_photo.cpp" line="85"/>
         <location filename="../scene_builder_widget.cpp" line="858"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="80"/>
+        <location filename="../scene_builder_photo.cpp" line="85"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="81"/>
+        <location filename="../scene_builder_photo.cpp" line="86"/>
         <source>Making a 3D object from the photo</source>
         <translation>Creando un objeto 3D a partir de la foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="120"/>
+        <location filename="../scene_builder_photo.cpp" line="125"/>
         <source>Photo object</source>
         <translation>Objeto de foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="130"/>
+        <location filename="../scene_builder_photo.cpp" line="135"/>
         <source>Added %1 from the photo. The shape is a guess; check it from every side.</source>
         <translation>Se añadió %1 a partir de la foto. La forma es una suposición; revísala desde todos los lados.</translation>
     </message>

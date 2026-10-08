@@ -1539,9 +1539,74 @@ They will be saved in:
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="31"/>
+        <location filename="../mainwindow_photo_install.cpp" line="42"/>
+        <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
+        <translation>インストーラースクリプト (scripts/setup_photo_to_mesh) がプログラムと同じ場所に見つかりません。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="47"/>
+        <source>The script that will run (PowerShell, with the execution policy bypassed):</source>
+        <translation>実行されるスクリプト (PowerShell、実行ポリシーを回避して実行):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="48"/>
+        <source>PyTorch (from download.pytorch.org)</source>
+        <translation>PyTorch (download.pytorch.org から)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="49"/>
+        <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
+        <translation>Python 3.10〜3.12 と PATH 上の git が必要です</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="51"/>
+        <source>The script that will run (bash):</source>
+        <translation>実行されるスクリプト (bash):</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="52"/>
+        <source>PyTorch (from PyPI)</source>
+        <translation>PyTorch (PyPI から)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="53"/>
+        <source>It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)</source>
+        <translation>Python 3.10〜3.12 (例: brew install python@3.12) と git (xcode-select --install) が必要です</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="56"/>
+        <source>Install the photo helper?
+
+This downloads about 5 GB and installs it for your user only, in %1:
+  - %4 and the Python packages the helper needs (from PyPI)
+  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
+  - the background-removal model, about 176 MB (from GitHub)
+
+%5 and takes several minutes. You can keep using the program meanwhile.
+
+Missing now:
+%2
+
+%6
+%3</source>
+        <translation>写真ヘルパーをインストールしますか？
+
+約 5 GB をダウンロードし、現在のユーザーのみを対象に %1 にインストールします:
+  - %4 とヘルパーに必要な Python パッケージ (PyPI から)
+  - TripoSR のコード (GitHub から) とモデルの重み (約 1.7 GB、Hugging Face から)
+  - 背景除去モデル (約 176 MB、GitHub から)
+
+%5。数分かかります。その間もプログラムを使い続けられます。
+
+現在足りないもの:
+%2
+
+%6
+%3</translation>
+    </message>
+    <message>
         <source>The installer is for Windows. On other systems see docs/PHOTO_TO_SCENE.md.</source>
-        <translation>インストーラーは Windows 用です。その他のシステムでは docs/PHOTO_TO_SCENE.md を参照してください。</translation>
+        <translation type="vanished">インストーラーは Windows 用です。その他のシステムでは docs/PHOTO_TO_SCENE.md を参照してください。</translation>
     </message>
     <message>
         <source>Install the photo helper?
@@ -1568,18 +1633,16 @@ Python 3.10〜3.12 と PATH 上の git が必要で、数分かかります。�
 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="46"/>
-        <location filename="../mainwindow_photo_install.cpp" line="58"/>
+        <location filename="../mainwindow_photo_install.cpp" line="42"/>
+        <location filename="../mainwindow_photo_install.cpp" line="63"/>
         <source>Install the photo helper</source>
         <translation>写真ヘルパーのインストール</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="46"/>
         <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation>インストーラースクリプト (scripts/setup_photo_to_mesh.ps1) がプログラムと同じ場所に見つかりません。</translation>
+        <translation type="vanished">インストーラースクリプト (scripts/setup_photo_to_mesh.ps1) がプログラムと同じ場所に見つかりません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="51"/>
         <source>Install the photo helper?
 
 This downloads about 5 GB and installs it for your user only, in %1:
@@ -1594,7 +1657,7 @@ Missing now:
 
 The script that will run (PowerShell, with the execution policy bypassed):
 %3</source>
-        <translation>写真ヘルパーをインストールしますか？
+        <translation type="vanished">写真ヘルパーをインストールしますか？
 
 約 5 GB をダウンロードし、現在のユーザーのみを対象に %1 にインストールします:
   - PyTorch (download.pytorch.org から) とヘルパーに必要な Python パッケージ (PyPI から)
@@ -1610,29 +1673,29 @@ Python 3.10〜3.12 と PATH 上の git が必要で、数分かかります。�
 %3</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="63"/>
+        <location filename="../mainwindow_photo_install.cpp" line="68"/>
         <source>Installing the photo helper</source>
         <translation>写真ヘルパーをインストール中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="76"/>
+        <location filename="../mainwindow_photo_install.cpp" line="85"/>
         <location filename="../mainwindow_slots.cpp" line="2333"/>
         <location filename="../mainwindow_slots.cpp" line="2420"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="101"/>
+        <location filename="../mainwindow_photo_install.cpp" line="110"/>
         <source>Installed. Running the diagnostics again to check it...</source>
         <translation>インストールしました。確認のため診断を再実行しています...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="101"/>
+        <location filename="../mainwindow_photo_install.cpp" line="110"/>
         <source>The installation did not finish: %1</source>
         <translation>インストールは完了しませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="102"/>
+        <location filename="../mainwindow_photo_install.cpp" line="111"/>
         <source>Close</source>
         <translation>閉じる</translation>
     </message>
@@ -4074,7 +4137,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>先にシーンを選択してください</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="66"/>
+        <location filename="../mainwindow_photo_install.cpp" line="71"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1833"/>
         <source>Starting...</source>
         <translation>開始中...</translation>
@@ -4636,40 +4699,48 @@ CPU専用です。実際の大きさや形を持つ光源にのみ対応して�
 <context>
     <name>PhotoHelperInstaller</name>
     <message>
-        <location filename="../photo_import.cpp" line="129"/>
+        <location filename="../photo_import.cpp" line="126"/>
+        <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
+        <translation>インストーラースクリプト (scripts/setup_photo_to_mesh) がプログラムと同じ場所に見つかりません。</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="139"/>
         <source>Cancelled.</source>
         <translation>キャンセルしました。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="130"/>
+        <location filename="../photo_import.cpp" line="140"/>
         <source>The installer stopped (exit code %1).</source>
         <translation>インストーラーが停止しました (終了コード %1)。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="142"/>
-        <source>Could not start PowerShell to run the installer.</source>
-        <translation>インストーラーを実行するための PowerShell を起動できませんでした。</translation>
+        <location filename="../photo_import.cpp" line="152"/>
+        <source>Could not start the installer (PowerShell on Windows, bash elsewhere).</source>
+        <translation>インストーラーを起動できませんでした (Windows では PowerShell、それ以外では bash)。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="116"/>
+        <source>Could not start PowerShell to run the installer.</source>
+        <translation type="vanished">インストーラーを実行するための PowerShell を起動できませんでした。</translation>
+    </message>
+    <message>
         <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation>インストーラースクリプト (scripts/setup_photo_to_mesh.ps1) がプログラムと同じ場所に見つかりません。</translation>
+        <translation type="vanished">インストーラースクリプト (scripts/setup_photo_to_mesh.ps1) がプログラムと同じ場所に見つかりません。</translation>
     </message>
 </context>
 <context>
     <name>PhotoToMeshJob</name>
     <message>
-        <location filename="../photo_import.cpp" line="277"/>
+        <location filename="../photo_import.cpp" line="300"/>
         <source>Could not start the photo helper (%1).</source>
         <translation>写真ヘルパーを起動できませんでした (%1)。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="314"/>
+        <location filename="../photo_import.cpp" line="337"/>
         <source>Cancelled.</source>
         <translation>キャンセルしました。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="323"/>
+        <location filename="../photo_import.cpp" line="346"/>
         <source>The helper stopped unexpectedly (exit code %1).</source>
         <translation>ヘルパーが予期せず停止しました (終了コード %1)。</translation>
     </message>
@@ -5297,23 +5368,23 @@ CPU専用です。実際の大きさや形を持つ光源にのみ対応して�
         <translation>半透明（紙、葉）</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="55"/>
-        <location filename="../photo_import.cpp" line="60"/>
+        <location filename="../photo_import.cpp" line="61"/>
+        <location filename="../photo_import.cpp" line="66"/>
         <source>none yet</source>
         <translation>まだありません</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="61"/>
+        <location filename="../photo_import.cpp" line="67"/>
         <source>%1 folders, %2 MB</source>
         <translation>%1 フォルダー、%2 MB</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="78"/>
+        <location filename="../photo_import.cpp" line="84"/>
         <source>The helper script (tools/photo_to_mesh/photo_to_mesh.py) was not found next to the program.</source>
         <translation>ヘルパースクリプト (tools/photo_to_mesh/photo_to_mesh.py) がプログラムと同じ場所に見つかりません。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="80"/>
+        <location filename="../photo_import.cpp" line="86"/>
         <source>The photo helper has not been set up on this computer yet.</source>
         <translation>写真ヘルパーはこのコンピューターではまだセットアップされていません。</translation>
     </message>
@@ -5355,7 +5426,7 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="435"/>
+        <location filename="../scene_3d_view.cpp" line="567"/>
         <source>Camera</source>
         <translation>カメラ</translation>
     </message>
@@ -5622,6 +5693,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="409"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>スケール</translation>
     </message>
@@ -5822,54 +5894,83 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>削除</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="35"/>
-        <location filename="../scene_builder_views.cpp" line="153"/>
         <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation>背景をドラッグ: 回転。右ドラッグ: 移動。ホイール: ズーム。矢印をドラッグすると 1 つの軸に沿って動かせます。Shift を押しながらオブジェクトをドラッグすると持ち上げられます。</translation>
+        <translation type="vanished">背景をドラッグ: 回転。右ドラッグ: 移動。ホイール: ズーム。矢印をドラッグすると 1 つの軸に沿って動かせます。Shift を押しながらオブジェクトをドラッグすると持ち上げられます。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="35"/>
+        <location filename="../scene_builder_views.cpp" line="192"/>
+        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
+        <translation>背景をドラッグ: 回転。右ドラッグ: 移動。ホイール: ズーム。「移動」「回転」「拡大縮小」(W、E、R) を選び、矢印・リング・四角形をドラッグします。Shift を押しながらオブジェクトをドラッグすると持ち上げられます。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move</source>
+        <translation>移動</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move (W): drag an object, or an arrow to move along one axis</source>
+        <translation>移動 (W): オブジェクトをドラッグするか、矢印をドラッグして 1 つの軸に沿って動かします</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate</source>
+        <translation>回転</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate (E): drag a ring to turn the object about that axis</source>
+        <translation>回転 (E): リングをドラッグすると、その軸まわりにオブジェクトを回転させます</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="44"/>
+        <source>Scale (R): drag a square handle to stretch the object along that axis</source>
+        <translation>拡大縮小 (R): 四角形をドラッグすると、その軸に沿ってオブジェクトを伸縮します</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Top</source>
         <translation>上</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Front</source>
         <translation>前</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Side</source>
         <translation>横</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="52"/>
+        <location filename="../scene_builder_views.cpp" line="75"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="55"/>
+        <location filename="../scene_builder_views.cpp" line="78"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>シーンを任意の方向から見て、3D で物を動かします</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="63"/>
+        <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>グリッドにスナップ</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="65"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Dragging moves things in steps of 0.25. Hold Alt to drag freely.</source>
         <translation>ドラッグすると 0.25 刻みで動きます。Alt キーを押しながらドラッグすると自由に動かせます。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="70"/>
+        <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Frame all</source>
         <translation>すべてを表示</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="34"/>
-        <location filename="../scene_builder_views.cpp" line="154"/>
+        <location filename="../scene_builder_views.cpp" line="193"/>
         <source>Wheel: zoom. Right-drag: pan.</source>
         <translation>ホイール: ズーム。右ドラッグ: 移動。</translation>
     </message>
@@ -6143,7 +6244,6 @@ Restart the program to see it in the scene list (Settings tab, Custom Scenes).</
         <translation>写真ヘルパーがインストールされていません</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="35"/>
         <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an NVIDIA graphics card is strongly recommended).
 
 %1
@@ -6153,7 +6253,7 @@ To set it up, run this in PowerShell from the program&apos;s folder:
 powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
 
 Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation>写真を 3D オブジェクトに変換するには、オプションのヘルパー (お使いのコンピューターで動作する AI モデル) が必要です。インストールには約 5 GB が必要で、NVIDIA グラフィックスカードを強くお勧めします。
+        <translation type="vanished">写真を 3D オブジェクトに変換するには、オプションのヘルパー (お使いのコンピューターで動作する AI モデル) が必要です。インストールには約 5 GB が必要で、NVIDIA グラフィックスカードを強くお勧めします。
 
 %1
 
@@ -6164,12 +6264,33 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
 その後、もう一度この項目を選んでください。ガイド (docs/PHOTO_TO_SCENE.md) に、できることと限界が説明されています。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="47"/>
+        <location filename="../scene_builder_photo.cpp" line="35"/>
+        <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an graphics card - NVIDIA on Windows, Apple silicon on a Mac - is strongly recommended).
+
+%1
+
+To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helper. Or run this once yourself:
+
+%2
+
+Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
+        <translation>写真を 3D オブジェクトに変換するには、オプションのヘルパー (お使いのコンピューターで動作する AI モデル) が必要です。インストールには約 5 GB が必要で、グラフィックスカード (Windows では NVIDIA、Mac では Apple シリコン) を強くお勧めします。
+
+%1
+
+セットアップするには、診断タブで「診断を実行」し、「写真ヘルパーをインストール」を押してください。または、次を 1 回ご自身で実行してください:
+
+%2
+
+その後、もう一度この項目を選んでください。ガイド (docs/PHOTO_TO_SCENE.md) に、できることと限界が説明されています。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_photo.cpp" line="52"/>
         <source>Object from a photo</source>
         <translation>写真からオブジェクトを作成</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="48"/>
+        <location filename="../scene_builder_photo.cpp" line="53"/>
         <source>One photo is turned into a 3D object by an AI model running on this computer; the photo is not uploaded anywhere.
 
 The shape is a guess: the back is invented and fine detail is soft. It works best on one object against a plain background. The first run downloads the model (about 1.7 GB) and can take several minutes.</source>
@@ -6178,53 +6299,53 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 形は推測です。裏側は作り出されたもので、細かいディテールはぼやけます。無地の背景の上に 1 つの物体が写っている写真が最も適しています。初回はモデルをダウンロードするため (約 1.7 GB)、数分かかることがあります。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="52"/>
+        <location filename="../scene_builder_photo.cpp" line="57"/>
         <source>Do not show this again</source>
         <translation>今後このメッセージを表示しない</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="58"/>
+        <location filename="../scene_builder_photo.cpp" line="63"/>
         <source>Choose a photo</source>
         <translation>写真を選択</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="58"/>
+        <location filename="../scene_builder_photo.cpp" line="63"/>
         <source>Photos (*.png *.jpg *.jpeg *.bmp *.webp)</source>
         <translation>写真 (*.png *.jpg *.jpeg *.bmp *.webp)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="61"/>
+        <location filename="../scene_builder_photo.cpp" line="66"/>
         <source>Could not make the object</source>
         <translation>オブジェクトを作成できませんでした</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="76"/>
+        <location filename="../scene_builder_photo.cpp" line="81"/>
         <source>Could not create the folder %1.</source>
         <translation>フォルダー %1 を作成できませんでした。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="80"/>
+        <location filename="../scene_builder_photo.cpp" line="85"/>
         <location filename="../scene_builder_widget.cpp" line="858"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="80"/>
+        <location filename="../scene_builder_photo.cpp" line="85"/>
         <source>Starting...</source>
         <translation>開始しています...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="81"/>
+        <location filename="../scene_builder_photo.cpp" line="86"/>
         <source>Making a 3D object from the photo</source>
         <translation>写真から 3D オブジェクトを作成中</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="120"/>
+        <location filename="../scene_builder_photo.cpp" line="125"/>
         <source>Photo object</source>
         <translation>写真のオブジェクト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="130"/>
+        <location filename="../scene_builder_photo.cpp" line="135"/>
         <source>Added %1 from the photo. The shape is a guess; check it from every side.</source>
         <translation>写真から %1 を追加しました。形は推測なので、あらゆる角度から確認してください。</translation>
     </message>
