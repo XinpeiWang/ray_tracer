@@ -13,8 +13,11 @@
 #include "realtime_preview_session.h"   // RealtimePreviewSession::backendFeatures()
 #include "settings_keys.h"
 #include "live_ai_denoise.h"
+#include "denoiser_installer.h"
+#include "../src/shared/oidn_runtime.h"
 
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
+#include <QSignalBlocker>
 #include <QVBoxLayout>
 #include <QHBoxLayout>
 #include <QGroupBox>
@@ -757,6 +760,21 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	QCheckBox *aiDenoiseCheck = createLiveToggleCheckbox(tr("AI denoise"), live_ai_denoise::savedEnabled(), [this](bool checked) {
 		live_ai_denoise::saveEnabled(checked);
 		pushLiveSmoothNoiseToSession();   // (pushes this setting too)
+	});
+	// Ticked without the library: offer to download it (the same prompt as the finished-render "AI denoiser" box), and untick again if it is not installed.
+	connect(aiDenoiseCheck, &QCheckBox::toggled, this, [this, aiDenoiseCheck](bool checked) {
+		if (!checked || oidn_runtime::available() || !denoiser_installer::isSupportedHere()) return;
+		offerDenoiserInstall(
+			[this, aiDenoiseCheck]() {
+				const QSignalBlocker blocker(aiDenoiseCheck);
+				aiDenoiseCheck->setChecked(false);
+				live_ai_denoise::saveEnabled(false);
+				pushLiveSmoothNoiseToSession();
+			},
+			[this]() {
+				oidn_runtime::rescan();   // this process looked for the library before it existed
+				pushLiveSmoothNoiseToSession();
+			});
 	});
 	liveRenderSettingsGrid->addWidget(checkboxWithInfo(aiDenoiseCheck,
 		tr("Cleans the grain out of the picture with Intel Open Image Denoise while it is still gathering samples - right after a camera move "
