@@ -6,6 +6,8 @@ missing relative to pbrt-v4. Built by reading the current source directly
 while writing this) — see "Stale comments found" at the bottom for the ones
 worth fixing.
 
+**Metal**: this survey covers CPU and OptiX; the one-page table with all four renderers (Metal too) is [`BACKEND_SUPPORT.md`](BACKEND_SUPPORT.md).
+
 **Scope note**: this is the broad "what features exist" survey. For the
 narrower question of "what happens to each individual pbrt-v4 `.pbrt`
 directive when loaded" (per-directive Full/Approx/Fallback/Unsupported,

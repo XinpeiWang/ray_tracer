@@ -27,7 +27,7 @@ A rendering bug is quiet: the picture still looks plausible while being 20% too 
 - **Closed forms.** Furnace scenes (a diffuse sphere under a white sky must read its albedo), a closed diffuse-transmission shell (0.2, 0.56, 0.632, 0.6464 ... 0.65), per-channel Beer-Lambert absorbers, and a point light over a plate are read by the CPU, both OptiX backends and the alternative integrators.
 - **Cross-checks.** The CPU path tracer against the two OptiX backends and Metal, and BDPT, MLT, SPPM and the debug integrators against the path tracer, on purpose-built scenes.
 - **pbrt-v4 as the reference.** Where behaviour is in doubt, the pbrt-v4 source is read, and an independent script (`scripts/pbrt_rough_glass_reference.py`) provides a path-level reference for rough glass.
-- **Over 5,000 automated tests**, under ten minutes on a desktop GPU. [`docs/PBRT_SUPPORT.md`](docs/PBRT_SUPPORT.md) lists, feature by feature and backend by backend, what is supported and how closely it matches.
+- **Over 5,000 automated tests**, under ten minutes on a desktop GPU. [`docs/BACKEND_SUPPORT.md`](docs/BACKEND_SUPPORT.md) is one table of what the CPU, OptiX and Metal renderers each support, and [`docs/PBRT_SUPPORT.md`](docs/PBRT_SUPPORT.md) lists, directive by directive, what is supported and how closely it matches.
 
 How this found more than a dozen bugs that a plain backend-versus-backend comparison could not see: [Closed forms found the bugs](docs/CLOSED_FORMS_FOUND_THE_BUGS.md).
 

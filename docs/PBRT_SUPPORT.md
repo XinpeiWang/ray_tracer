@@ -4,6 +4,8 @@ What happens to each pbrt-v4 directive this codebase's loader recognizes,
 on the CPU renderer and on the GPU (OptiX) renderer, once a `.pbrt` scene
 file is loaded by giving its path where the scene id goes (`ray_tracer.exe --cpu 400 64 8 path/to/file.pbrt`).
 
+The columns are CPU and GPU (OptiX; recursive and wavefront, noted where they differ). The Metal renderer on a Mac is covered by [`METAL_PARITY_STATUS.md`](METAL_PARITY_STATUS.md), and [`BACKEND_SUPPORT.md`](BACKEND_SUPPORT.md) puts all four renderers in one table.
+
 This exists because "will this scene look the same on GPU as on CPU" was
 previously only answerable by reading `src/TheRestOfYourLife/pbrt_cpu_builder.h`,
 `gpu/optix/pbrt_gpu_builder.h`, and `gpu/optix/scene_builder.cpp`'s camera
