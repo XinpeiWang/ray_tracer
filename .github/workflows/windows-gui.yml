@@ -29,7 +29,9 @@ jobs:
       - name: Install Qt
         uses: jurplel/install-qt-action@v4
         with:
-          version: '6.11.1'
+          # Not 6.11.1: on Windows it lives in a repository layout the current aqtinstall cannot resolve ("Failed to locate XML data"), which stopped this job at
+          # this step on every run. Same pin as the Windows compile check in unit-tests.yml; move both together once aqtinstall can resolve it.
+          version: '6.9.3'
           arch: win64_msvc2022_64
           modules: 'qtmultimedia'
           cache: true
