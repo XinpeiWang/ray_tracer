@@ -35,7 +35,12 @@ Each drag is one undo step. In the flat views, the wheel zooms and right-drag (o
 | **Scale** tool (R): drag a square handle | Stretch the object along that one of its own axes (steps of 5 %): a box's size, a cylinder's or cone's height or radius, a quad's width or depth. A sphere, a disk and a mesh scale all round |
 | **Frame all** | Bring everything back into view |
 
-Rotate and Scale apply to objects; for a light or the camera the Move tool stays. Pressing the Move / Rotate / Scale buttons (above the view) or the W / E / R keys
+Rotate and Scale apply to objects; for a light or the camera the Move tool stays.  In the Move tool, a press on the very middle of the selected object (where the three arrows start) is a free move on the floor, not an arrow; in the
+Scale tool only the square at the end of a handle takes hold (so the scale starts at 1 and does not jump); a ring seen almost edge-on holds still instead of
+spinning the object. The Rotate and Scale buttons are greyed while a light or the camera is selected, and Move shows pressed. A new object is dropped on the
+floor under the middle of the view, or under what the camera looks at when the camera is nearly level (so it never lands far off-screen). A mesh file is read in
+the background: it shows as the small marker until its box and points are ready, and the view does not wait for it. Big flat panels (a wall, a ceiling) are
+drawn by their farthest point, so they no longer cover things standing in front of them. Pressing the Move / Rotate / Scale buttons (above the view) or the W / E / R keys
 (when the view has focus) switches tool.
 
 The 3D view draws flat-shaded shapes with the same size, position and rotation the renderer uses; it shows shape and placement, not materials or lighting (press

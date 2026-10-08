@@ -5573,13 +5573,13 @@ Salida:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="341"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="380"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>En espera</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="359"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="398"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 s</translation>
@@ -5643,7 +5643,7 @@ Salida:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="579"/>
+        <location filename="../scene_3d_view.cpp" line="689"/>
         <source>Camera</source>
         <translation>Cámara</translation>
     </message>
@@ -5951,7 +5951,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="435"/>
-        <location filename="../scene_builder_views.cpp" line="44"/>
+        <location filename="../scene_builder_views.cpp" line="46"/>
         <source>Scale</source>
         <translation>Escala</translation>
     </message>
@@ -6148,68 +6148,68 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Eliminar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="42"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Move</source>
         <translation>Mover</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="42"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Move (W): drag an object, or an arrow to move along one axis</source>
         <translation>Mover (W): arrastra un objeto, o una flecha para mover a lo largo de un eje</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="43"/>
+        <location filename="../scene_builder_views.cpp" line="45"/>
         <source>Rotate</source>
         <translation>Girar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="43"/>
+        <location filename="../scene_builder_views.cpp" line="45"/>
         <source>Rotate (E): drag a ring to turn the object about that axis</source>
         <translation>Girar (E): arrastra un anillo para girar el objeto sobre ese eje</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="44"/>
+        <location filename="../scene_builder_views.cpp" line="46"/>
         <source>Scale (R): drag a square handle to stretch the object along that axis</source>
         <translation>Escalar (R): arrastra un cuadrado para estirar el objeto a lo largo de ese eje</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="60"/>
+        <location filename="../scene_builder_views.cpp" line="62"/>
         <source>Top</source>
         <translation>Superior</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="60"/>
+        <location filename="../scene_builder_views.cpp" line="62"/>
         <source>Front</source>
         <translation>Frontal</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="60"/>
+        <location filename="../scene_builder_views.cpp" line="62"/>
         <source>Side</source>
         <translation>Lateral</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="75"/>
+        <location filename="../scene_builder_views.cpp" line="77"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="78"/>
+        <location filename="../scene_builder_views.cpp" line="80"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>Mira la escena desde cualquier lado y mueve las cosas en 3D</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="214"/>
-        <location filename="../scene_builder_views.cpp" line="87"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="253"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>Ajustar a la cuadrícula</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="89"/>
+        <location filename="../scene_builder_views.cpp" line="91"/>
         <source>Dragging moves things in steps of 0.25. Hold %1 to drag freely.</source>
         <translation>Al arrastrar, las cosas se mueven en pasos de 0,25. Mantén pulsada %1 para arrastrar libremente.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="94"/>
+        <location filename="../scene_builder_views.cpp" line="96"/>
         <source>Frame all</source>
         <translation>Encuadrar todo</translation>
     </message>

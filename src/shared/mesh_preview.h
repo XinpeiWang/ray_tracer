@@ -3,6 +3,7 @@
 #pragma once
 
 #include <algorithm>
+#include <cmath>
 #include <cstdint>
 #include <fstream>
 #include <string>
@@ -34,17 +35,33 @@ inline MeshPreview load(const std::string& path, size_t maxSamples = 2500, std::
 	if (!r.ok) { out.error = r.error; return out; }
 	const size_t n = r.mesh.vertexCount();
 	if (n == 0) { out.error = "the file has no vertices"; return out; }
-	for (int a = 0; a < 3; ++a) out.lo[a] = out.hi[a] = r.mesh.positions[static_cast<size_t>(a)];
-	for (size_t i = 0; i < n; ++i)
-		for (int a = 0; a < 3; ++a) {
-			const double v = r.mesh.positions[3 * i + static_cast<size_t>(a)];
+	// A corrupt vertex (NaN or infinite) must not poison the box, or the 3D view's camera would be framed on NaN and go blank: only finite vertices count.
+	auto finite = [&r](size_t i) {
+		for (size_t a = 0; a < 3; ++a)
+			if (!std::isfinite(r.mesh.positions[3 * i + a])) return false;
+		return true;
+	};
+	size_t good = 0;
+	for (size_t i = 0; i < n; ++i) {
+		if (!finite(i)) continue;
+		for (size_t a = 0; a < 3; ++a) {
+			const double v = r.mesh.positions[3 * i + a];
+			if (good == 0) out.lo[a] = out.hi[a] = v;
 			out.lo[a] = std::min(out.lo[a], v);
 			out.hi[a] = std::max(out.hi[a], v);
 		}
-	const size_t keep = std::min(n, std::max<size_t>(1, maxSamples));
-	for (size_t k = 0; k < keep; ++k) {
-		const size_t i = k * n / keep;
-		for (size_t a = 0; a < 3; ++a) out.samples.push_back(r.mesh.positions[3 * i + a]);
+		++good;
+	}
+	if (good == 0) { out.error = "the file has no usable vertices"; return out; }
+	const size_t keep = std::min(good, std::max<size_t>(1, maxSamples));
+	size_t seen = 0, next = 0;  // the next sample is the (next * good / keep)-th usable vertex
+	for (size_t i = 0; i < n && next < keep; ++i) {
+		if (!finite(i)) continue;
+		if (seen == next * good / keep) {
+			for (size_t a = 0; a < 3; ++a) out.samples.push_back(r.mesh.positions[3 * i + a]);
+			++next;
+		}
+		++seen;
 	}
 	out.vertexCount = n;
 	out.triangleCount = r.mesh.triangleCount();

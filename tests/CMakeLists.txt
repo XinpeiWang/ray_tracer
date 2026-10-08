@@ -45,6 +45,7 @@ add_executable(unit_tests
     unit/mesh_preview_tests.cpp
     unit/log_format_tests.cpp
     unit/job_queue_tests.cpp
+    unit/scene_gizmo_tests.cpp
     unit/light_sampler_resolution_tests.cpp
     unit/mtl_material_tests.cpp
     unit/obj_negative_indices_tests.cpp

@@ -111,6 +111,8 @@ moc_*.cpp
 moc_*.h
 qrc_*.cpp
 ui_*.h
+# ...except the GUI's own header: its name only looks like a uic output (qt_gui/ui_logger.cpp includes it and it was never committed, so a fresh clone did not build)
+!qt_gui/ui_logger.h
 
 # Qt Makefiles
 Makefile*

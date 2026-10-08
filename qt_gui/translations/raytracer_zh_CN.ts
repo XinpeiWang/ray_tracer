@@ -5539,13 +5539,13 @@ Output:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="341"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="380"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>等待中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="359"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="398"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 秒</translation>
@@ -5609,7 +5609,7 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="579"/>
+        <location filename="../scene_3d_view.cpp" line="689"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
@@ -5917,7 +5917,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="435"/>
-        <location filename="../scene_builder_views.cpp" line="44"/>
+        <location filename="../scene_builder_views.cpp" line="46"/>
         <source>Scale</source>
         <translation>缩放</translation>
     </message>
@@ -6114,68 +6114,68 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="42"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Move</source>
         <translation>移动</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="42"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Move (W): drag an object, or an arrow to move along one axis</source>
         <translation>移动 (W)：拖动物体，或拖动箭头沿一个轴移动</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="43"/>
+        <location filename="../scene_builder_views.cpp" line="45"/>
         <source>Rotate</source>
         <translation>旋转</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="43"/>
+        <location filename="../scene_builder_views.cpp" line="45"/>
         <source>Rotate (E): drag a ring to turn the object about that axis</source>
         <translation>旋转 (E)：拖动圆环使物体绕该轴旋转</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="44"/>
+        <location filename="../scene_builder_views.cpp" line="46"/>
         <source>Scale (R): drag a square handle to stretch the object along that axis</source>
         <translation>缩放 (R)：拖动方块沿该轴拉伸物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="60"/>
+        <location filename="../scene_builder_views.cpp" line="62"/>
         <source>Top</source>
         <translation>顶视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="60"/>
+        <location filename="../scene_builder_views.cpp" line="62"/>
         <source>Front</source>
         <translation>前视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="60"/>
+        <location filename="../scene_builder_views.cpp" line="62"/>
         <source>Side</source>
         <translation>侧视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="75"/>
+        <location filename="../scene_builder_views.cpp" line="77"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="78"/>
+        <location filename="../scene_builder_views.cpp" line="80"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>从任意角度查看场景，并在 3D 中移动物体</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="214"/>
-        <location filename="../scene_builder_views.cpp" line="87"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="253"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>吸附到网格</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="89"/>
+        <location filename="../scene_builder_views.cpp" line="91"/>
         <source>Dragging moves things in steps of 0.25. Hold %1 to drag freely.</source>
         <translation>拖动时以 0.25 为步长移动。按住 %1 可自由拖动。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="94"/>
+        <location filename="../scene_builder_views.cpp" line="96"/>
         <source>Frame all</source>
         <translation>显示全部</translation>
     </message>

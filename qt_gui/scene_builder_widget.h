@@ -20,6 +20,7 @@
 #include "../src/shared/scene_document.h"
 #include "../src/shared/scene_props.h"
 
+class QButtonGroup;
 class QCheckBox;
 class QSplitter;
 class QLineEdit;
@@ -59,6 +60,12 @@ public:
 	bool dragAxis3dForTest(int index, int axis, double pixels);
 	bool dragRotate3dForTest(int index, int axis, double degrees);
 	bool dragScale3dForTest(int index, int axis, double ratio);
+	void orbit3dForTest(double yawDeg, double pitchDeg);
+	scene_doc::Float3 dropPointForTest() const { return dropPoint(); }
+	bool meshReadyForTest(const QString &path) const;
+	bool gizmoButtonEnabled(int tool) const;   // 0 Move, 1 Rotate, 2 Scale
+	int gizmoButtonChecked() const;
+	void selectCameraForTest() { setSelection({SelKind::Camera, 0}); }
 	void addObject(scene_doc::ShapeKind shape);
 	void addProp(scene_doc::PropKind kind);   // a few ordinary objects at once (a table, a tree...), one undo step
 	void addLight(scene_doc::LightKind kind);
@@ -188,6 +195,8 @@ private:
 	void createViews(QWidget *layoutBox, QVBoxLayout *layoutLayout);
 	void updateViews();
 	void selectInViews(const BuilderSelection &s);
+	void updateGizmoButtons(const BuilderSelection &s);
+	QButtonGroup *m_gizmoGroup = nullptr;  // the Move / Rotate / Scale buttons
 	void frameViews();
 	scene_doc::Float3 dropPoint() const;  // where a new object goes: the middle of the view on show
 	QWidget *m_inspectorHost = nullptr;
