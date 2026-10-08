@@ -532,7 +532,13 @@ void SceneBuilderWidget::onSaveToSceneListClicked() {
 
 void SceneBuilderWidget::pushUndo() {
 	m_undo.append(QString::fromStdString(scene_doc::toJson(m_doc)));
-	if (m_undo.size() > 200) m_undo.removeFirst();
+	// At most 200 steps, and at most ~32 MB of snapshots: a big scene must not make a long editing session eat memory.
+	qint64 bytes = 0;
+	for (const QString &snap : m_undo) bytes += snap.size() * qint64(sizeof(QChar));
+	while (m_undo.size() > 1 && (m_undo.size() > 200 || bytes > (qint64(32) << 20))) {
+		bytes -= m_undo.first().size() * qint64(sizeof(QChar));
+		m_undo.removeFirst();
+	}
 	m_redo.clear();
 }
 
@@ -563,10 +569,10 @@ void SceneBuilderWidget::flushEditLog() {
 	if (!what.empty()) AppLog::info(QStringLiteral("builder"), QStringLiteral("edit: %1").arg(QString::fromStdString(what)));
 }
 
-void SceneBuilderWidget::restore(const QString &json) {
+bool SceneBuilderWidget::restore(const QString &json) {
 	Document d;
 	std::string err;
-	if (!scene_doc::fromJson(json.toStdString(), d, err)) return;
+	if (!scene_doc::fromJson(json.toStdString(), d, err)) return false;
 	m_doc = std::move(d);
 	if (m_sel.kind == SelKind::Object && m_sel.index >= static_cast<int>(m_doc.objects.size())) m_sel = {SelKind::None, 0};
 	if (m_sel.kind == SelKind::Light && m_sel.index >= static_cast<int>(m_doc.lights.size())) m_sel = {SelKind::None, 0};
@@ -574,6 +580,7 @@ void SceneBuilderWidget::restore(const QString &json) {
 	rebuildList();
 	setSelection(m_sel);
 	documentChanged();
+	return true;
 }
 
 bool SceneBuilderWidget::undo() {
@@ -581,9 +588,12 @@ bool SceneBuilderWidget::undo() {
 	flushEditLog();
 	const scene_doc::Document before = m_doc;
 	const QString now = QString::fromStdString(scene_doc::toJson(m_doc));
-	const QString prev = m_undo.takeLast();
+	if (!restore(m_undo.last())) {   // the step stays in the list if it cannot be read back
+		AppLog::error(QStringLiteral("builder"), QStringLiteral("undo: the saved step could not be read back"));
+		return false;
+	}
+	m_undo.removeLast();
 	m_redo.append(now);
-	restore(prev);
 	AppLog::info(QStringLiteral("builder"), QStringLiteral("undo: %1").arg(QString::fromStdString(scene_doc::describeChange(before, m_doc))));
 	return true;
 }
@@ -593,9 +603,12 @@ bool SceneBuilderWidget::redo() {
 	flushEditLog();
 	const scene_doc::Document before = m_doc;
 	const QString now = QString::fromStdString(scene_doc::toJson(m_doc));
-	const QString next = m_redo.takeLast();
+	if (!restore(m_redo.last())) {
+		AppLog::error(QStringLiteral("builder"), QStringLiteral("redo: the saved step could not be read back"));
+		return false;
+	}
+	m_redo.removeLast();
 	m_undo.append(now);
-	restore(next);
 	AppLog::info(QStringLiteral("builder"), QStringLiteral("redo: %1").arg(QString::fromStdString(scene_doc::describeChange(before, m_doc))));
 	return true;
 }
@@ -652,6 +665,9 @@ bool SceneBuilderWidget::loadAutosave() {
 	m_doc = std::move(d);
 	m_path.clear();
 	m_dirty = true;
+	m_undo.clear();
+	m_redo.clear();
+	m_lastEditKey.clear();
 	rebuildList();
 	setSelection({SelKind::None, 0});
 	frameViews();
@@ -843,7 +859,7 @@ void SceneBuilderWidget::updateActions() {
 	m_duplicateButton->setEnabled(item);
 	m_undoButton->setEnabled(!m_undo.isEmpty());
 	m_redoButton->setEnabled(!m_redo.isEmpty());
-	const bool ok = !scene_doc::hasErrors(scene_doc::validate(m_doc));
+	const bool ok = !scene_doc::hasErrors(m_problems);   // from the last refreshProblems(): the document has not changed since
 	m_previewButton->setEnabled(ok || m_process);
 	m_finalButton->setEnabled(ok && !m_process);
 }
@@ -869,7 +885,8 @@ QString SceneBuilderWidget::problemsText() const {
 }
 
 void SceneBuilderWidget::refreshProblems() {
-	const auto problems = scene_doc::validate(m_doc);
+	m_problems = scene_doc::validate(m_doc);   // once per change - it looks at the picture, mesh and sky files too
+	const auto &problems = m_problems;
 	if (problems.empty()) {
 		m_problemsLabel->setText(tr("No problems found."));
 		return;

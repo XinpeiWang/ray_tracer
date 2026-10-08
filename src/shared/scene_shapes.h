@@ -117,11 +117,14 @@ inline ShapeMesh wedgeMesh(double w, double h, double d) {
 	return m;
 }
 
+// The most steps a staircase may have; a scene file asking for more is reported by validate() and drawn with this many, so a corrupt value cannot make a huge mesh.
+constexpr int kMaxStairSteps = 100;
+
 // `steps` steps climbing from the front (-Z) to the back (+Z), `w` wide, `h` high in all and `d` deep.
 inline ShapeMesh stairsMesh(double w, double h, double d, int steps) {
 	using namespace shapes_detail;
 	ShapeMesh m;
-	steps = std::max(1, steps);
+	steps = std::min(kMaxStairSteps, std::max(1, steps));
 	const double x = w / 2, lo = -h / 2;
 	for (int i = 0; i < steps; ++i) {
 		const double z0 = -d / 2 + d * i / steps, z1 = -d / 2 + d * (i + 1) / steps;

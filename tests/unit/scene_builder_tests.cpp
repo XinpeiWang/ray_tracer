@@ -745,6 +745,18 @@ TEST(SceneDocumentShapesTest, NewShapesRoundTripValidateAndWriteAsPlainPbrt) {
 	EXPECT_TRUE(problem(ShapeKind::Pyramid, [](Object& o) { o.height = 0; }));
 	EXPECT_TRUE(problem(ShapeKind::Dome, [](Object& o) { o.radius = 0; }));
 	EXPECT_FALSE(problem(ShapeKind::Capsule, [](Object& o) { o.height = 0.1; }));   // only a warning
+	EXPECT_TRUE(problem(ShapeKind::Stairs, [](Object& o) { o.steps = scene_doc::kMaxStairSteps + 1; }));
+}
+
+// A corrupt file asking for two billion steps is reported by validate(), and drawing it makes at most scene_doc::kMaxStairSteps steps - never a huge mesh.
+TEST(SceneBuilderTest, AHugeStepCountMakesABoundedMesh) {
+	Object o = makeObject(ShapeKind::Stairs, "s");
+	o.steps = 2000000000;
+	const scene_doc::ShapeMesh capped = scene_doc::generatedMesh(o);
+	o.steps = scene_doc::kMaxStairSteps;
+	EXPECT_EQ(capped.P.size(), scene_doc::generatedMesh(o).P.size());
+	o.steps = -5;
+	EXPECT_FALSE(scene_doc::generatedMesh(o).P.empty());   // at least one step
 }
 
 // The props (scene_props.h): ordinary objects that stand on the floor around the origin, validate cleanly, and survive a save and re-open as plain objects.

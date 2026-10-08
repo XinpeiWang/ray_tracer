@@ -420,7 +420,7 @@ void SceneBuilderWidget::inspectObject(QFormLayout *f, int i) {
 			break;
 		case ShapeKind::Stairs:
 			addVec3(f, tr("Size"), [obj]() { return obj() ? &obj()->size : nullptr; }, 0.25);
-			addInt(f, tr("Steps"), [obj]() { return obj() ? &obj()->steps : nullptr; }, 1, 100);
+			addInt(f, tr("Steps"), [obj]() { return obj() ? &obj()->steps : nullptr; }, 1, scene_doc::kMaxStairSteps);
 			break;
 		case ShapeKind::Wedge:
 		case ShapeKind::Box:

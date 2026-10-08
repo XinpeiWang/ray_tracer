@@ -651,7 +651,7 @@ inline std::vector<Problem> validate(const Document& d) {
 			case ShapeKind::Wedge:
 			case ShapeKind::Stairs:
 				if (!(o.size.x > 0.0 && o.size.y > 0.0 && o.size.z > 0.0)) err(who + "every size must be above zero.");
-				if (o.shape == ShapeKind::Stairs && (o.steps < 1 || o.steps > 100)) err(who + "the number of steps must be between 1 and 100.");
+				if (o.shape == ShapeKind::Stairs && (o.steps < 1 || o.steps > kMaxStairSteps)) err(who + "the number of steps must be between 1 and " + std::to_string(kMaxStairSteps) + ".");
 				break;
 			case ShapeKind::Pyramid:
 				if (!(o.size.x > 0.0 && o.size.z > 0.0 && o.height > 0.0)) err(who + "the pyramid's base and height must be above zero.");
