@@ -886,8 +886,10 @@ bool MetalPocApp::postProcessAndWrite() {
         return false;
     }
 
-    const float vignetteStrength = 0.18f;
-    const float chromaticAberrationStrength = 0.004f;
+    // Only the effects asked for (RT_METAL_POST_EFFECTS, see PostEffects in metal_poc_host_math.h): by default just the bilateral blur.
+    const PostEffects effects = parsePostEffects(getenv("RT_METAL_POST_EFFECTS"));
+    const float vignetteStrength = effects.vignette ? 0.18f : 0.0f;
+    const float chromaticAberrationStrength = effects.aberration ? 0.004f : 0.0f;
     std::vector<uint8_t> ldr(width * height * 3);
     for (uint32_t i = 0; i < width * height; ++i) {
         uint32_t px = i % width;
@@ -913,7 +915,8 @@ bool MetalPocApp::postProcessAndWrite() {
     // floor's own tile edges, confirming this knob really can wash
     // out real detail if pushed too far, not just theoretically.
     std::vector<uint8_t> denoised(width * height * 3);
-    bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
+    if (effects.denoise) bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
+    else denoised = ldr;
 
     // stbi_write_png() returns 0 on failure (unwritable/nonexistent
     // directory, read-only volume, ...) - previously ignored, so a failed

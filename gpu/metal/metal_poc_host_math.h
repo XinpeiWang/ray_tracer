@@ -27,6 +27,8 @@
 #include <cstdint>
 #include <cstdio>
 #include <cstring>
+#include <cctype>
+#include <string>
 #include <vector>
 
 using simd::float3;
@@ -207,6 +209,37 @@ inline float3 blackbodyColor(float kelvinIn) {
     g = fminf(fmaxf(g, 0.0f), 255.0f) / 255.0f;
     b = fminf(fmaxf(b, 0.0f), 255.0f) / 255.0f;
     return float3{r, g, b};
+}
+
+// Which of the Metal PNG's optional finishing effects are on. A PNG used to ALWAYS get a vignette (corners 18% darker), a red/blue lateral colour shift and a
+// bilateral blur: none of them is in the scene, and the CPU and OptiX renderers add none, so the same scene looked different on a Mac. Now the vignette and the
+// colour shift are opt-in, and the blur (which also hides some noise, since the Mac has no AI denoiser) stays on by default.
+// RT_METAL_POST_EFFECTS names the effects to apply: any of "vignette", "aberration", "denoise" separated by commas, or "all" / "none"; unset keeps the default
+// (just "denoise"). Unknown words are ignored. The .exr output never gets any of them.
+struct PostEffects {
+    bool vignette = false;
+    bool aberration = false;
+    bool denoise = true;
+};
+inline PostEffects parsePostEffects(const char* text) {
+    PostEffects e;
+    if (!text) return e;
+    e = PostEffects{false, false, false};
+    std::string list(text);
+    size_t pos = 0;
+    while (pos <= list.size()) {
+        size_t comma = list.find(',', pos);
+        if (comma == std::string::npos) comma = list.size();
+        std::string word = list.substr(pos, comma - pos);
+        word.erase(std::remove_if(word.begin(), word.end(), [](unsigned char c) { return std::isspace(c); }), word.end());
+        std::transform(word.begin(), word.end(), word.begin(), [](unsigned char c) { return std::tolower(c); });
+        if (word == "all") e = PostEffects{true, true, true};
+        else if (word == "vignette") e.vignette = true;
+        else if (word == "aberration") e.aberration = true;
+        else if (word == "denoise") e.denoise = true;
+        pos = comma + 1;
+    }
+    return e;
 }
 
 // Natural (lens) vignetting - real camera lenses transmit less light to

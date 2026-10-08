@@ -572,7 +572,23 @@ static void testGGXEnergyTableTrend() {
                table.Eavg[table.roughRes - 1] < 0.9f);
 }
 
+static void testParsePostEffects() {
+    PostEffects d = parsePostEffects(nullptr);
+    expectTrue("unset: the default is the bilateral blur only", !d.vignette && !d.aberration && d.denoise);
+    PostEffects none = parsePostEffects("none");
+    expectTrue("\"none\" turns every effect off", !none.vignette && !none.aberration && !none.denoise);
+    PostEffects all = parsePostEffects("all");
+    expectTrue("\"all\" turns every effect on", all.vignette && all.aberration && all.denoise);
+    PostEffects some = parsePostEffects(" Vignette , aberration ");
+    expectTrue("a list picks exactly those (spaces and case ignored), the blur included only if named", some.vignette && some.aberration && !some.denoise);
+    PostEffects junk = parsePostEffects("sparkle,denoise");
+    expectTrue("unknown words are ignored", !junk.vignette && !junk.aberration && junk.denoise);
+    PostEffects empty = parsePostEffects("");
+    expectTrue("an empty value means no effects", !empty.vignette && !empty.aberration && !empty.denoise);
+}
+
 int main() {
+    testParsePostEffects();
     testLinearToSRGB();
     testChromaticAberrationZeroShiftAtCentre();
     testToneMapModesDiverge();
