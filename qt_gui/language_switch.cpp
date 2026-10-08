@@ -104,12 +104,12 @@ void MainWindow::switchLanguage(const QString &code) {
 	// losing a queue alone as worth a confirmation ("the one destructive,
 	// irreversible action in this app with no undo"); this can lose a queue
 	// AND an active render, so it gets at least the same courtesy.
-	if (m_isRendering || !m_renderQueue.isEmpty()) {
+	if (m_isRendering || m_queueModel->hasWaiting()) {
 		QStringList consequences;
 		if (m_isRendering)
 			consequences << tr("stop the current render");
-		if (!m_renderQueue.isEmpty())
-			consequences << tr("discard %n queued job(s)", "", m_renderQueue.size());
+		if (m_queueModel->hasWaiting())
+			consequences << tr("discard %n queued job(s)", "", m_queueModel->waitingCount());
 		const auto choice = QMessageBox::question(this, tr("Switch Language"),
 			tr("Switching languages restarts the app now, which will %1. Continue?")
 				.arg(consequences.join(tr(" and "))),

@@ -430,7 +430,7 @@ public:
 class ListEmptyAreaDeselectFilter : public QObject {
     Q_OBJECT
 public:
-    explicit ListEmptyAreaDeselectFilter(QListWidget *list) : QObject(list), m_list(list) {}
+    explicit ListEmptyAreaDeselectFilter(QAbstractItemView *list) : QObject(list), m_list(list) {}
 protected:
     bool eventFilter(QObject *obj, QEvent *event) override {
         if (event->type() == QEvent::MouseButtonPress &&
@@ -440,7 +440,7 @@ protected:
         return QObject::eventFilter(obj, event);
     }
 private:
-    QListWidget *m_list;
+    QAbstractItemView *m_list;
 };
 
 // ============================================================================

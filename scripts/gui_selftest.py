@@ -8,6 +8,8 @@ result. Screenshots are of the app's own window (never the screen) and are writt
                "Live Preview (interactive)" item)
   options      the Options controls respond
   builder      the Scene Builder tab: edits, drag, undo/redo, save and re-open, a CPU preview (and with --live-preview a GPU preview too)
+  queue        two real tiny renders through the Render button: the second queues behind the first, both rows end Done with a time and stay in
+               the queue table, Clear Finished empties it
   diagnostics  the Diagnostics report is produced
   installphoto the Diagnostics tab's "Install Photo Helper" flow with stand-in installer scripts (not in the default set; no big download)
   livepreview  (--live-preview) selects Live Preview, starts it, lets it render, orbits the camera like a mouse drag, and requires
@@ -165,7 +167,7 @@ def main():
     ap = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     ap.add_argument("app", nargs="?", help="RayTracerGUI.app, RayTracerGUI.exe, or the folder holding it")
     ap.add_argument("--out", help="directory for logs and screenshots (default: a new temp directory)")
-    ap.add_argument("--modes", default="ui,options,builder,diagnostics", help="comma-separated self-test modes (default: %(default)s)")
+    ap.add_argument("--modes", default="ui,options,builder,queue,diagnostics", help="comma-separated self-test modes (default: %(default)s)")
     ap.add_argument("--live-preview", action="store_true", help="also require an enabled Live Preview item and run the livepreview mode (needs a GPU)")
     ap.add_argument("--plugins", help="directory holding Qt's offscreen platform plugin")
     args = ap.parse_args()

@@ -8,6 +8,7 @@
 #include "window_geometry.h"
 #include "atomic_file.h"
 #include "crash_recovery.h"
+#include "render_queue_model.h"
 #include "scene_builder_widget.h"
 
 #include <QApplication>
@@ -362,4 +363,92 @@ void MainWindow::selfTestCrashRecovery(const std::function<void(bool, const QStr
 	check(!window_geometry::restore(this), "and forgets the saved window layout");
 	qunsetenv("RAY_TRACER_STATE_DIR");
 	QDir(dir).removeRecursively();
+}
+
+// Part of the "builder" mode: the Progress tab's render queue is a table of waiting, running and finished jobs; each button is available only where it means
+// something, and finished jobs stay as a record and can be run again. (The model is driven directly: no render is started.)
+void MainWindow::selfTestRenderQueue(const std::function<void(bool, const QString &)> &check) {
+	using job_queue::State;
+	RenderJob a, b, c;
+	a.displayTitle = "Scene A";
+	b.displayTitle = "Scene B";
+	c.displayTitle = "Scene C";
+	for (RenderJob *j : {&a, &b, &c}) { j->width = 320; j->height = 240; j->samples = 16; }
+	const int ida = m_queueModel->add(a), idb = m_queueModel->add(b), idc = m_queueModel->add(c);
+	check(m_queueView->model()->rowCount() == 3 && m_queueModel->waitingCount() == 3, "three queued jobs are three rows of the table");
+	check(m_queueModel->data(m_queueModel->index(0, RenderQueueModel::SceneColumn)).toString() == "Scene A" &&
+	          m_queueModel->data(m_queueModel->index(0, RenderQueueModel::StatusColumn)).toString() == RenderQueueModel::tr("Waiting"),
+	      "a row shows the scene and its state");
+	m_queueView->selectRow(0);
+	QApplication::processEvents();
+	check(m_queueUpButton->isEnabled() && m_queueDownButton->isEnabled() && !m_queueRetryButton->isEnabled(), "a waiting job can be moved but not retried");
+	check(m_queueModel->moveDown(ida) && m_queueModel->idAt(0) == idb && m_queueModel->idAt(1) == ida, "moving a waiting job down changes the order it will run in");
+	int id = 0;
+	RenderJob taken;
+	check(m_queueModel->takeNext(id, taken) && id == idb && taken.displayTitle == "Scene B", "the first waiting job in the new order starts");
+	m_queueView->selectRow(0);
+	QApplication::processEvents();
+	check(!m_queueRemoveButton->isEnabled() && !m_queueUpButton->isEnabled(), "a running job can be neither removed nor moved");
+	check(m_queueModel->finish(idb, State::Failed, 4.2, "boom") && m_queueModel->finishedCount() == 1, "a failed job stays in the table as a record");
+	m_queueView->selectRow(0);
+	QApplication::processEvents();
+	check(m_queueRetryButton->isEnabled() && m_queueClearFinishedButton->isEnabled() && m_queueRemoveButton->isEnabled(), "it can be retried, removed, or cleared with the finished ones");
+	const int again = m_queueModel->retry(idb);
+	check(again != 0 && m_queueModel->waitingCount() == 3 && m_queueModel->queue().find(again)->job.displayTitle == "Scene B", "retrying queues it again as a new waiting job");
+	check(m_queueModel->data(m_queueModel->index(0, RenderQueueModel::TimeColumn)).toString() == RenderQueueModel::tr("%1 s").arg(4.2, 0, 'f', 1), "and the old row keeps how long it ran");
+	check(m_queueModel->clearWaiting() == 3 && m_queueModel->rowCount() == 1, "Clear Queue removes only the waiting jobs");
+	check(m_queueModel->clearFinished() == 1 && m_queueModel->rowCount() == 0, "Clear Finished removes only the finished ones");
+	(void)idc;
+	refreshQueuePanel();
+}
+
+// RT_GUI_SELFTEST=queue: two real tiny CPU renders through the Render button. The second is queued behind the first; both rows must end Done with a time, stay
+// in the table as a record, and Clear Finished must then empty it. Needs ray_tracer next to the GUI.
+void MainWindow::runQueueSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot) {
+	if (m_progressTabIndex >= 0) m_tabWidget->setCurrentIndex(m_progressTabIndex);
+	resize(1100, 800);
+	auto fail = [log](const QString &what) {
+		log("FAIL: " + what);
+		log("RESULT: FAIL");
+		QApplication::exit(1);
+	};
+	for (int i = 0; i < m_renderModeCombo->count(); ++i)
+		if (!m_renderModeCombo->itemData(i).toBool()) m_renderModeCombo->setCurrentIndex(i);   // the CPU
+	m_qualityPresetCombo->setCurrentIndex(6);   // Custom: the size below
+	m_widthSpinBox->setValue(64);
+	m_heightSpinBox->setValue(48);
+	m_samplesSpinBox->setValue(1);
+	m_maxDepthSpinBox->setValue(2);
+	onRenderClicked();
+	onRenderClicked();   // while the first one renders: queued behind it
+	if (m_queueModel->rowCount() != 2 || !m_queueModel->isRunning() || m_queueModel->waitingCount() != 1) {
+		fail(QString("after two clicks the queue should be one running and one waiting (rows %1, running %2, waiting %3)")
+		         .arg(m_queueModel->rowCount()).arg(m_queueModel->isRunning()).arg(m_queueModel->waitingCount()));
+		return;
+	}
+	log("ok: the second click queued a job behind the running one");
+	auto *poll = new QTimer(this);
+	auto *waited = new int(0);
+	connect(poll, &QTimer::timeout, this, [this, poll, waited, log, shot, fail]() {
+		if (++*waited > 300) { poll->stop(); fail("the two renders did not finish in 90 s"); return; }
+		if (m_queueModel->finishedCount() < 2) return;
+		poll->stop();
+		bool ok = true;
+		auto check = [&ok, log](bool cond, const QString &what) { log(QString("%1: %2").arg(cond ? "ok" : "FAIL", what)); ok = ok && cond; };
+		check(m_queueModel->rowCount() == 2 && !m_queueModel->hasWaiting() && !m_queueModel->isRunning(), "both jobs are finished and still listed");
+		for (int row = 0; row < 2; ++row) {
+			check(m_queueModel->stateAt(row) == job_queue::State::Done, QString("row %1 is Done").arg(row + 1));
+			const QString time = m_queueModel->data(m_queueModel->index(row, RenderQueueModel::TimeColumn)).toString();
+			check(!time.isEmpty(), QString("row %1 shows how long it took: %2").arg(row + 1).arg(time));
+		}
+		check(m_queueClearFinishedButton->isEnabled() && !m_queueClearButton->isEnabled(), "Clear Finished is available, Clear Queue is not (nothing waits)");
+		if (m_progressTabIndex >= 0) m_tabWidget->setCurrentIndex(m_progressTabIndex);   // a finished render switches to Preview: look at the queue
+		QApplication::processEvents();
+		shot("queue");
+		onClearFinishedJobs();
+		check(m_queueModel->rowCount() == 0, "Clear Finished empties the table");
+		log(ok ? "RESULT: OK" : "RESULT: FAIL");
+		QApplication::exit(ok ? 0 : 1);
+	});
+	poll->start(300);
 }
