@@ -51,7 +51,7 @@ ray_tracer/
 ├── qt_gui/                        # Qt 6 graphical interface
 │   ├── RayTracerGUI.pro          # Qt project file
 │   ├── mainwindow.h/.cpp         # Main window class + construction
-│   ├── mainwindow_tabs.cpp       # Settings, Render Options and Preview tab construction
+│   ├── mainwindow_tabs.cpp       # The Settings tab (scene list helpers + createSettingsTab); its group boxes are mainwindow_tabs_settings_groups.cpp
 │   ├── mainwindow_slots.cpp      # Signal/slot handlers (stop/pause, output mode, presets); the rest are split by topic:
 │   │                              #   mainwindow_queue / _render_events / _scene_info / _thumbnails / _downloads / _diagnostics_log .cpp
 │   ├── mainwindow_tabs_render*.cpp  # Render Options + Preview tabs (the option groups are _groups.cpp); mainwindow_live_preview / _live_settings .cpp are the Live Preview session and its saved settings

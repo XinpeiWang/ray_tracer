@@ -1,0 +1,1505 @@
+// mainwindow_tabs_settings_groups.cpp - the group boxes of the Settings tab (Scene, Render Settings, Video Generation, Live Preview Controls,
+// Advanced Parameters, Camera Position, Output), each built by its own function and added to the tab's layout by createSettingsTab() in
+// mainwindow_tabs.cpp. A pure split of what used to be one 1400-line function; nothing here changed.
+
+#include "mainwindow.h"
+#include "icon_tint.h"
+#include "scene_technique_notes.h"
+
+#include "../src/shared/scene_descriptor.h"
+#include "../src/shared/video_preset.h"
+
+#include <QTabBar>
+#include "scene_metadata_client.h"
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+#include "realtime_preview_session.h"
+#endif
+#include <QStandardItemModel>
+#include <QVBoxLayout>
+#include <QHBoxLayout>
+#include <QGroupBox>
+#include <QFormLayout>
+#include <QGridLayout>
+#include <QFileDialog>
+#include <QMessageBox>
+#include <QApplication>
+#include <QStyleFactory>
+#include <QPalette>
+#include <QProcess>
+#include <QDir>
+#include <QDateTime>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QScreen>
+#include <QTimer>
+#include <QAbstractItemView>
+#include <QIcon>
+#include <QDesktopServices>
+#include <QUrl>
+#include <QSplitter>
+#include <QStackedWidget>
+#include <QSlider>
+#include <QStandardPaths>
+#include <QTemporaryFile>
+#include <QFile>
+#include <QToolButton>
+#include <QButtonGroup>
+#include <cmath>
+#include <algorithm>
+
+namespace {
+// True if `dir` can be created and a file can actually be created in it.
+// A real write probe, not QFileInfo::isWritable(): that only reads ACLs/
+// permission bits, so it says "yes" for a Windows folder protected by
+// Defender's Controlled Folder Access, which allows the ACL yet blocks the
+// write - the exact case that made every default GUI render fail with
+// "File Write Failed" on a PC with that setting on.
+bool dirAcceptsWrites(const QString &dir) {
+	if (!QDir().mkpath(dir)) return false;
+	QTemporaryFile probe(dir + QStringLiteral("/.raytracer_write_probe_XXXXXX"));
+	return probe.open();  // removed automatically when `probe` goes out of scope
+}
+
+// Where the Output Path box points by default: the first of a per-platform
+// preference list that genuinely accepts writes, so one default works on
+// every platform this GUI ships on instead of hardcoding one location:
+//  - macOS: ~/Pictures/RayTracer first. <exe_dir>/output is INSIDE the .app
+//    bundle, which is read-only when the app is run straight off a mounted
+//    .dmg (a real user report: the render "succeeded" but the GUI then
+//    couldn't find the file), so it must not be the first choice there.
+//  - Windows: <exe_dir>/output first (the portable-package layout, also the
+//    CLI's own default), then Pictures\RayTracer. Pictures is a protected
+//    folder under Controlled Folder Access and can have a non-ANSI
+//    localized name (see cliSafeOutputPath() in mainwindow.cpp), so it is
+//    the fallback here, not the default.
+//  - Linux/other: Pictures first (an AppImage's own dir is read-only),
+//    then <exe_dir>/output.
+// The system temp dir is the last resort. If NOTHING accepts a write, the
+// platform's first choice is returned unchanged so the failure surfaces
+// exactly as it always did, rather than hiding behind a silent fallback.
+// recent_renders.cpp scans both the Pictures and <exe_dir>/output folders,
+// so renders remain listed in Recent Renders whichever one wins.
+QString defaultRenderOutputDir() {
+	const QString pictures = QStandardPaths::writableLocation(QStandardPaths::PicturesLocation)
+		+ QStringLiteral("/RayTracer");
+	const QString besideExe = QCoreApplication::applicationDirPath() + QStringLiteral("/output");
+	QStringList candidates;
+#ifdef Q_OS_WIN
+	candidates << besideExe << pictures;
+#else
+	candidates << pictures << besideExe;
+#endif
+	candidates << QDir::tempPath() + QStringLiteral("/RayTracer");
+	for (const QString &dir : candidates) {
+		if (dirAcceptsWrites(dir)) return dir;
+	}
+	return candidates.first();
+}
+} // namespace
+
+void MainWindow::buildSceneGroup(QWidget *basicTab, QVBoxLayout *layout) {
+	// --- Scene selection ---
+	InfoGroupBox *sceneGroup = new InfoGroupBox(tr("Scene"), basicTab);
+	styleGroupBox(sceneGroup);
+	sceneGroup->setInfoIcon(createInfoIcon(
+		tr("Pick which scene to render. Scenes are grouped by category and "
+		"searchable; switch to the grid view for thumbnail previews. "
+		"Selecting a scene here also fills in a suggested camera position "
+		"and settings hint below, if one exists for it.")));
+	QVBoxLayout *sceneGroupLayout = new QVBoxLayout(sceneGroup);
+	sceneGroupLayout->setContentsMargins(12, 20, 12, 10);
+	sceneGroupLayout->setSpacing(8);
+
+	// A category filter above the dropdown. With 78 scenes and counting, one
+	// flat list had become a scroll-and-hunt exercise; the tabs cut it to at
+	// most a couple of dozen at a time. The categories come from the registry
+	// itself (SceneDescriptor::category, served by scene_metadata.dll), not
+	// from a table here - a GUI-local copy is exactly the duplication that
+	// drifted before and got scene_descriptor.h's mirror table deleted.
+	const int sceneCount = SceneMetadataClient::sceneCount();
+	if (sceneCount <= 0) {
+		// lastLoadError() reports the ACTUAL cause (a real dlopen()/
+		// LoadLibrary failure reason, or "loaded but missing an export") -
+		// see its own comment (scene_metadata_client.h) for why this
+		// replaced a guessed, sometimes actively misleading "make sure the
+		// file is present" message: a real user's own dylib failed to load
+		// for an entirely different reason (a macOS Gatekeeper/quarantine
+		// block on an ad-hoc-signed, downloaded library) that the old
+		// message never could have suggested.
+		const QString reason = SceneMetadataClient::lastLoadError();
+		const QString reasonSuffix = reason.isEmpty() ? QString() : tr("\n\nReason: %1").arg(reason);
+#ifdef Q_OS_WIN
+		QMessageBox::critical(basicTab, tr("Scene Metadata Unavailable"),
+			tr("Could not load scene_metadata.dll, so the scene list is empty. "
+			"Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.") + reasonSuffix);
+#else
+		QMessageBox::critical(basicTab, tr("Scene Metadata Unavailable"),
+			tr("Could not load scene_metadata.dylib/.so, so the scene list is empty. "
+			"Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI. If it IS present, "
+			"this is often macOS blocking an unsigned library downloaded from the internet - try running "
+			"xattr -cr on the .app in Terminal.") + reasonSuffix);
+#endif
+	}
+
+	// A second, higher-level filter above the letter-category tabs: every
+	// scene splits into "Self-Contained" (renders in a fresh checkout) or
+	// "Requires External Files" (SceneMetadataClient::sceneRequiresFiles()),
+	// independently of SceneCategories - see mainwindow.h's own comment on
+	// m_sceneAvailabilityTabs for why this is a per-scene split layered on
+	// top of the categories rather than a coarser replacement for them.
+	// Defaults to "Self-Contained" (index 0) - the bucket that reliably
+	// renders for a user who just cloned the repo.
+	m_sceneAvailabilityTabs = new QTabBar(basicTab);
+	m_sceneAvailabilityTabs->setObjectName("sceneCategoryTabs");
+	m_sceneAvailabilityTabs->setDrawBase(false);
+	m_sceneAvailabilityTabs->setExpanding(false);
+	{
+		int requiresFilesCount = 0;
+		QStringList selfContainedIds;
+		for (int i = 0; i < sceneCount; ++i) {
+			const QString id = SceneMetadataClient::sceneIdAtIndex(i);
+			if (SceneMetadataClient::sceneRequiresFiles(id)) ++requiresFilesCount;
+			else selfContainedIds << id;
+		}
+		const int selfTab = m_sceneAvailabilityTabs->addTab(tr("Self-Contained"));
+		m_sceneAvailabilityTabs->setTabToolTip(selfTab,
+			tr("%n scene(s) - no extra downloads needed", "", selfContainedIds.size()));
+		const int filesTab = m_sceneAvailabilityTabs->addTab(tr("Requires External Files"));
+		m_sceneAvailabilityTabs->setTabToolTip(filesTab,
+			tr("%n scene(s) - needs assets not included in a fresh checkout", "", requiresFilesCount));
+
+#ifndef QT_NO_DEBUG
+		// One-time drift guard against scene_technique_notes.h - see that
+		// header's own comment on warnIfOutOfSync() for why this lives here
+		// (debug-only qWarning, not a gtest assertion) rather than beside
+		// scene_registry_tests.cpp's equivalent GuiSceneCountMatchesRegistry
+		// check for the scene count.
+		scene_technique_notes::warnIfOutOfSync(selfContainedIds);
+#endif
+	}
+	sceneGroupLayout->addWidget(m_sceneAvailabilityTabs);
+
+	m_sceneCategoryTabs = new QTabBar(basicTab);
+	m_sceneCategoryTabs->setObjectName("sceneCategoryTabs");
+	m_sceneCategoryTabs->setDrawBase(false);
+	m_sceneCategoryTabs->setExpanding(false);
+	// The compiled-in categories fit at this window's normal width, but the
+	// tab bar is inside a resizable group box - scroll buttons beat silently
+	// clipping the last category off the right edge when it doesn't.
+	m_sceneCategoryTabs->setUsesScrollButtons(true);
+	// SceneCategories::kAll drives the ORDER (a curated reading order, not
+	// the order categories happen to first appear in the registry).
+	// Categories with no scenes IN THE CURRENT AVAILABILITY BUCKET are
+	// skipped rather than shown as an empty tab - same reasoning
+	// createSettingsTab() already applied for categories with zero scenes at
+	// all (see rebuildCategoryTabs()'s own comment), just re-evaluated
+	// per bucket instead of once.
+	rebuildCategoryTabs(/*requiresFiles=*/false);
+	sceneGroupLayout->addWidget(m_sceneCategoryTabs);
+
+	// Narrows the combo/grid below by substring, on top of (not instead of)
+	// the availability/category tabs above - see m_sceneSearchBox's own
+	// comment in mainwindow.h for why. setClearButtonEnabled gives it Qt's
+	// own built-in inline "x" rather than a hand-drawn one. The grid/list
+	// toggle sits on the same row, and "Generate Thumbnails" (grid-only, so
+	// it lives in the grid page rather than here) fills in cached preview
+	// images for it - see populateSceneGrid()'s own comment.
+	QHBoxLayout *searchRow = new QHBoxLayout();
+	m_sceneSearchBox = new QLineEdit(basicTab);
+	m_sceneSearchBox->setPlaceholderText(tr("Search scenes by name or id..."));
+	m_sceneSearchBox->setClearButtonEnabled(true);
+	searchRow->addWidget(m_sceneSearchBox, 1);
+	searchRow->addWidget(createInfoIcon(
+		tr("Narrows the scene list/grid below to scenes whose name, id, or "
+		"description contains what you type - on top of, not instead "
+		"of, the availability and category tabs above.\n\n"
+		"Clear it (the small \"x\" inside the field) to see every scene "
+		"in the current category again.")));
+
+	m_sceneViewToggle = new QToolButton(basicTab);
+	m_sceneViewToggle->setCheckable(true);
+	m_sceneViewToggle->setText(tr("Grid"));
+	m_sceneViewToggle->setToolTip(tr("Switch between the dropdown list and a thumbnail gallery grid"));
+	searchRow->addWidget(m_sceneViewToggle);
+	sceneGroupLayout->addLayout(searchRow);
+
+	m_sceneViewStack = new QStackedWidget(basicTab);
+
+	QWidget *comboPage = new QWidget(m_sceneViewStack);
+	QHBoxLayout *sceneRow = new QHBoxLayout(comboPage);
+	sceneRow->setContentsMargins(0, 0, 0, 0);
+	m_sceneCombo = new QComboBox(basicTab);
+	styleComboBox(m_sceneCombo);
+	sceneRow->addWidget(new QLabel(tr("Scene:")));
+	sceneRow->addWidget(createInfoIcon(
+		tr("Every render starts from a scene - a description of what's in the "
+		"virtual world: the shapes and objects, what their surfaces are "
+		"made of, the lights, and a camera.\n\n"
+		"This app ships with dozens of built-in scenes, ranging from simple "
+		"starter setups (a plain box-shaped room) up through scenes with "
+		"realistic metal and glass, fog and smoke effects, and highly "
+		"detailed 3D-scanned models - pick one to render, or browse by "
+		"category using the tabs above.")));
+	sceneRow->addWidget(m_sceneCombo, 1);
+	m_sceneViewStack->addWidget(comboPage);
+
+	QWidget *gridPage = new QWidget(m_sceneViewStack);
+	QVBoxLayout *gridPageLayout = new QVBoxLayout(gridPage);
+	gridPageLayout->setContentsMargins(0, 0, 0, 0);
+	m_sceneGrid = new QListWidget(basicTab);
+	m_sceneGrid->setViewMode(QListView::IconMode);
+	m_sceneGrid->setResizeMode(QListView::Adjust);
+	m_sceneGrid->setMovement(QListView::Static);
+	m_sceneGrid->setSelectionMode(QAbstractItemView::SingleSelection);
+	m_sceneGrid->setIconSize(QSize(96, 96));
+	m_sceneGrid->setGridSize(QSize(120, 132));
+	m_sceneGrid->setUniformItemSizes(true);
+	m_sceneGrid->setWordWrap(true);
+	m_sceneGrid->setMinimumHeight(260);
+	gridPageLayout->addWidget(m_sceneGrid, 1);
+	// Enabled state/tooltip both set for real by updateGenerateThumbnailsButtonState()
+	// once the category tabs exist below - this constructs enabled with a
+	// placeholder tooltip only because there's no category to check against yet.
+	m_generateThumbnailsButton = new QPushButton(tr("Generate Thumbnails"), gridPage);
+	gridPageLayout->addWidget(m_generateThumbnailsButton);
+	// Hidden until generation actually starts (onGenerateThumbnailsClicked())
+	// and hidden again once it finishes (onThumbnailsAllDone()) - see
+	// m_thumbnailProgressBar's own comment (mainwindow.h).
+	m_thumbnailProgressBar = new QProgressBar(gridPage);
+	m_thumbnailProgressBar->setTextVisible(true);
+	m_thumbnailProgressBar->setVisible(false);
+	gridPageLayout->addWidget(m_thumbnailProgressBar);
+	// Same show/hide lifecycle as m_thumbnailProgressBar just above - visible
+	// only while a batch is actually running, right below its own progress
+	// bar rather than reusing the real render's Stop/Pause row (which drives
+	// m_renderController/m_renderQueue, a completely separate job).
+	QHBoxLayout *thumbnailControlsRow = new QHBoxLayout();
+	m_thumbnailPauseButton = new QPushButton(tr("Pause"), gridPage);
+	m_thumbnailPauseButton->setVisible(false);
+	thumbnailControlsRow->addWidget(m_thumbnailPauseButton);
+	m_thumbnailStopButton = new QPushButton(tr("Stop"), gridPage);
+	m_thumbnailStopButton->setVisible(false);
+	thumbnailControlsRow->addWidget(m_thumbnailStopButton);
+	gridPageLayout->addLayout(thumbnailControlsRow);
+	connect(m_thumbnailPauseButton, &QPushButton::clicked, this, &MainWindow::onThumbnailPauseClicked);
+	connect(m_thumbnailStopButton, &QPushButton::clicked, this, &MainWindow::onThumbnailStopClicked);
+	m_sceneViewStack->addWidget(gridPage);
+
+	sceneGroupLayout->addWidget(m_sceneViewStack);
+
+	// Under the My Scenes category only: delete the scene selected above, or every scene the user made (mainwindow_my_scenes.cpp).
+	m_myScenesRow = new QWidget(basicTab);
+	auto *myScenesLayout = new QHBoxLayout(m_myScenesRow);
+	myScenesLayout->setContentsMargins(0, 0, 0, 0);
+	m_deleteSceneButton = new QPushButton(tr("Delete Scene..."), m_myScenesRow);
+	m_deleteAllScenesButton = new QPushButton(tr("Delete All My Scenes..."), m_myScenesRow);
+	m_deleteAllScenesButton->setToolTip(tr("Move every scene you made in the Scene Builder to the Trash"));
+	myScenesLayout->addStretch(1);
+	myScenesLayout->addWidget(m_deleteSceneButton);
+	myScenesLayout->addWidget(m_deleteAllScenesButton);
+	m_myScenesRow->setVisible(false);
+	sceneGroupLayout->addWidget(m_myScenesRow);
+	connect(m_deleteSceneButton, &QPushButton::clicked, this, &MainWindow::onDeleteSceneClicked);
+	connect(m_deleteAllScenesButton, &QPushButton::clicked, this, &MainWindow::onDeleteAllMyScenesClicked);
+
+	// QStackedWidget sizes itself to fit the largest of ALL its pages by
+	// default, not just the current one - m_sceneGrid's 260px minimum
+	// height would otherwise force this whole area to stay that tall even
+	// while the much shorter combo page is showing (the common case). Only
+	// the currently-visible page keeps its natural size policy; the other
+	// is set to Ignored so it drops out of the stack's own size-hint
+	// calculation - the standard Qt workaround for this exact behavior.
+	// comboPage starts current (index 0), so gridPage starts Ignored.
+	gridPage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
+	connect(m_sceneViewToggle, &QToolButton::toggled, this, [this, comboPage, gridPage](bool gridChecked) {
+		m_sceneViewStack->setCurrentIndex(gridChecked ? 1 : 0);
+		comboPage->setSizePolicy(gridChecked ? QSizePolicy::Ignored : QSizePolicy::Preferred,
+		                          gridChecked ? QSizePolicy::Ignored : QSizePolicy::Preferred);
+		gridPage->setSizePolicy(gridChecked ? QSizePolicy::Preferred : QSizePolicy::Ignored,
+		                         gridChecked ? QSizePolicy::Preferred : QSizePolicy::Ignored);
+		m_sceneViewStack->updateGeometry();
+	});
+	connect(m_generateThumbnailsButton, &QPushButton::clicked, this, &MainWindow::onGenerateThumbnailsClicked);
+	connect(m_sceneGrid, &QListWidget::currentItemChanged, this, [this](QListWidgetItem *current, QListWidgetItem *) {
+		if (!current) return;
+		const QString id = current->data(Qt::UserRole).toString();
+		const int comboIndex = m_sceneCombo->findData(id);
+		if (comboIndex < 0) return;
+		if (m_sceneCombo->currentIndex() == comboIndex) return;
+		const QSignalBlocker blocker(m_sceneCombo);
+		m_sceneCombo->setCurrentIndex(comboIndex);
+		onSceneChanged(comboIndex);
+	});
+
+	// Fill the dropdown/grid for whichever category the bar opened on.
+	if (m_sceneCategoryTabs->count() > 0)
+		populateSceneViews(m_sceneCategoryTabs->tabData(0).toString());
+	updateGenerateThumbnailsButtonState();
+
+	connect(m_sceneAvailabilityTabs, &QTabBar::currentChanged, this, [this](int tab) {
+		if (tab < 0) return;
+		rebuildCategoryTabs(/*requiresFiles=*/tab == 1);
+		// rebuildCategoryTabs() picks a category tab but (like the category
+		// bar's own currentChanged handler below) does not refill the combo
+		// itself - QTabBar::currentChanged only fires on an actual index
+		// CHANGE, which rebuildCategoryTabs() causes most of the time (tab
+		// counts/order shift between buckets) but not always (e.g. toggling
+		// back to a bucket that happens to restore the same tab index by
+		// coincidence) - so this always refills explicitly rather than
+		// relying on that signal firing.
+		if (m_sceneCategoryTabs->count() > 0)
+			populateSceneViews(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
+		else {
+			m_sceneCombo->clear();
+			if (m_sceneGrid) m_sceneGrid->clear();
+		}
+		onSceneChanged(m_sceneCombo->currentIndex());
+		// "Requires External Files" scenes are never thumbnail-eligible
+		// (onGenerateThumbnailsClicked()'s own sceneRequiresFiles() filter),
+		// regardless of category - re-evaluate now rather than leaving
+		// whatever enabled state the Self-Contained side last left behind.
+		updateGenerateThumbnailsButtonState();
+	});
+
+	connect(m_sceneCategoryTabs, &QTabBar::currentChanged, this, [this](int tab) {
+		if (tab < 0) return;
+		populateSceneViews(m_sceneCategoryTabs->tabData(tab).toString());
+		// populateSceneViews() deliberately stays silent, so the one update for
+		// the newly selected scene is issued here - otherwise switching category
+		// would leave the description, SPP and camera describing the old scene.
+		onSceneChanged(m_sceneCombo->currentIndex());
+		updateGenerateThumbnailsButtonState();
+	});
+
+	// Re-narrows the current category's combo/grid on every keystroke -
+	// populateSceneViews() reads m_sceneSearchBox->text() itself, so this
+	// only needs to trigger the same repopulate the tab handlers above
+	// already use, not duplicate the filtering logic here.
+	connect(m_sceneSearchBox, &QLineEdit::textChanged, this, [this](const QString &) {
+		if (m_sceneCategoryTabs->count() == 0) return;
+		populateSceneViews(m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString());
+		onSceneChanged(m_sceneCombo->currentIndex());
+		// eligibleThumbnailIds() (mainwindow_slots.cpp) narrows by this same
+		// search text - a term matching nothing in the current category
+		// should gray the button out exactly like an empty category does.
+		updateGenerateThumbnailsButtonState();
+	});
+
+	buildSceneInfoRows(basicTab, sceneGroupLayout);
+
+	connect(m_sceneCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onSceneChanged);
+
+	layout->addWidget(sceneGroup);
+}
+
+void MainWindow::buildSceneInfoRows(QWidget *basicTab, QVBoxLayout *sceneGroupLayout) {
+	m_sceneInfoLabel = new QLabel(basicTab);
+	m_sceneInfoLabel->setWordWrap(true);
+	// Appearance lives in the global stylesheet under this name, so it follows
+	// the active theme without anything here having to know a colour.
+	m_sceneInfoLabel->setObjectName("sceneInfo");
+	sceneGroupLayout->addWidget(m_sceneInfoLabel);
+
+	m_downloadAssetsButton = new QPushButton(basicTab);
+	m_downloadAssetsButton->setVisible(false);   // refreshSceneInfoLabel() shows it when there is something to fetch
+	connect(m_downloadAssetsButton, &QPushButton::clicked, this, &MainWindow::onDownloadMissingAssetsClicked);
+	sceneGroupLayout->addWidget(m_downloadAssetsButton);
+
+	// Rendering-technique icon: same look as every other info icon, but its
+	// tooltip is rewritten per scene by refreshSceneInfoLabel() rather than
+	// fixed at construction - see scene_technique_notes.h. The placeholder
+	// text here is overwritten before the window is ever shown (the initial
+	// onSceneChanged(0) call further down the constructor triggers it).
+	{
+		QWidget *techRow = new QWidget(basicTab);
+		QHBoxLayout *techRowLayout = new QHBoxLayout(techRow);
+		techRowLayout->setContentsMargins(0, 0, 0, 0);
+		techRowLayout->setSpacing(4);
+		techRowLayout->addWidget(new QLabel(tr("Rendering Technique:"), techRow));
+		m_sceneTechInfoIcon = createInfoIcon(tr("Select a scene to see the rendering technique it demonstrates."));
+		techRowLayout->addWidget(m_sceneTechInfoIcon);
+		techRowLayout->addStretch();
+		sceneGroupLayout->addWidget(techRow);
+	}
+
+	// Non-blocking heads-up when a loaded .pbrt scene's own Sampler/
+	// Integrator/light-sampler directive differs from what's currently
+	// selected on the Render Options tab - see updateSceneRecommendedSettingsHint()'s
+	// own comment (mainwindow_slots.cpp) for the exact mismatch logic, kept
+	// in lockstep with cpu_render_main()'s own (console-only) warning.
+	// Same objectName/wordWrap/hidden-by-default shape as
+	// m_integratorVideoWarningLabelBasic just above, plus a one-click Apply
+	// button (applyRecommendedSettings(), mainwindow_slots.cpp) - the one
+	// deliberate exception to this hint's own "not applied automatically"
+	// text, since clicking it is a real user action, not an automatic
+	// override. Both widgets share one row so Apply sits right next to the
+	// text it applies, and both toggle visibility together.
+	QWidget *recommendedSettingsRow = new QWidget(basicTab);
+	QHBoxLayout *recommendedSettingsLayout = new QHBoxLayout(recommendedSettingsRow);
+	recommendedSettingsLayout->setContentsMargins(0, 0, 0, 0);
+	m_sceneRecommendedSettingsHint = new QLabel(recommendedSettingsRow);
+	m_sceneRecommendedSettingsHint->setObjectName("statusInfo");   // a tip, not a warning: the default settings render the scene too
+	m_sceneRecommendedSettingsHint->setWordWrap(true);
+	m_sceneRecommendedSettingsHint->setVisible(false);
+	recommendedSettingsLayout->addWidget(m_sceneRecommendedSettingsHint, 1);
+	m_applyRecommendedSettingsButton = new QPushButton(tr("Apply"), recommendedSettingsRow);
+	m_applyRecommendedSettingsButton->setToolTip(
+		tr("Sets the rendering method options (Sampler, Integrator, Light Sampler - "
+		"on the Render Options tab) to the values this scene recommends."));
+	m_applyRecommendedSettingsButton->setVisible(false);
+	connect(m_applyRecommendedSettingsButton, &QPushButton::clicked,
+			this, &MainWindow::applyRecommendedSettings);
+	recommendedSettingsLayout->addWidget(m_applyRecommendedSettingsButton, 0, Qt::AlignTop);
+	sceneGroupLayout->addWidget(recommendedSettingsRow);
+}
+
+void MainWindow::buildRenderSettingsGroup(QWidget *basicTab, QVBoxLayout *layout) {
+	// --- Render settings: output mode, GPU/CPU, quality, resolution ---
+	// One group instead of separate "Render Mode" + "Render Settings" boxes -
+	// they're all "how do I want this rendered" and splitting them just cost
+	// an extra group box's worth of border/title chrome for no real benefit.
+	InfoGroupBox *renderGroup = new InfoGroupBox(tr("Render Settings"), basicTab);
+	styleGroupBox(renderGroup);
+	renderGroup->setInfoIcon(createInfoIcon(
+		tr("Choose Output Mode (Single Image, Video, or Live Preview) and "
+		"which hardware renders it (GPU or CPU) here, plus a Quality/"
+		"Resolution preset or your own manual settings further down. "
+		"Fields that only matter for Video or Live Preview stay visible "
+		"and editable even while in Image mode, just dimmed with a note "
+		"- so you can set them up ahead of time before switching modes.")));
+	QFormLayout *renderLayout = new QFormLayout(renderGroup);
+	renderLayout->setVerticalSpacing(10);
+	renderLayout->setHorizontalSpacing(10);
+	renderLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_modeCombo = new QComboBox(basicTab);
+	icon_tint::addItem(m_modeCombo, ":/icons/image.svg", tr("Render Single Image"),
+					   static_cast<int>(OutputMode::Image), m_activeTheme.textBody);
+	icon_tint::addItem(m_modeCombo, ":/icons/video.svg", tr("Generate Video"),
+					   static_cast<int>(OutputMode::Video), m_activeTheme.textBody);
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	// Added even when realtime_renderer.dll isn't found (RealtimePreviewSession::
+	// isAvailable() == false) - disabled with an explanatory tooltip instead
+	// of omitted, so the feature is at least discoverable rather than
+	// silently missing. Same "fail quiet, explain why" convention
+	// initLivePreviewSession()'s own unavailable-session path uses.
+	icon_tint::addItem(m_modeCombo, ":/icons/gpu.svg", tr("Live Preview (interactive)"),
+					   static_cast<int>(OutputMode::LivePreview), m_activeTheme.textBody);
+	if (!RealtimePreviewSession::isAvailable()) {
+		const int liveIndex = m_modeCombo->count() - 1;
+		// QComboBox uses a QStandardItemModel by default - disabling the
+		// underlying QStandardItem (not just adding a tooltip) is what
+		// actually greys the row out and blocks selecting it.
+		if (auto *model = qobject_cast<QStandardItemModel *>(m_modeCombo->model())) {
+			if (QStandardItem *item = model->item(liveIndex)) item->setEnabled(false);
+		}
+#ifdef Q_OS_MAC
+		m_modeCombo->setItemData(liveIndex, tr("realtime_renderer.dylib wasn't found next to the application."), Qt::ToolTipRole);
+#else
+		m_modeCombo->setItemData(liveIndex, tr("realtime_renderer.dll wasn't found next to the application."), Qt::ToolTipRole);
+#endif
+	}
+#endif
+	m_modeCombo->setCurrentIndex(0);
+	styleComboBox(m_modeCombo);
+	connect(m_modeCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onModeChanged);
+	renderLayout->addRow(labelWithInfo(tr("Output Mode:"),
+		tr("Whether this render produces a single still picture, a "
+		"sequence of pictures stitched into a video, or a live, "
+		"interactive preview on the GPU.\n\n"
+		"Single Image renders the scene once, from the camera set on "
+		"this tab. Generate Video instead moves "
+		"the camera along a path (Video Generation Settings, further "
+		"down this tab) and renders one picture per step, then stitches "
+		"them into an MP4 video - taking roughly Frame Count times as long as "
+		"a single image. Live Preview instead renders continuously at a "
+		"fixed, small resolution so you can click-drag/scroll to orbit "
+		"the camera and watch the image get clearer in real time - it never "
+		"writes an output file.\n\nGenerate Video cannot be combined with an alternate "
+		"rendering method (Integrator) - see the warning below if that "
+		"combination is picked.")),
+		m_modeCombo);
+
+	// See m_integratorVideoWarningLabelBasic's own comment (mainwindow.h) -
+	// a second copy of the Render Options tab's warning, here next to the
+	// control (Output Mode) that actually triggers the conflict.
+	m_integratorVideoWarningLabelBasic = new QLabel(
+		tr("⚠ Generate Video cannot be combined with an alternate integrator - "
+		"switch back to Path Tracer, or to Single Image output."), basicTab);
+	m_integratorVideoWarningLabelBasic->setObjectName("statusWarning");
+	m_integratorVideoWarningLabelBasic->setWordWrap(true);
+	m_integratorVideoWarningLabelBasic->setVisible(false);
+	renderLayout->addRow(QString(), m_integratorVideoWarningLabelBasic);
+
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	// Same "banner, don't hide" convention as m_videoModeWarningLabel below -
+	// see its own comment (mainwindow.h) for why nothing here gets disabled
+	// instead. Visible only in Live Preview mode; toggled by onModeChanged().
+	m_liveModeWarningLabel = makeModeWarningBanner(basicTab,
+#ifdef Q_OS_MAC
+		tr("⚠ Live Preview renders a small, fast preview on the GPU and writes no output file - Resolution only sets its "
+		"aspect ratio (so the starting view matches the image render); Samples per Pixel, Max Ray Depth, and Output "
+		"Path don't apply. Scene and Camera Position do."));
+#else
+		tr("⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no "
+		"output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path "
+		"don't apply. Scene and Camera Position do."));
+#endif
+	renderLayout->addRow(QString(), m_liveModeWarningLabel);
+#endif
+
+	m_modeCombo->setToolTip(
+		tr("Single Image renders one picture.\n"
+		"Generate Video renders a moving camera path frame by frame and assembles an MP4.\n"
+		"Live Preview renders continuously with a camera you can freely orbit - GPU only."));
+
+	// Whether the Renderer combo's own GPU item should be selectable at
+	// all - kGpuOptionAvailable (Windows/OptiX, a compile-time fact about
+	// THIS GUI build) OR m_metalGpuAvailable (macOS/Metal, a runtime fact
+	// about the SPECIFIC `ray_tracer` binary this GUI found and probed -
+	// see that member's own comment, mainwindow.h, for why macOS can't
+	// use a compile-time flag the way Windows does). Never both true at
+	// once in practice (RT_GUI_HAVE_GPU is Windows-only, the Metal probe
+	// is `#ifdef Q_OS_MAC`-only), but written as an OR rather than an
+	// either/or switch so neither path has to know the other exists.
+#ifdef Q_OS_MAC
+	const bool gpuAvailable = kGpuOptionAvailable || m_metalGpuAvailable;
+#else
+	const bool gpuAvailable = kGpuOptionAvailable;
+#endif
+
+	m_renderModeCombo = new QComboBox(basicTab);
+	// GPU is always OFFERED (see kGpuOptionAvailable's own comment above
+	// createRenderOptionsTab()/wherever it's declared) - shown and
+	// discoverable on every platform, not just where it's actually usable.
+	// A build/machine with no usable GPU backend at all disables the item
+	// instead of omitting it, same "fail quiet, explain why" convention
+	// the Output Mode combo's own Live Preview item already used
+	// (mainwindow_tabs.cpp's m_modeCombo setup) - just extended here from
+	// "RT_GUI_HAVE_GPU but no realtime_renderer.dll" to also cover "not
+	// an RT_GUI_HAVE_GPU build at all" and, now, "macOS with no working
+	// Metal device found by the probe".
+#ifdef Q_OS_MAC
+	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (Metal) - Fast"), true, m_activeTheme.textBody);
+#else
+	icon_tint::addItem(m_renderModeCombo, ":/icons/gpu.svg", tr("GPU (CUDA) - Fast"), true, m_activeTheme.textBody);
+#endif
+	if (gpuAvailable) {
+#ifdef Q_OS_MAC
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Uses your Mac's GPU (via Metal) to render. Usually dramatically "
+			"faster than using the CPU, but can't yet handle every type of "
+			"scene or material the CPU option supports (see the Ray Tracer "
+			"Feasibility doc's own list of what's not wired up yet)."));
+#else
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Uses your NVIDIA graphics card's dedicated ray-tracing hardware "
+			"to render. Usually dramatically faster than using the CPU, but "
+			"requires a compatible NVIDIA graphics card, and can't yet handle "
+			"every type of material the CPU option supports."));
+#endif
+	} else {
+		setComboItemEnabled(m_renderModeCombo, m_renderModeCombo->count() - 1, false);
+#ifdef Q_OS_MAC
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Not available right now - no usable Metal GPU was found on "
+			"this Mac (or this build's own ray_tracer wasn't built with "
+			"Metal support at all)."));
+#else
+		setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+			tr("Not available in this build - GPU rendering needs Windows plus "
+			"a compatible NVIDIA graphics card. This platform's build has no "
+			"GPU renderer at all (see launcher/optix_stub.h)."));
+#endif
+	}
+	icon_tint::addItem(m_renderModeCombo, ":/icons/cpu.svg", tr("CPU - High Quality"), false, m_activeTheme.textBody);
+	setRichItemTooltip(m_renderModeCombo, m_renderModeCombo->count() - 1,
+		tr("The renderer's complete, most capable rendering method. Runs on "
+		"any machine and supports every scene and material this app "
+		"implements, including the handful the GPU option can't handle "
+		"yet - at the cost of being much slower."));
+	styleComboBox(m_renderModeCombo);
+	// CPU stays the default whenever GPU isn't actually usable - the GPU
+	// item above is disabled but still occupies index 0, and Qt would
+	// otherwise leave it "selected" (just unclickable) rather than
+	// skipping to the first enabled item on its own.
+	if (!gpuAvailable) m_renderModeCombo->setCurrentIndex(1);
+	// Tooltips carry what the label cannot: the actual trade-off, not a repeat
+	// of the visible text.
+	if (gpuAvailable) {
+		m_renderModeCombo->setToolTip(
+			tr("GPU: uses your graphics card's ray-tracing hardware — typically much faster.\n"
+			"CPU: the full-featured rendering method — supports every scene and material,\n"
+			"including the handful the GPU option does not implement."));
+	} else {
+#ifdef Q_OS_MAC
+		m_renderModeCombo->setToolTip(
+			tr("The full-featured CPU rendering method — supports every scene and material.\n"
+			"GPU rendering is not available right now (grayed out above) - no usable Metal\n"
+			"GPU was found on this Mac."));
+#else
+		m_renderModeCombo->setToolTip(
+			tr("The full-featured CPU rendering method — supports every scene and material.\n"
+			"GPU rendering is not available in this build (grayed out above) - it needs\n"
+			"Windows plus a compatible NVIDIA graphics card."));
+#endif
+	}
+	renderLayout->addRow(labelWithInfo(tr("Renderer:"),
+		tr("Both options do the exact same calculations and produce the "
+		"same image - the only difference is speed and which hardware "
+		"does the work, not the physics.\n\n"
+		"GPU uses your NVIDIA graphics card's dedicated ray-tracing "
+		"hardware to process thousands of light rays at once, so it's "
+		"typically far faster. CPU uses your computer's regular processor "
+		"instead: much slower, but works on any machine and supports "
+		"every material this app implements, including a couple the GPU "
+		"option hasn't caught up to yet.")),
+		m_renderModeCombo);
+
+	// Always constructed too, same reasoning as m_renderModeCombo's own GPU
+	// item above - m_gpuBackendCombo used to be nullptr outside
+	// RT_GUI_HAVE_GPU builds (every call site that touches it elsewhere
+	// null-checks it defensively; those checks are now always-true but
+	// stay, since they're harmless and this stays a smaller, more
+	// conservative change than removing them too).
+	m_gpuBackendCombo = new QComboBox(basicTab);
+	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Recursive (Default)"), false, m_activeTheme.textBody);
+	setRichItemTooltip(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1,
+		tr("Processes each pixel on its own, following a light ray through "
+		"all of its bounces before moving to the next pixel. The default "
+		"GPU rendering method - broadly tested and works with the widest "
+		"range of scenes and materials."));
+	icon_tint::addItem(m_gpuBackendCombo, ":/icons/gpu.svg", tr("Wavefront (Experimental)"), true, m_activeTheme.textBody);
+	setRichItemTooltip(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1,
+		tr("Groups light rays that are currently doing the same kind of "
+		"work together and processes each bounce for the whole group at "
+		"once, instead of pixel by pixel. This can make better use of the "
+		"graphics card on complex scenes with lots of different materials "
+		"- but it's a newer option that's been tested less than "
+		"Recursive."));
+	// Wavefront is an OptiX-only path (gpu/optix/wavefront_path_tracer.cpp)
+	// - it's genuinely absent from the Metal backend (gpu/metal/), not
+	// just untested there, so this stays disabled even when Renderer's
+	// own GPU item is selectable via m_metalGpuAvailable. Checked
+	// against kGpuOptionAvailable specifically (not the combined
+	// gpuAvailable above) for exactly that reason - this is the one
+	// place in this whole function that cares which GPU backend is
+	// actually available, not just whether one is.
+	if (!kGpuOptionAvailable) {
+		setComboItemEnabled(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1, false);
+		setRichItemTooltip(m_gpuBackendCombo, m_gpuBackendCombo->count() - 1,
+			tr("Not available - the wavefront path tracer is only implemented "
+			"for the CUDA/OptiX GPU backend (Windows), not Metal."));
+	}
+	m_gpuBackendCombo->setCurrentIndex(0);
+	styleComboBox(m_gpuBackendCombo);
+	if (gpuAvailable) {
+		m_gpuBackendCombo->setToolTip(
+			tr("Recursive: the default GPU rendering method — broadly tested, works with the widest range of scenes.\n"
+			"Wavefront: groups similar rays together for better use of the graphics card on complex scenes,\n"
+			"but it's newer and less tested than Recursive.\n"
+			"Only applies when Renderer is set to GPU."));
+	} else {
+#ifdef Q_OS_MAC
+		m_gpuBackendCombo->setToolTip(
+			tr("Not available right now - no usable Metal GPU was found on this Mac,\n"
+			"so Renderer above can only ever be CPU."));
+#else
+		m_gpuBackendCombo->setToolTip(
+			tr("Not available in this build - GPU rendering needs Windows plus a\n"
+			"compatible NVIDIA graphics card. This platform's build has no GPU\n"
+			"renderer at all, so Renderer above can only ever be CPU."));
+#endif
+	}
+	// Starts disabled/enabled in sync with the initial Renderer selection
+	// (GPU only when kGpuOptionAvailable - see m_renderModeCombo's own
+	// default-index fixup above) - the connect() in the constructor keeps
+	// it synced afterwards whenever the user changes Renderer. When GPU
+	// isn't available at all, Renderer can never actually become GPU (its
+	// own item is disabled), so this combo stays permanently disabled too
+	// through the exact same dependency, no separate case needed here.
+	m_gpuBackendCombo->setEnabled(m_renderModeCombo->currentData().toBool());
+	renderLayout->addRow(labelWithInfo(tr("GPU Backend:"),
+		tr("Two different ways of organizing the SAME rendering work on your "
+		"graphics card - they produce the same image, just computed "
+		"differently.\n\n"
+		"Recursive follows each light ray from start to finish, one ray "
+		"at a time - simple and thoroughly tested. Wavefront instead "
+		"groups together all the rays currently doing the same kind of "
+		"work (e.g. \"just hit a glass surface\") and processes them as a "
+		"batch - this can make better use of the graphics card on complex "
+		"scenes with lots of different materials, at the cost of being a "
+		"newer, less-tested option.")),
+		m_gpuBackendCombo);
+
+	buildQualityRows(basicTab, renderLayout);
+
+	layout->addWidget(renderGroup);
+}
+
+void MainWindow::buildQualityRows(QWidget *basicTab, QFormLayout *renderLayout) {
+	// Integrator selector lives on the Render Options tab now (colocated
+	// with its own per-mode Integrator Options group, immediately below
+	// it) - see createRenderOptionsTab() for m_integratorCombo/
+	// m_integratorVideoWarningLabel's construction.
+
+	// Quality preset
+	m_qualityPresetCombo = new QComboBox(basicTab);
+	m_qualityPresetCombo->addItem(tr("Draft (Very Fast)"), 0);
+	m_qualityPresetCombo->addItem(tr("Preview (Fast)"), 1);
+	m_qualityPresetCombo->addItem(tr("Good (Balanced)"), 2);
+	m_qualityPresetCombo->addItem(tr("High (Slow)"), 3);
+	m_qualityPresetCombo->addItem(tr("Ultra (Very Slow)"), 4);
+	m_qualityPresetCombo->addItem(tr("Maximum (Extreme)"), 5);
+	m_qualityPresetCombo->addItem(tr("Custom"), 6);
+	m_qualityPresetCombo->setCurrentIndex(2); // Default to Good
+	connect(m_qualityPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onQualityPresetChanged);
+	styleComboBox(m_qualityPresetCombo);
+	// The preset names are relative ("Ultra", "Maximum") and say nothing
+	// quantitative; spell out what each actually sets. Keep in sync with
+	// onQualityPresetChanged()'s presetSamples/presetDepth tables.
+	m_qualityPresetCombo->setToolTip(
+		tr("Samples per pixel (image cleanliness) / max ray depth (light bounces allowed):\n"
+		"  Draft    25 spp,  depth 10\n"
+		"  Preview  50 spp,  depth 20\n"
+		"  Good    100 spp,  depth 50\n"
+		"  High    500 spp,  depth 50\n"
+		"  Ultra  1000 spp,  depth 100\n"
+		"  Maximum 5000 spp, depth 100\n"
+		"Custom leaves the Samples/Max Depth fields below untouched.\n"
+		"Render time scales roughly in proportion to samples per pixel - twice\n"
+		"the samples takes roughly twice as long."));
+	renderLayout->addRow(labelWithInfo(tr("Quality:"),
+		tr("A shortcut that sets both Samples per Pixel and Max Ray Depth "
+		"together, since they're the two dials that trade render time "
+		"for image quality.\n\n"
+		"Each step up roughly doubles the render time in exchange for a "
+		"cleaner, less noisy image - Draft is for quickly checking a "
+		"scene looks right, Ultra/Maximum are for a final image you'd "
+		"actually want to look at closely.")),
+		m_qualityPresetCombo);
+
+	// Resolution
+	m_resolutionCombo = new QComboBox(basicTab);
+	m_resolutionCombo->addItem(tr("100 x 100 (Tiny)"), QSize(100, 100));
+	m_resolutionCombo->addItem(tr("200 x 200"), QSize(200, 200));
+	m_resolutionCombo->addItem(tr("400 x 400"), QSize(400, 400));
+	m_resolutionCombo->addItem(tr("512 x 512"), QSize(512, 512));
+	m_resolutionCombo->addItem(tr("600 x 600"), QSize(600, 600));
+	m_resolutionCombo->addItem(tr("800 x 800"), QSize(800, 800));
+	m_resolutionCombo->addItem(tr("1024 x 1024 (1K)"), QSize(1024, 1024));
+	m_resolutionCombo->addItem(tr("1080 x 1080 (Full HD)"), QSize(1080, 1080));
+	m_resolutionCombo->addItem(tr("1200 x 1200"), QSize(1200, 1200));
+	m_resolutionCombo->addItem(tr("1440 x 1440"), QSize(1440, 1440));
+	m_resolutionCombo->addItem(tr("1920 x 1920"), QSize(1920, 1920));
+	m_resolutionCombo->addItem(tr("2048 x 2048 (2K)"), QSize(2048, 2048));
+	m_resolutionCombo->addItem(tr("2560 x 2560"), QSize(2560, 2560));
+	m_resolutionCombo->addItem(tr("3840 x 3840 (4K)"), QSize(3840, 3840));
+	m_resolutionCombo->addItem(tr("4096 x 4096"), QSize(4096, 4096));
+	m_resolutionCombo->setCurrentIndex(5); // Default to 800x800
+	styleComboBox(m_resolutionCombo);
+	renderLayout->addRow(labelWithInfo(tr("Resolution:"),
+		tr("How many pixels wide and tall the final image is.\n\n"
+		"Higher resolution means more individual pixels to trace - each "
+		"one independently sampled - so render time scales up roughly in "
+		"proportion to the pixel count (double the width AND height and "
+		"you're tracing about 4x as many pixels), independent of the "
+		"Samples per Pixel or Max Ray Depth settings.")),
+		m_resolutionCombo);
+}
+
+void MainWindow::buildVideoGroup(QWidget *basicTab, QVBoxLayout *layout) {
+	// --- Video Generation Settings: only meaningful when Output Mode above
+	// is "Generate Video" - formerly its own "Video Settings" tab, kept
+	// fully interactive regardless of mode rather than disabled outright
+	// (an earlier version of this app DID disable it, and that turned out
+	// to block browsing/configuring these settings ahead of switching modes
+	// - see commit 9e1c7df8's own message - which also silently breaks
+	// onVideoPresetChanged()'s auto-switch-to-Video-mode behavior below,
+	// since a disabled combo can't be opened to pick a preset from in the
+	// first place). m_videoModeWarningLabel is the same warning-banner
+	// pattern that fix introduced, just now scoped to this group instead of
+	// a whole standalone tab.
+	m_videoGroupBox = new InfoGroupBox(tr("Video Generation Settings"), basicTab);
+	styleGroupBox(m_videoGroupBox);
+	// Empty for now - populated (and kept up to date) by updateVideoDuration()
+	// below, which is where the fuller, dynamic version of this text lives.
+	m_videoGroupBox->setInfoIcon(createInfoIcon(QString()));
+	// Dimmed (not disabled - see setGroupDimmed()'s own comment) whenever
+	// Output Mode isn't "Generate Video", alongside the existing warning
+	// banner right below - the banner explains WHY, the dim reinforces AT A
+	// GLANCE that this whole group is currently inert, without blocking a
+	// user who wants to pre-configure it before switching modes.
+	setGroupDimmed(m_videoGroupBox, !isVideoMode());
+	QFormLayout *videoLayout = new QFormLayout(m_videoGroupBox);
+	videoLayout->setVerticalSpacing(10);
+	videoLayout->setHorizontalSpacing(10);
+	videoLayout->setContentsMargins(15, 22, 15, 12);
+
+	m_videoModeWarningLabel = makeModeWarningBanner(m_videoGroupBox,
+		tr("⚠ These settings only take effect when Output Mode above is set to \"Generate Video\"."));
+	m_videoModeWarningLabel->setVisible(!isVideoMode());
+	videoLayout->addRow(m_videoModeWarningLabel);
+
+	// Preset selector - sets the scene picker above, camera path, and the
+	// three spinboxes below all at once from one of video_preset.h's named
+	// bundles. First row, above Camera Path, since picking one is meant to
+	// replace tuning the other four controls, not sit alongside them as a
+	// fifth independent setting.
+	m_videoPresetCombo = new QComboBox();
+	m_videoPresetCombo->addItem(tr("(custom - choose settings below)"), QString());
+	for (const video_preset::VideoPreset& p : video_preset::kAll)
+		m_videoPresetCombo->addItem(
+			QString("[%1] %2").arg(QString::fromUtf8(p.id), QString::fromUtf8(p.name)),
+			QString::fromUtf8(p.id));
+	m_videoPresetCombo->setToolTip(
+		tr("Famous ray-tracing reference scenes and motions, pre-tuned so you don't\n"
+		"have to set the scene, camera path, frame count, fps, and speed by hand.\n"
+		"Selecting one changes the Scene above too. Choosing any of the\n"
+		"other controls on this tab afterward is fine - they simply stop matching\n"
+		"the preset, the same as if you had built the same settings by hand."));
+	styleComboBox(m_videoPresetCombo);
+	connect(m_videoPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onVideoPresetChanged);
+	videoLayout->addRow(labelWithInfo(tr("Preset:"),
+		tr("A ready-made bundle of scene + camera path + frame count + fps "
+		"+ speed, tuned so the resulting video actually looks good "
+		"without hand-picking every setting yourself.\n\n"
+		"Picking one fills in every field below (and the Scene above) - "
+		"you can still change anything afterward, it just "
+		"stops matching the preset once you do.")),
+		m_videoPresetCombo);
+
+	// Camera path selector
+	m_cameraPathCombo = new QComboBox();
+	m_cameraPathCombo->addItem(tr("Orbit (Circular rotation)"), "orbit");
+	m_cameraPathCombo->addItem(tr("Linear (Straight path)"), "linear");
+	m_cameraPathCombo->addItem(tr("Figure-8 (Lemniscate)"), "figure8");
+	m_cameraPathCombo->addItem(tr("Spiral (Zoom-in)"), "spiral");
+	m_cameraPathCombo->addItem(tr("Tour (Room walkthrough)"), "tour");
+	m_cameraPathCombo->addItem(tr("Showcase (Product reveal)"), "showcase");
+	m_cameraPathCombo->setToolTip(
+		tr("How the camera moves over the frame sequence:\n"
+		"  Orbit     — full circle around the scene, always looking at its centre\n"
+		"  Linear    — straight sweep past the scene\n"
+		"  Figure-8  — a figure-eight loop, crossing back through the middle\n"
+		"  Spiral    — orbits while moving steadily closer\n"
+		"  Tour      — sways side to side and glides forward while looking around, like walking through a room\n"
+		"  Showcase  — one smooth turn that pushes in and rises then falls, like a product ad\n"
+		"Every path starts from the camera position set below."));
+	m_cameraPathCombo->setCurrentIndex(0);
+	styleComboBox(m_cameraPathCombo);
+	videoLayout->addRow(labelWithInfo(tr("Camera Path:"),
+		tr("How the camera moves across the sequence of frames.\n\n"
+		"Orbit circles fully around the scene, always facing its center "
+		"- the classic \"turntable\" shot. Linear sweeps past in a "
+		"straight line. Figure-8 traces a figure-eight loop, crossing "
+		"back through the middle. Spiral orbits while steadily moving "
+		"closer. Tour sways side to side and glides forward while its "
+		"look-at point drifts too, like an actual visitor walking "
+		"through and looking around a room. Showcase turns once around "
+		"the subject with a smooth push-in and a gentle rise-and-fall, "
+		"like a product advertisement's hero shot. Every path starts "
+		"from wherever the camera is positioned further down this "
+		"tab.")),
+		m_cameraPathCombo);
+
+	// Frame Count + Frames Per Second on one line - same 4-column-grid-as-
+	// a-single-row trick used for the sensitivity pair in Live Preview
+	// Settings below, rather than converting this whole group from
+	// QFormLayout to QGridLayout (like Advanced Parameters/Camera Position
+	// do) just for this one pair.
+	QWidget *frameRateRow = new QWidget();
+	QGridLayout *frameRateGrid = new QGridLayout(frameRateRow);
+	frameRateGrid->setContentsMargins(0, 0, 0, 0);
+	frameRateGrid->setHorizontalSpacing(10);
+	frameRateGrid->setColumnStretch(1, 1);
+	frameRateGrid->setColumnStretch(3, 1);
+
+	m_videoFramesSpinBox = new QSpinBox();
+	m_videoFramesSpinBox->setRange(10, 1000);
+	m_videoFramesSpinBox->setValue(60);
+	m_videoFramesSpinBox->setSuffix(tr(" frames"));
+	styleSpinBox(m_videoFramesSpinBox);
+	frameRateGrid->addWidget(labelWithInfo(tr("Frame Count:"),
+		tr("How many individual images make up the video - each one is a "
+		"full, independent render, so this multiplies total render time "
+		"directly (100 frames takes roughly 100x as long as one image "
+		"at the same settings).\n\n"
+		"Paired with Frames Per Second to determine the video's total "
+		"length in seconds.")),
+		0, 0);
+	frameRateGrid->addWidget(m_videoFramesSpinBox, 0, 1);
+
+	m_videoFPSSpinBox = new QSpinBox();
+	m_videoFPSSpinBox->setRange(15, 120);
+	m_videoFPSSpinBox->setValue(30);
+	m_videoFPSSpinBox->setSuffix(tr(" fps"));
+	styleSpinBox(m_videoFPSSpinBox);
+	frameRateGrid->addWidget(labelWithInfo(tr("Frames Per Second:"),
+		tr("How many of the rendered frames play per second of video.\n\n"
+		"Doesn't change how many frames get rendered (that's Frame "
+		"Count) - only how fast they play back, and therefore how many "
+		"seconds long the finished video is (Frame Count divided by "
+		"FPS).")),
+		0, 2);
+	frameRateGrid->addWidget(m_videoFPSSpinBox, 0, 3);
+
+	videoLayout->addRow(frameRateRow);
+
+	// Movement speed multiplier - does NOT change the camera path itself (it
+	// always completes the exact same full sweep: 1 rotation for
+	// orbit/figure8, 2 for spiral, the whole start->end traversal for
+	// linear). Instead it expands the actual number of rendered frames:
+	// speed 0.5x renders 2x the Frame Count above, spreading the same
+	// journey over more frames (and more real video time at the same fps),
+	// so it looks slower without ever cutting the path short. speed 2x
+	// renders half as many frames, covering the same journey faster.
+	m_videoSpeedSpinBox = new QDoubleSpinBox();
+	m_videoSpeedSpinBox->setRange(0.1, 5.0);
+	m_videoSpeedSpinBox->setSingleStep(0.1);
+	m_videoSpeedSpinBox->setDecimals(2);
+	m_videoSpeedSpinBox->setValue(1.0);
+	m_videoSpeedSpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_videoSpeedSpinBox);
+	videoLayout->addRow(labelWithInfo(tr("Movement Speed:"),
+		tr("A multiplier on how many frames the camera's full path is "
+		"spread across - not a change to the path itself, which always "
+		"completes the same full sweep.\n\n"
+		"Speed 0.5x renders twice as many frames to cover the same "
+		"journey more slowly and smoothly; speed 2x renders half as "
+		"many frames, covering the same journey faster.")),
+		m_videoSpeedSpinBox);
+
+	// Video duration/summary info (calculated from frames/fps), plus the
+	// static ffmpeg-requirement/step-by-step usage text a separate
+	// "Video render requirements & usage:" row used to show below this
+	// group - both live on the group's OWN header icon (set up above)
+	// rather than a dedicated row/icon of their own, so there's exactly
+	// one place to check for info about this group instead of two a user
+	// has to notice are both worth hovering. Tooltip is rewritten on every
+	// recompute, same "content changes after construction" pattern
+	// m_sceneTechInfoIcon already uses (updateSceneTechInfoIcon(),
+	// mainwindow_style.cpp).
+	m_videoInfoIcon = m_videoGroupBox->infoIcon();
+
+	// Update duration display when frames, FPS, speed, or path changes
+	auto updateVideoDuration = [this]() {
+		int baseFrames = m_videoFramesSpinBox->value();
+		int fps = m_videoFPSSpinBox->value();
+		double speed = m_videoSpeedSpinBox->value();
+		QString cameraPath = m_cameraPathCombo->currentData().toString();
+
+		// Mirrors main.cpp's render_frame_count derivation exactly, so this
+		// preview matches what will actually be rendered.
+		int actualFrames = qMax(1, static_cast<int>(std::llround(baseFrames / speed)));
+		const int kMaxVideoFrames = 5000;
+		bool capped = actualFrames > kMaxVideoFrames;
+		if (capped) actualFrames = kMaxVideoFrames;
+		double duration = static_cast<double>(actualFrames) / fps;
+
+		QString framesLine = (actualFrames == baseFrames)
+			? tr("%1 frames").arg(actualFrames)
+			: tr("%1 frames (base %2 x 1/%3x speed)%4")
+				.arg(actualFrames).arg(baseFrames).arg(QString::number(speed, 'f', 2))
+				.arg(capped ? tr(" - capped at 5000") : QString());
+
+		// Plain text, not HTML - createInfoIcon()'s helpText is escaped
+		// before display (see wrapTooltipHtml()'s own comment), so the
+		// <b>/<code> tags the old always-visible label used would show up
+		// as literal text here instead of formatting.
+		// The Requirements/Usage half below never changes, only the Duration/
+		// Camera Path/Output half above does - re-concatenated on every
+		// recompute rather than split into two tooltips/icons (see this
+		// icon's own comment above for why one icon covers both).
+		setRichTooltip(m_videoInfoIcon, tr(
+			"Video Duration: %1 seconds (%2)\n\n"
+			"Camera Path: %3, always completes its full sweep regardless of speed\n\n"
+			"Output: frames will be saved to output/frames/\n\n"
+			"Requires ffmpeg: turning the rendered frames into a video needs "
+			"a free program called ffmpeg, which must be installed on your "
+			"computer and available from the command line - get it from "
+			"ffmpeg.org if the render log reports it's missing.\n\n"
+			"After rendering all frames, the video is automatically assembled "
+			"and opened.\n\n"
+			"Step 1: Configure Video Generation Settings above (camera path, "
+			"frames, FPS) and set Output Mode to Generate Video.\n\n"
+			"Step 2: Configure quality settings further down this tab.\n\n"
+			"Step 3: Click START VIDEO RENDER and wait.\n\n"
+			"Step 4: Video automatically assembles and opens when done!\n\n"
+			"Tips: use GPU mode for faster rendering. Fewer samples per pixel "
+			"(10-50) for quick previews, more (100-500) for production "
+			"quality. Typical render time is 1-5 minutes on GPU, 15-60 minutes "
+			"on CPU."
+		).arg(QString::number(duration, 'f', 1), framesLine, cameraPath));
+	};
+
+	connect(m_videoFramesSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
+	connect(m_videoFPSSpinBox, QOverload<int>::of(&QSpinBox::valueChanged), updateVideoDuration);
+	connect(m_videoSpeedSpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), updateVideoDuration);
+	connect(m_cameraPathCombo, QOverload<int>::of(&QComboBox::currentIndexChanged), updateVideoDuration);
+	updateVideoDuration();
+
+	layout->addWidget(m_videoGroupBox);
+}
+
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+void MainWindow::buildLiveControlsGroup(QWidget *basicTab, QVBoxLayout *layout) {
+	// --- Live Preview Settings: mouse/keyboard sensitivity - its own
+	// independent group rather than living inline in Render Settings, so
+	// it's as discoverable as Video's own settings are. No separate warning
+	// banner (unlike Video Generation Settings) - the header icon's own
+	// tooltip already states the "only takes effect when..." caveat, so a
+	// banner repeating the same sentence would be pure duplication;
+	// setGroupDimmed() (keyed on isLiveMode() instead of isVideoMode())
+	// still gives the same at-a-glance "inert right now" visual cue. Placed
+	// right below Video Generation Settings - the two other Output Mode
+	// options' own dedicated settings sit next to each other, immediately
+	// under the combo that picks between them.
+	// Renamed from "Live Preview Settings" - this group is now sensitivity-
+	// only (ReSTIR GI/DI, Exposure, Samples/Frame, Max Bounces, and Firefly
+	// Clamp moved to the Render Options tab's own "Live Preview Settings"
+	// group, alongside that tab's Denoiser section - all render-BEHAVIOR
+	// knobs belong there with the rest of Render Options, not split across
+	// two tabs; only INPUT-feel controls stay here).
+	m_liveModeSettingsGroupBox = new InfoGroupBox(tr("Live Preview Controls"), basicTab);
+	styleGroupBox(m_liveModeSettingsGroupBox);
+	m_liveModeSettingsGroupBox->setInfoIcon(createInfoIcon(
+		tr("Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down "
+		"movement + Left/Right/+/- feel in Live Preview. Only takes effect "
+		"when Output Mode above is \"Live Preview (interactive)\", but "
+		"stays editable in any mode.\n\n"
+		"Looking for the image-quality settings (ReSTIR, Exposure, Samples "
+		"per Frame, Max Bounces, Firefly Clamp)? Those now live on the "
+		"Render Options tab's own Live Preview Settings group, next to the "
+		"Denoiser section.")));
+	setGroupDimmed(m_liveModeSettingsGroupBox, !isLiveMode());
+	QFormLayout *liveModeSettingsLayout = new QFormLayout(m_liveModeSettingsGroupBox);
+	liveModeSettingsLayout->setVerticalSpacing(10);
+	liveModeSettingsLayout->setHorizontalSpacing(10);
+	liveModeSettingsLayout->setContentsMargins(15, 22, 15, 12);
+
+	// One multiplier per INPUT DEVICE (not one per axis - azimuth/
+	// elevation/radius all scale together per device), loaded from/saved
+	// to QSettings immediately on change (loadSavedMouseSensitivity()/
+	// saveMouseSensitivity() etc., mainwindow_tabs_render.cpp) the same
+	// way theme/font/language already are. Both on one line, same
+	// 4-column-grid-as-a-single-row trick as Video Generation Settings'
+	// Frame Count/FPS pair above.
+	QWidget *sensitivityRow = new QWidget();
+	QGridLayout *sensitivityGrid = new QGridLayout(sensitivityRow);
+	sensitivityGrid->setContentsMargins(0, 0, 0, 0);
+	sensitivityGrid->setHorizontalSpacing(10);
+	sensitivityGrid->setColumnStretch(1, 1);
+	sensitivityGrid->setColumnStretch(3, 1);
+
+	m_mouseSensitivitySpinBox = new QDoubleSpinBox();
+	m_mouseSensitivitySpinBox->setRange(0.25, 3.0);
+	m_mouseSensitivitySpinBox->setSingleStep(0.25);
+	m_mouseSensitivitySpinBox->setDecimals(2);
+	m_mouseSensitivitySpinBox->setValue(m_mouseSensitivity);
+	m_mouseSensitivitySpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_mouseSensitivitySpinBox);
+	connect(m_mouseSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_mouseSensitivity = value;
+		saveMouseSensitivity(value);
+	});
+	sensitivityGrid->addWidget(labelWithInfo(tr("Mouse Sensitivity:"),
+		tr("Scales click-drag-to-orbit and scroll-to-zoom speed in Live "
+		"Preview. 1x matches the original feel; lower is gentler, higher "
+		"is more responsive.")),
+		0, 0);
+	sensitivityGrid->addWidget(m_mouseSensitivitySpinBox, 0, 1);
+
+	m_keyboardSensitivitySpinBox = new QDoubleSpinBox();
+	m_keyboardSensitivitySpinBox->setRange(0.25, 3.0);
+	m_keyboardSensitivitySpinBox->setSingleStep(0.25);
+	m_keyboardSensitivitySpinBox->setDecimals(2);
+	m_keyboardSensitivitySpinBox->setValue(m_keyboardSensitivity);
+	m_keyboardSensitivitySpinBox->setSuffix(tr("x"));
+	styleSpinBox(m_keyboardSensitivitySpinBox);
+	connect(m_keyboardSensitivitySpinBox, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, [this](double value) {
+		m_keyboardSensitivity = value;
+		saveKeyboardSensitivity(value);
+	});
+	sensitivityGrid->addWidget(labelWithInfo(tr("Keyboard Sensitivity:"),
+		tr("Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- "
+		"zoom step size in Live Preview. 1x is a moderate per-press nudge; "
+		"lower is finer, higher moves further per press.")),
+		0, 2);
+	sensitivityGrid->addWidget(m_keyboardSensitivitySpinBox, 0, 3);
+
+	liveModeSettingsLayout->addRow(sensitivityRow);
+
+	layout->addWidget(m_liveModeSettingsGroupBox);
+}
+#endif
+
+void MainWindow::buildAdvancedParamsGroup(QWidget *basicTab, QVBoxLayout *layout) {
+	// --- Advanced Parameters: manual width/height/samples/depth overrides ---
+	// Formerly its own "Advanced Settings" tab - folded in here since there
+	// was never a documented reason for the split (see git history), and
+	// keeping the Quality preset above and the exact values it writes into
+	// Width/Height/Samples/Max Depth below on the same tab reads more like
+	// one coherent "how big and how clean" decision than two.
+	m_advancedParamsGroupBox = new InfoGroupBox(tr("Advanced Parameters"), basicTab);
+	styleGroupBox(m_advancedParamsGroupBox);
+	m_advancedParamsGroupBox->setInfoIcon(createInfoIcon(
+		tr("Manually override resolution, samples per pixel, and max ray "
+		"depth instead of using the Quality/Resolution presets above. "
+		"Shared by Image and Video (Video reuses these as its per-frame "
+		"settings) - Live Preview always uses its own fixed, small "
+		"resolution instead.")));
+	// Dimmed (not disabled) whenever Live Preview is selected - see
+	// m_liveModeWarningLabel's own comment for why these specifically don't
+	// apply there, and setGroupDimmed()'s comment for why dim rather than
+	// hide/disable. Image and Video both use this group, so this is keyed
+	// on isLiveMode(), not isVideoMode() - the opposite condition from
+	// m_videoGroupBox just above.
+	setGroupDimmed(m_advancedParamsGroupBox, isLiveMode());
+	// A 4-column grid (label+info, field, label+info, field) instead of
+	// QFormLayout's one-pair-per-row - two related dials per line (Width/
+	// Height, then Samples/Max Depth) halves this group's height without
+	// losing anything: each field keeps its own label, info icon, and
+	// tooltip exactly as before, just packed two to a row.
+	QGridLayout *advancedGrid = new QGridLayout(m_advancedParamsGroupBox);
+	advancedGrid->setVerticalSpacing(10);
+	advancedGrid->setHorizontalSpacing(10);
+	advancedGrid->setContentsMargins(15, 22, 15, 12);
+	advancedGrid->setColumnStretch(1, 1);
+	advancedGrid->setColumnStretch(3, 1);
+
+	// Width
+	m_widthSpinBox = new QSpinBox(basicTab);
+	m_widthSpinBox->setRange(100, 4096);
+	m_widthSpinBox->setValue(800);
+	styleSpinBox(m_widthSpinBox);
+	advancedGrid->addWidget(labelWithInfo(tr("Width:"),
+		tr("The image's pixel width.\n\n"
+		"Paired with Height to set the resolution manually, "
+		"overriding whatever the Quality preset above would "
+		"otherwise use.")),
+		0, 0);
+	advancedGrid->addWidget(m_widthSpinBox, 0, 1);
+
+	// Height
+	m_heightSpinBox = new QSpinBox(basicTab);
+	m_heightSpinBox->setRange(100, 4096);
+	m_heightSpinBox->setValue(800);
+	styleSpinBox(m_heightSpinBox);
+	advancedGrid->addWidget(labelWithInfo(tr("Height:"),
+		tr("The image's pixel height.\n\n"
+		"Paired with Width - together they set the resolution "
+		"manually, overriding the Quality preset above.")),
+		0, 2);
+	advancedGrid->addWidget(m_heightSpinBox, 0, 3);
+
+	// Samples
+	m_samplesSpinBox = new QSpinBox(basicTab);
+	m_samplesSpinBox->setRange(1, 10000);
+	m_samplesSpinBox->setValue(100);
+	styleSpinBox(m_samplesSpinBox);
+	m_samplesSpinBox->setToolTip(
+		tr("How many random light samples are averaged per pixel. This is the main\n"
+		"quality/time dial: more samples make the image cleaner, but with\n"
+		"diminishing returns - cutting the noise in half needs roughly 4x as many\n"
+		"samples, which takes roughly 4x as long to render. Setting it here\n"
+		"switches Quality to Custom."));
+	advancedGrid->addWidget(labelWithInfo(tr("Samples per Pixel:"),
+		tr("Ray tracing estimates each pixel's color by firing many random "
+		"rays and averaging the results, like polling a lot of people and "
+		"averaging their guesses.\n\n"
+		"More samples means a more accurate average, which shows up as "
+		"less speckly \"noise\" in the image - but each extra sample "
+		"costs render time. Doubling this value roughly halves the "
+		"noise, but takes about twice as long to render.")),
+		1, 0);
+	advancedGrid->addWidget(m_samplesSpinBox, 1, 1);
+
+	// Max depth
+	m_maxDepthSpinBox = new QSpinBox(basicTab);
+	m_maxDepthSpinBox->setRange(1, 100);
+	m_maxDepthSpinBox->setValue(50);
+	styleSpinBox(m_maxDepthSpinBox);
+	m_maxDepthSpinBox->setToolTip(
+		tr("How many times a light ray is allowed to bounce off surfaces before\n"
+		"the renderer stops following it. Low values darken glass and mirrors,\n"
+		"which need many bounces to look right; scenes with only plain, matte\n"
+		"surfaces look the same well below the maximum."));
+	advancedGrid->addWidget(labelWithInfo(tr("Max Ray Depth:"),
+		tr("A depth of 1 means a ray only sees what it hits directly, with "
+		"no bounced light at all - like a scene with no reflections or "
+		"indirect lighting.\n\n"
+		"Each extra bounce lets light travel one more surface before "
+		"giving up, which is what makes glass, mirrors, and soft "
+		"indirect lighting look correct. Most scenes look \"finished\" "
+		"well before the maximum - beyond that, extra depth mostly "
+		"traces light too dim to matter.")),
+		1, 2);
+	advancedGrid->addWidget(m_maxDepthSpinBox, 1, 3);
+
+	layout->addWidget(m_advancedParamsGroupBox);
+}
+
+void MainWindow::buildCameraGroup(QWidget *basicTab, QVBoxLayout *layout) {
+	// ============================================================================
+	// Camera Position Group
+	// ============================================================================
+	// The Cornell box scene has fixed geometry:
+	//   - Box dimensions: X[0,555], Y[0,555], Z[0,555]
+	//   - Center point: (278, 278, 278)
+	//   - Front opening: Z=0 (no wall, viewer can look in from outside)
+	//   - Back wall: Z=555 (white)
+	//   - Left wall: X=0 (red)
+	//   - Right wall: X=555 (green)
+	//   - Floor: Y=0 (white)
+	//   - Ceiling: Y=555 (white), with light source at center
+	//
+	// Camera system:
+	//   - lookfrom: camera position in 3D space (set by user via presets or custom values)
+	//   - lookat: always points to center (278, 278, 278) - fixed in renderer
+	//   - The camera can be positioned anywhere, inside or outside the box
+	// ============================================================================
+
+	InfoGroupBox *cameraGroup = new InfoGroupBox(tr("Camera Position"), basicTab);
+	styleGroupBox(cameraGroup);
+	cameraGroup->setInfoIcon(createInfoIcon(
+		tr("Set the camera's world position directly, or pick a named "
+		"preset. Used as-is for Image mode, as the starting point Video's "
+		"camera path animates from, and as Live Preview's initial "
+		"position before you orbit/zoom it interactively.")));
+	// Same 4-column grid as Advanced Parameters above: X/Y and Z/Distance
+	// pack two fields per row instead of QFormLayout's one-pair-per-row.
+	// Preset spans the field columns on its own row since there's nothing
+	// to pair it with.
+	QGridLayout *cameraLayout = new QGridLayout(cameraGroup);
+	cameraLayout->setVerticalSpacing(10);
+	cameraLayout->setHorizontalSpacing(10);
+	cameraLayout->setContentsMargins(15, 22, 15, 12);
+	cameraLayout->setColumnStretch(1, 1);
+	cameraLayout->setColumnStretch(3, 1);
+
+	// Camera preset combo box
+	// Each preset stores a direction*ratio QVector3D, NOT an absolute world
+	// position: onCameraPresetChanged() scales it by m_currentSceneCamDistance
+	// (the CURRENT scene's own recommended-camera distance from its lookat)
+	// and offsets it from m_currentLookat*, so "Right Wall" lands at a
+	// sensible position for whatever scene is active. These vectors were
+	// derived from Cornell Box's own original hardcoded positions - e.g.
+	// "Front View (Outside)" used to be the literal point (278,278,-800),
+	// which is offset (0,0,-1078) from Cornell's lookat (278,278,278); divide
+	// by Cornell's own recommended-camera distance (1078, the default
+	// m_currentSceneCamDistance below) to get this preset's direction*ratio
+	// vector (0,0,-1.0) - a pure "straight back, at 1x the scene's own
+	// default viewing distance" direction that means the same thing
+	// regardless of scene scale. The others below were derived the same way,
+	// which is why "Front View" ends up at ratio 1.0 (it WAS the reference
+	// distance) while the inside/corner views are fractions of it. Previously
+	// every preset stored its literal Cornell-Box position directly, so
+	// selecting e.g. "Right Wall" while viewing a much smaller scene (like
+	// scene 1's spheres, which sit within roughly +-15 units of the origin)
+	// put the camera at a literal (500,278,278) - wildly outside that
+	// scene's geometry.
+	m_cameraPresetCombo = new QComboBox(basicTab);
+
+	// Default view: straight back from lookat, at the scene's own default
+	// viewing distance (ratio 1.0) - matches Cornell Box's own recommended
+	// camera exactly, since that's what this ratio was derived from.
+	m_cameraPresetCombo->addItem(tr("Front View (Outside)"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
+
+	// Inside views: camera positioned near walls, all looking toward center
+	m_cameraPresetCombo->addItem(tr("Inside Front"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -0.211503f)));   // Near Z=0 opening
+	m_cameraPresetCombo->addItem(tr("Inside Back"), QVariant::fromValue(QVector3D(0.0f, 0.0f, 0.205937f)));     // Near Z=555 back wall
+	m_cameraPresetCombo->addItem(tr("Right Wall (Green)"), QVariant::fromValue(QVector3D(0.205937f, 0.0f, 0.0f))); // Near X=555 green wall
+	m_cameraPresetCombo->addItem(tr("Left Wall (Red)"), QVariant::fromValue(QVector3D(-0.211503f, 0.0f, 0.0f)));   // Near X=0 red wall
+
+	// Corner views: diagonal perspectives from inside the box
+	m_cameraPresetCombo->addItem(tr("Floor Corner"), QVariant::fromValue(QVector3D(-0.165121f, -0.211503f, -0.165121f)));  // Low angle, near floor
+	m_cameraPresetCombo->addItem(tr("Ceiling Corner"), QVariant::fromValue(QVector3D(0.159555f, 0.205937f, 0.159555f)));   // High angle, near ceiling
+
+	// Custom: allows manual X/Y/Z input via spinboxes below. Its itemData is
+	// never read (onCameraPresetChanged skips the overwrite for Custom - see
+	// its own comment), so this value is unused, but keep it a plausible
+	// starting direction rather than leaving it as leftover absolute-position
+	// data of a different shape than every other item now stores.
+	m_cameraPresetCombo->addItem(tr("Custom"), QVariant::fromValue(QVector3D(0.0f, 0.0f, -1.0f)));
+
+	styleComboBox(m_cameraPresetCombo);
+	cameraLayout->addWidget(labelWithInfo(tr("Preset:"),
+		tr("A handful of hand-picked camera positions for this scene, framed "
+		"to show off something specific (e.g. looking in through the "
+		"front, or from inside a Cornell-box-style enclosure).\n\n"
+		"Choosing \"Custom\" unlocks the X/Y/Z fields below so you can "
+		"fly the camera anywhere you like instead.")),
+		0, 0);
+	cameraLayout->addWidget(m_cameraPresetCombo, 0, 1, 1, 3);
+
+	// Camera position spinboxes (X, Y, Z coordinates)
+	// These are disabled by default; only enabled when "Custom" preset is selected
+	// Range: -2000 to 2000 allows positioning far outside the box if needed
+
+	m_cameraPosX = new QDoubleSpinBox(basicTab);
+	m_cameraPosX->setRange(-2000, 2000);
+	m_cameraPosX->setValue(278);  // Default X: centered horizontally
+	m_cameraPosX->setSingleStep(10);
+	m_cameraPosX->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraPosX);
+	cameraLayout->addWidget(labelWithInfo(tr("Camera X:"),
+		tr("The camera's position along the world's X axis (left/right).\n\n"
+		"Only editable when the preset above is set to Custom - the "
+		"camera always looks toward the scene's own fixed look-at point, "
+		"so moving X/Y/Z changes the viewing angle and distance, not "
+		"just a straight left-right pan.")),
+		1, 0);
+	cameraLayout->addWidget(m_cameraPosX, 1, 1);
+
+	m_cameraPosY = new QDoubleSpinBox(basicTab);
+	m_cameraPosY->setRange(-2000, 2000);
+	m_cameraPosY->setValue(278);  // Default Y: centered vertically
+	m_cameraPosY->setSingleStep(10);
+	m_cameraPosY->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraPosY);
+	cameraLayout->addWidget(labelWithInfo(tr("Camera Y:"),
+		tr("The camera's position along the world's Y axis (up/down).\n\n"
+		"Same Custom-preset-only editing rule as Camera X - the camera "
+		"keeps looking at the scene's fixed look-at point as you move "
+		"it.")),
+		1, 2);
+	cameraLayout->addWidget(m_cameraPosY, 1, 3);
+
+	m_cameraPosZ = new QDoubleSpinBox(basicTab);
+	m_cameraPosZ->setRange(-2000, 2000);
+	m_cameraPosZ->setValue(-800);  // Default Z: far back view to match default preset
+	m_cameraPosZ->setSingleStep(10);
+	m_cameraPosZ->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraPosZ);
+	cameraLayout->addWidget(labelWithInfo(tr("Camera Z:"),
+		tr("The camera's position along the world's Z axis (forward/back, "
+		"into or out of the scene).\n\n"
+		"Same Custom-preset-only editing rule as Camera X/Y.")),
+		2, 0);
+	cameraLayout->addWidget(m_cameraPosZ, 2, 1);
+
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	// Live Preview (addLivePreviewTab()) forwards a camera move onto its
+	// already-running session - a no-op whenever that session isn't running
+	// (onLivePreviewCameraChanged()'s own guard), so this connect is always
+	// safe to make here regardless of whether the live sub-tab happens to
+	// be open right now.
+	connect(m_cameraPosX, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
+	connect(m_cameraPosY, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
+	connect(m_cameraPosZ, QOverload<double>::of(&QDoubleSpinBox::valueChanged), this, &MainWindow::onLivePreviewCameraChanged);
+#endif
+
+	// Distance from the current scene's look-at point. Adjusting this moves
+	// the camera along its EXISTING viewing direction to the new distance
+	// (see onCameraDistanceChanged) - a quick way to zoom in/out without
+	// having to work out new X/Y/Z coordinates by hand. Only meaningful (and
+	// only enabled) alongside the X/Y/Z spinboxes for "Custom"; its value is
+	// kept in sync (not user-editable-then-stale) whenever the scene or
+	// preset changes, via refreshCameraDistanceDisplay().
+	m_cameraDistance = new QDoubleSpinBox(basicTab);
+	m_cameraDistance->setRange(0.01, 5000);
+	m_cameraDistance->setValue(1078);  // Matches the default preset's distance from Cornell Box's lookat
+	m_cameraDistance->setSingleStep(10);
+	m_cameraDistance->setEnabled(false);  // Disabled until "Custom" is selected
+	styleSpinBox(m_cameraDistance);
+	cameraLayout->addWidget(labelWithInfo(tr("Distance from Center:"),
+		tr("Moves the camera directly toward or away from the scene's "
+		"look-at point along whatever direction it's currently facing, "
+		"without changing which way it's pointed.\n\n"
+		"The quickest way to zoom in or pull back once you've already "
+		"found an angle you like via the X/Y/Z fields or a preset.")),
+		2, 2);
+	cameraLayout->addWidget(m_cameraDistance, 2, 3);
+
+	// Connect preset combo to handler that updates spinboxes and enables/disables manual input
+	// Connection made AFTER all widgets are created to avoid null pointer issues
+	connect(m_cameraPresetCombo, QOverload<int>::of(&QComboBox::currentIndexChanged),
+			this, &MainWindow::onCameraPresetChanged);
+	connect(m_cameraDistance, QOverload<double>::of(&QDoubleSpinBox::valueChanged),
+			this, &MainWindow::onCameraDistanceChanged);
+
+	// Initialize the spinboxes with the default preset (index 0: "Front View (Outside)")
+	onCameraPresetChanged(0);
+
+	layout->addWidget(cameraGroup);
+}
+
+void MainWindow::buildOutputGroup(QWidget *basicTab, QVBoxLayout *layout) {
+	// Output group
+	InfoGroupBox *outputGroup = new InfoGroupBox(tr("Output"), basicTab);
+	styleGroupBox(outputGroup);
+	outputGroup->setInfoIcon(createInfoIcon(
+		tr("Where the rendered file is saved. Video mode appends the "
+		"correct extension automatically; Live Preview ignores this "
+		"entirely since it never writes a file.\n\n"
+		"Type or Browse to a .exr path instead of .png/.ppm to get a "
+		"high-dynamic-range file that stores the full range of brightness "
+		"values without compressing them for a normal screen - useful if "
+		"you plan to edit the image further in other software. If "
+		"Denoise is also on and GPU Backend is Recursive, two extra "
+		"helper files (_albedo.exr and _normal.exr, storing surface "
+		"color and surface direction) are saved alongside it "
+		"automatically to help with that cleanup (Wavefront doesn't "
+		"produce these yet).")));
+	QVBoxLayout *outputLayout = new QVBoxLayout(outputGroup);
+	outputLayout->setSpacing(8);
+	outputLayout->setContentsMargins(15, 20, 15, 12);
+
+	QHBoxLayout *pathLayout = new QHBoxLayout();
+	// Use timestamped filename to avoid caching issues
+	QString timestamp = QDateTime::currentDateTime().toString("yyyyMMdd_hhmmss");
+	// defaultRenderOutputDir() (just above) picks the first location that
+	// genuinely accepts writes for this platform - see its own comment for the
+	// macOS/.dmg, Windows/Controlled-Folder-Access and localized-folder history
+	// this used to hardcode one answer to. The CLI's OWN default (launcher/
+	// main.cpp, <exe_dir>/output/image.ppm) is deliberately left unchanged - a
+	// bare `ray_tracer` invocation from a normal build directory has no
+	// equivalent problem, and changing it risks breaking existing scripts.
+	QString defaultPath = defaultRenderOutputDir() + "/render_" + timestamp + ".png";
+	m_outputPathEdit = new QLineEdit(QDir::toNativeSeparators(defaultPath), basicTab);
+	m_outputPathEdit->setStyleSheet(
+		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"
+	);
+	m_outputPathEdit->setToolTip(
+		tr("Where the rendered image is written. A .png is always saved alongside\n"
+		"the raw .ppm, and it is the .png the Preview tab displays.\n\n"
+		"Enter a .exr path instead for a high-dynamic-range file with no PNG copy -\n"
+		"the Preview tab opens it in your system's EXR viewer instead of showing\n"
+		"it inline."));
+	// Trailing ellipsis (U+2026, not three periods) marks an action that needs
+	// further input before it completes - a file dialog here. Buttons that act
+	// immediately (Open Output Folder, Clear Log) deliberately have none.
+	m_browseButton = new QPushButton(tr("&Browse…"), basicTab);
+	m_browseButton->setToolTip(tr("Choose the output file name and location"));
+	connect(m_browseButton, &QPushButton::clicked, [this]() {
+		QString path = QFileDialog::getSaveFileName(this, tr("Save Render Output"),
+			m_outputPathEdit->text(),
+			tr("PNG Image (*.png);;PPM Image (*.ppm);;EXR Image, linear HDR (*.exr)"));
+		if (!path.isEmpty()) {
+			m_outputPathEdit->setText(QDir::toNativeSeparators(path));
+		}
+	});
+
+	pathLayout->addWidget(createInfoIcon(
+		tr("Where the finished image is saved.\n\n"
+		"A raw .ppm file is always written, and a .png copy is generated "
+		"alongside it automatically - the Preview tab always shows the "
+		".png, since most image viewers (and this app's own preview) "
+		"can't open .ppm directly.\n\n"
+		"Choosing a .exr path instead skips both: it writes one file "
+		"that stores the full range of brightness values with no "
+		"adjustment for a normal screen - the format professional photo/"
+		"video editing tools expect, and the only way to get the raw "
+		"brightness data out of this app instead of an image already "
+		"adjusted to look right on a regular monitor.")));
+	pathLayout->addWidget(m_outputPathEdit);
+	pathLayout->addWidget(m_browseButton);
+	outputLayout->addLayout(pathLayout);
+
+	layout->addWidget(outputGroup);
+}
