@@ -272,6 +272,10 @@ namespace SceneCategories {
     // are worth browsing (each isolates one thing), but they are not demos, so they stay out of the user-facing tabs above. A scene file puts itself
     // here with a "# @rt-category Test Scenes" line in its header. Last in kAll so that no earlier category's id letter moves.
     constexpr const char* Tests = "Test Scenes";
+    // Scenes the user made: those saved from the Scene Builder ("Add to scene list" writes into the per-user scenes folder) or carrying a Scene Builder
+    // title. Filled from disk like Custom Scenes and legitimately empty until the user makes one. Appended LAST in kAll (so it takes the next free id
+    // letter and no earlier category's letter moves - Test Scenes keeps 'L'), but shown right after Textures in the GUI (kDisplayOrder below).
+    constexpr const char* MyScenes = "My Scenes";
 
     // Display order for the GUI's category tabs. Education and Textures sit
     // after the other compiled-in categories and before CustomScenes, which
@@ -279,9 +283,16 @@ namespace SceneCategories {
     // folder appears; Test Scenes, also filled from disk, is last.
     constexpr const char* kAll[] = {
         Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene,
-        Education, Textures, CustomScenes, Tests
+        Education, Textures, CustomScenes, Tests, MyScenes
     };
     constexpr std::size_t kAllCount = sizeof(kAll) / sizeof(kAll[0]);
+
+    // The order of the GUI's category tabs. kAll's order is the id-letter order (append-only, so no scene id ever changes); this is the reading order:
+    // the user's own scenes first among the ones read from disk. Same entries as kAll, in a different order (a unit test checks that).
+    constexpr const char* kDisplayOrder[] = {
+        Basics, Materials, Lights, Cameras, Volumes, Geometry, Models, LargeScene,
+        Education, Textures, MyScenes, CustomScenes, Tests
+    };
 
     // A category's id letter (used to build scene ids like "B10", the 10th
     // Materials scene - see scene_registry.h's SceneDescriptor::id) is just

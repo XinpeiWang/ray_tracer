@@ -517,7 +517,7 @@ void SceneBuilderWidget::onSaveToSceneListClicked() {
 	}
 	emit sceneListed(path);   // the main window lists it and selects it - no restart needed
 	QMessageBox::information(this, tr("Added to the scene list"),
-	                         tr("Saved a copy as %1.\n\nIt is in the scene list now (Settings tab, Custom Scenes).").arg(path));
+	                         tr("Saved a copy as %1.\n\nIt is in the scene list now (Settings tab, My Scenes).").arg(path));
 }
 
 // ---- undo, autosave -------------------------------------------------------------------------------------------------------------

@@ -6234,6 +6234,11 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
         <source>Test Scenes</source>
         <translation>Escenas de prueba</translation>
     </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="201"/>
+        <source>My Scenes</source>
+        <translation>Mis escenas</translation>
+    </message>
 </context>
 <context>
     <name>SceneLayoutView</name>

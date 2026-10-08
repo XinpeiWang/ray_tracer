@@ -6286,6 +6286,11 @@ La forme est une estimation : l&apos;arrière est inventé et les détails fins 
         <source>Test Scenes</source>
         <translation>Scènes de test</translation>
     </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="201"/>
+        <source>My Scenes</source>
+        <translation>Mes scènes</translation>
+    </message>
 </context>
 <context>
     <name>SceneLayoutView</name>

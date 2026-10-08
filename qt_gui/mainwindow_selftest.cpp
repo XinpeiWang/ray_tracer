@@ -124,6 +124,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			check(addedNow >= 0 && !listedId.isEmpty(), "the scene is in the scene list without a restart: " + listedId);
 			if (!listedId.isEmpty()) {
 				check(SceneMetadataClient::sceneName(listedId) == QString("My scene"), "its name in the list is the title the builder saved");
+				check(SceneMetadataClient::sceneCategory(listedId) == QString("My Scenes") && listedId.startsWith(QLatin1Char('M')), "it is in the My Scenes category: " + SceneMetadataClient::sceneCategory(listedId) + " / " + listedId);
 				QProcess renderer;
 				const QString exe = QCoreApplication::applicationDirPath() + QStringLiteral("/ray_tracer") + (QSysInfo::productType() == "windows" ? ".exe" : "");
 				renderer.setWorkingDirectory(QCoreApplication::applicationDirPath());
@@ -137,6 +138,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 				// What "Add to scene list" does in the real window: the main window lists the scene and selects it in the Settings tab's scene picker.
 				emit sb->sceneListed(listed);
 				check(m_sceneCombo && m_sceneCombo->currentData().toString() == listedId, "the Settings tab's scene picker now shows it selected");
+				check(m_sceneCategoryTabs && m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() == QString("My Scenes"), "the My Scenes tab is the one showing");
 			}
 			QFile::remove(listed);
 		}
@@ -249,7 +251,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		for (int i = 0; i < count; ++i) {
 			const QString id = SceneMetadataClient::sceneIdAtIndex(i);
 			const QString category = SceneMetadataClient::sceneCategory(id);
-			if (category == "Custom Scenes" || category == "Test Scenes" || SceneMetadataClient::sceneRequiresFiles(id)) continue;
+			if (category == "Custom Scenes" || category == "Test Scenes" || category == "My Scenes" || SceneMetadataClient::sceneRequiresFiles(id)) continue;
 			expected.insert(SceneMetadataClient::sceneSlug(id));
 		}
 		for (const QString &slug : expected)
