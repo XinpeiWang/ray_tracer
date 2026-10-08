@@ -43,6 +43,19 @@ This page is the overview. The detail lives in:
 
 The Live Preview controls are shown by what the loaded library says it has (`realtime_backend_features()`, see `src/shared/realtime_api.h`), not by the platform. Options a renderer ignores are accepted and warned about on the command line, never an error.
 
+## Checking that the renderers agree
+
+The same method on every GPU backend: render each scene small, with the same seed, on the CPU and on the GPU, and compare the linear pictures (whole-image and per-channel means within 30%, a 6x6 grid of blocks within 50%, no NaN or Inf).
+
+| Backend | Command | Known gaps |
+|---|---|---|
+| OptiX recursive and wavefront (Windows) | `python scripts/backend_parity.py` (103 scenes x 2 backends, about 6 minutes) | `scripts/backend_parity_known_gaps.txt` |
+| Metal (Mac) | `ctest` runs `gpu/metal/metal_cpu_gpu_parity_check.cpp`, plus a committed snapshot of Metal's own earlier output | `kKnownGapScenes` (empty) |
+
+To see whether a change moved a picture at all (not whether the picture is right), `python scripts/render_baseline.py capture <name>` before the change and `compare <name>` after: seeded renders are deterministic, so a pure refactor must come out bit-identical.
+
+Neither check runs in CI (a hosted runner has no GPU or no hardware ray tracing), so they protect a developer machine.
+
 ## Keeping this page right
 
-When a feature changes on any renderer, change its row here in the same commit. The Metal parity sweep (`gpu/metal/metal_cpu_gpu_parity_check.cpp`, see `METAL_PARITY_STATUS.md`) and the OptiX golden check (`scripts/gpu_golden.py`) are what catch a renderer drifting from the table.
+When a feature changes on any renderer, change its row here in the same commit; the sweeps above are what catch a renderer drifting from the table.
