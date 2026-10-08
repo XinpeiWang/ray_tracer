@@ -3,6 +3,8 @@
 
 #include "scene_builder_common.h"
 
+#include <QFileInfo>
+#include <QKeyEvent>
 #include <QMouseEvent>
 #include <QPainter>
 #include <QPolygonF>
@@ -27,6 +29,9 @@ namespace {
 constexpr double kPi = scene_view::kPi;
 const QColor kAxisColor[3] = {QColor(232, 72, 72), QColor(84, 200, 96), QColor(72, 124, 232)};
 const V3 kAxisDir[3] = {{1, 0, 0}, {0, 1, 0}, {0, 0, 1}};
+// For the turning rings: a direction in each ring's plane to measure angles from.
+const V3 kRingRef[3] = {{0, 1, 0}, {1, 0, 0}, {1, 0, 0}};
+constexpr int kRingSegments = 64;
 
 V3 toV3(const Float3 &f) { return {f.x, f.y, f.z}; }
 Float3 toFloat3(const V3 &v) { return {v.x, v.y, v.z}; }
@@ -40,6 +45,13 @@ double distanceToSegment(const QPointF &p, const QPointF &a, const QPointF &b) {
 	t = std::clamp(t, 0.0, 1.0);
 	const QPointF q = a + ab * t;
 	return std::hypot(p.x() - q.x(), p.y() - q.y());
+}
+
+// The point on a ring: its centre, the ring's axis (0 X, 1 Y, 2 Z), a radius and an angle from the reference direction.
+V3 ringAt(const V3 &centre, int axis, double radius, double deg) {
+	const V3 ref = kRingRef[axis], side = scene_view::cross(kAxisDir[axis], ref);
+	const double a = deg * kPi / 180.0;
+	return centre + (ref * std::cos(a) + side * std::sin(a)) * radius;
 }
 
 }  // namespace
@@ -71,9 +83,49 @@ scene_view::View Scene3DView::view() const {
 
 const Float3 *Scene3DView::handle(const BuilderSelection &s, int which) const { return builderHandle(m_doc, s, which); }
 
+const Object *Scene3DView::selectedObject() const {
+	if (!m_doc || m_sel.kind != BuilderSelection::Kind::Object || m_sel.index < 0 || m_sel.index >= static_cast<int>(m_doc->objects.size())) return nullptr;
+	return &m_doc->objects[m_sel.index];
+}
+
+Scene3DView::GizmoMode Scene3DView::effectiveGizmo() const { return selectedObject() ? m_gizmo : GizmoMode::Move; }
+
+void Scene3DView::setGizmoMode(GizmoMode m) {
+	if (m == m_gizmo) return;
+	m_gizmo = m;
+	emit gizmoModeChanged(static_cast<int>(m));
+	update();
+}
+
+void Scene3DView::keyPressEvent(QKeyEvent *e) {
+	switch (e->key()) {
+		case Qt::Key_W: setGizmoMode(GizmoMode::Move); break;
+		case Qt::Key_E: setGizmoMode(GizmoMode::Rotate); break;
+		case Qt::Key_R: setGizmoMode(GizmoMode::Scale); break;
+		default: QWidget::keyPressEvent(e); return;
+	}
+	e->accept();
+}
+
 void Scene3DView::resizeEvent(QResizeEvent *e) {
 	QWidget::resizeEvent(e);
 	if (!m_userView) frameAll();
+}
+
+// The object's mesh file, read once (and again if the file changes); the cache keeps a failure too, so a bad file is not retried at every repaint.
+const mesh_preview::MeshPreview *Scene3DView::meshPreview(const std::string &path) const {
+	if (path.empty()) return nullptr;
+	const QFileInfo info(QString::fromStdString(path));
+	const qint64 modified = info.exists() ? info.lastModified().toMSecsSinceEpoch() : -1, size = info.size();
+	auto it = m_meshes.find(path);
+	if (it == m_meshes.end() || it->second.modified != modified || it->second.size != size) {
+		CachedMesh c;
+		c.modified = modified;
+		c.size = size;
+		c.preview = mesh_preview::load(path);
+		it = m_meshes.insert_or_assign(path, std::move(c)).first;
+	}
+	return it->second.preview.ok ? &it->second.preview : nullptr;
 }
 
 void Scene3DView::frameAll() {
@@ -86,9 +138,11 @@ void Scene3DView::frameAll() {
 	};
 	add(m_doc->camera.position, 0.3);
 	for (const Object &o : m_doc->objects) {
-		// A big floor would make everything else tiny: frame a bounded part of it.
-		const double pad = std::min(o.shape == ShapeKind::Quad ? std::max(o.size.x, o.size.z) * 0.5 : std::max({o.radius, o.size.x, o.size.y, o.size.z, o.height}), 4.0);
-		add(o.position, pad);
+		double pad = o.shape == ShapeKind::Quad ? std::max(o.size.x, o.size.z) * 0.5 : std::max({o.radius, o.size.x, o.size.y, o.size.z, o.height});
+		if (o.shape == ShapeKind::Mesh)
+			if (const mesh_preview::MeshPreview *m = meshPreview(o.meshFile))
+				pad = std::max({m->hi[0] - m->lo[0], m->hi[1] - m->lo[1], m->hi[2] - m->lo[2]}) * o.meshScale * 0.7;
+		add(o.position, std::min(pad, 4.0));  // a big floor would make everything else tiny: frame a bounded part of it
 	}
 	for (const Light &l : m_doc->lights)
 		if (l.kind != LightKind::Infinite) add(l.position, 0.3);
@@ -119,6 +173,12 @@ double Scene3DView::gizmoLength(const scene_view::View &v, const V3 &at) const {
 	return 80.0 * v.unitsPerPixel(depth);  // about 80 pixels, whatever the zoom
 }
 
+V3 Scene3DView::localAxis(const Object &o, int axis) const {
+	return toV3(rotateXYZ(Float3{kAxisDir[axis].x, kAxisDir[axis].y, kAxisDir[axis].z}, o.rotation));
+}
+
+bool Scene3DView::scaleHandleUsed(const Object &o, int axis) const { return !(o.shape == ShapeKind::Quad && axis == 1); }
+
 QPointF Scene3DView::axisArrowPoint(int axis, double fraction) const {
 	const Float3 *p = handle(m_sel, 0);
 	if (!p || axis < 0 || axis > 2) return QPointF();
@@ -126,6 +186,26 @@ QPointF Scene3DView::axisArrowPoint(int axis, double fraction) const {
 	const V3 base = toV3(*p);
 	double sx, sy;
 	if (!v.project(base + kAxisDir[axis] * (gizmoLength(v, base) * fraction), sx, sy)) return QPointF();
+	return QPointF(sx, sy);
+}
+
+QPointF Scene3DView::ringPoint(int axis, double deg) const {
+	const Float3 *p = handle(m_sel, 0);
+	if (!p || axis < 0 || axis > 2) return QPointF();
+	const scene_view::View v = view();
+	const V3 base = toV3(*p);
+	double sx, sy;
+	if (!v.project(ringAt(base, axis, gizmoLength(v, base) * 0.9, deg), sx, sy)) return QPointF();
+	return QPointF(sx, sy);
+}
+
+QPointF Scene3DView::scaleHandlePoint(int axis, double fraction) const {
+	const Object *o = selectedObject();
+	if (!o || axis < 0 || axis > 2) return QPointF();
+	const scene_view::View v = view();
+	const V3 base = toV3(o->position);
+	double sx, sy;
+	if (!v.project(base + localAxis(*o, axis) * (gizmoLength(v, base) * fraction), sx, sy)) return QPointF();
 	return QPointF(sx, sy);
 }
 
@@ -156,6 +236,11 @@ QList<Scene3DView::Face> Scene3DView::buildFaces(const scene_view::View &) const
 			return &faces.last();
 		};
 		auto ring = [&](double r, double y, int n, int k) { return Float3{r * std::cos(2 * kPi * k / n), y, r * std::sin(2 * kPi * k / n)}; };
+		auto boxFaces = [&](double x0, double x1, double y0, double y1, double z0, double z1) {
+			const Float3 c[8] = {{x0, y0, z0}, {x1, y0, z0}, {x1, y1, z0}, {x0, y1, z0}, {x0, y0, z1}, {x1, y0, z1}, {x1, y1, z1}, {x0, y1, z1}};
+			const int idx[6][4] = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4}, {3, 7, 6, 2}, {0, 4, 7, 3}, {1, 2, 6, 5}};
+			for (const auto &q : idx) addFace({c[q[0]], c[q[1]], c[q[2]], c[q[3]]});
+		};
 
 		switch (o.shape) {
 			case ShapeKind::Sphere: {
@@ -172,13 +257,7 @@ QList<Scene3DView::Face> Scene3DView::buildFaces(const scene_view::View &) const
 					}
 				break;
 			}
-			case ShapeKind::Box: {
-				const double x = o.size.x / 2, y = o.size.y / 2, z = o.size.z / 2;
-				const Float3 c[8] = {{-x, -y, -z}, {x, -y, -z}, {x, y, -z}, {-x, y, -z}, {-x, -y, z}, {x, -y, z}, {x, y, z}, {-x, y, z}};
-				const int idx[6][4] = {{0, 3, 2, 1}, {4, 5, 6, 7}, {0, 1, 5, 4}, {3, 7, 6, 2}, {0, 4, 7, 3}, {1, 2, 6, 5}};
-				for (const auto &q : idx) addFace({c[q[0]], c[q[1]], c[q[2]], c[q[3]]});
-				break;
-			}
+			case ShapeKind::Box: boxFaces(-o.size.x / 2, o.size.x / 2, -o.size.y / 2, o.size.y / 2, -o.size.z / 2, o.size.z / 2); break;
 			case ShapeKind::Quad: {
 				const double x = o.size.x / 2, z = o.size.z / 2;
 				Face *f = addFace({{-x, 0, -z}, {x, 0, -z}, {x, 0, z}, {-x, 0, z}});
@@ -221,11 +300,19 @@ QList<Scene3DView::Face> Scene3DView::buildFaces(const scene_view::View &) const
 				break;
 			}
 			case ShapeKind::Mesh: {
-				// The file is not read here: an octahedron stands for it, at its position and scale.
-				const double r = 0.5 * o.meshScale;
-				const Float3 px{r, 0, 0}, nx{-r, 0, 0}, py{0, r, 0}, ny{0, -r, 0}, pz{0, 0, r}, nz{0, 0, -r};
-				const Float3 tris[8][3] = {{px, py, pz}, {py, nx, pz}, {nx, ny, pz}, {ny, px, pz}, {py, px, nz}, {nx, py, nz}, {ny, nx, nz}, {px, ny, nz}};
-				for (const auto &t : tris) addFace({t[0], t[1], t[2]});
+				const double s = o.meshScale;
+				if (const mesh_preview::MeshPreview *m = meshPreview(o.meshFile)) {
+					// The file's own bounding box, at the object's scale: a see-through box (its vertices are drawn as dots over it).
+					const size_t before = faces.size();
+					boxFaces(m->lo[0] * s, m->hi[0] * s, m->lo[1] * s, m->hi[1] * s, m->lo[2] * s, m->hi[2] * s);
+					for (qsizetype k = before; k < faces.size(); ++k) faces[k].color.setAlpha(60);
+				} else {
+					// The file could not be read: an octahedron marks the object.
+					const double r = 0.5 * s;
+					const Float3 px{r, 0, 0}, nx{-r, 0, 0}, py{0, r, 0}, ny{0, -r, 0}, pz{0, 0, r}, nz{0, 0, -r};
+					const Float3 tris[8][3] = {{px, py, pz}, {py, nx, pz}, {nx, ny, pz}, {ny, px, pz}, {py, px, nz}, {nx, py, nz}, {ny, nx, nz}, {px, ny, nz}};
+					for (const auto &t : tris) addFace({t[0], t[1], t[2]});
+				}
 				break;
 			}
 		}
@@ -265,20 +352,46 @@ Scene3DView::Hit Scene3DView::hitTest(const QPointF &px) const {
 		return v.project(toV3(p), sx, sy) && std::hypot(sx - px.x(), sy - px.y()) <= r;
 	};
 
-	// The selected item's axis arrows first: they overlap the item they belong to.
+	// The selected item's tool first: it overlaps the item it belongs to.
 	if (const Float3 *p = handle(m_sel, 0)) {
 		const V3 base = toV3(*p);
 		const double len = gizmoLength(v, base);
 		double bx, by;
 		if (v.project(base, bx, by)) {
+			const GizmoMode mode = effectiveGizmo();
 			double best = 9.0;
-			for (int a = 0; a < 3; ++a) {
-				double ex, ey;
-				if (!v.project(base + kAxisDir[a] * len, ex, ey)) continue;
-				const double d = distanceToSegment(px, QPointF(bx, by), QPointF(ex, ey));
-				if (d < best) { best = d; h.kind = Hit::Kind::Axis; h.sel = m_sel; h.axis = a; h.which = 0; }
+			if (mode == GizmoMode::Move) {
+				for (int a = 0; a < 3; ++a) {
+					double ex, ey;
+					if (!v.project(base + kAxisDir[a] * len, ex, ey)) continue;
+					const double d = distanceToSegment(px, QPointF(bx, by), QPointF(ex, ey));
+					if (d < best) { best = d; h.kind = Hit::Kind::Axis; h.sel = m_sel; h.axis = a; h.which = 0; }
+				}
+			} else if (mode == GizmoMode::Rotate) {
+				for (int a = 0; a < 3; ++a) {
+					QPointF prev;
+					bool havePrev = false;
+					for (int k = 0; k <= kRingSegments; ++k) {
+						double sx, sy;
+						const bool ok = v.project(ringAt(base, a, len * 0.9, 360.0 * k / kRingSegments), sx, sy);
+						if (ok && havePrev) {
+							const double d = distanceToSegment(px, prev, QPointF(sx, sy));
+							if (d < best) { best = d; h.kind = Hit::Kind::Ring; h.sel = m_sel; h.axis = a; h.which = 0; }
+						}
+						prev = QPointF(sx, sy);
+						havePrev = ok;
+					}
+				}
+			} else if (const Object *o = selectedObject()) {
+				for (int a = 0; a < 3; ++a) {
+					if (!scaleHandleUsed(*o, a)) continue;
+					double ex, ey;
+					if (!v.project(base + localAxis(*o, a) * len, ex, ey)) continue;
+					const double d = std::min(std::hypot(px.x() - ex, px.y() - ey) - 2.0, distanceToSegment(px, QPointF(bx, by), QPointF(ex, ey)) + 3.0);
+					if (d < best) { best = d; h.kind = Hit::Kind::ScaleHandle; h.sel = m_sel; h.axis = a; h.which = 0; }
+				}
 			}
-			if (h.kind == Hit::Kind::Axis) return h;
+			if (h.kind != Hit::Kind::None) return h;
 		}
 	}
 	// The selected camera's or light's target.
@@ -368,6 +481,25 @@ void Scene3DView::paintEvent(QPaintEvent *) {
 		p.drawPolygon(f.screen);
 	}
 
+	// A mesh's sampled vertices, over its bounding box, so its shape shows
+	for (int i = 0; i < static_cast<int>(m_doc->objects.size()); ++i) {
+		const Object &o = m_doc->objects[i];
+		if (o.shape != ShapeKind::Mesh) continue;
+		const mesh_preview::MeshPreview *m = meshPreview(o.meshFile);
+		if (!m) continue;
+		const bool selected = m_sel.kind == BuilderSelection::Kind::Object && m_sel.index == i;
+		QColor dot = selected ? accent : toQColor(o.material.color).lighter(130);
+		dot.setAlpha(210);
+		p.setPen(QPen(dot, 2.0, Qt::SolidLine, Qt::RoundCap));
+		QList<QPointF> pts;
+		for (size_t k = 0; k + 2 < m->samples.size(); k += 3) {
+			const Float3 w = rotateXYZ(Float3{m->samples[k] * o.meshScale, m->samples[k + 1] * o.meshScale, m->samples[k + 2] * o.meshScale}, o.rotation);
+			double sx, sy;
+			if (v.project({w.x + o.position.x, w.y + o.position.y, w.z + o.position.z}, sx, sy)) pts.append(QPointF(sx, sy));
+		}
+		p.drawPoints(QPolygonF(pts.toVector()));
+	}
+
 	QFont small = font();
 	small.setPointSizeF(std::max(7.0, font().pointSizeF() - 1.5));
 	// Object names
@@ -454,28 +586,50 @@ void Scene3DView::paintEvent(QPaintEvent *) {
 		}
 	}
 
-	// The selected item's axis arrows
+	// The selected item's tool
 	if (const Float3 *hp = handle(m_sel, 0)) {
 		const V3 base = toV3(*hp);
 		const double len = gizmoLength(v, base);
+		const GizmoMode mode = effectiveGizmo();
 		QPointF b;
 		if (pixel(base, b)) {
 			for (int a = 0; a < 3; ++a) {
-				const V3 tip = base + kAxisDir[a] * len;
+				const bool active = (m_mode == Mode::Axis || m_mode == Mode::Rotate || m_mode == Mode::Scale) && m_drag.axis == a;
+				if (mode == GizmoMode::Rotate) {
+					const QPen pen(kAxisColor[a], active ? 3.6 : 2.2);
+					V3 prev = ringAt(base, a, len * 0.9, 0);
+					for (int k = 1; k <= kRingSegments; ++k) {
+						const V3 cur = ringAt(base, a, len * 0.9, 360.0 * k / kRingSegments);
+						line(prev, cur, pen);
+						prev = cur;
+					}
+					QPointF e;
+					if (pixel(ringAt(base, a, len * 0.9, 45), e)) {
+						p.setPen(kAxisColor[a]);
+						p.setFont(small);
+						p.drawText(e + QPointF(6, -4), QString(QChar('X' + a)));
+						p.setFont(font());
+					}
+					continue;
+				}
+				const Object *o = selectedObject();
+				if (mode == GizmoMode::Scale && o && !scaleHandleUsed(*o, a)) continue;
+				const V3 dir = (mode == GizmoMode::Scale && o) ? localAxis(*o, a) : kAxisDir[a];
+				const V3 tip = base + dir * len;
 				QPointF e;
 				if (!pixel(tip, e)) continue;
-				const bool active = m_mode == Mode::Axis && m_drag.axis == a;
 				line(base, tip, QPen(kAxisColor[a], active ? 4.0 : 2.6));
-				// arrow head
 				QPointF d = e - b;
 				const double dl = std::hypot(d.x(), d.y());
-				if (dl > 6) {
+				p.setPen(Qt::NoPen);
+				p.setBrush(kAxisColor[a]);
+				if (mode == GizmoMode::Scale) {
+					p.drawRect(QRectF(e.x() - 5, e.y() - 5, 10, 10));
+				} else if (dl > 6) {
 					d /= dl;
 					const QPointF n(-d.y(), d.x());
 					QPolygonF head;
 					head << e + d * 4 << e - d * 8 + n * 5 << e - d * 8 - n * 5;
-					p.setPen(Qt::NoPen);
-					p.setBrush(kAxisColor[a]);
 					p.drawPolygon(head);
 				}
 				p.setPen(kAxisColor[a]);
@@ -521,6 +675,20 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 		m_axisT0 = t;
 		return;
 	}
+	if (h.kind == Hit::Kind::Ring) {
+		m_mode = Mode::Rotate;
+		m_dragObject = *selectedObject();
+		if (!scene_view::angleAround(ray, m_dragStart, kAxisDir[h.axis], kRingRef[h.axis], m_angle0)) m_mode = Mode::None;
+		return;
+	}
+	if (h.kind == Hit::Kind::ScaleHandle) {
+		m_mode = Mode::Scale;
+		m_dragObject = *selectedObject();
+		double t = 0;
+		if (!scene_view::closestOnLine(ray, m_dragStart, localAxis(m_dragObject, h.axis), t) || std::abs(t) < 1e-3) m_mode = Mode::None;
+		m_axisT0 = t;
+		return;
+	}
 	if (e->modifiers() & Qt::ShiftModifier) {
 		m_mode = Mode::Vertical;
 		double t = 0;
@@ -534,12 +702,72 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 	else m_mode = Mode::None;  // looking along the floor: nothing to drag on
 }
 
+// The object with `axis` (0 X, 1 Y, 2 Z, in its own frame) stretched by `factor`: a box's size, a cylinder's or cone's height (Y) or radius (X, Z), a quad's
+// width or depth, a pyramid's base or height, a wedge's or stairs' size; a sphere, a disk, a dome, a torus and a mesh scale all round.
+Object Scene3DView::scaled(const Object &o, int axis, double factor) const {
+	Object r = o;
+	switch (o.shape) {
+		case ShapeKind::Sphere:
+		case ShapeKind::Disk: r.radius = o.radius * factor; break;
+		case ShapeKind::Mesh: r.meshScale = o.meshScale * factor; break;
+		case ShapeKind::Cylinder:
+		case ShapeKind::Cone:
+			if (axis == 1) r.height = o.height * factor;
+			else r.radius = o.radius * factor;
+			break;
+		case ShapeKind::Box:
+		case ShapeKind::Wedge:
+		case ShapeKind::Stairs: (axis == 0 ? r.size.x : axis == 1 ? r.size.y : r.size.z) = (axis == 0 ? o.size.x : axis == 1 ? o.size.y : o.size.z) * factor; break;
+		case ShapeKind::Pyramid:
+			if (axis == 0) r.size.x = o.size.x * factor;
+			else if (axis == 1) r.height = o.height * factor;
+			else r.size.z = o.size.z * factor;
+			break;
+		case ShapeKind::Dome: r.radius = o.radius * factor; break;
+		case ShapeKind::Torus: r.radius = o.radius * factor; r.radius2 = o.radius2 * factor; break;
+		case ShapeKind::Capsule:
+			if (axis == 1) r.height = o.height * factor;
+			else r.radius = o.radius * factor;
+			break;
+		case ShapeKind::Tube:
+			if (axis == 1) r.height = o.height * factor;
+			else { r.radius = o.radius * factor; r.radius2 = o.radius2 * factor; }   // the hole keeps its proportion
+			break;
+		case ShapeKind::Quad:
+			if (axis == 0) r.size.x = o.size.x * factor;
+			else if (axis == 2) r.size.z = o.size.z * factor;
+			break;
+	}
+	return r;
+}
+
 void Scene3DView::applyDrag(const QPointF &px, Qt::KeyboardModifiers mods) {
-	const Float3 *current = handle(m_drag.sel, m_drag.which);
-	if (!current) return;
 	const scene_view::View v = view();
 	const scene_view::Ray ray = v.ray(px.x(), px.y());
 	const bool snap = m_snap && !(mods & Qt::AltModifier);
+
+	if (m_mode == Mode::Rotate) {
+		double angle = 0;
+		if (!scene_view::angleAround(ray, m_dragStart, kAxisDir[m_drag.axis], kRingRef[m_drag.axis], angle)) return;
+		double delta = scene_view::angleDelta(m_angle0, angle);
+		if (snap) delta = std::round(delta / 5.0) * 5.0;
+		Object o = m_dragObject;
+		const V3 turned = scene_view::turnAboutWorldAxis(toV3(m_dragObject.rotation), kAxisDir[m_drag.axis], delta);
+		o.rotation = toFloat3(turned);
+		emit objectEdited(m_drag.sel, o);
+		return;
+	}
+	if (m_mode == Mode::Scale) {
+		double t = 0;
+		if (!scene_view::closestOnLine(ray, m_dragStart, localAxis(m_dragObject, m_drag.axis), t)) return;
+		double factor = std::clamp(t / m_axisT0, 0.05, 50.0);
+		if (snap) factor = std::max(0.05, std::round(factor * 20.0) / 20.0);  // steps of 5 %
+		emit objectEdited(m_drag.sel, scaled(m_dragObject, m_drag.axis, factor));
+		return;
+	}
+
+	const Float3 *current = handle(m_drag.sel, m_drag.which);
+	if (!current) return;
 	Float3 w = *current;
 	if (m_mode == Mode::Ground) {
 		V3 hit;

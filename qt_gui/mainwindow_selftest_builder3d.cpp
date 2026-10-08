@@ -6,9 +6,14 @@
 #include "scene_builder_widget.h"
 
 #include <QApplication>
+#include <QDir>
+#include <QFile>
 #include <QTimer>
 
 #include <cmath>
+
+#include "../src/shared/scene_document.h"
+#include "../src/shared/scene_view_math.h"
 
 void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot) {
 	if (m_sceneBuilder) m_tabWidget->setCurrentWidget(m_sceneBuilder);
@@ -37,7 +42,70 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			const scene_doc::Float3 after = sb->document().objects[2].position;
 			check(after.x == before.x && after.y == before.y && after.z == before.z, QString("back where it was after %1").arg(names[axis]));
 		}
-		sb->selectObject(3);
+		// Rotate: the red box (object 3) turned 30 degrees about each world axis by dragging its ring, from whatever angles it already has.
+		for (int axis = 0; axis < 3; ++axis) {
+			const scene_doc::Float3 r0 = sb->document().objects[3].rotation;
+			check(sb->dragRotate3dForTest(3, axis, 30.0), QString("dragging the %1 ring turns the box").arg(names[axis]));
+			const scene_doc::Float3 r1 = sb->document().objects[3].rotation;
+			const scene_view::V3 want = scene_view::turnAboutWorldAxis({r0.x, r0.y, r0.z}, scene_view::V3{axis == 0 ? 1.0 : 0.0, axis == 1 ? 1.0 : 0.0, axis == 2 ? 1.0 : 0.0}, 30.0);
+			check(std::fabs(r1.x - want.x) < 1e-6 && std::fabs(r1.y - want.y) < 1e-6 && std::fabs(r1.z - want.z) < 1e-6,
+			      QString("it is now exactly a 30 degree turn about world %1 (snapped to 5 degrees): got %2 %3 %4, wanted %5 %6 %7").arg(names[axis]).arg(r1.x).arg(r1.y).arg(r1.z).arg(want.x).arg(want.y).arg(want.z));
+			check(sb->undo() && sb->document().objects[3].rotation.x == r0.x && sb->document().objects[3].rotation.y == r0.y && sb->document().objects[3].rotation.z == r0.z,
+			      QString("one undo reverts the %1 turn").arg(names[axis]));
+		}
+		// Scale: the red box stretched along its own X, and the gold ball all round.
+		{
+			const scene_doc::Object box0 = sb->document().objects[3];
+			check(sb->dragScale3dForTest(3, 0, 1.5), "dragging the box's X handle stretches it");
+			const scene_doc::Object box1 = sb->document().objects[3];
+			check(std::fabs(box1.size.x / box0.size.x - 1.5) < 0.1 && box1.size.y == box0.size.y && box1.size.z == box0.size.z, "only its X size grew, by about half");
+			check(sb->undo() && sb->document().objects[3].size.x == box0.size.x, "one undo reverts the stretch");
+			const double radius0 = sb->document().objects[2].radius;
+			check(sb->dragScale3dForTest(2, 1, 0.5) && sb->document().objects[2].radius < radius0 * 0.6 && sb->document().objects[2].radius > radius0 * 0.4, "a sphere's handle scales its radius all round");
+			check(sb->undo(), "undo");
+			// A ready-made shape: a torus scales its ring and its tube together, a pyramid's height handle changes only its height.
+			sb->addObject(scene_doc::ShapeKind::Torus);
+			const int torus = static_cast<int>(sb->document().objects.size()) - 1;
+			const scene_doc::Object t0 = sb->document().objects[torus];
+			const bool torusDragged = sb->dragScale3dForTest(torus, 0, 1.5);
+			check(torusDragged && sb->document().objects[torus].radius > t0.radius * 1.2 &&
+			          std::fabs(sb->document().objects[torus].radius2 / t0.radius2 - sb->document().objects[torus].radius / t0.radius) < 1e-9,
+			      "a torus' handle scales its ring and its tube together");
+			sb->addObject(scene_doc::ShapeKind::Pyramid);
+			const int pyr = static_cast<int>(sb->document().objects.size()) - 1;
+			const scene_doc::Object p0 = sb->document().objects[pyr];
+			check(sb->dragScale3dForTest(pyr, 1, 1.5) && sb->document().objects[pyr].height > p0.height * 1.2 && sb->document().objects[pyr].size.x == p0.size.x,
+			      "a pyramid's height handle changes only its height");
+			check(sb->undo() && sb->undo() && sb->undo() && sb->undo(), "undo the scales and the two shapes");
+			check(static_cast<int>(sb->document().objects.size()) == torus, "back to the starter objects");
+		}
+		// A mesh file is drawn at its real size: open a scene whose mesh is a 2 x 4 x 6 box, to be looked at in the screenshot.
+		{
+			const QString objPath = QDir::tempPath() + "/builder3d_selftest_mesh.obj";
+			{
+				QFile f(objPath);
+				if (f.open(QIODevice::WriteOnly)) {
+					// a box 2 x 4 x 6, as an .obj
+					const char *obj[] = {"v 0 0 0", "v 2 0 0", "v 2 4 0", "v 0 4 0", "v 0 0 6", "v 2 0 6", "v 2 4 6", "v 0 4 6", "f 1 2 3", "f 1 3 4", "f 5 6 7", "f 5 7 8"};
+					for (const char *line : obj) f.write(QByteArray(line) + QByteArray(1, char(10)));
+				}
+			}
+			scene_doc::Document d = scene_doc::makeStarterScene();
+			scene_doc::Object mesh = scene_doc::makeObject(scene_doc::ShapeKind::Mesh, "Scan");
+			mesh.meshFile = objPath.toStdString();
+			mesh.meshScale = 0.5;
+			mesh.position = {2.0, 0.0, 1.0};
+			d.objects.push_back(mesh);
+			const QString scenePath = QDir::tempPath() + "/builder3d_selftest_scene.pbrt";
+			QFile sf(scenePath);
+			check(sf.open(QIODevice::WriteOnly), "wrote a scene with a mesh object");
+			sf.write(QByteArray::fromStdString(scene_doc::toPbrt(d)));
+			sf.close();
+			QString err;
+			check(sb->openFile(scenePath, &err), "opened it " + err);
+			sb->selectObject(static_cast<int>(sb->document().objects.size()) - 1);
+			QFile::remove(scenePath);
+		}
 		QTimer::singleShot(400, this, [this, shot, log, ok, sb]() {
 			shot("builder3d");
 			// RT_GUI_SELFTEST_OPEN=<scene.pbrt>: one more picture, of that builder scene in this view (to look at how a shape or scene draws).

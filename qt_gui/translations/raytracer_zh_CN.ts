@@ -1547,7 +1547,7 @@ They will be saved in:
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="49"/>
         <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
-        <translation>需要 PATH 中有 Python 3.10 至 3.12 和 git</translation>
+        <translation>需要 Python 3.10 到 3.12，并且 git 在 PATH 中</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="51"/>
@@ -1562,7 +1562,7 @@ They will be saved in:
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="53"/>
         <source>It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)</source>
-        <translation>需要 Python 3.10 至 3.12（例如 brew install python@3.12）和 git（xcode-select --install）</translation>
+        <translation>需要 Python 3.10 到 3.12（例如 brew install python@3.12）和 git（xcode-select --install）</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="56"/>
@@ -1582,12 +1582,12 @@ Missing now:
 %3</source>
         <translation>要安装照片辅助程序吗？
 
-这将下载约 5 GB，并仅为当前用户安装到 %1：
+将下载约 5 GB，并仅为当前用户安装到 %1：
   - %4 以及辅助程序所需的 Python 包（来自 PyPI）
   - TripoSR 代码（来自 GitHub）及其模型权重，约 1.7 GB（来自 Hugging Face）
-  - 背景移除模型，约 176 MB（来自 GitHub）
+  - 背景去除模型，约 176 MB（来自 GitHub）
 
-%5，需要几分钟。在此期间您可以继续使用本程序。
+%5，耗时数分钟。期间你可以继续使用本程序。
 
 当前缺少：
 %2
@@ -5389,7 +5389,7 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="447"/>
+        <location filename="../scene_3d_view.cpp" line="579"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
@@ -5697,6 +5697,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="435"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>缩放</translation>
     </message>
@@ -5894,53 +5895,78 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="35"/>
-        <location filename="../scene_builder_views.cpp" line="153"/>
-        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation>拖动背景：环绕观察。右键拖动：平移。滚轮：缩放。拖动箭头可沿单个轴移动；按住 Shift 拖动物体可将其抬起。</translation>
+        <location filename="../scene_builder_views.cpp" line="192"/>
+        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
+        <translation>拖动背景：环绕观察。右键拖动：平移。滚轮：缩放。选择“移动”“旋转”或“缩放”（W、E、R），然后拖动箭头、圆环或方块；按住 Shift 拖动物体可将其抬起。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move</source>
+        <translation>移动</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move (W): drag an object, or an arrow to move along one axis</source>
+        <translation>移动 (W)：拖动物体，或拖动箭头沿一个轴移动</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate</source>
+        <translation>旋转</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate (E): drag a ring to turn the object about that axis</source>
+        <translation>旋转 (E)：拖动圆环使物体绕该轴旋转</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="44"/>
+        <source>Scale (R): drag a square handle to stretch the object along that axis</source>
+        <translation>缩放 (R)：拖动方块沿该轴拉伸物体</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Top</source>
         <translation>顶视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Front</source>
         <translation>前视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Side</source>
         <translation>侧视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="52"/>
+        <location filename="../scene_builder_views.cpp" line="75"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="55"/>
+        <location filename="../scene_builder_views.cpp" line="78"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>从任意角度查看场景，并在 3D 中移动物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="63"/>
+        <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>吸附到网格</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="65"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Dragging moves things in steps of 0.25. Hold Alt to drag freely.</source>
         <translation>拖动时按 0.25 的步长移动。按住 Alt 键可自由拖动。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="70"/>
+        <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Frame all</source>
         <translation>显示全部</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="34"/>
-        <location filename="../scene_builder_views.cpp" line="154"/>
+        <location filename="../scene_builder_views.cpp" line="193"/>
         <source>Wheel: zoom. Right-drag: pan.</source>
         <translation>滚轮：缩放。右键拖动：平移。</translation>
     </message>
@@ -6192,11 +6218,11 @@ To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helpe
 %2
 
 Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation>把照片变成 3D 物体需要一个可选的辅助程序：一个在您自己电脑上运行的 AI 模型（安装约 5 GB，强烈建议配备显卡——Windows 上为 NVIDIA，Mac 上为 Apple 芯片）。
+        <translation>将照片转换为 3D 物体需要一个可选的辅助程序：一个在你自己的计算机上运行的 AI 模型（安装约需 5 GB，强烈建议使用显卡：Windows 上为 NVIDIA，Mac 上为 Apple 芯片）。
 
 %1
 
-要进行设置，请使用诊断选项卡：先运行诊断，再点击安装照片辅助程序。或者自己运行一次下面的命令：
+要进行设置，请使用“诊断”标签页：先运行诊断，再点击“安装照片辅助程序”。或者自己运行一次：
 
 %2
 

@@ -1549,7 +1549,7 @@ Ils seront enregistrés dans :
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="47"/>
         <source>The script that will run (PowerShell, with the execution policy bypassed):</source>
-        <translation>Le script qui sera exécuté (PowerShell, stratégie d&apos;exécution contournée) :</translation>
+        <translation>Le script qui sera exécuté (PowerShell, avec la stratégie d&apos;exécution contournée) :</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="48"/>
@@ -1559,7 +1559,7 @@ Ils seront enregistrés dans :
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="49"/>
         <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
-        <translation>Il faut Python 3.10 à 3.12 et git dans votre PATH</translation>
+        <translation>Il nécessite Python 3.10 à 3.12 et git dans le PATH</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="51"/>
@@ -1574,7 +1574,7 @@ Ils seront enregistrés dans :
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="53"/>
         <source>It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)</source>
-        <translation>Il faut Python 3.10 à 3.12 (par exemple brew install python@3.12) et git (xcode-select --install)</translation>
+        <translation>Il nécessite Python 3.10 à 3.12 (par exemple brew install python@3.12) et git (xcode-select --install)</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="56"/>
@@ -1594,14 +1594,14 @@ Missing now:
 %3</source>
         <translation>Installer l&apos;assistant photo ?
 
-Cela télécharge environ 5 Go et s&apos;installe uniquement pour votre utilisateur, dans %1 :
+Cela télécharge environ 5 Go et s&apos;installe pour votre utilisateur uniquement, dans %1 :
   - %4 et les paquets Python dont l&apos;assistant a besoin (depuis PyPI)
   - le code de TripoSR (depuis GitHub) et les poids de son modèle, environ 1,7 Go (depuis Hugging Face)
   - le modèle de suppression d&apos;arrière-plan, environ 176 Mo (depuis GitHub)
 
-%5 et prend plusieurs minutes. Vous pouvez continuer à utiliser le programme pendant ce temps.
+%5 et prend plusieurs minutes. Vous pouvez continuer à utiliser le programme entre-temps.
 
-Manque actuellement :
+Ce qui manque actuellement :
 %2
 
 %6
@@ -5475,7 +5475,7 @@ Sortie :
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="447"/>
+        <location filename="../scene_3d_view.cpp" line="579"/>
         <source>Camera</source>
         <translation>Caméra</translation>
     </message>
@@ -5783,6 +5783,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="435"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>Échelle</translation>
     </message>
@@ -5980,53 +5981,78 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="35"/>
-        <location filename="../scene_builder_views.cpp" line="153"/>
-        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation>Glisser l&apos;arrière-plan : orbiter. Glisser avec le bouton droit : déplacer. Molette : zoom. Faites glisser une flèche pour déplacer le long d&apos;un axe ; Maj + glisser un objet pour le soulever.</translation>
+        <location filename="../scene_builder_views.cpp" line="192"/>
+        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
+        <translation>Glisser l&apos;arrière-plan : orbiter. Glisser avec le bouton droit : déplacer. Molette : zoom. Choisissez Déplacer, Pivoter ou Redimensionner (W, E, R) et faites glisser les flèches, les anneaux ou les carrés ; Maj + glisser un objet pour le soulever.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move</source>
+        <translation>Déplacer</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move (W): drag an object, or an arrow to move along one axis</source>
+        <translation>Déplacer (W) : faites glisser un objet, ou une flèche pour déplacer le long d&apos;un axe</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate</source>
+        <translation>Pivoter</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate (E): drag a ring to turn the object about that axis</source>
+        <translation>Pivoter (E) : faites glisser un anneau pour faire tourner l&apos;objet autour de cet axe</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="44"/>
+        <source>Scale (R): drag a square handle to stretch the object along that axis</source>
+        <translation>Redimensionner (R) : faites glisser un carré pour étirer l&apos;objet le long de cet axe</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Top</source>
         <translation>Dessus</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Front</source>
         <translation>Face</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Side</source>
         <translation>Côté</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="52"/>
+        <location filename="../scene_builder_views.cpp" line="75"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="55"/>
+        <location filename="../scene_builder_views.cpp" line="78"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>Voir la scène sous n&apos;importe quel angle et déplacer les éléments en 3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="63"/>
+        <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>Aligner sur la grille</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="65"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Dragging moves things in steps of 0.25. Hold Alt to drag freely.</source>
         <translation>Le glissement déplace les objets par pas de 0,25. Maintenez Alt pour glisser librement.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="70"/>
+        <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Frame all</source>
         <translation>Tout cadrer</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="34"/>
-        <location filename="../scene_builder_views.cpp" line="154"/>
+        <location filename="../scene_builder_views.cpp" line="193"/>
         <source>Wheel: zoom. Right-drag: pan.</source>
         <translation>Molette : zoom. Glisser avec le bouton droit : déplacer.</translation>
     </message>
@@ -6278,7 +6304,7 @@ To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helpe
 %2
 
 Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation>Transformer une photo en objet 3D nécessite un assistant facultatif : un modèle d&apos;IA qui s&apos;exécute sur votre propre ordinateur (environ 5 Go à installer ; une carte graphique - NVIDIA sous Windows, Apple silicon sur un Mac - est fortement recommandée).
+        <translation>Transformer une photo en objet 3D nécessite un assistant facultatif : un modèle d&apos;IA qui s&apos;exécute sur votre propre ordinateur (environ 5 Go à installer ; une carte graphique est fortement recommandée : NVIDIA sous Windows, Apple silicon sur un Mac).
 
 %1
 

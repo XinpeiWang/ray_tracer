@@ -71,6 +71,7 @@ SOURCES += \
 	photo_import.cpp \
 	scene_builder_views.cpp \
 	scene_3d_view.cpp \
+	stb_image_impl.cpp \
 	scene_layout_view.cpp
 
 HEADERS += \

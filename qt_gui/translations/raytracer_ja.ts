@@ -1533,12 +1533,12 @@ They will be saved in:
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="42"/>
         <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
-        <translation>インストール用スクリプト (scripts/setup_photo_to_mesh) がプログラムの隣に見つかりません。</translation>
+        <translation>インストーラースクリプト (scripts/setup_photo_to_mesh) がプログラムと同じ場所に見つかりません。</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="47"/>
         <source>The script that will run (PowerShell, with the execution policy bypassed):</source>
-        <translation>実行されるスクリプト (PowerShell、実行ポリシーを回避):</translation>
+        <translation>実行されるスクリプト (PowerShell、実行ポリシーを回避して実行):</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="48"/>
@@ -1548,7 +1548,7 @@ They will be saved in:
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="49"/>
         <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
-        <translation>Python 3.10〜3.12 と git が PATH 上に必要です</translation>
+        <translation>Python 3.10〜3.12 と PATH 上の git が必要です</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="51"/>
@@ -1581,16 +1581,16 @@ Missing now:
 
 %6
 %3</source>
-        <translation>写真ヘルパーをインストールしますか?
+        <translation>写真ヘルパーをインストールしますか？
 
-約 5 GB をダウンロードし、お使いのユーザー専用として %1 にインストールします:
-  - %4 と、ヘルパーに必要な Python パッケージ (PyPI から)
-  - TripoSR のコード (GitHub から) とモデルの重み、約 1.7 GB (Hugging Face から)
-  - 背景除去モデル、約 176 MB (GitHub から)
+約 5 GB をダウンロードし、現在のユーザーのみを対象に %1 にインストールします:
+  - %4 とヘルパーに必要な Python パッケージ (PyPI から)
+  - TripoSR のコード (GitHub から) とモデルの重み (約 1.7 GB、Hugging Face から)
+  - 背景除去モデル (約 176 MB、GitHub から)
 
 %5。数分かかります。その間もプログラムを使い続けられます。
 
-現在不足しているもの:
+現在足りないもの:
 %2
 
 %6
@@ -4631,7 +4631,7 @@ CPU専用です。実際の大きさや形を持つ光源にのみ対応して�
     <message>
         <location filename="../photo_import.cpp" line="126"/>
         <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
-        <translation>インストール用スクリプト (scripts/setup_photo_to_mesh) がプログラムの隣に見つかりません。</translation>
+        <translation>インストーラースクリプト (scripts/setup_photo_to_mesh) がプログラムと同じ場所に見つかりません。</translation>
     </message>
     <message>
         <location filename="../photo_import.cpp" line="139"/>
@@ -5383,7 +5383,7 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="447"/>
+        <location filename="../scene_3d_view.cpp" line="579"/>
         <source>Camera</source>
         <translation>カメラ</translation>
     </message>
@@ -5691,6 +5691,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="435"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>スケール</translation>
     </message>
@@ -5888,53 +5889,78 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="35"/>
-        <location filename="../scene_builder_views.cpp" line="153"/>
-        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation>背景をドラッグ: 回転。右ドラッグ: 移動。ホイール: ズーム。矢印をドラッグすると 1 つの軸に沿って動かせます。Shift を押しながらオブジェクトをドラッグすると持ち上げられます。</translation>
+        <location filename="../scene_builder_views.cpp" line="192"/>
+        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
+        <translation>背景をドラッグ: 回転。右ドラッグ: 移動。ホイール: ズーム。「移動」「回転」「拡大縮小」(W、E、R) を選び、矢印・リング・四角形をドラッグします。Shift を押しながらオブジェクトをドラッグすると持ち上げられます。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move</source>
+        <translation>移動</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move (W): drag an object, or an arrow to move along one axis</source>
+        <translation>移動 (W): オブジェクトをドラッグするか、矢印をドラッグして 1 つの軸に沿って動かします</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate</source>
+        <translation>回転</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate (E): drag a ring to turn the object about that axis</source>
+        <translation>回転 (E): リングをドラッグすると、その軸まわりにオブジェクトを回転させます</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="44"/>
+        <source>Scale (R): drag a square handle to stretch the object along that axis</source>
+        <translation>拡大縮小 (R): 四角形をドラッグすると、その軸に沿ってオブジェクトを伸縮します</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Top</source>
         <translation>上</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Front</source>
         <translation>前</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Side</source>
         <translation>横</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="52"/>
+        <location filename="../scene_builder_views.cpp" line="75"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="55"/>
+        <location filename="../scene_builder_views.cpp" line="78"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>シーンを任意の方向から見て、3D で物を動かします</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="63"/>
+        <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>グリッドにスナップ</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="65"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Dragging moves things in steps of 0.25. Hold Alt to drag freely.</source>
         <translation>ドラッグすると 0.25 刻みで動きます。Alt キーを押しながらドラッグすると自由に動かせます。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="70"/>
+        <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Frame all</source>
         <translation>すべてを表示</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="34"/>
-        <location filename="../scene_builder_views.cpp" line="154"/>
+        <location filename="../scene_builder_views.cpp" line="193"/>
         <source>Wheel: zoom. Right-drag: pan.</source>
         <translation>ホイール: ズーム。右ドラッグ: 移動。</translation>
     </message>
@@ -6186,15 +6212,15 @@ To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helpe
 %2
 
 Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation>写真を 3D オブジェクトにするには、オプションのヘルパーが必要です。お使いのコンピューター上で動作する AI モデルです (インストールに約 5 GB。グラフィックスカード - Windows では NVIDIA、Mac では Apple シリコン - を強く推奨します)。
+        <translation>写真を 3D オブジェクトに変換するには、オプションのヘルパー (お使いのコンピューターで動作する AI モデル) が必要です。インストールには約 5 GB が必要で、グラフィックスカード (Windows では NVIDIA、Mac では Apple シリコン) を強くお勧めします。
 
 %1
 
-設定するには、診断タブで「診断を実行」し、続けて「写真ヘルパーをインストール」を使います。または、次のコマンドを一度ご自身で実行してください:
+セットアップするには、診断タブで「診断を実行」し、「写真ヘルパーをインストール」を押してください。または、次を 1 回ご自身で実行してください:
 
 %2
 
-その後、もう一度これを選んでください。ガイド (docs/PHOTO_TO_SCENE.md) に、動作内容と限界が説明されています。</translation>
+その後、もう一度この項目を選んでください。ガイド (docs/PHOTO_TO_SCENE.md) に、できることと限界が説明されています。</translation>
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="52"/>

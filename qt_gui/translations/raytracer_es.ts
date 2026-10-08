@@ -1544,22 +1544,22 @@ Se guardarán en:
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="42"/>
         <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
-        <translation>No se encontró el script de instalación (scripts/setup_photo_to_mesh) junto al programa.</translation>
+        <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh) junto al programa.</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="47"/>
         <source>The script that will run (PowerShell, with the execution policy bypassed):</source>
-        <translation>El script que se ejecutará (PowerShell, omitiendo la directiva de ejecución):</translation>
+        <translation>El script que se ejecutará (PowerShell, con la directiva de ejecución omitida):</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="48"/>
         <source>PyTorch (from download.pytorch.org)</source>
-        <translation>PyTorch (desde download.pytorch.org)</translation>
+        <translation>PyTorch (de download.pytorch.org)</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="49"/>
         <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
-        <translation>Necesita Python 3.10 a 3.12 y git en el PATH</translation>
+        <translation>Requiere Python 3.10 a 3.12 y git en el PATH</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="51"/>
@@ -1569,12 +1569,12 @@ Se guardarán en:
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="52"/>
         <source>PyTorch (from PyPI)</source>
-        <translation>PyTorch (desde PyPI)</translation>
+        <translation>PyTorch (de PyPI)</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="53"/>
         <source>It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)</source>
-        <translation>Necesita Python 3.10 a 3.12 (por ejemplo brew install python@3.12) y git (xcode-select --install)</translation>
+        <translation>Requiere Python 3.10 a 3.12 (por ejemplo brew install python@3.12) y git (xcode-select --install)</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="56"/>
@@ -1594,10 +1594,10 @@ Missing now:
 %3</source>
         <translation>¿Instalar el asistente de fotos?
 
-Descarga unos 5 GB y se instala solo para tu usuario, en %1:
-  - %4 y los paquetes de Python que necesita el asistente (desde PyPI)
-  - el código de TripoSR (desde GitHub) y sus pesos del modelo, unos 1,7 GB (desde Hugging Face)
-  - el modelo de eliminación de fondo, unos 176 MB (desde GitHub)
+Se descargan unos 5 GB y se instala solo para tu usuario, en %1:
+  - %4 y los paquetes de Python que necesita el asistente (de PyPI)
+  - el código de TripoSR (de GitHub) y sus pesos del modelo, unos 1,7 GB (de Hugging Face)
+  - el modelo de eliminación de fondo, unos 176 MB (de GitHub)
 
 %5 y tarda varios minutos. Puedes seguir usando el programa mientras tanto.
 
@@ -4671,7 +4671,7 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
     <message>
         <location filename="../photo_import.cpp" line="126"/>
         <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
-        <translation>No se encontró el script de instalación (scripts/setup_photo_to_mesh) junto al programa.</translation>
+        <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh) junto al programa.</translation>
     </message>
     <message>
         <location filename="../photo_import.cpp" line="139"/>
@@ -5423,7 +5423,7 @@ Salida:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="447"/>
+        <location filename="../scene_3d_view.cpp" line="579"/>
         <source>Camera</source>
         <translation>Cámara</translation>
     </message>
@@ -5731,6 +5731,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="435"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>Escala</translation>
     </message>
@@ -5928,53 +5929,78 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="35"/>
-        <location filename="../scene_builder_views.cpp" line="153"/>
-        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation>Arrastra el fondo: orbitar. Arrastre con el botón derecho: desplazar. Rueda: zoom. Arrastra una flecha para mover a lo largo de un eje; arrastra un objeto con Mayús para elevarlo.</translation>
+        <location filename="../scene_builder_views.cpp" line="192"/>
+        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
+        <translation>Arrastra el fondo: orbitar. Arrastre con el botón derecho: desplazar. Rueda: zoom. Elige Mover, Girar o Escalar (W, E, R) y arrastra las flechas, los anillos o los cuadrados; arrastra un objeto con Mayús para elevarlo.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move</source>
+        <translation>Mover</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move (W): drag an object, or an arrow to move along one axis</source>
+        <translation>Mover (W): arrastra un objeto, o una flecha para mover a lo largo de un eje</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate</source>
+        <translation>Girar</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate (E): drag a ring to turn the object about that axis</source>
+        <translation>Girar (E): arrastra un anillo para girar el objeto sobre ese eje</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="44"/>
+        <source>Scale (R): drag a square handle to stretch the object along that axis</source>
+        <translation>Escalar (R): arrastra un cuadrado para estirar el objeto a lo largo de ese eje</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Top</source>
         <translation>Superior</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Front</source>
         <translation>Frontal</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Side</source>
         <translation>Lateral</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="52"/>
+        <location filename="../scene_builder_views.cpp" line="75"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="55"/>
+        <location filename="../scene_builder_views.cpp" line="78"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>Mira la escena desde cualquier lado y mueve las cosas en 3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="63"/>
+        <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>Ajustar a la cuadrícula</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="65"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Dragging moves things in steps of 0.25. Hold Alt to drag freely.</source>
         <translation>Al arrastrar, los objetos se mueven en pasos de 0,25. Mantén pulsada Alt para arrastrar libremente.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="70"/>
+        <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Frame all</source>
         <translation>Encuadrar todo</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="34"/>
-        <location filename="../scene_builder_views.cpp" line="154"/>
+        <location filename="../scene_builder_views.cpp" line="193"/>
         <source>Wheel: zoom. Right-drag: pan.</source>
         <translation>Rueda: zoom. Arrastre con el botón derecho: desplazar.</translation>
     </message>
@@ -6226,7 +6252,7 @@ To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helpe
 %2
 
 Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation>Convertir una foto en un objeto 3D requiere un asistente opcional: un modelo de IA que se ejecuta en tu propio ordenador (unos 5 GB de instalación; se recomienda mucho una tarjeta gráfica: NVIDIA en Windows, Apple silicon en un Mac).
+        <translation>Convertir una foto en un objeto 3D requiere un asistente opcional: un modelo de IA que se ejecuta en tu propio equipo (unos 5 GB de instalación; se recomienda encarecidamente una tarjeta gráfica: NVIDIA en Windows, Apple silicon en un Mac).
 
 %1
 
@@ -6234,7 +6260,7 @@ Para configurarlo, usa la pestaña Diagnóstico: Ejecutar diagnóstico y luego I
 
 %2
 
-Después vuelve a elegirlo. La guía (docs/PHOTO_TO_SCENE.md) explica qué hace y cuáles son sus límites.</translation>
+Después vuelve a elegir esta opción. La guía (docs/PHOTO_TO_SCENE.md) explica qué hace y cuáles son sus límites.</translation>
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="52"/>
