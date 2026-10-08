@@ -105,6 +105,8 @@
     <ClCompile Include="..\gpu\optix\recursive_path_tracer.cpp" />
     <ClCompile Include="..\gpu\optix\path_tracing_strategy.cpp" />
     <ClCompile Include="..\gpu\optix\wavefront_path_tracer.cpp" />
+    <ClCompile Include="..\gpu\optix\wavefront_path_tracer_setup.cpp" />
+    <ClCompile Include="..\gpu\optix\wavefront_path_tracer_launch.cpp" />
     <ClCompile Include="..\gpu\optix\sppm_path_tracer.cpp" />
   </ItemGroup>
   <ItemGroup>

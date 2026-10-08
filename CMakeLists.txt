@@ -322,6 +322,8 @@ if(RT_BUILD_GPU)
         gpu/optix/recursive_path_tracer.cpp
         gpu/optix/path_tracing_strategy.cpp
         gpu/optix/wavefront_path_tracer.cpp
+        gpu/optix/wavefront_path_tracer_setup.cpp
+        gpu/optix/wavefront_path_tracer_launch.cpp
         gpu/optix/sppm_path_tracer.cpp
         $<TARGET_OBJECTS:wavefront_kernels_obj>
         $<TARGET_OBJECTS:sppm_kernels_obj>
