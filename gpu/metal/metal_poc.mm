@@ -812,7 +812,7 @@ void MetalPocApp::buildScene() {
     // one. Moving the call earlier, before that build call, was the
     // actual fix - not a lighting/exposure bug at all.)
 
-    triangleCount = (uint32_t)materials.size();
+    triangleCount = (uint32_t)(materials.size() - pbrtInstTriTotal);   // pbrt instance groups' triangles trail the scene's own and are not in primAS
     fprintf(stderr, "Scene: %u triangles, %zu spheres, %zu disks, %zu lights, %zu point lights, %zu directional lights, %zu projection lights, %zu goniometric lights\n",
             triangleCount, spheres.size(), disks.size(), lights.size(), pointLights.size(), directionalLights.size(),
             projectionLights.size(), goniometricLights.size());

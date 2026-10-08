@@ -102,11 +102,15 @@ materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D check
 Smaller approximations not covered by a scene: shadow rays use shutter time 0 (a moving sphere casts its
 shadow at its start position); the layered shaders use one roughness for both interfaces; a marble reflectance on a
 *coated diffuse* material renders flat; animated (motion-blurred) bilinear patches and curves are dropped;
-the large third-party scenes (Sponza, Bistro, the H-family environments, the pbrt-v4 folders) are not in the parity sweep: they are not in a checkout, and the GUI fetches them on demand ("Download missing files"). Barcelona Pavilion loads from its downloaded files but expands (through its instances) to about 97M triangles, which exceeds the GPU's acceleration-structure memory.
+the large third-party scenes (Sponza, Bistro, the H-family environments, the pbrt-v4 folders) are not in the parity sweep: they are not in a checkout, and the GUI fetches them on demand ("Download missing files"). Barcelona Pavilion (H14) used to be the one scene that did not render: baking its ObjectInstance placements made 97M triangles. pbrt ObjectInstance now maps to hardware instances (see "ObjectInstance" below), and it renders.
 
 ## Packaging note (macOS)
 
 `scripts/build_and_deploy_macos.sh [--arch native|arm64|x86_64|universal]` builds the whole app for one architecture choice (the default is this Mac's own CPU) and hands it to both CMake and qmake, since the GUI and `scene_metadata.dylib` must match or the GUI's `dlopen` fails. Qt 6 official installs are universal, so `--arch universal` (arm64 + x86_64 in every binary, one dmg for every Mac, about 4 minutes) works with no extra install; an earlier version took the first architecture `lipo -archs qmake` listed (x86_64) and so shipped Rosetta-only builds although Qt was universal all along. Build directories are per choice (`build_macos_arm64/`, `build_macos_universal/`, and `qt_gui/build_macos_<choice>/`), so a re-run is incremental and nothing is wiped. The root `CMakeLists.txt` also defaults `CMAKE_OSX_ARCHITECTURES` to the real CPU: an Intel-built `cmake` under Rosetta used to make every development build x86_64 too. On a native arm64 build the strict ctest still passes with the committed golden snapshot (123 s versus 126 s under Rosetta: the CPU reference renders are not the bottleneck the arch would change).
+
+## ObjectInstance (hardware instancing)
+
+A pbrt `ObjectInstance` used to be baked: every placement copied the group's triangles into the world-space arrays. Now each used group's triangles are stored ONCE (object space) after the scene's own triangles in the shared vertex/normal/uv/material arrays; each group gets its own acceleration structure (a slice of the shared vertex buffer), and each placement is a Metal instance of it (`pbrtGroupAS`, `buildInstancedMeshAS` in `metal_poc_gpu_resources.mm`). The instance table (`InstanceTransform`, buffer 12) carries, per instance, the group's first triangle (`triBase`) and the NORMAL matrix (inverse transpose of the object-to-scene linear part, so non-uniform scale and mirroring are right); `Uniforms::pbrtInstanceFirst` says from which instance id the placements start (Suzanne's demo-room instances come before). In the kernel a hit on such an instance sets `primId = triBase + primitive_id`, so every triangle-indexed lookup (uvs, materials, vertices) works unchanged in object space, and only the shading normal is transformed. Bump mapping on an instanced triangle is skipped (its tangent frame would be object-space). Instanced spheres are still skipped, as before. Existing instanced scenes agree with the baked renders to within float rounding (mean abs diff 0.00-0.04 of 255).
 
 ## The large third-party scenes (H1-H21) on Metal
 
@@ -114,10 +118,9 @@ They are not in a checkout (the GUI's "Download missing files" fetches them) and
 sweep, so `scripts/metal_large_scenes_sweep.sh` renders each one on Metal only (320x180, 8 spp, depth 4) and reports load, time, triangle count
 and a lit/dark verdict. Run on an M2 (2026-10-07), all 21 downloaded through the GUI's own downloader:
 
-* **20 of 21 render**: 80k to 12.8M triangles, 0-18 s each (Bistro 2.8M: 18 s; San Miguel 10M: 12 s; Power Plant 12.8M: 13 s).
-* **H14 Barcelona Pavilion cannot render**: its ~130k unique triangles are instanced into 97M, and Metal's acceleration-structure allocation
-  fails ("primAS is nil") after about 100 s - a clean, reported failure, not a crash. It needs instancing in the Metal acceleration structure
-  rather than flattening.
+* **All 21 render**: 80k to 12.8M triangles, 0-18 s each (Bistro 2.8M: 18 s; San Miguel 10M: 12 s; Power Plant 12.8M: 13 s).
+* **H14 Barcelona Pavilion**: 43 placements of 2 tree groups (5.2M triangles stored once; baking them was 96.9M and failed with "primAS is nil" after
+  100 s) now render in about 8 s at 480x270, 32 spp.
 * **H13 (Contemporary Bathroom) and H19 (Crown) come out dark** here: the GUI applies a curated per-scene exposure for them (see
   `scene_registry.h`), which this plain render does not.
 * H7 (Breakfast Room) skips one material group: the scene file asks for `Material_005`, the upstream OBJ now spells it `Material_005.001`, so

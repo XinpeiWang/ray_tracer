@@ -443,6 +443,20 @@ struct MetalPocApp {
     id<MTLBuffer> instanceTransformBuffer;
     id<MTLBuffer> lensElementBuffer, exitPupilBoundsBuffer;
     id<MTLAccelerationStructure> primAS, sphereAS, suzanneAS, instAS;
+    // pbrt ObjectInstance (loadPbrtObjectInstances): each used group's triangles are stored once, after the scene's own triangles, and each
+    // placement is a hardware instance of that group's own acceleration structure (pbrtGroupAS, same order as pbrtInstGroups).
+    struct PbrtInstancedGroup { uint32_t triBase = 0, triCount = 0; };
+    struct PbrtInstancePlacement {
+        uint32_t group = 0;
+        float linear[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};      // object -> scene, column-major 3x3
+        float normalMat[9] = {1, 0, 0, 0, 1, 0, 0, 0, 1};   // its inverse transpose
+        float translation[3] = {0, 0, 0};
+    };
+    std::vector<PbrtInstancedGroup> pbrtInstGroups;
+    std::vector<PbrtInstancePlacement> pbrtInstPlacements;
+    uint32_t pbrtInstTriTotal = 0;                       // triangles appended for groups: the tail of the shared arrays, not part of primAS
+    std::vector<id<MTLAccelerationStructure>> pbrtGroupAS;
+    uint32_t pbrtInstanceFirstId = 0xFFFFFFFFu;          // Metal instance id of the first pbrt placement (Uniforms::pbrtInstanceFirst)
     id<MTLTexture> goniometricTexture = nil;
 
     // --- Render output: written by compileShaderAndDispatch(), read by

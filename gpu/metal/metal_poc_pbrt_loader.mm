@@ -1126,84 +1126,102 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
                         "under uniform scale is supported by this POC's own cylinder primitive\n", skippedCylinders);
 }
 
-// --- ObjectInstance placements -----------------------------------
-// Real instancing (scene.groups hold OBJECT-space geometry, defined
-// once; scene.instances place them with a per-placement object->world
-// transform - see FlatScene's own comment) is baked into plain
-// world-space triangles here, rather than mirroring gpu/optix/
-// pbrt_gpu_builder.h's own approach of a true GPU-level instance
-// acceleration structure - this POC's own shader dispatch already
-// resolves each geometry "kind" (room triangles, spheres, disks,
-// Suzanne) via its own fixed buffer/intersection-function-table slot,
-// so adding a genuinely general N-group instancing mechanism there
-// would be a much larger change than this pbrt loader warrants for
-// what's typically a handful of placements (e.g. this repo's own
-// example-cornell.pbrt: 3). Baking duplicates geometry per placement
-// instead of sharing one buffer - free for a scene with a few dozen
-// instances, the case every pbrt scene this loader has seen uses.
-//
-// Emissive instanced shapes need no special handling here: flatten()
-// itself already bakes those directly into scene.triangles (a light
-// must be enumerable to be sampled - see pbrt_gpu_builder.h's own
-// comment on the same point), so scene.groups/scene.instances only
-// ever contain non-emissive geometry.
+// pbrt ObjectInstance: each used group's triangles are stored ONCE (object space) after the scene's own triangles in the shared vertex/normal/uv/
+// material arrays, and every placement becomes a hardware instance of that group's own acceleration structure (see buildPbrtGroupAS and
+// buildInstanceAS in metal_poc_gpu_resources.mm). A scene that instances a tree mesh 600 times used to bake 600 copies of its triangles (Barcelona
+// Pavilion: 97 million, more than the GPU can hold); now it stores the tree once. The kernel finds an instance's triangles at
+// InstanceTransform::triBase + the group-local primitive id and transforms the shading normal by the instance's normal matrix.
 void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
     const PbrtMaterialForFn& materialFor) {
-    size_t instancedTriangleCount = 0, skippedInstancedSpheres = 0;
+    pbrtInstGroups.clear();
+    pbrtInstPlacements.clear();
+    pbrtInstTriTotal = 0;
+    // toWorld (the scene rescale + recentre + offset) is affine: world = A * p + b, with A's columns read off the unit vectors.
+    const float3 b = toWorld(float3{0, 0, 0});
+    const float3 aCol[3] = {toWorld(float3{1, 0, 0}) - b, toWorld(float3{0, 1, 0}) - b, toWorld(float3{0, 0, 1}) - b};
+    std::vector<int> groupSlot(scene.groups.size(), -1);
+    size_t skippedInstancedSpheres = 0, skippedDegenerate = 0, bakedEquivalent = 0;
     for (const pbrt_flatten::Instance& inst : scene.instances) {
         if (inst.group < 0 || (size_t)inst.group >= scene.groups.size()) {
             fprintf(stderr, "loadPbrtScene: ObjectInstance with an invalid group index skipped\n");
             continue;
         }
-        pbrt_scene::Matrix4 xform;
-        for (int i = 0; i < 16; ++i) xform.m[i] = inst.xform[i];
         const pbrt_flatten::InstanceGroup& grp = scene.groups[inst.group];
-        for (const pbrt_flatten::Triangle& t : grp.triangles) {
-            double worldV[9];
-            for (int c = 0; c < 3; ++c)
-                pbrt_flatten::flatten_detail::transformPoint(xform, t.v[c * 3 + 0], t.v[c * 3 + 1], t.v[c * 3 + 2], &worldV[c * 3]);
-            const float3 v0 = toWorld(float3{(float)worldV[0], (float)worldV[1], (float)worldV[2]});
-            const float3 v1 = toWorld(float3{(float)worldV[3], (float)worldV[4], (float)worldV[5]});
-            const float3 v2 = toWorld(float3{(float)worldV[6], (float)worldV[7], (float)worldV[8]});
-            verts.push_back(PackedFloat3{v0.x, v0.y, v0.z});
-            verts.push_back(PackedFloat3{v1.x, v1.y, v1.z});
-            verts.push_back(PackedFloat3{v2.x, v2.y, v2.z});
-            if (t.hasNormals) {
-                for (int c = 0; c < 3; ++c) {
-                    double worldN[3];
-                    pbrt_flatten::flatten_detail::transformNormal(xform, t.n[c * 3 + 0], t.n[c * 3 + 1], t.n[c * 3 + 2], worldN);
-                    const float3 n = simd::normalize(float3{(float)worldN[0], (float)worldN[1], (float)worldN[2]});
-                    normals.push_back(PackedFloat3{n.x, n.y, n.z});
-                }
-            } else {
-                const float3 faceN = simd::normalize(simd::cross(v1 - v0, v2 - v0));
-                const PackedFloat3 packedN{faceN.x, faceN.y, faceN.z};
-                normals.push_back(packedN); normals.push_back(packedN); normals.push_back(packedN);
+        // Combined object -> scene transform: L = A * X (X = the instance's own linear part, row-major xform[r*4+c]), t = A * xt + b.
+        double L[3][3], t[3];
+        for (int r = 0; r < 3; ++r) {
+            for (int c = 0; c < 3; ++c) {
+                double sum = 0;
+                for (int k = 0; k < 3; ++k) sum += (double)aCol[k][r] * inst.xform[k * 4 + c];
+                L[r][c] = sum;
             }
-            if (t.hasUVs) {
-                for (int c = 0; c < 3; ++c)
-                    uvs.push_back(PackedFloat2{(float)t.uv[c * 2 + 0], (float)t.uv[c * 2 + 1]});
-            } else {
-                // Same real default-UV fix as loadPbrtRemainingTriangles()'s
-                // own identical branch just above (J1, section 172) - see
-                // that site's own comment for the full "why."
-                uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
-            }
-            materials.push_back(materialFor(t.material));
-            ++instancedTriangleCount;
+            t[r] = b[r];
+            for (int k = 0; k < 3; ++k) t[r] += (double)aCol[k][r] * inst.xform[k * 4 + 3];
         }
-        // A non-uniformly-scaled sphere is an ellipsoid, which SphereData
-        // (a plain centre+radius analytic primitive) can't represent -
-        // baking it as a sphere anyway would silently render the wrong
-        // shape, so this loader skips instanced spheres entirely rather
-        // than risk that (matching every other "explain why, don't render
-        // something wrong" gap this loader already documents). No pbrt
-        // scene this loader has been run against uses one yet.
+        // Normal matrix = inverse transpose = cofactor matrix / determinant (so a mirrored instance keeps its orientation).
+        const double det = L[0][0] * (L[1][1] * L[2][2] - L[1][2] * L[2][1]) - L[0][1] * (L[1][0] * L[2][2] - L[1][2] * L[2][0]) +
+                           L[0][2] * (L[1][0] * L[2][1] - L[1][1] * L[2][0]);
+        if (!(std::fabs(det) > 1e-30)) { ++skippedDegenerate; continue; }
+        double N[3][3];
+        for (int r = 0; r < 3; ++r)
+            for (int c = 0; c < 3; ++c) {
+                const int r1 = (r + 1) % 3, r2 = (r + 2) % 3, c1 = (c + 1) % 3, c2 = (c + 2) % 3;
+                N[r][c] = (L[r1][c1] * L[r2][c2] - L[r1][c2] * L[r2][c1]) / det;
+            }
         skippedInstancedSpheres += grp.spheres.size();
+        bakedEquivalent += grp.triangles.size();
+        if (grp.triangles.empty()) continue;
+
+        if (groupSlot[inst.group] < 0) {
+            groupSlot[inst.group] = (int)pbrtInstGroups.size();
+            PbrtInstancedGroup g;
+            g.triBase = (uint32_t)materials.size();
+            g.triCount = (uint32_t)grp.triangles.size();
+            pbrtInstGroups.push_back(g);
+            pbrtInstTriTotal += g.triCount;
+            for (const pbrt_flatten::Triangle& tri : grp.triangles) {
+                float3 v[3];
+                for (int c = 0; c < 3; ++c) {
+                    v[c] = float3{(float)tri.v[c * 3 + 0], (float)tri.v[c * 3 + 1], (float)tri.v[c * 3 + 2]};
+                    verts.push_back(PackedFloat3{v[c].x, v[c].y, v[c].z});
+                }
+                if (tri.hasNormals) {
+                    for (int c = 0; c < 3; ++c) {
+                        const float3 n = simd::normalize(float3{(float)tri.n[c * 3 + 0], (float)tri.n[c * 3 + 1], (float)tri.n[c * 3 + 2]});
+                        normals.push_back(PackedFloat3{n.x, n.y, n.z});
+                    }
+                } else {
+                    const float3 faceN = simd::normalize(simd::cross(v[1] - v[0], v[2] - v[0]));
+                    const PackedFloat3 packedN{faceN.x, faceN.y, faceN.z};
+                    normals.push_back(packedN); normals.push_back(packedN); normals.push_back(packedN);
+                }
+                if (tri.hasUVs) {
+                    for (int c = 0; c < 3; ++c) uvs.push_back(PackedFloat2{(float)tri.uv[c * 2 + 0], (float)tri.uv[c * 2 + 1]});
+                } else {
+                    // Same default UVs as loadPbrtRemainingTriangles() (J1, section 172).
+                    uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
+                }
+                materials.push_back(materialFor(tri.material));
+            }
+        }
+
+        PbrtInstancePlacement p;
+        p.group = (uint32_t)groupSlot[inst.group];
+        for (int c = 0; c < 3; ++c)
+            for (int r = 0; r < 3; ++r) {
+                p.linear[c * 3 + r] = (float)L[r][c];
+                p.normalMat[c * 3 + r] = (float)N[r][c];
+            }
+        for (int r = 0; r < 3; ++r) p.translation[r] = (float)t[r];
+        pbrtInstPlacements.push_back(p);
     }
-    if (instancedTriangleCount > 0)
-        fprintf(stderr, "loadPbrtScene: baked %zu ObjectInstance placement(s) into %zu world-space "
-                        "triangle(s)\n", scene.instances.size(), instancedTriangleCount);
+    if (!pbrtInstPlacements.empty())
+        fprintf(stderr, "loadPbrtScene: %zu ObjectInstance placement(s) of %zu group(s) as hardware instances (%u triangles stored once; "
+                        "baking them would take %zu)\n", pbrtInstPlacements.size(), pbrtInstGroups.size(), pbrtInstTriTotal, bakedEquivalent);
+    if (skippedDegenerate > 0)
+        fprintf(stderr, "loadPbrtScene: %zu ObjectInstance placement(s) with a singular transform skipped\n", skippedDegenerate);
+    // A non-uniformly-scaled sphere is an ellipsoid, which SphereData (a plain centre+radius analytic primitive) can't represent - baking it as
+    // a sphere anyway would silently render the wrong shape, so instanced spheres are skipped (no pbrt scene run so far uses one).
     if (skippedInstancedSpheres > 0)
         fprintf(stderr, "loadPbrtScene: %zu instanced sphere(s) skipped - a non-uniformly-scaled "
                         "instanced sphere can't be represented by this loader's analytic sphere "

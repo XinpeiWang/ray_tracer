@@ -54,7 +54,7 @@ Metal allows 31 buffer arguments per kernel and `primaryRayKernel` uses all of t
 | 0 acceleration structure, 1 `Uniforms`, 6 intersection function table | |
 | 2 triangle materials, 3 vertices, 7 normals, 8 uvs | triangle mesh |
 | 4 sphere materials, 5 spheres, 13/14 disks, 26/27 cylinders | analytic shapes |
-| 10/11 instance normals/materials, 12 instance transforms | instancing |
+| 10/11 Suzanne's normals/materials, 12 instance table (per instance: normal matrix, translation, `triBase`) | instancing; pbrt `ObjectInstance` groups share the main triangle arrays, see the parity doc |
 | 9 area lights, 15 point, 16 directional, 17 projection, 18 goniometric | lights |
 | 19/20 environment marginal/conditional CDF, 22/23 the same for the pbrt image light | environment sampling |
 | 21 GGX energy table, 24/25 lens elements / exit-pupil bounds | tables, realistic camera |

@@ -408,6 +408,39 @@ bool MetalPocApp::buildInstancedMeshAS(GpuBuildState& s) {
         return false;
     }
 
+    // --- One acceleration structure per pbrt ObjectInstance group (loadPbrtObjectInstances): the group's triangles are a slice of the shared vertex
+    // buffer (they trail the scene's own triangles, which primAS covers), built once however many placements use it.
+    pbrtGroupAS.clear();
+    for (const PbrtInstancedGroup& g : pbrtInstGroups) {
+        MTLAccelerationStructureTriangleGeometryDescriptor* groupGeom = [MTLAccelerationStructureTriangleGeometryDescriptor descriptor];
+        groupGeom.vertexBuffer = vertexBuffer;
+        groupGeom.vertexBufferOffset = (NSUInteger)g.triBase * 3 * sizeof(PackedFloat3);
+        groupGeom.vertexStride = sizeof(PackedFloat3);
+        groupGeom.triangleCount = g.triCount;
+        groupGeom.opaque = YES;
+        MTLPrimitiveAccelerationStructureDescriptor* groupDesc = [MTLPrimitiveAccelerationStructureDescriptor descriptor];
+        groupDesc.geometryDescriptors = @[groupGeom];
+        MTLAccelerationStructureSizes groupSizes = [device accelerationStructureSizesWithDescriptor:groupDesc];
+        id<MTLAccelerationStructure> groupAS = [device newAccelerationStructureWithSize:groupSizes.accelerationStructureSize];
+        id<MTLBuffer> groupScratch = [device newBufferWithLength:groupSizes.buildScratchBufferSize options:MTLResourceStorageModePrivate];
+        if (!groupAS || !groupScratch) {
+            fprintf(stderr, "GPU resource allocation FAILED: an ObjectInstance group's acceleration structure (%u triangles) could not be allocated "
+                            "(likely out of memory).\n", g.triCount);
+            return false;
+        }
+        id<MTLCommandBuffer> groupCmd = [queue commandBuffer];
+        id<MTLAccelerationStructureCommandEncoder> groupEnc = [groupCmd accelerationStructureCommandEncoder];
+        [groupEnc buildAccelerationStructure:groupAS descriptor:groupDesc scratchBuffer:groupScratch scratchBufferOffset:0];
+        [groupEnc endEncoding];
+        [groupCmd commit];
+        [groupCmd waitUntilCompleted];
+        if (groupCmd.status == MTLCommandBufferStatusError) {
+            fprintf(stderr, "ObjectInstance group AS build failed: %s\n", groupCmd.error.localizedDescription.UTF8String);
+            return false;
+        }
+        pbrtGroupAS.push_back(groupAS);
+    }
+
     return true;
 }
 
@@ -475,6 +508,25 @@ bool MetalPocApp::buildInstanceAS(GpuBuildState& s) {
         addInstance(2, rotCol0, rotCol1, rotCol2, float3{0.0f, 0.75f, -0.3f});
     }
 
+    // pbrt ObjectInstance placements follow, so Uniforms::pbrtInstanceFirst can tell them from Suzanne's by instance id. Instanced AS indices:
+    // 0 primAS, 1 sphereAS, 2 suzanneAS, 3 + g the g-th group. col0..2 of the side-channel entry are the NORMAL matrix (see InstanceTransform).
+    pbrtInstanceFirstId = pbrtInstPlacements.empty() ? 0xFFFFFFFFu : (uint32_t)instanceDescs.size();
+    for (const PbrtInstancePlacement& p : pbrtInstPlacements) {
+        MTLAccelerationStructureInstanceDescriptor desc{};
+        desc.accelerationStructureIndex = 3 + p.group;
+        desc.options = MTLAccelerationStructureInstanceOptionNone;
+        desc.mask = 0xFF;
+        desc.intersectionFunctionTableOffset = 0;
+        for (int c = 0; c < 3; ++c) desc.transformationMatrix.columns[c] = MTLPackedFloat3Make(p.linear[c * 3 + 0], p.linear[c * 3 + 1], p.linear[c * 3 + 2]);
+        desc.transformationMatrix.columns[3] = MTLPackedFloat3Make(p.translation[0], p.translation[1], p.translation[2]);
+        instanceDescs.push_back(desc);
+        InstanceTransform xf{
+            PackedFloat3{p.normalMat[0], p.normalMat[1], p.normalMat[2]}, PackedFloat3{p.normalMat[3], p.normalMat[4], p.normalMat[5]},
+            PackedFloat3{p.normalMat[6], p.normalMat[7], p.normalMat[8]}, PackedFloat3{p.translation[0], p.translation[1], p.translation[2]}};
+        xf.triBase = pbrtInstGroups[p.group].triBase;
+        instanceTransforms.push_back(xf);
+    }
+
     id<MTLBuffer> instanceBuffer = [device newBufferWithBytes:instanceDescs.data()
         length:instanceDescs.size() * sizeof(MTLAccelerationStructureInstanceDescriptor)
         options:MTLResourceStorageModeShared];
@@ -484,7 +536,9 @@ bool MetalPocApp::buildInstanceAS(GpuBuildState& s) {
 
     MTLInstanceAccelerationStructureDescriptor* instAccelDesc =
         [MTLInstanceAccelerationStructureDescriptor descriptor];
-    instAccelDesc.instancedAccelerationStructures = @[primAS, sphereAS, suzanneAS];
+    NSMutableArray* instancedASes = [NSMutableArray arrayWithObjects:primAS, sphereAS, suzanneAS, nil];
+    for (id<MTLAccelerationStructure> groupAS : pbrtGroupAS) [instancedASes addObject:groupAS];
+    instAccelDesc.instancedAccelerationStructures = instancedASes;
     instAccelDesc.instanceCount = (uint32_t)instanceDescs.size();
     instAccelDesc.instanceDescriptorBuffer = instanceBuffer;
 

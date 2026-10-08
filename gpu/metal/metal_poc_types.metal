@@ -345,6 +345,8 @@ struct Uniforms {
     packed_float3 portalFrameZ;
     packed_float3 portalP0;
     packed_float3 portalP2;
+    // Metal instance id of the first pbrt ObjectInstance placement, 0xFFFFFFFF = none (see the host copy in metal_poc_gpu_types.h).
+    uint pbrtInstanceFirst;
 };
 
 // A real light LIST entry, replacing the single hardcoded kLightCenter/
@@ -1151,6 +1153,7 @@ struct InstanceTransform {
     packed_float3 col1;
     packed_float3 col2;
     packed_float3 col3;
+    uint triBase;   // see InstanceTransform in metal_poc_gpu_types.h
 };
 
 // Applies only the 3x3 LINEAR part (columns 0-2; column 3 is translation,
