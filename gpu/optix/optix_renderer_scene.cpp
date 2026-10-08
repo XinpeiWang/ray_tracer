@@ -682,51 +682,120 @@ void OptiXRenderer::uploadPunctualLights(const std::vector<PunctualLightGPU>& pu
 	}
 }
 
-bool OptiXRenderer::buildScene(
-	const std::vector<SphereData>& spheres,
-	const std::vector<QuadData>& quads,
-	const std::vector<MaterialData>& materials,
-	const std::vector<int>& lightIndices,
-	const std::vector<GpuLightKind>& lightKinds,
-	const std::vector<PunctualLightGPU>& punctualLights,
-	const std::vector<BilinearPatchData>& bilinearPatches,
-	const std::vector<TriangleData>& triangles,
-	const std::vector<DiskData>& disks,
-	const std::vector<CylinderData>& cylinders,
-	const std::vector<GpuLensElement>& lensElements,
-	const std::vector<GpuExitPupilBounds>& exitPupilBounds,
-	const std::vector<TextureData>& textures,
-	const std::vector<unsigned char>& texturePixels,
-	const std::vector<CloudMedium<float>>& cloudMediums,
-	const std::vector<GpuRgbGridMedium>& rgbGridMediums,
-	const std::vector<float>& rgbGridData,
-	const std::vector<GpuGridMedium>& gridMediums,
-	const std::vector<float>& gridData,
-	const std::vector<GpuBssrdfTable>& bssrdfTables,
-	const std::vector<float>& bssrdfRhoSamples,
-	const std::vector<float>& bssrdfRadiusSamples,
-	const std::vector<float>& bssrdfProfile,
-	const std::vector<float>& bssrdfProfileCdf,
-	const std::vector<GpuMeasuredTable>& measuredTables,
-	const std::vector<float>& measuredParamValues,
-	const std::vector<float>& measuredData,
-	const std::vector<float>& measuredMcdf,
-	const std::vector<float>& measuredCcdf,
-	const std::vector<float>& skyImagePixels,
-	const std::vector<float>& skyMarginalCdf,
-	const std::vector<float>& skyMarginalFunc,
-	float skyMarginalFuncInt,
-	const std::vector<float>& skyConditionalCdf,
-	const std::vector<float>& skyConditionalFunc,
-	const std::vector<float>& skyConditionalFuncInt,
-	int skyWidth, int skyHeight, float skyScale,
-	const std::vector<float>& portalRectifiedImage,
-	const std::vector<float>& portalDistFunc,
-	const std::vector<double>& portalSatSum,
-	int portalWidth, int portalHeight, float portalScale,
-	float3 portalFrameX, float3 portalFrameY, float3 portalFrameZ,
-	float3 portalP0, float3 portalP2
-) {
+struct SceneInputs {
+	const std::vector<SphereData>& spheres;
+	const std::vector<QuadData>& quads;
+	const std::vector<MaterialData>& materials;
+	const std::vector<int>& lightIndices;
+	const std::vector<GpuLightKind>& lightKinds;
+	const std::vector<PunctualLightGPU>& punctualLights;
+	const std::vector<BilinearPatchData>& bilinearPatches;
+	const std::vector<TriangleData>& triangles;
+	const std::vector<DiskData>& disks;
+	const std::vector<CylinderData>& cylinders;
+	const std::vector<GpuLensElement>& lensElements;
+	const std::vector<GpuExitPupilBounds>& exitPupilBounds;
+	const std::vector<TextureData>& textures;
+	const std::vector<unsigned char>& texturePixels;
+	const std::vector<CloudMedium<float>>& cloudMediums;
+	const std::vector<GpuRgbGridMedium>& rgbGridMediums;
+	const std::vector<float>& rgbGridData;
+	const std::vector<GpuGridMedium>& gridMediums;
+	const std::vector<float>& gridData;
+	const std::vector<GpuBssrdfTable>& bssrdfTables;
+	const std::vector<float>& bssrdfRhoSamples;
+	const std::vector<float>& bssrdfRadiusSamples;
+	const std::vector<float>& bssrdfProfile;
+	const std::vector<float>& bssrdfProfileCdf;
+	const std::vector<GpuMeasuredTable>& measuredTables;
+	const std::vector<float>& measuredParamValues;
+	const std::vector<float>& measuredData;
+	const std::vector<float>& measuredMcdf;
+	const std::vector<float>& measuredCcdf;
+	const std::vector<float>& skyImagePixels;
+	const std::vector<float>& skyMarginalCdf;
+	const std::vector<float>& skyMarginalFunc;
+	float skyMarginalFuncInt;
+	const std::vector<float>& skyConditionalCdf;
+	const std::vector<float>& skyConditionalFunc;
+	const std::vector<float>& skyConditionalFuncInt;
+	int skyWidth;
+	int skyHeight;
+	float skyScale;
+	const std::vector<float>& portalRectifiedImage;
+	const std::vector<float>& portalDistFunc;
+	const std::vector<double>& portalSatSum;
+	int portalWidth;
+	int portalHeight;
+	float portalScale;
+	float3 portalFrameX;
+	float3 portalFrameY;
+	float3 portalFrameZ;
+	float3 portalP0;
+	float3 portalP2;
+};
+
+struct SceneBuildState {
+	CUdeviceptr d_aabb{};
+	CUdeviceptr d_aabbKey1{};
+	OptixAccelBuildOptions customAccelOptions{};
+	CUdeviceptr d_gasCustomOutput{};
+	OptixAccelBuildOptions triAccelOptions{};
+	CUdeviceptr d_gasTriOutput{};
+	CUdeviceptr d_gasDiskCylinderOutput{};
+	bool haveInstancedTriangles{};
+	bool haveInstancedSpheres{};
+	int diskCylinderSbtOffset{};
+};
+
+void OptiXRenderer::uploadGeometryBuffers(const SceneInputs &in, SceneBuildState &st) {
+	const auto &spheres = in.spheres;
+	const auto &quads = in.quads;
+	const auto &materials = in.materials;
+	const auto &bilinearPatches = in.bilinearPatches;
+	const auto &triangles = in.triangles;
+	const auto &disks = in.disks;
+	const auto &cylinders = in.cylinders;
+	const auto &lensElements = in.lensElements;
+	const auto &exitPupilBounds = in.exitPupilBounds;
+	const auto &textures = in.textures;
+	const auto &texturePixels = in.texturePixels;
+	const auto &cloudMediums = in.cloudMediums;
+	const auto &rgbGridMediums = in.rgbGridMediums;
+	const auto &rgbGridData = in.rgbGridData;
+	const auto &gridMediums = in.gridMediums;
+	const auto &gridData = in.gridData;
+	const auto &bssrdfTables = in.bssrdfTables;
+	const auto &bssrdfRhoSamples = in.bssrdfRhoSamples;
+	const auto &bssrdfRadiusSamples = in.bssrdfRadiusSamples;
+	const auto &bssrdfProfile = in.bssrdfProfile;
+	const auto &bssrdfProfileCdf = in.bssrdfProfileCdf;
+	const auto &measuredTables = in.measuredTables;
+	const auto &measuredParamValues = in.measuredParamValues;
+	const auto &measuredData = in.measuredData;
+	const auto &measuredMcdf = in.measuredMcdf;
+	const auto &measuredCcdf = in.measuredCcdf;
+	const auto &skyImagePixels = in.skyImagePixels;
+	const auto &skyMarginalCdf = in.skyMarginalCdf;
+	const auto &skyMarginalFunc = in.skyMarginalFunc;
+	float skyMarginalFuncInt = in.skyMarginalFuncInt;
+	const auto &skyConditionalCdf = in.skyConditionalCdf;
+	const auto &skyConditionalFunc = in.skyConditionalFunc;
+	const auto &skyConditionalFuncInt = in.skyConditionalFuncInt;
+	int skyWidth = in.skyWidth;
+	int skyHeight = in.skyHeight;
+	float skyScale = in.skyScale;
+	const auto &portalRectifiedImage = in.portalRectifiedImage;
+	const auto &portalDistFunc = in.portalDistFunc;
+	const auto &portalSatSum = in.portalSatSum;
+	int portalWidth = in.portalWidth;
+	int portalHeight = in.portalHeight;
+	float portalScale = in.portalScale;
+	float3 portalFrameX = in.portalFrameX;
+	float3 portalFrameY = in.portalFrameY;
+	float3 portalFrameZ = in.portalFrameZ;
+	float3 portalP0 = in.portalP0;
+	float3 portalP2 = in.portalP2;
 	// Store material data on device
 	uploadMaterials(materials);
 
@@ -865,7 +934,19 @@ bool OptiXRenderer::buildScene(
 	uploadPortalLight(portalRectifiedImage, portalDistFunc, portalSatSum,
 					  portalWidth, portalHeight, portalScale,
 					  portalFrameX, portalFrameY, portalFrameZ, portalP0, portalP2);
+}
 
+void OptiXRenderer::uploadLightBuffers(const SceneInputs &in, SceneBuildState &st) {
+	const auto &spheres = in.spheres;
+	const auto &quads = in.quads;
+	const auto &materials = in.materials;
+	const auto &lightIndices = in.lightIndices;
+	const auto &lightKinds = in.lightKinds;
+	const auto &punctualLights = in.punctualLights;
+	const auto &bilinearPatches = in.bilinearPatches;
+	const auto &triangles = in.triangles;
+	const auto &disks = in.disks;
+	const auto &cylinders = in.cylinders;
 	// Store light data on device for MIS
 	numLights_ = static_cast<unsigned int>(lightIndices.size());
 
@@ -1180,7 +1261,15 @@ bool OptiXRenderer::buildScene(
 	// rather than selected via the alias table (see optix_device_helpers.h
 	// eval_punctual_light / add_punctual_lights_lambertian).
 	uploadPunctualLights(punctualLights);
+}
 
+bool OptiXRenderer::buildCustomAabbs(const SceneInputs &in, SceneBuildState &st) {
+	const auto &spheres = in.spheres;
+	const auto &quads = in.quads;
+	const auto &bilinearPatches = in.bilinearPatches;
+	const auto &triangles = in.triangles;
+	const auto &disks = in.disks;
+	const auto &cylinders = in.cylinders;
 	// Build acceleration structure for custom primitives
 	// We'll use AABB (axis-aligned bounding box) custom primitives
 
@@ -1381,7 +1470,20 @@ bool OptiXRenderer::buildScene(
 			cudaMemcpyHostToDevice
 		));
 	}
+	st.d_aabb = d_aabb;
+	st.d_aabbKey1 = d_aabbKey1;
+	return true;
+}
 
+void OptiXRenderer::buildGeometryGases(const SceneInputs &in, SceneBuildState &st) {
+	const auto &spheres = in.spheres;
+	const auto &quads = in.quads;
+	const auto &bilinearPatches = in.bilinearPatches;
+	const auto &triangles = in.triangles;
+	const auto &disks = in.disks;
+	const auto &cylinders = in.cylinders;
+	CUdeviceptr d_aabb = st.d_aabb;
+	CUdeviceptr d_aabbKey1 = st.d_aabbKey1;
 	// Build input for sphere geometry. OptiX validation rejects a non-null
 	// aabbBuffers when numPrimitives==0 ("numPrimitives is zero, but
 	// aabbBuffers is non-null") even though it would never be dereferenced -
@@ -1662,7 +1764,20 @@ bool OptiXRenderer::buildScene(
 		outputGuard.release();
 	}
 	cudaFree(reinterpret_cast<void*>(d_diskCylinderAabb));  // cudaFree(0) is a no-op when there were none
+	st.customAccelOptions = customAccelOptions;
+	st.d_gasCustomOutput = d_gasCustomOutput;
+	st.triAccelOptions = triAccelOptions;
+	st.d_gasTriOutput = d_gasTriOutput;
+	st.d_gasDiskCylinderOutput = d_gasDiskCylinderOutput;
+}
 
+void OptiXRenderer::buildInstanceGases(const SceneInputs &in, SceneBuildState &st) {
+	const auto &triangles = in.triangles;
+	OptixAccelBuildOptions customAccelOptions = st.customAccelOptions;
+	CUdeviceptr d_gasCustomOutput = st.d_gasCustomOutput;
+	OptixAccelBuildOptions triAccelOptions = st.triAccelOptions;
+	CUdeviceptr d_gasTriOutput = st.d_gasTriOutput;
+	CUdeviceptr d_gasDiskCylinderOutput = st.d_gasDiskCylinderOutput;
 	// ---- object instancing: one GAS per instance DEFINITION -----------------
 	// Built once here regardless of how many times it's placed; each IAS
 	// instance added below just points at the same GAS with its own
@@ -1801,7 +1916,15 @@ bool OptiXRenderer::buildScene(
 	d_gasTri_ = d_gasTriOutput;
 	if (d_gasDiskCylinder_) cudaFree(reinterpret_cast<void*>(d_gasDiskCylinder_));
 	d_gasDiskCylinder_ = d_gasDiskCylinderOutput;
+}
 
+void OptiXRenderer::buildTopLevelIas(const SceneInputs &in, SceneBuildState &st) {
+	const auto &spheres = in.spheres;
+	const auto &quads = in.quads;
+	const auto &bilinearPatches = in.bilinearPatches;
+	const auto &triangles = in.triangles;
+	const auto &disks = in.disks;
+	const auto &cylinders = in.cylinders;
 	// Top-level IAS: one static-identity instance per non-empty child GAS,
 	// then one further instance per instanced-geometry placement.
 	//
@@ -1940,16 +2063,75 @@ bool OptiXRenderer::buildScene(
 		<< disks.size() << " disks, "
 		<< cylinders.size() << " cylinders, "
 		<< triangles.size() << " triangles\n";
+	st.haveInstancedTriangles = haveInstancedTriangles;
+	st.haveInstancedSpheres = haveInstancedSpheres;
+	st.diskCylinderSbtOffset = diskCylinderSbtOffset;
+}
+
+bool OptiXRenderer::buildScene(
+	const std::vector<SphereData>& spheres,
+	const std::vector<QuadData>& quads,
+	const std::vector<MaterialData>& materials,
+	const std::vector<int>& lightIndices,
+	const std::vector<GpuLightKind>& lightKinds,
+	const std::vector<PunctualLightGPU>& punctualLights,
+	const std::vector<BilinearPatchData>& bilinearPatches,
+	const std::vector<TriangleData>& triangles,
+	const std::vector<DiskData>& disks,
+	const std::vector<CylinderData>& cylinders,
+	const std::vector<GpuLensElement>& lensElements,
+	const std::vector<GpuExitPupilBounds>& exitPupilBounds,
+	const std::vector<TextureData>& textures,
+	const std::vector<unsigned char>& texturePixels,
+	const std::vector<CloudMedium<float>>& cloudMediums,
+	const std::vector<GpuRgbGridMedium>& rgbGridMediums,
+	const std::vector<float>& rgbGridData,
+	const std::vector<GpuGridMedium>& gridMediums,
+	const std::vector<float>& gridData,
+	const std::vector<GpuBssrdfTable>& bssrdfTables,
+	const std::vector<float>& bssrdfRhoSamples,
+	const std::vector<float>& bssrdfRadiusSamples,
+	const std::vector<float>& bssrdfProfile,
+	const std::vector<float>& bssrdfProfileCdf,
+	const std::vector<GpuMeasuredTable>& measuredTables,
+	const std::vector<float>& measuredParamValues,
+	const std::vector<float>& measuredData,
+	const std::vector<float>& measuredMcdf,
+	const std::vector<float>& measuredCcdf,
+	const std::vector<float>& skyImagePixels,
+	const std::vector<float>& skyMarginalCdf,
+	const std::vector<float>& skyMarginalFunc,
+	float skyMarginalFuncInt,
+	const std::vector<float>& skyConditionalCdf,
+	const std::vector<float>& skyConditionalFunc,
+	const std::vector<float>& skyConditionalFuncInt,
+	int skyWidth, int skyHeight, float skyScale,
+	const std::vector<float>& portalRectifiedImage,
+	const std::vector<float>& portalDistFunc,
+	const std::vector<double>& portalSatSum,
+	int portalWidth, int portalHeight, float portalScale,
+	float3 portalFrameX, float3 portalFrameY, float3 portalFrameZ,
+	float3 portalP0, float3 portalP2
+) {
+	const SceneInputs in{spheres, quads, materials, lightIndices, lightKinds, punctualLights, bilinearPatches, triangles, disks, cylinders, lensElements, exitPupilBounds, textures, texturePixels, cloudMediums, rgbGridMediums, rgbGridData, gridMediums, gridData, bssrdfTables, bssrdfRhoSamples, bssrdfRadiusSamples, bssrdfProfile, bssrdfProfileCdf, measuredTables, measuredParamValues, measuredData, measuredMcdf, measuredCcdf, skyImagePixels, skyMarginalCdf, skyMarginalFunc, skyMarginalFuncInt, skyConditionalCdf, skyConditionalFunc, skyConditionalFuncInt, skyWidth, skyHeight, skyScale, portalRectifiedImage, portalDistFunc, portalSatSum, portalWidth, portalHeight, portalScale, portalFrameX, portalFrameY, portalFrameZ, portalP0, portalP2};
+	SceneBuildState st;
+	uploadGeometryBuffers(in, st);
+	uploadLightBuffers(in, st);
+	if (!buildCustomAabbs(in, st)) return false;
+	buildGeometryGases(in, st);
+	buildInstanceGases(in, st);
+	buildTopLevelIas(in, st);
 
 	// Build Shader Binding Table (SBT). The scene-only geometry decides the
 	// packed record region; instanced geometry gets appended pairs of its own,
 	// which the instTri/instSphere offsets computed above address; disks/
-	// cylinders get their own trailing region the same way (diskCylinderSbtOffset).
+	// cylinders get their own trailing region the same way (st.diskCylinderSbtOffset).
 	if (!buildSBT(spheres, quads, bilinearPatches, triangles,
-				  haveInstancedTriangles, haveInstancedSpheres, disks, cylinders)) {
+				  st.haveInstancedTriangles, st.haveInstancedSpheres, disks, cylinders)) {
 		std::cerr << "Failed to build SBT\n";
 		return false;
 	}
+
 
 	return true;
 }
@@ -2146,4 +2328,3 @@ bool OptiXRenderer::buildSBT(
 		<< (disks.empty() && cylinders.empty() ? "" : ", including disk/cylinder's own trailing region") << ")\n";
 	return true;
 }
-

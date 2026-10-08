@@ -30,6 +30,9 @@ namespace optix_renderer { class SPPMPathTracer; }
 /// @brief Main OptiX path tracer implementation.
 /// @details Manages OptiX resources including context, pipeline, acceleration structures,
 ///          and rendering state. Uses RAII for resource management.
+struct SceneInputs;
+struct SceneBuildState;
+
 class OptiXRenderer {
 public:
 	/// @brief Construct a new OptiXRenderer
@@ -916,6 +919,13 @@ private:
 	///        index, and the scene's custom-primitive region is packed with no
 	///        gaps for absent types - so they get their own pair at the end,
 	///        which buildScene() points their instances at.
+	// The stages buildScene() runs in order (optix_renderer_scene.cpp); SceneInputs is its arguments gathered, SceneBuildState what one stage hands the next.
+	void uploadGeometryBuffers(const SceneInputs &in, SceneBuildState &st);
+	void uploadLightBuffers(const SceneInputs &in, SceneBuildState &st);
+	bool buildCustomAabbs(const SceneInputs &in, SceneBuildState &st);
+	void buildGeometryGases(const SceneInputs &in, SceneBuildState &st);
+	void buildInstanceGases(const SceneInputs &in, SceneBuildState &st);
+	void buildTopLevelIas(const SceneInputs &in, SceneBuildState &st);
 	bool buildSBT(
 		const std::vector<SphereData>& spheres,
 		const std::vector<QuadData>& quads,
