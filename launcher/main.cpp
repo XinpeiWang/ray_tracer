@@ -70,6 +70,7 @@ extern char** environ;
 #include "src/shared/exr_writer.h"
 #include "src/shared/render_stats.h"
 #include "launcher/camera_path.h"
+#include "launcher/gpu_backend.h"      // the GPU renderer this build has (Metal or OptiX), behind one call
 #include "launcher/launcher_args.h"   // Argument parsing
 #include "launcher/diagnostics.h"     // --diagnose
 #ifdef RT_HAVE_AVFOUNDATION_ENCODER
@@ -821,10 +822,8 @@ static int run_video_render(const LaunchArgs &args, const RenderSetup &s) {
         // must honor its per-frame animated camera regardless, or it
         // would render the same static frame video_frames times.
         if (use_gpu) {
-#if defined(RT_HAVE_METAL)
-            MetalDiagnostics metal_diag{};
-            if (metal_get_diagnostics(&metal_diag)) {
-                render_result = metal_render_main(
+            if (gpu_backend::available()) {   // Metal on a Mac, OptiX on Windows: launcher/gpu_backend.h
+                render_result = gpu_backend::render(
                     image_width,
                     image_height,
                     samples_per_pixel,
@@ -838,29 +837,9 @@ static int run_video_render(const LaunchArgs &args, const RenderSetup &s) {
                     render_opts
                 );
             } else {
-                std::cerr << "\nERROR: Metal is not available!" << std::endl;
+                std::cerr << "\nERROR: " << gpu_backend::name() << " is not available!" << std::endl;
                 return ERR_GPU_NO_DEVICE;
             }
-#else
-            if (optix_is_available()) {
-                render_result = optix_render_main(
-                    image_width,
-                    image_height,
-                    samples_per_pixel,
-                    max_ray_depth,
-                    frame_path.string().c_str(),
-                    scene_id.c_str(),
-                    cam_pos.lookfrom_x,
-                    cam_pos.lookfrom_y,
-                    cam_pos.lookfrom_z,
-                    1,  // force_camera_override
-                    render_opts
-                );
-            } else {
-                std::cerr << "\nERROR: OptiX is not available!" << std::endl;
-                return ERR_GPU_NO_DEVICE;
-            }
-#endif
         } else {
             render_result = cpu_render_main(
                 image_width,
@@ -1218,18 +1197,15 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
         if (!report_render_result(render_result, "cpu_render_main_sppm", "SPPM", "SPPM", out_path))
             return render_result;
     } else if (use_gpu) {
-#ifdef RT_HAVE_METAL
-        // GPU Renderer (Metal, macOS) - see docs/history/METAL_GPU_FEASIBILITY.md's
-        // own "phase 3b" section for the full story. metal_render_main()
-        // itself (gpu/metal/metal_poc.mm) renders a scene_id that is EITHER
-        // pbrt-file-backed (loadPbrtScene()) - Metal no longer has hand-authored
-        // builders of its own -
-        // a scene_id with neither prints a clear message and returns
-        // non-zero, same "explain why, don't crash or silently render
-        // something else" precedent optix_render_main()'s own error path
-        // above already established for a GPU-unsupported scene.
-        std::cout << "Calling metal_render_main(...) in-process (Metal)..." << std::endl;
-        render_result = metal_render_main(
+        // The GPU renderer this build has: Metal on a Mac (gpu/metal/metal_poc.mm renders a pbrt-file-backed scene_id and, for any other, prints a clear
+        // message and returns non-zero), OptiX on Windows. Both are called through launcher/gpu_backend.h.
+        if (!gpu_backend::available()) {
+            std::cerr << "ERROR: " << gpu_backend::name() << " is not available!" << std::endl;
+            return ERR_GPU_NO_DEVICE;
+        }
+        std::cout << "Calling " << gpu_backend::entryPoint() << "(...) in-process (" << gpu_backend::name() << ")..." << std::endl;
+        std::cout << "[DEBUG] Camera: (" << cam_x << ", " << cam_y << ", " << cam_z << ")" << std::endl;
+        render_result = gpu_backend::render(
             image_width,
             image_height,
             samples_per_pixel,
@@ -1239,43 +1215,11 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
             cam_x,
             cam_y,
             cam_z,
-            1,  // force_camera_override - honored by metal_render_main()
-                // itself via MetalPocApp::applyCameraOverride() when the
-                // scene has a real pbrt camera (havePbrtCamera); warns and
-                // ignores the override instead only if the pbrt scene
-                // failed to load (see that function's own comment,
-                // gpu/metal/metal_poc.mm) or for a hand-authored (non-pbrt)
-                // scene_id, which has no pbrt camera to override at all.
+            1,  // force_camera_override (Metal honours it through MetalPocApp::applyCameraOverride() when the scene has a pbrt camera)
             render_opts
         );
-        if (!report_render_result(render_result, "metal_render_main", "Metal", "METAL", out_path, "See metal_render_main()'s own stderr message above for why.\n"))
+        if (!report_render_result(render_result, gpu_backend::entryPoint(), gpu_backend::name(), gpu_backend::reportTag(), out_path, gpu_backend::failureHint()))
             return render_result;
-#else
-        // GPU Renderer (OptiX)
-        if (optix_is_available()) {
-            std::cout << "[OptiX] OptiX is available!" << std::endl;
-            std::cout << "Calling optix_render_main(...) in-process (OptiX)..." << std::endl;
-            std::cout << "[DEBUG] Camera: (" << cam_x << ", " << cam_y << ", " << cam_z << ")" << std::endl;
-            render_result = optix_render_main(
-                image_width,
-                image_height,
-                samples_per_pixel,
-                max_ray_depth,
-                out_path.c_str(),
-                scene_id.c_str(),
-                cam_x,
-                cam_y,
-                cam_z,
-                1,  // force_camera_override - see the comment above this section
-                render_opts
-            );
-            if (!report_render_result(render_result, "optix_render_main", "OptiX", "OptiX", out_path))
-                return render_result;
-        } else {
-            std::cerr << "ERROR: OptiX is not available!" << std::endl;
-            return ERR_GPU_NO_DEVICE;
-        }
-#endif
     } else {
         // CPU Renderer (multithreaded C++)
         // Implemented in cpu_renderer/cpu_interface.cpp
