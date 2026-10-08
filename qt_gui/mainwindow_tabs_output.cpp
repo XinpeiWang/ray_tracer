@@ -125,6 +125,13 @@ void MainWindow::createProgressTab() {
 	// selected stuck selected - see ListEmptyAreaDeselectFilter's comment.
 	m_queueView->viewport()->installEventFilter(new ListEmptyAreaDeselectFilter(m_queueView));
 	queueLayout->addWidget(m_queueView);
+	// Until the first render there is nothing to list: say what will appear here instead of showing an empty table.
+	m_queueEmptyLabel = new QLabel(tr("Waiting and finished renders are listed here. Start a render, or queue several, and each gets a row."), m_queueGroup);
+	m_queueEmptyLabel->setObjectName("statusInfo");
+	m_queueEmptyLabel->setWordWrap(true);
+	m_queueEmptyLabel->setAlignment(Qt::AlignCenter);
+	m_queueEmptyLabel->setMinimumHeight(90);
+	queueLayout->addWidget(m_queueEmptyLabel);
 
 	auto queueButton = [this](const QString &text, const QString &tip, void (MainWindow::*slot)()) {
 		auto *b = new QPushButton(text, m_queueGroup);
@@ -150,7 +157,7 @@ void MainWindow::createProgressTab() {
 	queueLayout->addLayout(queueButtonLayout);
 	connect(m_queueView->selectionModel(), &QItemSelectionModel::currentChanged, this, [this]() { updateQueueButtons(); });
 	connect(m_queueModel, &RenderQueueModel::countsChanged, this, [this]() { refreshQueuePanel(); });
-	updateQueueButtons();
+	refreshQueuePanel();
 
 	layout->addWidget(m_queueGroup);
 	layout->addStretch(1);

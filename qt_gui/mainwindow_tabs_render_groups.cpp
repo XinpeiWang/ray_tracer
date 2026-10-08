@@ -188,6 +188,7 @@ void MainWindow::buildIntegratorGroup(QWidget *optionsTab, QVBoxLayout *layout) 
 	// is swapped per-mode in onIntegratorChanged() (mainwindow_slots.cpp).
 	m_integratorNoOptionsLabel = new QLabel(tr("The default Path Tracer has no integrator-specific options here - see the Render Options above."), m_integratorOptionsStack);
 	m_integratorNoOptionsLabel->setWordWrap(true);
+	m_integratorNoOptionsLabel->setAlignment(Qt::AlignTop | Qt::AlignLeft);   // centred in the stack's height it left a wide empty band above and below the text
 	m_integratorOptionsStack->addWidget(m_integratorNoOptionsLabel);
 
 	// Page 1: SPPM
@@ -1256,4 +1257,5 @@ void MainWindow::buildSeedGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 		m_seedSpin);
 
 	layout->addWidget(seedGroup);
-}
+}
+

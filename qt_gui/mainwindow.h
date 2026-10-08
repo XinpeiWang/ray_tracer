@@ -214,6 +214,9 @@ public:
 
 	// The window's own default size and place (about half the screen, centred); also what "Reset Window Layout" returns to.
 	void applyDefaultWindowGeometry();
+	// The four render buttons share the row in proportion to their labels instead of equally, so a long translated label ("METTRE LE RENDU EN PAUSE") is not cut
+	// while "STOP" has room to spare.
+	void balanceActionButtons();
 	void resetWindowLayout();   // View > Reset Window Layout
 
 	// Automated GUI smoke test, started by main.cpp when RT_GUI_SELFTEST=<mode> is set (see mainwindow_selftest.cpp):
@@ -317,6 +320,7 @@ private slots:
 
 protected:
 	void closeEvent(QCloseEvent *event) override;   // remembers the window's geometry (window_geometry.h)
+	void resizeEvent(QResizeEvent *event) override;   // re-shares the width of the Start / Stop / Pause / Abandon row
 
 private:
 	void setupUI();
@@ -576,7 +580,8 @@ private:
 	QAction *m_actClearLog = nullptr;
 	QAction *m_actAbout = nullptr;
 	QAction *m_actAboutQt = nullptr;
-	QAction *m_actShowLogs = nullptr;   // Help > Show Log Folder
+	QAction *m_actShowLogs = nullptr;
+	QHBoxLayout *m_actionButtonLayout = nullptr;   // the Start / Stop / Pause / Abandon row   // Help > Show Log Folder
 	QAction *m_actQuit = nullptr;
 
 	// Status bar: permanent widgets carry ambient state that would otherwise
@@ -1897,6 +1902,7 @@ private:
 	RenderJob m_currentJob;
 	InfoGroupBox *m_queueGroup = nullptr;
 	QTableView *m_queueView = nullptr;
+	QLabel *m_queueEmptyLabel = nullptr;   // shown instead of the empty table
 	QPushButton *m_queueRemoveButton = nullptr, *m_queueUpButton = nullptr, *m_queueDownButton = nullptr, *m_queueRetryButton = nullptr;
 	QPushButton *m_queueClearFinishedButton = nullptr, *m_queueClearButton = nullptr;
 	void updateQueueButtons();                // enables each button for the selected row's state

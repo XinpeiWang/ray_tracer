@@ -224,9 +224,9 @@ void MainWindow::updateSceneRecommendedSettingsHint(const QString &sceneId,
 	}
 
 	m_sceneRecommendedSettingsHint->setText(
-		tr("⚠ This scene's file recommends %1, but the Render Options tab "
-		   "is currently set to the default(s) instead - click Apply, or "
-		   "change it there yourself, to match the scene's own settings.")
+		tr("Tip: this scene was set up with %1. Your Render Options use the "
+		   "defaults instead, which is fine for a first render; click Apply to "
+		   "match the scene's own settings.")
 			.arg(mismatches.join(tr(", "))));
 	m_sceneRecommendedSettingsHint->setVisible(true);
 	if (m_applyRecommendedSettingsButton) m_applyRecommendedSettingsButton->setVisible(true);

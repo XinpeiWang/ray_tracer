@@ -439,7 +439,7 @@ void MainWindow::buildSceneInfoRows(QWidget *basicTab, QVBoxLayout *sceneGroupLa
 	QHBoxLayout *recommendedSettingsLayout = new QHBoxLayout(recommendedSettingsRow);
 	recommendedSettingsLayout->setContentsMargins(0, 0, 0, 0);
 	m_sceneRecommendedSettingsHint = new QLabel(recommendedSettingsRow);
-	m_sceneRecommendedSettingsHint->setObjectName("statusWarning");
+	m_sceneRecommendedSettingsHint->setObjectName("statusInfo");   // a tip, not a warning: the default settings render the scene too
 	m_sceneRecommendedSettingsHint->setWordWrap(true);
 	m_sceneRecommendedSettingsHint->setVisible(false);
 	recommendedSettingsLayout->addWidget(m_sceneRecommendedSettingsHint, 1);
