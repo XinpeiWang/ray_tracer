@@ -154,7 +154,7 @@ TEST(SceneRegistryTest, LoadedScenesAppendAfterTheBuiltInsWithoutDisturbingThem)
 	std::map<char, int> number;
 	for (std::size_t i = builtins.size(); i < all.size(); ++i) {
 		const std::string category = all[i].category;
-		EXPECT_TRUE(category == SceneCategories::CustomScenes || category == SceneCategories::Tests)
+		EXPECT_TRUE(category == SceneCategories::CustomScenes || category == SceneCategories::Tests || category == SceneCategories::MyScenes)
 			<< "a scene past the built-ins should be a loaded one: " << all[i].id << " is in " << category;
 		const char letter = SceneCategories::letter_for_category(all[i].category);
 		EXPECT_EQ(all[i].id, std::string(1, letter) + std::to_string(++number[letter]))
@@ -268,7 +268,8 @@ TEST(SceneRegistryTest, EveryCategoryHasAtLeastOneScene) {
 		// legitimately empty on a machine with no scene collection installed -
 		// including every CI machine. Every other category is compiled in, so
 		// an empty one there really is the bug this test is looking for.
-		if (std::string(SceneCategories::kAll[i]) == SceneCategories::CustomScenes || std::string(SceneCategories::kAll[i]) == SceneCategories::Tests)
+		if (std::string(SceneCategories::kAll[i]) == SceneCategories::CustomScenes || std::string(SceneCategories::kAll[i]) == SceneCategories::Tests ||
+		    std::string(SceneCategories::kAll[i]) == SceneCategories::MyScenes)
 			continue;
 		EXPECT_GT(used.count(SceneCategories::kAll[i]), 0u)
 			<< "Category '" << SceneCategories::kAll[i]

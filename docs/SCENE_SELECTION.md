@@ -29,6 +29,7 @@ The category letters, in GUI tab order:
 | J | Textures | Texture-system demos (encoding, wrap, invert, procedural texture classes, nested textures) |
 | K | Custom Scenes | Your scenes and downloaded collections: `.pbrt` files found on disk that do not name another category |
 | L | Test Scenes | The bundled fixtures: furnaces with exact answers, light-transport probes, one-feature regression scenes. Worth browsing (each isolates one thing) but not demos |
+| M | My Scenes | Scenes you made: the ones saved from the Scene Builder with **Add to scene list** (they go to your own folder, so they survive reinstalling the program), and any scene file carrying a Scene Builder title. Shown right after Textures in the GUI, though its id letter is the last one so no existing id changed |
 
 A name in a scene's list is what the scene shows ("Cornell Rough Glass"). A scene found on disk is listed under the title the Scene Builder saved in it, or its file name made readable (`bdpt-box-room` is "BDPT Box Room"). A "(pbrt file)" qualifier appears on six names only, where a compiled-in scene already has the plain name.
 

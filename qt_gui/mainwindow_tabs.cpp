@@ -305,8 +305,8 @@ void MainWindow::rebuildCategoryTabs(bool requiresFiles) {
 
 	const int sceneCount = SceneMetadataClient::sceneCount();
 	int restoredTab = -1;
-	for (std::size_t i = 0; i < SceneCategories::kAllCount; ++i) {
-		const QString category = QString::fromUtf8(SceneCategories::kAll[i]);
+	for (const char *categoryName : SceneCategories::kDisplayOrder) {
+		const QString category = QString::fromUtf8(categoryName);
 		int inCategory = 0;
 		for (int j = 0; j < sceneCount; ++j) {
 			const QString id = SceneMetadataClient::sceneIdAtIndex(j);

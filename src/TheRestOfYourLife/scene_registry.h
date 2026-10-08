@@ -900,12 +900,13 @@ inline bool appendOne(std::vector<SceneDescriptor>& registry, const pbrt_discove
             + " at " + std::to_string(d.samplesPerPixel) + " samples per pixel as the file itself says. Its geometry is read when it is first rendered, "
               "so a large scene starts slowly.");
 
-    // The category the file names, if it is one of ours; anything else is a Custom Scene.
-    const char* category = SceneCategories::CustomScenes;
+    // The category the file names, if it is one of ours. Otherwise: a scene the user made - saved into the per-user scenes folder, or carrying the Scene
+    // Builder's title - is under My Scenes; anything else found on disk is a Custom Scene.
+    const char* category = (d.userFile || !d.title.empty()) ? SceneCategories::MyScenes : SceneCategories::CustomScenes;
     for (const char* known : SceneCategories::kAll)
         if (d.category == known) category = known;
     if (!d.category.empty() && d.category != category)
-        std::cerr << "warning: " << d.path << ": unknown @rt-category \"" << d.category << "\" - listed under Custom Scenes\n";
+        std::cerr << "warning: " << d.path << ": unknown @rt-category \"" << d.category << "\" - listed under " << category << "\n";
 
     SceneDescriptor s;
     // Uses SceneCategories::letter_for_category() rather than a

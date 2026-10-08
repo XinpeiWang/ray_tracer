@@ -6082,6 +6082,11 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
         <source>Test Scenes</source>
         <translation>テストシーン</translation>
     </message>
+    <message>
+        <location filename="../scene_metadata_client.cpp" line="201"/>
+        <source>My Scenes</source>
+        <translation>マイシーン</translation>
+    </message>
 </context>
 <context>
     <name>SceneLayoutView</name>

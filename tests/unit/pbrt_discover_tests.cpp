@@ -516,12 +516,43 @@ TEST(UserSceneRegistry, AUserSceneGetsItsPersistentIdAndLeavesTheSequentialNumbe
 	d.userFile = true;
 	d.userSceneNumber = 7;
 	ASSERT_TRUE(pbrt_scene_registry::appendOne(local, d, nextNumber, takenSlugs, legacy));
-	EXPECT_EQ(local.back().id, "K10007");
+	EXPECT_EQ(local.back().id, "M10007");
+	EXPECT_STREQ(local.back().category, SceneCategories::MyScenes) << "a scene in the per-user folder is a user scene";
 	EXPECT_EQ(local.back().slug, "listed-while-running");
 	EXPECT_EQ(nextNumber['K'], 1) << "the sequential counter must not advance for a persistent id";
+	EXPECT_EQ(nextNumber['M'], 0);
 
 	// Listing the same file again adds nothing.
 	EXPECT_FALSE(pbrt_scene_registry::appendOne(local, d, nextNumber, takenSlugs, legacy));
 	EXPECT_EQ(local.size(), 2u);
 	std::filesystem::remove_all(dir);
+}
+
+TEST(UserSceneRegistry, ASceneBuilderTitleAlsoMakesItAMyScenesScene) {
+	std::vector<SceneDescriptor> local;
+	std::map<char, int> nextNumber;
+	std::set<std::string> takenSlugs;
+	int legacy = 2000;
+	pbrt_discover::Discovered d = pbrt_discover::describe("scenes/made-in-builder.pbrt", kHeaderAndWorld);
+	ASSERT_TRUE(d.ok) << d.error;
+	d.path = "scenes/made-in-builder.pbrt";
+	d.title = "Made in the builder";
+	ASSERT_TRUE(pbrt_scene_registry::appendOne(local, d, nextNumber, takenSlugs, legacy));
+	EXPECT_STREQ(local.back().category, SceneCategories::MyScenes);
+	EXPECT_EQ(local.back().id, "M1") << "numbered within its own category's letter";
+	// A file that names another category keeps it, and an untitled scanned file stays a Custom Scene.
+	pbrt_discover::Discovered plain = pbrt_discover::describe("scenes/plain.pbrt", kHeaderAndWorld);
+	plain.path = "scenes/plain.pbrt";
+	ASSERT_TRUE(pbrt_scene_registry::appendOne(local, plain, nextNumber, takenSlugs, legacy));
+	EXPECT_STREQ(local.back().category, SceneCategories::CustomScenes);
+}
+
+TEST(SceneCategoriesTest, TheTabOrderIsAPermutationOfTheIdLetterOrderAndNeverMovesALetter) {
+	std::set<std::string> ids(SceneCategories::kAll, SceneCategories::kAll + SceneCategories::kAllCount);
+	std::set<std::string> shown(std::begin(SceneCategories::kDisplayOrder), std::end(SceneCategories::kDisplayOrder));
+	EXPECT_EQ(ids, shown) << "kDisplayOrder must list exactly the categories in kAll";
+	EXPECT_EQ(sizeof(SceneCategories::kDisplayOrder) / sizeof(SceneCategories::kDisplayOrder[0]), SceneCategories::kAllCount);
+	// Letters are append-only: Test Scenes kept 'L' when My Scenes was added, so no existing scene id changed.
+	EXPECT_EQ(SceneCategories::letter_for_category(SceneCategories::Tests), 'L');
+	EXPECT_EQ(SceneCategories::letter_for_category(SceneCategories::MyScenes), 'M');
 }
