@@ -264,6 +264,9 @@ struct MetalPocApp {
     // pbrt-v4 Film "maxcomponentvalue" (FlatScene::maxComponentValue), applied by
     // the kernel as a per-sample firefly clamp. 1e9 = pbrt's default (unbounded).
     float pbrtMaxComponentValue = 1e9f;
+    // --max-component-value as an explicit request (RenderOptions::max_component_value, anything other than its 1e9 "not requested" default): it replaces the
+    // scene's own Film value, as on the CPU. 0 = not requested.
+    float maxComponentValueOverride = 0.0f;
 
     // Set by loadPbrtScene() from the scene's own resolved PixelFilter
     // (pbrt_flatten::FlatScene::filter - already per-kind-default-

@@ -74,7 +74,7 @@ struct RenderOptions {
 	// explicit CLI request - 1e9 (matching camera_t::max_component_value's
 	// own class default) means "not explicitly requested", so a scene's
 	// own Film directive still applies unless this differs. CPU default
-	// path tracer only - GPU has no equivalent clamp.
+	// path tracer and Metal (the OptiX backends have no equivalent clamp).
 	double max_component_value = 1e9;
 	// pbrt-v4 Film "cropwindow" (NDC fractions in [0,1]) as an explicit CLI
 	// request - {0,0,1,1} (the full frame) means "not explicitly
