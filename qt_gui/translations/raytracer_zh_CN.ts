@@ -595,7 +595,7 @@
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1225"/>
-        <location filename="../mainwindow_slots.cpp" line="2025"/>
+        <location filename="../mainwindow_slots.cpp" line="2049"/>
         <source>START &amp;RENDER</source>
         <translation>开始渲染(&amp;R)</translation>
     </message>
@@ -619,15 +619,15 @@
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1266"/>
-        <location filename="../mainwindow_slots.cpp" line="427"/>
-        <location filename="../mainwindow_slots.cpp" line="913"/>
+        <location filename="../mainwindow_slots.cpp" line="428"/>
+        <location filename="../mainwindow_slots.cpp" line="937"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>暂停渲染(&amp;P)</translation>
     </message>
     <message>
         <location filename="../mainwindow.cpp" line="1272"/>
         <location filename="../mainwindow_actions.cpp" line="78"/>
-        <location filename="../mainwindow_slots.cpp" line="915"/>
+        <location filename="../mainwindow_slots.cpp" line="939"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>就地暂停正在运行的渲染 - “继续”会从完全相同的像素处接着渲染</translation>
     </message>
@@ -669,8 +669,8 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="76"/>
-        <location filename="../mainwindow_slots.cpp" line="430"/>
-        <location filename="../mainwindow_slots.cpp" line="917"/>
+        <location filename="../mainwindow_slots.cpp" line="431"/>
+        <location filename="../mainwindow_slots.cpp" line="941"/>
         <source>&amp;Pause Render</source>
         <translation>暂停渲染(&amp;P)</translation>
     </message>
@@ -794,7 +794,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="238"/>
-        <location filename="../mainwindow_slots.cpp" line="489"/>
+        <location filename="../mainwindow_slots.cpp" line="490"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
@@ -855,104 +855,104 @@
         <translation>关于光线追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="438"/>
+        <location filename="../mainwindow_slots.cpp" line="439"/>
         <source>Rendering video frames...</source>
         <translation>正在渲染视频帧…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="438"/>
+        <location filename="../mainwindow_slots.cpp" line="439"/>
         <source>Rendering...</source>
         <translation>正在渲染…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="439"/>
+        <location filename="../mainwindow_slots.cpp" line="440"/>
         <source> (%1 more queued)</source>
         <translation>（另有 %1 个排队中）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="476"/>
+        <location filename="../mainwindow_slots.cpp" line="477"/>
         <source> · SPPM</source>
         <translation> · SPPM</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="477"/>
+        <location filename="../mainwindow_slots.cpp" line="478"/>
         <source> · BDPT</source>
         <translation> · BDPT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="478"/>
+        <location filename="../mainwindow_slots.cpp" line="479"/>
         <source> · MLT</source>
         <translation> · MLT</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="479"/>
+        <location filename="../mainwindow_slots.cpp" line="480"/>
         <source> · RandomWalk</source>
         <translation> · RandomWalk</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="480"/>
+        <location filename="../mainwindow_slots.cpp" line="481"/>
         <source> · AO</source>
         <translation> · AO</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="481"/>
+        <location filename="../mainwindow_slots.cpp" line="482"/>
         <source> · SimplePath</source>
         <translation> · SimplePath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="482"/>
+        <location filename="../mainwindow_slots.cpp" line="483"/>
         <source> · SimpleVolPath</source>
         <translation> · SimpleVolPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="483"/>
+        <location filename="../mainwindow_slots.cpp" line="484"/>
         <source> · LightPath</source>
         <translation> · LightPath</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="489"/>
+        <location filename="../mainwindow_slots.cpp" line="490"/>
         <source>GPU-WF</source>
         <translation>GPU-WF</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="489"/>
+        <location filename="../mainwindow_slots.cpp" line="490"/>
         <source>GPU</source>
         <translation>GPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="494"/>
+        <location filename="../mainwindow_slots.cpp" line="495"/>
         <source> · Video (%1f)</source>
         <translation> · 视频（%1 帧）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="513"/>
+        <location filename="../mainwindow_slots.cpp" line="514"/>
         <source>Render Queue (%1)</source>
         <translation>渲染队列 (%1)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="531"/>
+        <location filename="../mainwindow_slots.cpp" line="532"/>
         <source>Clear Render Queue</source>
         <translation>清空渲染队列</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="500"/>
+        <location filename="../mainwindow_slots.cpp" line="501"/>
         <source>%1 — %2×%3 · %4spp · %5%6%7</source>
         <translation>%1 — %2×%3 · %4spp · %5%6%7</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="532"/>
+        <location filename="../mainwindow_slots.cpp" line="533"/>
         <source>Remove all %n queued render(s)? This can&apos;t be undone.</source>
         <translation>
             <numerusform>移除全部 %n 个排队中的渲染任务？此操作无法撤销。</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="548"/>
+        <location filename="../mainwindow_slots.cpp" line="549"/>
         <source>Running diagnostics...</source>
         <translation>正在运行诊断…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="604"/>
+        <location filename="../mainwindow_slots.cpp" line="628"/>
         <source>Diagnostics failed:
 
 %1</source>
@@ -961,17 +961,17 @@
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="801"/>
+        <location filename="../mainwindow_slots.cpp" line="825"/>
         <source>Thumbnail generation finished.</source>
         <translation>缩略图生成完成。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="845"/>
+        <location filename="../mainwindow_slots.cpp" line="869"/>
         <source>Stopping render...</source>
         <translation>正在停止渲染…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1114"/>
+        <location filename="../mainwindow_slots.cpp" line="1138"/>
         <source>&lt;b&gt;Description:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;描述：&lt;/b&gt;%1&lt;br&gt;</translation>
     </message>
@@ -980,241 +980,241 @@
         <translation type="vanished">&lt;b&gt;性能：&lt;/b&gt;%1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1123"/>
+        <location filename="../mainwindow_slots.cpp" line="1147"/>
         <source>&lt;b&gt;Recommended SPP:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;建议 SPP：&lt;/b&gt;%1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1124"/>
+        <location filename="../mainwindow_slots.cpp" line="1148"/>
         <source>&lt;b&gt;GPU Support:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;GPU 支持：&lt;/b&gt;%1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1124"/>
+        <location filename="../mainwindow_slots.cpp" line="1148"/>
         <source>Yes</source>
         <translation>是</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1124"/>
+        <location filename="../mainwindow_slots.cpp" line="1148"/>
         <source>CPU only</source>
         <translation>仅限 CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1177"/>
+        <location filename="../mainwindow_slots.cpp" line="1201"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requires external files&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; 需要外部文件&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1182"/>
+        <location filename="../mainwindow_slots.cpp" line="1206"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; CPU renderer only&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; 仅支持 CPU 渲染&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1219"/>
+        <location filename="../mainwindow_slots.cpp" line="1243"/>
         <source>Integrator &quot;%1&quot;</source>
         <translation>积分器 &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1224"/>
+        <location filename="../mainwindow_slots.cpp" line="1248"/>
         <source>Sampler &quot;%1&quot;</source>
         <translation>采样器 &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1229"/>
+        <location filename="../mainwindow_slots.cpp" line="1253"/>
         <source>Light Sampler &quot;%1&quot;</source>
         <translation>光源采样器 &quot;%1&quot;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1242"/>
+        <location filename="../mainwindow_slots.cpp" line="1266"/>
         <source>, </source>
         <translation>、</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1329"/>
+        <location filename="../mainwindow_slots.cpp" line="1353"/>
         <source>No scenes in this category.</source>
         <translation>此分类下没有场景。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1330"/>
+        <location filename="../mainwindow_slots.cpp" line="1354"/>
         <source>No scenes match &quot;%1&quot; in this category.</source>
         <translation>此分类下没有与 &quot;%1&quot; 匹配的场景。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1494"/>
+        <location filename="../mainwindow_slots.cpp" line="1518"/>
         <source>Rendering... %1%</source>
         <translation>正在渲染… %1%</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1545"/>
+        <location filename="../mainwindow_slots.cpp" line="1569"/>
         <source>✅ %1 - Total time: %2 seconds</source>
         <translation>✅ %1 - 总用时：%2 秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1548"/>
+        <location filename="../mainwindow_slots.cpp" line="1572"/>
         <source>Video frames rendered successfully. Starting video assembly...</source>
         <translation>视频帧渲染成功，正在开始合成视频…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1549"/>
+        <location filename="../mainwindow_slots.cpp" line="1573"/>
         <source>⚙️ Assembling video from frames...</source>
         <translation>⚙️ 正在从帧序列合成视频…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1239"/>
+        <location filename="../mainwindow_slots.cpp" line="1263"/>
         <source>⚠ This scene&apos;s file recommends %1, but the Render Options tab is currently set to the default(s) instead - click Apply, or change it there yourself, to match the scene&apos;s own settings.</source>
         <translation>⚠ 此场景的文件推荐使用 %1,但“渲染选项”标签页目前仍设为默认值——点击“应用”,或自行在那里更改,以匹配场景自身的设置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1580"/>
+        <location filename="../mainwindow_slots.cpp" line="1604"/>
         <source>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</source>
         <translation>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1595"/>
-        <location filename="../mainwindow_slots.cpp" line="1610"/>
+        <location filename="../mainwindow_slots.cpp" line="1619"/>
+        <location filename="../mainwindow_slots.cpp" line="1634"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ 渲染完成（%1 秒）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1596"/>
+        <location filename="../mainwindow_slots.cpp" line="1620"/>
         <source>Warning: preview image failed to load at %1</source>
         <translation>警告：预览图像加载失败，位置 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1611"/>
+        <location filename="../mainwindow_slots.cpp" line="1635"/>
         <source>Warning: output file not found at %1</source>
         <translation>警告：未在 %1 找到输出文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1626"/>
+        <location filename="../mainwindow_slots.cpp" line="1650"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1631"/>
-        <location filename="../mainwindow_slots.cpp" line="2221"/>
+        <location filename="../mainwindow_slots.cpp" line="1655"/>
+        <location filename="../mainwindow_slots.cpp" line="2245"/>
         <source>Render Failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1651"/>
+        <location filename="../mainwindow_slots.cpp" line="1675"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>已停止 - 另有 %1 个排队中（点击“开始渲染”继续）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1777"/>
+        <location filename="../mainwindow_slots.cpp" line="1801"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>正在渲染  ·  %1%  ·  已用时 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1787"/>
+        <location filename="../mainwindow_slots.cpp" line="1811"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1795"/>
+        <location filename="../mainwindow_slots.cpp" line="1819"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  预计剩余 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1798"/>
+        <location filename="../mainwindow_slots.cpp" line="1822"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  预计剩余 --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1821"/>
+        <location filename="../mainwindow_slots.cpp" line="1845"/>
         <source>Render complete</source>
         <translation>渲染完成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1822"/>
+        <location filename="../mainwindow_slots.cpp" line="1846"/>
         <source>Render stopped</source>
         <translation>渲染已停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1822"/>
+        <location filename="../mainwindow_slots.cpp" line="1846"/>
         <source>Render failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1824"/>
+        <location filename="../mainwindow_slots.cpp" line="1848"/>
         <source>Finished in %1 seconds</source>
         <translation>耗时 %1 秒完成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1839"/>
+        <location filename="../mainwindow_slots.cpp" line="1863"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1848"/>
+        <location filename="../mainwindow_slots.cpp" line="1872"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[调试] 系统托盘不可用，跳过完成通知</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1852"/>
+        <location filename="../mainwindow_slots.cpp" line="1876"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[调试] 系统托盘不支持消息通知，跳过通知</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2006"/>
+        <location filename="../mainwindow_slots.cpp" line="2030"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>开始视频渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2011"/>
+        <location filename="../mainwindow_slots.cpp" line="2035"/>
         <source>Ready to render video frames</source>
         <translation>已就绪，可渲染视频帧</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2030"/>
+        <location filename="../mainwindow_slots.cpp" line="2054"/>
         <location filename="../mainwindow_tabs_output.cpp" line="74"/>
         <source>Ready to render</source>
         <translation>已就绪，可开始渲染</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2044"/>
+        <location filename="../mainwindow_slots.cpp" line="2068"/>
         <source>Mode changed to: %1</source>
         <translation>模式已切换为：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2040"/>
+        <location filename="../mainwindow_slots.cpp" line="2064"/>
         <source>Video Generation</source>
         <translation>视频生成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="128"/>
+        <location filename="../mainwindow_slots.cpp" line="129"/>
         <source>Can&apos;t start a render - no scene is selected (try clearing the search box).</source>
         <translation>无法开始渲染：未选择任何场景（请尝试清空搜索框）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="660"/>
+        <location filename="../mainwindow_slots.cpp" line="684"/>
         <source>Can&apos;t generate thumbnails while a render is in progress or queued.</source>
         <translation>有渲染正在进行或在队列中时，无法生成缩略图。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="669"/>
-        <location filename="../mainwindow_slots.cpp" line="827"/>
+        <location filename="../mainwindow_slots.cpp" line="693"/>
+        <location filename="../mainwindow_slots.cpp" line="851"/>
         <source>Nothing to generate thumbnails for in the current view.</source>
         <translation>当前视图中没有可生成缩略图的内容。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="732"/>
+        <location filename="../mainwindow_slots.cpp" line="756"/>
         <source>Resume</source>
         <translation>继续</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="776"/>
+        <location filename="../mainwindow_slots.cpp" line="800"/>
         <source>Generating thumbnail %1 of %2: %3</source>
         <translation>正在生成缩略图 %1/%2：%3</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="800"/>
+        <location filename="../mainwindow_slots.cpp" line="824"/>
         <source>Thumbnail generation finished - %1 failed.</source>
         <translation>缩略图生成完成 - 失败 %1 个。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="822"/>
+        <location filename="../mainwindow_slots.cpp" line="846"/>
         <source>Creates a small preview image for each ready-to-render scene in the CURRENT view that
 doesn&apos;t already have one saved. Runs on the CPU only, at low resolution - it can still take a
 while for a &quot;Very Slow&quot; whole-environment scene, since loading and BVH-building a
@@ -1226,161 +1226,161 @@ Use the pause/stop controls if a category turns out to take too long.</source>
 如果某个分类耗时过长，请使用暂停/停止控件。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="875"/>
+        <location filename="../mainwindow_slots.cpp" line="899"/>
         <source>Abandoning render...</source>
         <translation>正在放弃渲染…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="894"/>
+        <location filename="../mainwindow_slots.cpp" line="918"/>
         <source>&amp;RESUME RENDER</source>
         <translation>继续渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="896"/>
+        <location filename="../mainwindow_slots.cpp" line="920"/>
         <source>Resume the paused render from the exact same pixels</source>
         <translation>从完全相同的像素处继续已暂停的渲染</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="898"/>
+        <location filename="../mainwindow_slots.cpp" line="922"/>
         <source>&amp;Resume Render</source>
         <translation>继续渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="901"/>
+        <location filename="../mainwindow_slots.cpp" line="925"/>
         <source>⏸ Paused</source>
         <translation>⏸ 已暂停</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1117"/>
+        <location filename="../mainwindow_slots.cpp" line="1141"/>
         <source>under 10 s</source>
         <translation>不到 10 秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1118"/>
+        <location filename="../mainwindow_slots.cpp" line="1142"/>
         <source>10 to 30 s</source>
         <translation>10 到 30 秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1119"/>
+        <location filename="../mainwindow_slots.cpp" line="1143"/>
         <source>30 s to 2 min</source>
         <translation>30 秒到 2 分钟</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1120"/>
+        <location filename="../mainwindow_slots.cpp" line="1144"/>
         <source>over 2 min</source>
         <translation>超过 2 分钟</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1121"/>
+        <location filename="../mainwindow_slots.cpp" line="1145"/>
         <source>not measured</source>
         <translation>未测量</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1122"/>
+        <location filename="../mainwindow_slots.cpp" line="1146"/>
         <source>&lt;b&gt;Performance:&lt;/b&gt; %1 (%2)&lt;br&gt;</source>
         <translation>&lt;b&gt;性能：&lt;/b&gt;%1 (%2)&lt;br&gt;</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="1150"/>
+        <location filename="../mainwindow_slots.cpp" line="1174"/>
         <source>Download %n missing file(s) (%1)</source>
         <translation>
             <numerusform>下载 %n 个缺失的文件（%1）</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1160"/>
+        <location filename="../mainwindow_slots.cpp" line="1184"/>
         <source>Download &quot;%1&quot; (%2)</source>
         <translation>下载“%1”（%2）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1167"/>
+        <location filename="../mainwindow_slots.cpp" line="1191"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; This scene&apos;s file was not found: %2&lt;/b&gt;&lt;br&gt;Expected in: %3&lt;br&gt;Rendering this scene will fail until it is installed.</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; 找不到此场景的文件：%2&lt;/b&gt;&lt;br&gt;应放在：%3&lt;br&gt;在安装之前，此场景无法渲染。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1171"/>
+        <location filename="../mainwindow_slots.cpp" line="1195"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Missing external files: %2 of %3 not found (first: %4)&lt;/b&gt;&lt;br&gt;Put them in: %5&lt;br&gt;Rendering this scene will fail until they are installed.</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; 缺少外部文件：%3 个中有 %2 个找不到（第一个：%4）&lt;/b&gt;&lt;br&gt;请放到：%5&lt;br&gt;在安装之前，此场景无法渲染。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1532"/>
+        <location filename="../mainwindow_slots.cpp" line="1556"/>
         <source>Render stopped by user</source>
         <translation>渲染已被用户停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1533"/>
+        <location filename="../mainwindow_slots.cpp" line="1557"/>
         <source>Render abandoned by user</source>
         <translation>渲染已被用户放弃</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2009"/>
+        <location filename="../mainwindow_slots.cpp" line="2033"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
         <translation>逐帧渲染相机路径并合成为视频。如果已有渲染正在进行，则改为加入队列排在其后。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2015"/>
+        <location filename="../mainwindow_slots.cpp" line="2039"/>
         <source>START LIVE &amp;PREVIEW</source>
         <translation>开始实时预览(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2018"/>
+        <location filename="../mainwindow_slots.cpp" line="2042"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
         <translation>启动一个可用鼠标环绕/缩放的交互式 GPU 预览。批量渲染运行期间会被禁用。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2020"/>
+        <location filename="../mainwindow_slots.cpp" line="2044"/>
         <source>Ready to start live preview</source>
         <translation>准备开始实时预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2028"/>
+        <location filename="../mainwindow_slots.cpp" line="2052"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
         <translation>使用当前设置渲染所选场景。如果已有渲染正在进行，则改为加入队列排在其后。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2039"/>
+        <location filename="../mainwindow_slots.cpp" line="2063"/>
         <source>Single Image</source>
         <translation>单张图像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2042"/>
+        <location filename="../mainwindow_slots.cpp" line="2066"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1705"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="42"/>
         <source>Live Preview</source>
         <translation>实时预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2154"/>
+        <location filename="../mainwindow_slots.cpp" line="2178"/>
         <source>Integrator changed to: %1</source>
         <translation>积分器已切换为: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2202"/>
+        <location filename="../mainwindow_slots.cpp" line="2226"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ 未找到视频文件，正在检查帧序列…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2203"/>
+        <location filename="../mainwindow_slots.cpp" line="2227"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>警告：在所有预期位置均未找到视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2212"/>
+        <location filename="../mainwindow_slots.cpp" line="2236"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ 找到 %1 帧，但没有视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2213"/>
+        <location filename="../mainwindow_slots.cpp" line="2237"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>帧序列已渲染完成（%1 个文件），但视频合成可能已失败。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2214"/>
+        <location filename="../mainwindow_slots.cpp" line="2238"/>
         <source>Video Not Created</source>
         <translation>视频未生成</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2215"/>
+        <location filename="../mainwindow_slots.cpp" line="2239"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -1393,17 +1393,17 @@ Please check the render log for ffmpeg errors.</source>
 请检查渲染日志中的 ffmpeg 错误信息。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2219"/>
+        <location filename="../mainwindow_slots.cpp" line="2243"/>
         <source>❌ No frames or video found</source>
         <translation>❌ 未找到帧序列或视频</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2220"/>
+        <location filename="../mainwindow_slots.cpp" line="2244"/>
         <source>ERROR: No frames or video file found</source>
         <translation>错误：未找到帧序列或视频文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2222"/>
+        <location filename="../mainwindow_slots.cpp" line="2246"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -1412,22 +1412,22 @@ Please check the render log for errors.</source>
 请检查渲染日志中的错误信息。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2225"/>
+        <location filename="../mainwindow_slots.cpp" line="2249"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ 未找到帧目录</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2226"/>
+        <location filename="../mainwindow_slots.cpp" line="2250"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>错误：未找到帧目录：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2227"/>
+        <location filename="../mainwindow_slots.cpp" line="2251"/>
         <source>Directory Not Found</source>
         <translation>未找到目录</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2228"/>
+        <location filename="../mainwindow_slots.cpp" line="2252"/>
         <source>Frames directory not found:
 %1
 
@@ -1438,56 +1438,56 @@ The render may have failed to create output.</source>
 渲染可能未能成功生成输出。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2234"/>
+        <location filename="../mainwindow_slots.cpp" line="2258"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ 视频生成成功！</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2235"/>
+        <location filename="../mainwindow_slots.cpp" line="2259"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ 视频合成成功：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2236"/>
+        <location filename="../mainwindow_slots.cpp" line="2260"/>
         <source>Video size: %1 MB</source>
         <translation>视频大小：%1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2257"/>
+        <location filename="../mainwindow_slots.cpp" line="2281"/>
         <source>%1 (Video)</source>
         <translation>%1（视频）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2259"/>
+        <location filename="../mainwindow_slots.cpp" line="2283"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3 帧  •  %4spp · %5%6</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2271"/>
+        <location filename="../mainwindow_slots.cpp" line="2295"/>
         <source>Playing video inline: %1</source>
         <translation>正在内嵌播放视频：%1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2296"/>
+        <location filename="../mainwindow_slots.cpp" line="2320"/>
         <source>… and %n more</source>
         <translation>
             <numerusform>… 以及另外 %n 个</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2297"/>
-        <location filename="../mainwindow_slots.cpp" line="2310"/>
-        <location filename="../mainwindow_slots.cpp" line="2342"/>
-        <location filename="../mainwindow_slots.cpp" line="2373"/>
-        <location filename="../mainwindow_slots.cpp" line="2389"/>
+        <location filename="../mainwindow_slots.cpp" line="2321"/>
+        <location filename="../mainwindow_slots.cpp" line="2334"/>
+        <location filename="../mainwindow_slots.cpp" line="2366"/>
         <location filename="../mainwindow_slots.cpp" line="2397"/>
-        <location filename="../mainwindow_slots.cpp" line="2429"/>
-        <location filename="../mainwindow_slots.cpp" line="2435"/>
+        <location filename="../mainwindow_slots.cpp" line="2413"/>
+        <location filename="../mainwindow_slots.cpp" line="2421"/>
+        <location filename="../mainwindow_slots.cpp" line="2453"/>
+        <location filename="../mainwindow_slots.cpp" line="2459"/>
         <source>Download missing files</source>
         <translation>下载缺失的文件</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2298"/>
+        <location filename="../mainwindow_slots.cpp" line="2322"/>
         <source>Download %n file(s) (%1) from %2?
 
 %3
@@ -1504,52 +1504,135 @@ They will be saved in:
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2309"/>
-        <location filename="../mainwindow_slots.cpp" line="2396"/>
-        <location filename="../mainwindow_slots.cpp" line="2412"/>
+        <location filename="../mainwindow_slots.cpp" line="2333"/>
+        <location filename="../mainwindow_slots.cpp" line="2420"/>
+        <location filename="../mainwindow_slots.cpp" line="2436"/>
         <source>Downloading…</source>
         <translation>正在下载…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2309"/>
-        <location filename="../mainwindow_slots.cpp" line="2396"/>
+        <location filename="../mainwindow_photo_install.cpp" line="24"/>
+        <source>The photo helper is being installed.</source>
+        <translation>正在安装照片辅助程序。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="25"/>
+        <source>Wait for the diagnostics to finish.</source>
+        <translation>请等待诊断完成。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="26"/>
+        <source>Run Diagnostics first: it shows what the photo helper is missing.</source>
+        <translation>请先运行诊断：它会显示照片辅助程序缺少什么。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="27"/>
+        <source>Nothing is missing: the photo helper is installed.</source>
+        <translation>没有缺少的内容：照片辅助程序已安装。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="28"/>
+        <source>Download and install what the photo helper is missing:
+%1</source>
+        <translation>下载并安装照片辅助程序缺少的内容：
+%1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="31"/>
+        <source>The installer is for Windows. On other systems see docs/PHOTO_TO_SCENE.md.</source>
+        <translation>安装程序仅适用于 Windows。其他系统请参阅 docs/PHOTO_TO_SCENE.md。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="46"/>
+        <source>Install the photo helper?
+
+This downloads about 5 GB and installs it for your user only, in %1:
+  - PyTorch (from download.pytorch.org) and the Python packages the helper needs (from PyPI)
+  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
+  - the background-removal model, about 176 MB (from GitHub)
+
+It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.
+
+Missing now:
+%2</source>
+        <translation>要安装照片辅助程序吗？
+
+将下载约 5 GB，并仅为当前用户安装到 %1：
+  - PyTorch（来自 download.pytorch.org）以及辅助程序所需的 Python 包（来自 PyPI）
+  - TripoSR 代码（来自 GitHub）及其模型权重，约 1.7 GB（来自 Hugging Face）
+  - 背景去除模型，约 176 MB（来自 GitHub）
+
+需要 Python 3.10 到 3.12，并且 git 在 PATH 中，耗时数分钟。期间你可以继续使用本程序。
+
+当前缺少：
+%2</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="53"/>
+        <source>Install the photo helper</source>
+        <translation>安装照片辅助程序</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="58"/>
+        <source>Installing the photo helper</source>
+        <translation>正在安装照片辅助程序</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="71"/>
+        <location filename="../mainwindow_slots.cpp" line="2333"/>
+        <location filename="../mainwindow_slots.cpp" line="2420"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2325"/>
-        <location filename="../mainwindow_slots.cpp" line="2412"/>
+        <location filename="../mainwindow_photo_install.cpp" line="96"/>
+        <source>Installed. Running the diagnostics again to check it...</source>
+        <translation>已安装。正在重新运行诊断进行检查…</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="96"/>
+        <source>The installation did not finish: %1</source>
+        <translation>安装未完成：%1</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="97"/>
+        <source>Close</source>
+        <translation>关闭</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_slots.cpp" line="2349"/>
+        <location filename="../mainwindow_slots.cpp" line="2436"/>
         <source>Downloading %1…</source>
         <translation>正在下载 %1…</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2339"/>
-        <location filename="../mainwindow_slots.cpp" line="2426"/>
+        <location filename="../mainwindow_slots.cpp" line="2363"/>
+        <location filename="../mainwindow_slots.cpp" line="2450"/>
         <source>Downloaded %n file(s).</source>
         <translation>
             <numerusform>已下载 %n 个文件。</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2341"/>
-        <location filename="../mainwindow_slots.cpp" line="2428"/>
+        <location filename="../mainwindow_slots.cpp" line="2365"/>
+        <location filename="../mainwindow_slots.cpp" line="2452"/>
         <source>Download failed: %1</source>
         <translation>下载失败：%1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2347"/>
+        <location filename="../mainwindow_slots.cpp" line="2371"/>
         <source>Downloading %n file(s) (%1) from %2…</source>
         <translation>
             <numerusform>正在从 %2 下载 %n 个文件（%1）…</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2370"/>
+        <location filename="../mainwindow_slots.cpp" line="2394"/>
         <source>There is not enough free disk space for &quot;%1&quot;: it needs about %2 and %3 is available in %4.</source>
         <translation>磁盘可用空间不足，无法下载“%1”：需要约 %2，而 %4 中只有 %3 可用。</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2383"/>
+        <location filename="../mainwindow_slots.cpp" line="2407"/>
         <source>Download &quot;%1&quot;?
 
 %2
@@ -1572,7 +1655,7 @@ Source: %7</source>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2388"/>
+        <location filename="../mainwindow_slots.cpp" line="2412"/>
         <source>
 
 This is a large download and may take a while.</source>
@@ -1581,7 +1664,7 @@ This is a large download and may take a while.</source>
 这是一个较大的下载，可能需要一些时间。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2436"/>
+        <location filename="../mainwindow_slots.cpp" line="2460"/>
         <source>The scene was downloaded. It appears with its own camera and settings after the app restarts. Restart now?
 
 (A render in progress or queued jobs would be lost.)</source>
@@ -1590,7 +1673,7 @@ This is a large download and may take a while.</source>
 （正在进行的渲染或排队的任务将会丢失。）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2442"/>
+        <location filename="../mainwindow_slots.cpp" line="2466"/>
         <source>Downloading &quot;%1&quot; (%2)…</source>
         <translation>正在下载“%1”（%2）…</translation>
     </message>
@@ -3951,6 +4034,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>请先选择一个场景</translation>
     </message>
     <message>
+        <location filename="../mainwindow_photo_install.cpp" line="61"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1822"/>
         <source>Starting...</source>
         <translation>正在启动…</translation>
@@ -3981,8 +4065,8 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>&lt;b&gt;为什么看起来是这样&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="693"/>
-        <location filename="../mainwindow_slots.cpp" line="732"/>
+        <location filename="../mainwindow_slots.cpp" line="717"/>
+        <location filename="../mainwindow_slots.cpp" line="756"/>
         <location filename="../mainwindow_tabs.cpp" line="512"/>
         <location filename="../mainwindow_tabs_render.cpp" line="2673"/>
         <location filename="../mainwindow_tabs_render.cpp" line="2686"/>
@@ -4042,7 +4126,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="228"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="285"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="292"/>
         <source>&amp;Copy All</source>
         <translation>全部复制(&amp;C)</translation>
     </message>
@@ -4062,12 +4146,17 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>运行诊断(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="290"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="286"/>
+        <source>&amp;Install Photo Helper...</source>
+        <translation>安装照片辅助程序(&amp;I)...</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_output.cpp" line="297"/>
         <source>&amp;Save Report…</source>
         <translation>保存报告(&amp;S)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="301"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="309"/>
         <source>Diagnostics</source>
         <translation>诊断</translation>
     </message>
@@ -4505,19 +4594,42 @@ CPU only. Only works with lights that have a physical size or shape.</source>
     </message>
 </context>
 <context>
-    <name>PhotoToMeshJob</name>
+    <name>PhotoHelperInstaller</name>
     <message>
-        <location filename="../photo_import.cpp" line="88"/>
-        <source>Could not start the photo helper (%1).</source>
-        <translation>无法启动照片辅助程序 (%1)。</translation>
-    </message>
-    <message>
-        <location filename="../photo_import.cpp" line="127"/>
+        <location filename="../photo_import.cpp" line="116"/>
         <source>Cancelled.</source>
         <translation>已取消。</translation>
     </message>
     <message>
+        <location filename="../photo_import.cpp" line="117"/>
+        <source>The installer stopped (exit code %1).</source>
+        <translation>安装程序已停止（退出代码 %1）。</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="129"/>
+        <source>Could not start PowerShell to run the installer.</source>
+        <translation>无法启动 PowerShell 来运行安装程序。</translation>
+    </message>
+    <message>
         <location filename="../photo_import.cpp" line="136"/>
+        <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
+        <translation>在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh.ps1)。</translation>
+    </message>
+</context>
+<context>
+    <name>PhotoToMeshJob</name>
+    <message>
+        <location filename="../photo_import.cpp" line="269"/>
+        <source>Could not start the photo helper (%1).</source>
+        <translation>无法启动照片辅助程序 (%1)。</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="308"/>
+        <source>Cancelled.</source>
+        <translation>已取消。</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="317"/>
         <source>The helper stopped unexpectedly (exit code %1).</source>
         <translation>辅助程序意外停止（退出代码 %1）。</translation>
     </message>
@@ -5145,12 +5257,12 @@ CPU only. Only works with lights that have a physical size or shape.</source>
         <translation>半透明（纸张、树叶）</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="42"/>
+        <location filename="../photo_import.cpp" line="43"/>
         <source>The helper script (tools/photo_to_mesh/photo_to_mesh.py) was not found next to the program.</source>
         <translation>在程序旁边找不到辅助脚本 (tools/photo_to_mesh/photo_to_mesh.py)。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="44"/>
+        <location filename="../photo_import.cpp" line="45"/>
         <source>The photo helper has not been set up on this computer yet.</source>
         <translation>此计算机上尚未设置照片辅助程序。</translation>
     </message>
@@ -5211,236 +5323,236 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>选择颜色</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="223"/>
+        <location filename="../scene_builder_inspector.cpp" line="224"/>
         <source>Browse...</source>
         <translation>浏览...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="226"/>
+        <location filename="../scene_builder_inspector.cpp" line="228"/>
         <source>Choose a file</source>
         <translation>选择文件</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="238"/>
+        <location filename="../scene_builder_inspector.cpp" line="240"/>
         <source>Clear</source>
         <translation>清除</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="251"/>
+        <location filename="../scene_builder_inspector.cpp" line="254"/>
         <source>Scene</source>
         <translation>场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="252"/>
+        <location filename="../scene_builder_inspector.cpp" line="255"/>
         <source>Title</source>
         <translation>标题</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="253"/>
+        <location filename="../scene_builder_inspector.cpp" line="256"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="254"/>
-        <location filename="../scene_builder_inspector.cpp" line="355"/>
-        <location filename="../scene_builder_inspector.cpp" line="413"/>
+        <location filename="../scene_builder_inspector.cpp" line="257"/>
+        <location filename="../scene_builder_inspector.cpp" line="358"/>
+        <location filename="../scene_builder_inspector.cpp" line="416"/>
         <source>Position</source>
         <translation>位置</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="255"/>
+        <location filename="../scene_builder_inspector.cpp" line="258"/>
         <source>Looks at</source>
         <translation>朝向</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="256"/>
+        <location filename="../scene_builder_inspector.cpp" line="259"/>
         <source>Field of view</source>
         <translation>视野</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="257"/>
+        <location filename="../scene_builder_inspector.cpp" line="260"/>
         <source>Lens radius</source>
         <translation>镜头半径</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="258"/>
+        <location filename="../scene_builder_inspector.cpp" line="261"/>
         <source>Focus distance</source>
         <translation>对焦距离</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="259"/>
+        <location filename="../scene_builder_inspector.cpp" line="262"/>
         <source>A lens radius above 0 blurs what is not at the focus distance (depth of field).</source>
         <translation>镜头半径大于 0 时，不在对焦距离上的物体会变模糊（景深）。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="262"/>
-        <location filename="../scene_builder_inspector.cpp" line="302"/>
+        <location filename="../scene_builder_inspector.cpp" line="265"/>
+        <location filename="../scene_builder_inspector.cpp" line="305"/>
         <source>Picture</source>
         <translation>画面</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="263"/>
+        <location filename="../scene_builder_inspector.cpp" line="266"/>
         <source>Width (pixels)</source>
         <translation>宽度（像素）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="264"/>
+        <location filename="../scene_builder_inspector.cpp" line="267"/>
         <source>Height (pixels)</source>
         <translation>高度（像素）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="266"/>
+        <location filename="../scene_builder_inspector.cpp" line="269"/>
         <source>Set height from width...</source>
         <translation>根据宽度设置高度...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="275"/>
+        <location filename="../scene_builder_inspector.cpp" line="278"/>
         <source>Aspect ratio</source>
         <translation>宽高比</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="276"/>
+        <location filename="../scene_builder_inspector.cpp" line="279"/>
         <source>Samples per pixel</source>
         <translation>每像素采样数</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="277"/>
+        <location filename="../scene_builder_inspector.cpp" line="280"/>
         <source>Light bounces (max depth)</source>
         <translation>光线反弹次数（最大深度）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="281"/>
+        <location filename="../scene_builder_inspector.cpp" line="284"/>
         <source>Material</source>
         <translation>材质</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="297"/>
-        <location filename="../scene_builder_inspector.cpp" line="411"/>
+        <location filename="../scene_builder_inspector.cpp" line="300"/>
+        <location filename="../scene_builder_inspector.cpp" line="414"/>
         <source>Type</source>
         <translation>类型</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="302"/>
+        <location filename="../scene_builder_inspector.cpp" line="305"/>
         <source>Images (*.png *.jpg *.jpeg *.bmp *.tga *.exr *.hdr)</source>
         <translation>图像 (*.png *.jpg *.jpeg *.bmp *.tga *.exr *.hdr)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="313"/>
+        <location filename="../scene_builder_inspector.cpp" line="316"/>
         <source>Colour A</source>
         <translation>颜色 A</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="313"/>
-        <location filename="../scene_builder_inspector.cpp" line="321"/>
-        <location filename="../scene_builder_inspector.cpp" line="429"/>
+        <location filename="../scene_builder_inspector.cpp" line="316"/>
+        <location filename="../scene_builder_inspector.cpp" line="324"/>
+        <location filename="../scene_builder_inspector.cpp" line="432"/>
         <source>Colour</source>
         <translation>颜色</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="314"/>
+        <location filename="../scene_builder_inspector.cpp" line="317"/>
         <source>Checker pattern</source>
         <translation>棋盘格图案</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="316"/>
+        <location filename="../scene_builder_inspector.cpp" line="319"/>
         <source>Colour B</source>
         <translation>颜色 B</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="317"/>
+        <location filename="../scene_builder_inspector.cpp" line="320"/>
         <source>Checks across</source>
         <translation>横向格数</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="322"/>
-        <location filename="../scene_builder_inspector.cpp" line="326"/>
+        <location filename="../scene_builder_inspector.cpp" line="325"/>
+        <location filename="../scene_builder_inspector.cpp" line="329"/>
         <source>Roughness</source>
         <translation>粗糙度</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="325"/>
+        <location filename="../scene_builder_inspector.cpp" line="328"/>
         <source>Index of refraction</source>
         <translation>折射率</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="330"/>
+        <location filename="../scene_builder_inspector.cpp" line="333"/>
         <source>Paint colour</source>
         <translation>漆面颜色</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="331"/>
+        <location filename="../scene_builder_inspector.cpp" line="334"/>
         <source>Coat index of refraction</source>
         <translation>涂层折射率</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="332"/>
+        <location filename="../scene_builder_inspector.cpp" line="335"/>
         <source>Coat roughness</source>
         <translation>涂层粗糙度</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="335"/>
+        <location filename="../scene_builder_inspector.cpp" line="338"/>
         <source>Reflects</source>
         <translation>反射</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="336"/>
+        <location filename="../scene_builder_inspector.cpp" line="339"/>
         <source>Lets through</source>
         <translation>透射</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="343"/>
+        <location filename="../scene_builder_inspector.cpp" line="346"/>
         <source>Object</source>
         <translation>物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="344"/>
-        <location filename="../scene_builder_inspector.cpp" line="401"/>
+        <location filename="../scene_builder_inspector.cpp" line="347"/>
+        <location filename="../scene_builder_inspector.cpp" line="404"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="354"/>
+        <location filename="../scene_builder_inspector.cpp" line="357"/>
         <source>Shape</source>
         <translation>形状</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="356"/>
+        <location filename="../scene_builder_inspector.cpp" line="359"/>
         <source>Rotation (degrees)</source>
         <translation>旋转（度）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="362"/>
-        <location filename="../scene_builder_inspector.cpp" line="366"/>
+        <location filename="../scene_builder_inspector.cpp" line="365"/>
+        <location filename="../scene_builder_inspector.cpp" line="369"/>
         <source>Radius</source>
         <translation>半径</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="367"/>
+        <location filename="../scene_builder_inspector.cpp" line="370"/>
         <source>Height</source>
         <translation>高度</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="370"/>
+        <location filename="../scene_builder_inspector.cpp" line="373"/>
         <source>Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="373"/>
+        <location filename="../scene_builder_inspector.cpp" line="376"/>
         <source>Width (X)</source>
         <translation>宽度 (X)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="374"/>
+        <location filename="../scene_builder_inspector.cpp" line="377"/>
         <source>Depth (Z)</source>
         <translation>深度 (Z)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="377"/>
+        <location filename="../scene_builder_inspector.cpp" line="380"/>
         <source>Mesh file</source>
         <translation>网格文件</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="377"/>
+        <location filename="../scene_builder_inspector.cpp" line="380"/>
         <location filename="../scene_builder_widget.cpp" line="712"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>网格 (*.ply *.obj)</translation>
@@ -5450,84 +5562,84 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation type="vanished">PLY 网格 (*.ply)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="378"/>
+        <location filename="../scene_builder_inspector.cpp" line="381"/>
         <source>Scale</source>
         <translation>缩放</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="384"/>
-        <location filename="../scene_builder_inspector.cpp" line="400"/>
+        <location filename="../scene_builder_inspector.cpp" line="387"/>
+        <location filename="../scene_builder_inspector.cpp" line="403"/>
         <source>Light</source>
         <translation>光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="385"/>
+        <location filename="../scene_builder_inspector.cpp" line="388"/>
         <source>Gives off light</source>
         <translation>发光</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="387"/>
+        <location filename="../scene_builder_inspector.cpp" line="390"/>
         <source>Light colour</source>
         <translation>光源颜色</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="388"/>
-        <location filename="../scene_builder_inspector.cpp" line="430"/>
+        <location filename="../scene_builder_inspector.cpp" line="391"/>
+        <location filename="../scene_builder_inspector.cpp" line="433"/>
         <source>Strength</source>
         <translation>强度</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="389"/>
+        <location filename="../scene_builder_inspector.cpp" line="392"/>
         <source>Both sides</source>
         <translation>双面</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="391"/>
+        <location filename="../scene_builder_inspector.cpp" line="394"/>
         <source>A quad or disk lights the side that faces up. Rotate it 180 degrees about X to make a ceiling light.</source>
         <translation>四边形或圆盘照亮朝上的那一面。绕 X 轴旋转 180 度即可做成顶灯。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="415"/>
+        <location filename="../scene_builder_inspector.cpp" line="418"/>
         <source>Aims at</source>
         <translation>对准</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="416"/>
+        <location filename="../scene_builder_inspector.cpp" line="419"/>
         <source>Cone angle</source>
         <translation>锥角</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="417"/>
+        <location filename="../scene_builder_inspector.cpp" line="420"/>
         <source>Soft edge</source>
         <translation>柔化边缘</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="420"/>
+        <location filename="../scene_builder_inspector.cpp" line="423"/>
         <source>Shines from</source>
         <translation>照射自</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="421"/>
+        <location filename="../scene_builder_inspector.cpp" line="424"/>
         <source>Towards</source>
         <translation>朝向</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="424"/>
+        <location filename="../scene_builder_inspector.cpp" line="427"/>
         <source>Sky image</source>
         <translation>天空图像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="424"/>
+        <location filename="../scene_builder_inspector.cpp" line="427"/>
         <source>Images (*.exr *.hdr *.png *.jpg *.jpeg)</source>
         <translation>图像 (*.exr *.hdr *.png *.jpg *.jpeg)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="425"/>
+        <location filename="../scene_builder_inspector.cpp" line="428"/>
         <source>Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama.</source>
         <translation>图像留空则使用纯色天空。图像应为等距柱状（经纬度）全景图。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="430"/>
+        <location filename="../scene_builder_inspector.cpp" line="433"/>
         <source>Brightness</source>
         <translation>亮度</translation>
     </message>

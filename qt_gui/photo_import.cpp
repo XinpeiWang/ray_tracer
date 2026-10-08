@@ -61,7 +61,124 @@ bool parseProgressLine(const QString &line, int *percent, QString *message) {
 	return true;
 }
 
+QString setupScript() {
+	const QString overridePath = qEnvironmentVariable("RAY_TRACER_PHOTO3D_SETUP");
+	if (!overridePath.isEmpty()) return QFileInfo::exists(overridePath) ? overridePath : QString();
+	const QString app = QCoreApplication::applicationDirPath();
+	for (const QString &c : {app + "/scripts/setup_photo_to_mesh.ps1", app + "/../scripts/setup_photo_to_mesh.ps1", app + "/../../scripts/setup_photo_to_mesh.ps1",
+	                         app + "/../../../scripts/setup_photo_to_mesh.ps1"})
+		if (QFileInfo::exists(c)) return QDir::cleanPath(c);
+	return QString();
+}
+
+QStringList missingFacts(const QString &report) {
+	QStringList out;
+	const int at = report.indexOf(QStringLiteral("=== Photo helper"));
+	if (at < 0) return out;
+	QString section = report.mid(at);
+	const int next = section.indexOf(QStringLiteral("\n==="));  // the next section's banner (this one's own banner is on the first line)
+	if (next > 0) section = section.left(next);
+	for (const QString &raw : section.split('\n')) {
+		const QString line = raw.trimmed();
+		const int colon = line.indexOf(':');
+		if (line.startsWith("===") || colon < 0) continue;
+		const QString key = line.left(colon);
+		if (key == "Helper Script" || key == "Expected At" || key.startsWith("Graphics Card") || key == "Python") continue;  // not something setup fixes
+		const QString lower = line.toLower();
+		if (lower.contains("missing") || lower.contains("not usable") || lower.contains("not available")) out << line;
+	}
+	return out;
+}
+
 }  // namespace photo_import
+
+PhotoHelperInstaller::~PhotoHelperInstaller() {
+	if (m_process) {
+		m_process->disconnect(this);
+		killTree();
+		m_process->waitForFinished(3000);
+	}
+}
+
+void PhotoHelperInstaller::start() {
+	if (m_process) return;
+	const QString script = photo_import::setupScript();
+	m_process = new QProcess(this);
+	m_process->setProcessChannelMode(QProcess::MergedChannels);
+	connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() { onOutput(); });
+	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus st) {
+		if (m_done) return;
+		m_done = true;
+		onOutput();
+		if (!m_pending.trimmed().isEmpty()) emit line(m_pending.trimmed());
+		const bool ok = st == QProcess::NormalExit && code == 0 && !m_cancelled;
+		QString message;
+		if (m_cancelled) message = tr("Cancelled.");
+		else if (!ok) message = m_tail.isEmpty() ? tr("The installer stopped (exit code %1).").arg(code) : m_tail.join('\n');
+		QProcess *p = m_process;
+		m_process = nullptr;
+		p->deleteLater();
+		emit finished(ok, message);
+	});
+	connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+		if (e != QProcess::FailedToStart || m_done) return;
+		m_done = true;
+		QProcess *p = m_process;
+		m_process = nullptr;
+		p->deleteLater();
+		emit finished(false, tr("Could not start PowerShell to run the installer."));
+	});
+	if (script.isEmpty()) {
+		m_done = true;
+		QProcess *p = m_process;
+		m_process = nullptr;
+		p->deleteLater();
+		QTimer::singleShot(0, this, [this]() { emit finished(false, tr("The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.")); });
+		return;
+	}
+	m_process->start("powershell.exe", {"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script});
+}
+
+void PhotoHelperInstaller::cancel() {
+	m_cancelled = true;
+	killTree();
+}
+
+void PhotoHelperInstaller::killTree() {
+	if (!m_process) return;
+#ifdef Q_OS_WIN
+	// PowerShell started pip, git and python: stop the whole tree, not just the shell.
+	if (m_process->processId() > 0) QProcess::execute("taskkill", {"/PID", QString::number(m_process->processId()), "/T", "/F"});
+#endif
+	m_process->kill();
+}
+
+void PhotoHelperInstaller::onOutput() {
+	if (!m_process) return;
+	m_pending += QString::fromLocal8Bit(m_process->readAllStandardOutput());
+	// pip redraws its progress bar with \r; a bare \r replaces the status text, \n ends a line.
+	int i = 0;
+	QString current;
+	for (; i < m_pending.size(); ++i) {
+		const QChar c = m_pending[i];
+		if (c == '\n') {
+			const QString text = current.trimmed();
+			if (!text.isEmpty()) {
+				emit line(text);
+				emit status(text);
+				m_tail << text;
+				while (m_tail.size() > 8) m_tail.removeFirst();
+			}
+			current.clear();
+		} else if (c == '\r') {
+			if (!current.trimmed().isEmpty()) emit status(current.trimmed());
+			current.clear();
+		} else {
+			current += c;
+		}
+	}
+	m_pending = current;
+}
 
 PhotoHelperCheck::~PhotoHelperCheck() {
 	if (m_process) {

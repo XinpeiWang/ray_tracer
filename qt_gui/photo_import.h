@@ -30,7 +30,40 @@ Setup locate();
 // What `progress` lines look like: "PROGRESS 35 Guessing the 3D shape".
 bool parseProgressLine(const QString &line, int *percent, QString *message);
 
+// scripts/setup_photo_to_mesh.ps1 next to the program, or "" if it is not there. RAY_TRACER_PHOTO3D_SETUP names another script (tests).
+QString setupScript();
+// The facts in a Diagnostics report's "Photo helper" section that the setup script would fix (a missing environment, package,
+// model file or the TripoSR code; not the graphics card, and not a missing helper script, which setup does not provide).
+QStringList missingFacts(const QString &report);
+
 }  // namespace photo_import
+
+// Runs the setup script (PowerShell) and reports what it prints. The script downloads several GB, so this only ever runs after the
+// user has said yes; Cancel stops the script and the pip/git/python processes it started.
+class PhotoHelperInstaller : public QObject {
+	Q_OBJECT
+public:
+	explicit PhotoHelperInstaller(QObject *parent = nullptr) : QObject(parent) {}
+	~PhotoHelperInstaller() override;
+	void start();
+	void cancel();
+	bool isRunning() const { return m_process != nullptr; }
+
+signals:
+	void line(const QString &text);    // a complete line of the script's output
+	void status(const QString &text);  // the latest line, including pip's \r progress updates
+	void finished(bool ok, const QString &message);
+
+private:
+	void onOutput();
+	void killTree();
+
+	QProcess *m_process = nullptr;
+	QString m_pending;
+	QStringList m_tail;
+	bool m_cancelled = false;
+	bool m_done = false;
+};
 
 // The Diagnostics tab's "Photo helper" section: what the optional helper has and what is missing (script, Python environment,
 // each package, the graphics card PyTorch sees, the model weights). The helper itself reports the Python side
