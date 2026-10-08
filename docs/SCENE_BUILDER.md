@@ -88,6 +88,8 @@ The **Props** section of the Add menu puts a few ordinary objects in at once: a 
 | Glossy paint (coated) | pbrt `coateddiffuse`: a diffuse colour (or a picture) under a clear coat | paint colour or **Picture**, coat index of refraction, coat roughness |
 | Translucent | pbrt `diffusetransmission`: paper, leaves, lampshades | what it reflects, what it lets through |
 
+**Preset.** The first row of a material's properties is a **Preset** list of ready-made materials: matte (chalk, black rubber, terracotta, concrete), plastic (red, blue, white ceramic, car paint), metal (gold, copper, silver, aluminium, chrome, brushed steel), glass (clear, frosted, water, diamond) and translucent (wax, leaf, paper). Choosing one sets the material's type, colour, roughness and index of refraction in one step (and clears a picture or checker); nothing about the preset is remembered afterwards, so the values can be tuned further. One undo step reverts it. The metal colours are the real reflectance of each metal, the glass indices the real ones. The table is `src/shared/scene_materials.h`.
+
 A **Picture** (matte and glossy paint) replaces the colour with an image on any shape; **Clear** goes back to a colour. On a quad it also gives the quad the picture's shape and the picture stands upright when the quad is rotated 90 degrees about X (a wall). On a mesh the mesh's own texture coordinates decide where it goes. See [PHOTO_TO_SCENE.md](PHOTO_TO_SCENE.md).
 
 **Add > Object from a photo...** turns one photo into a textured mesh with an optional helper that runs on your computer (an AI model; it has to be set up once, about 5 GB). The shape is a guess. It, and how to bring in a many-photo scan, are in [PHOTO_TO_SCENE.md](PHOTO_TO_SCENE.md).

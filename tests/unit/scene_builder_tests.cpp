@@ -17,6 +17,7 @@
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
+#include <set>
 #include <sstream>
 
 using scene_doc::Document;
@@ -305,6 +306,42 @@ TEST(SceneDocumentPbrtTest, EveryShapeMaterialAndLightLoads) {
 	ASSERT_FALSE(hasErrors(validate(d)));
 	const pbrt_load::LoadResult r = loadText(toPbrt(d), "everything");
 	ASSERT_TRUE(r.ok) << r.error;
+}
+
+TEST(SceneMaterialPresetTest, EveryPresetIsValidUniqueAndLoads) {
+	const auto& presets = scene_doc::materialPresets();
+	ASSERT_GE(presets.size(), 15u);
+	std::set<std::string> ids, names;
+	Document d = makeStarterScene();
+	d.objects.clear();
+	d.lights.clear();
+	for (const auto& p : presets) {
+		EXPECT_TRUE(ids.insert(p.id).second) << "duplicate id " << p.id;
+		EXPECT_TRUE(names.insert(p.name).second) << "duplicate name " << p.name;
+		EXPECT_NE(std::string(p.group), "");
+		EXPECT_EQ(scene_doc::findMaterialPreset(p.id), &p);
+		Object o = makeObject(ShapeKind::Sphere, p.id);
+		o.material = p.material;
+		d.objects.push_back(o);
+	}
+	d.objects.push_back(makeAreaLightPanel("panel"));
+	ASSERT_FALSE(hasErrors(validate(d)));
+	const pbrt_load::LoadResult r = loadText(toPbrt(d), "presets");
+	ASSERT_TRUE(r.ok) << r.error;
+}
+
+TEST(SceneMaterialPresetTest, ApplyingOneReplacesTheMaterialAndDropsThePictureAndChecks) {
+	scene_doc::Material m;
+	m.checker = true;
+	m.imageFile = "wood.png";
+	ASSERT_TRUE(scene_doc::applyMaterialPreset(m, "gold"));
+	EXPECT_EQ(m.kind, MaterialKind::Conductor);
+	EXPECT_FALSE(m.checker);
+	EXPECT_TRUE(m.imageFile.empty());
+	const scene_doc::Material before = m;
+	EXPECT_FALSE(scene_doc::applyMaterialPreset(m, "no-such-material"));
+	EXPECT_EQ(m.kind, before.kind);   // an unknown id leaves the material alone
+	EXPECT_EQ(m.color.r, before.color.r);
 }
 
 TEST(SceneDocumentPbrtTest, TheStarterSceneLoads) {

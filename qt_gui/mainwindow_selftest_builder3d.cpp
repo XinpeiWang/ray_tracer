@@ -249,6 +249,30 @@ void MainWindow::selfTestShapes(SceneBuilderWidget *sb, const std::function<void
 		for (size_t n = 0; n < added; ++n) sb->redo();
 		for (size_t n = 0; n < added; ++n) sb->undo();
 	}
+	// The Preset list in a material's properties: choosing "Gold" in the real combo box makes the selected object a gold conductor, as one undo step.
+	{
+		sb->selectObject(1);
+		QApplication::processEvents();
+		QComboBox *presets = nullptr;
+		int goldIndex = -1;
+		for (QComboBox *c : sb->findChildren<QComboBox *>()) {
+			const int idx = c->findData(QStringLiteral("gold"));
+			if (idx >= 0) { presets = c; goldIndex = idx; }
+		}
+		check(presets != nullptr, "the material properties have a Preset list");
+		if (presets) {
+			const scene_doc::MaterialKind kindBefore = sb->document().objects[1].material.kind;
+			presets->setCurrentIndex(goldIndex);
+			emit presets->activated(goldIndex);
+			QApplication::processEvents();
+			const scene_doc::Material &m = sb->document().objects[1].material;
+			check(m.kind == scene_doc::MaterialKind::Conductor && m.roughness < 0.2 && m.color.r > m.color.b, "choosing Gold makes the object a gold metal");
+			check(sb->problemsText().isEmpty(), "a preset material gives no problems or notes");
+			check(sb->undo() && sb->document().objects[1].material.kind == kindBefore, "one undo takes the preset back");
+			sb->redo();
+			sb->undo();
+		}
+	}
 }
 
 // Part of the "builder" mode: the log file has what was just done.
