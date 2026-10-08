@@ -52,7 +52,9 @@ ray_tracer/
 │   ├── RayTracerGUI.pro          # Qt project file
 │   ├── mainwindow.h/.cpp         # Main window class + construction
 │   ├── mainwindow_tabs.cpp       # Settings, Render Options and Preview tab construction
-│   ├── mainwindow_slots.cpp      # Signal/slot handlers
+│   ├── mainwindow_slots.cpp      # Signal/slot handlers (stop/pause, output mode, presets); the rest are split by topic:
+│   │                              #   mainwindow_queue / _render_events / _scene_info / _thumbnails / _downloads / _diagnostics_log .cpp
+│   ├── mainwindow_tabs_render*.cpp  # Render Options + Preview tabs (the option groups are _groups.cpp); mainwindow_live_preview / _live_settings .cpp are the Live Preview session and its saved settings
 │   ├── mainwindow_style.cpp      # Theme/QSS application
 │   ├── scene_builder_*.cpp/.h    # The Scene Builder tab (widget, property panel, shared helpers); the
 │   │                              #   scene model, JSON, checks and pbrt writer are src/shared/scene_{model,json,validate,pbrt_writer}.h (scene_document.h includes them)
