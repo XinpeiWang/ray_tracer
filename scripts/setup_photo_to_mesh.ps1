@@ -85,6 +85,11 @@ Write-Host "Downloading the model weights (about 1.7 GB)..."
 & $python -c "from huggingface_hub import hf_hub_download as d; [d('stabilityai/TripoSR', f) for f in ('config.yaml', 'model.ckpt')]"
 if ($LASTEXITCODE -ne 0) { throw "Could not download the model weights." }
 
+Write-Host "Downloading the background-removal model (U2-Net, about 176 MB)..."
+& $python -c "import rembg; rembg.new_session('u2net')"
+if ($LASTEXITCODE -ne 0) { throw "Could not download the background-removal model." }
+
 Write-Host ""
 Write-Host "Done. In the Scene Builder choose Add > Object from a photo..."
+Write-Host "Diagnostics (the Diagnostics tab) lists what this helper has and what is missing."
 if (-not $useGpu) { Write-Host "(No NVIDIA card was used: expect several minutes per photo.)" }

@@ -182,12 +182,13 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		auto *poll = new QTimer(this);
 		auto *waited = new int(0);
 		connect(poll, &QTimer::timeout, this, [this, poll, waited, log]() {
-			const bool done = !m_diagnosticsRunner && !(m_connectionCheck && m_connectionCheck->isRunning()) && !m_lastDiagReport.isEmpty();
-			if (!done && ++*waited < 120) return;
+			const bool done = !diagnosticsBusy() && m_lastDiagReport.contains("=== Photo helper");
+			if (!done && ++*waited < 240) return;
 			poll->stop();
 			log(m_lastDiagReport);
-			log(m_lastDiagReport.contains("=== Network ===") ? "RESULT: OK" : "RESULT: FAIL (no Network section)");
-			QApplication::exit(m_lastDiagReport.contains("=== Network ===") ? 0 : 1);
+			const bool sections = m_lastDiagReport.contains("=== Network ===") && m_lastDiagReport.contains("=== Photo helper");
+			log(sections ? "RESULT: OK" : "RESULT: FAIL (no Network or Photo helper section)");
+			QApplication::exit(sections ? 0 : 1);
 		});
 		poll->start(500);
 		return;

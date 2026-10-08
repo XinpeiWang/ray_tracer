@@ -88,10 +88,76 @@ def bake_vertex_colours(np, uvs, indices, colours, size):
     return tex[nearest[0], nearest[1]]
 
 
+def check_environment(triposr_arg):
+    """Prints one "Key: value" fact per line about everything the helper needs, for the Diagnostics tab. The wording is what the
+    tab colours by: "present" / "available" are good, "missing" / "not available" / "not usable" are problems."""
+    import platform
+    from importlib import metadata
+
+    def fact(key, value):
+        print("%s: %s" % (key, value), flush=True)
+
+    def size(path):
+        return "%.1f GB" % (os.path.getsize(path) / 1e9) if os.path.getsize(path) > 5e8 else "%d MB" % (os.path.getsize(path) // 1000000)
+
+    fact("Python", "%s (%s)" % (platform.python_version(), sys.executable))
+    for name, dist in (("PyTorch", "torch"), ("Transformers", "transformers"), ("rembg", "rembg"), ("xatlas", "xatlas"),
+                       ("scikit-image", "scikit-image"), ("SciPy", "scipy"), ("trimesh", "trimesh"), ("NumPy", "numpy"),
+                       ("Pillow", "Pillow"), ("einops", "einops"), ("OmegaConf", "omegaconf"),
+                       ("Hugging Face Hub", "huggingface-hub"), ("ONNX Runtime", "onnxruntime")):
+        try:
+            version = metadata.version(dist)
+        except metadata.PackageNotFoundError:
+            fact(name, "missing (not installed; run scripts/setup_photo_to_mesh.ps1)")
+            continue
+        if dist == "transformers" and int(version.split(".")[0]) >= 5:
+            fact(name, "%s not usable (TripoSR's model needs a version below 5)" % version)
+        else:
+            fact(name, "%s present" % version)
+    try:
+        metadata.version("torch")
+    except metadata.PackageNotFoundError:
+        fact("Graphics Card for PyTorch", "unknown (PyTorch is not installed)")
+    else:
+        try:
+            import torch
+            if torch.cuda.is_available():
+                props = torch.cuda.get_device_properties(0)
+                fact("Graphics Card for PyTorch", "available (%s, %.0f GB, CUDA %s)" % (props.name, props.total_memory / 2**30, torch.version.cuda))
+            elif getattr(torch.backends, "mps", None) and torch.backends.mps.is_available():
+                fact("Graphics Card for PyTorch", "available (Apple Metal; not tested with this helper)")
+            else:
+                fact("Graphics Card for PyTorch", "not available (a photo runs on the processor and takes several minutes)")
+        except Exception as e:  # a broken install can fail in many ways
+            fact("PyTorch Import", "not usable (%s)" % str(e).splitlines()[0][:150])
+    triposr = find_triposr(triposr_arg)
+    fact("TripoSR Code", "present (%s)" % triposr if triposr else "missing (run scripts/setup_photo_to_mesh.ps1)")
+    try:
+        from huggingface_hub import try_to_load_from_cache
+        ckpt = try_to_load_from_cache("stabilityai/TripoSR", "model.ckpt")
+        if isinstance(ckpt, str) and os.path.isfile(ckpt):
+            fact("TripoSR Weights", "present (%s, cached)" % size(ckpt))
+        else:
+            fact("TripoSR Weights", "missing (about 1.7 GB, downloaded the first time a photo is converted)")
+    except ImportError:
+        fact("TripoSR Weights", "unknown (huggingface-hub is not installed)")
+    except Exception as e:
+        fact("TripoSR Weights", "not usable (%s)" % str(e).splitlines()[0][:150])
+    # rembg keeps models in ~/.rembg/models/<name>/<name>.onnx (older versions: ~/.u2net/<name>.onnx)
+    candidates = [os.path.join(os.path.expanduser("~"), ".rembg", "models", "u2net", "u2net.onnx"),
+                  os.path.join(os.environ.get("U2NET_HOME", os.path.join(os.path.expanduser("~"), ".u2net")), "u2net.onnx")]
+    u2net = next((c for c in candidates if os.path.isfile(c)), candidates[0])
+    if os.path.isfile(u2net):
+        fact("Background Remover Model (U2-Net)", "present (%s, cached)" % size(u2net))
+    else:
+        fact("Background Remover Model (U2-Net)", "missing (about 176 MB, downloaded the first time a photo needs its background removed)")
+
+
 def main():
     ap = argparse.ArgumentParser(description="One photo -> a textured mesh (TripoSR, runs locally).")
-    ap.add_argument("image", help="a photo of one object")
-    ap.add_argument("--out", required=True, help="folder for mesh.obj, texture.png and result.json")
+    ap.add_argument("image", nargs="?", help="a photo of one object")
+    ap.add_argument("--out", help="folder for mesh.obj, texture.png and result.json")
+    ap.add_argument("--check", action="store_true", help="report what this environment has (for the GUI's Diagnostics tab) and exit")
     ap.add_argument("--resolution", type=int, default=256, help="marching-cubes grid; higher = finer mesh, slower (default 256)")
     ap.add_argument("--texture-size", type=int, default=1024, help="texture width and height in pixels (default 1024)")
     ap.add_argument("--no-remove-bg", action="store_true", help="the photo already has a plain background and the object fills most of it")
@@ -100,6 +166,11 @@ def main():
     ap.add_argument("--device", default="auto", help="cuda:0, cpu or auto (default)")
     args = ap.parse_args()
 
+    if args.check:
+        check_environment(args.triposr_dir)
+        return
+    if not args.image or not args.out:
+        ap.error("a photo and --out are needed (or use --check)")
     if not os.path.isfile(args.image):
         fail("the photo %s was not found." % args.image)
     os.makedirs(args.out, exist_ok=True)
@@ -144,7 +215,7 @@ def main():
             rgba = img.convert("RGBA")  # a cut-out already: its transparency is the mask
         else:
             import rembg
-            rgba = remove_background(img, rembg.new_session())
+            rgba = remove_background(img, rembg.new_session("u2net"))  # U2-Net: Apache-2.0, 176 MB (rembg's own default is a 1 GB non-commercial model)
         rgba = resize_foreground(rgba, args.foreground_ratio)
         arr = np.array(rgba).astype(np.float32) / 255.0
         arr = arr[:, :, :3] * arr[:, :, 3:4] + (1 - arr[:, :, 3:4]) * 0.5  # grey background, as the model expects

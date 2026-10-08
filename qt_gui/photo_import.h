@@ -32,6 +32,28 @@ bool parseProgressLine(const QString &line, int *percent, QString *message);
 
 }  // namespace photo_import
 
+// The Diagnostics tab's "Photo helper" section: what the optional helper has and what is missing (script, Python environment,
+// each package, the graphics card PyTorch sees, the model weights). The helper itself reports the Python side
+// (photo_to_mesh.py --check); when there is no environment to ask, the section says so and how to set it up.
+class PhotoHelperCheck : public QObject {
+	Q_OBJECT
+public:
+	explicit PhotoHelperCheck(QObject *parent = nullptr) : QObject(parent) {}
+	~PhotoHelperCheck() override;
+	void start();
+	bool isRunning() const { return m_running; }
+
+signals:
+	void finished(const QString &section);  // "=== Photo helper ... ===" followed by one "Key: value" fact per line
+
+private:
+	void finish(const QString &facts);
+
+	QProcess *m_process = nullptr;
+	QString m_head;
+	bool m_running = false;
+};
+
 // Runs the helper on one photo. Emits progress while it works, then finished() once.
 class PhotoToMeshJob : public QObject {
 	Q_OBJECT

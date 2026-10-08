@@ -51,10 +51,17 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
 This needs Python 3.10, 3.11 or 3.12 and git on your PATH. It makes a private Python environment in
 `%LOCALAPPDATA%\RayTracerPhoto` (it never touches your other Python installs), installs PyTorch (the NVIDIA build when it
 finds an NVIDIA card, otherwise the processor-only build), installs TripoSR at the version this was tested with, and downloads the
-model weights (about 1.7 GB, from Hugging Face). Then use the menu as above.
+model weights (about 1.7 GB, from Hugging Face) and the background-removal model (U2-Net, Apache-2.0, about 176 MB). Then use the menu as above.
 
 An NVIDIA card with about 6 GB of memory makes a photo take seconds; on the processor it takes several minutes. A Mac has no
 CUDA, and the helper has not been tried there.
+
+**Checking what is installed.** Run the **Diagnostics** tab: its last section, *Photo helper*, lists the helper script, the
+Python environment, each package with its version (PyTorch, Transformers, rembg, xatlas, scikit-image, SciPy, trimesh, NumPy,
+Pillow, einops, OmegaConf, Hugging Face Hub, ONNX Runtime), the graphics card PyTorch can use, the TripoSR code, and whether the two
+model files are already downloaded. Anything missing or unusable is flagged (and the setup script is named), so a broken install
+shows up there instead of as a failed import halfway through a photo. The same list is printed by
+`python tools\photo_to_mesh\photo_to_mesh.py --check`.
 
 If you keep the environment somewhere else, set `RAY_TRACER_PHOTO3D_PYTHON` to its `python.exe` and pass `-Folder` to the
 setup script. Keep the folder name short: PyTorch's folders are deep and Windows stops at 260 characters.
@@ -84,7 +91,7 @@ the reflections as part of the object), and objects cut off by the edge of the p
 
 | Message or symptom | What to do |
 |---|---|
-| "The photo helper has not been set up" | Run the setup script above. |
+| "The photo helper has not been set up" | Run the setup script above. The Diagnostics tab shows what is missing. |
 | "found no object in the photo" | Use a clearer photo of one object on a plain background. |
 | runs out of graphics memory | Close other programs that use the GPU, or run the helper by hand with `--device cpu` (slow). |
 | the object comes out lying down or upside down | Use the Rotation fields on the object (the model assumes the photo shows it upright). |
