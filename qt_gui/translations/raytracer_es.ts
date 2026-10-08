@@ -682,7 +682,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="88"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="332"/>
         <source>Open Output &amp;Folder</source>
         <translation>Abrir &amp;carpeta de salida</translation>
     </message>
@@ -693,7 +693,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="98"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="344"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Abrir en el &amp;visor predeterminado</translation>
     </message>
@@ -1368,7 +1368,7 @@ Use los controles de pausa/detener si una categoría resulta tardar demasiado.</
     <message>
         <location filename="../mainwindow_live_preview.cpp" line="146"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="43"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
         <translation>Vista previa en vivo</translation>
     </message>
@@ -1645,13 +1645,13 @@ Falta ahora:
         <translation>Instalando el asistente de fotos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="21"/>
-        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <location filename="../mainwindow_denoiser.cpp" line="30"/>
+        <location filename="../mainwindow_denoiser.cpp" line="60"/>
         <source>Install the denoiser</source>
         <translation>Instalar el eliminador de ruido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="22"/>
+        <location filename="../mainwindow_denoiser.cpp" line="31"/>
         <source>The AI denoiser is Intel&apos;s Open Image Denoise (open source, Apache-2.0). It is not part of this app: it is downloaded once (%1) from its own release page on GitHub (github.com/RenderKit/oidn), checked against a known checksum, and kept in your user folder.
 
 Download it now?</source>
@@ -1660,7 +1660,7 @@ Download it now?</source>
 ¿Descargarlo ahora?</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="29"/>
+        <location filename="../mainwindow_denoiser.cpp" line="38"/>
         <location filename="../mainwindow_downloads.cpp" line="75"/>
         <location filename="../mainwindow_downloads.cpp" line="162"/>
         <location filename="../mainwindow_photo_install.cpp" line="86"/>
@@ -1668,12 +1668,12 @@ Download it now?</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="30"/>
+        <location filename="../mainwindow_denoiser.cpp" line="39"/>
         <source>Installing the denoiser</source>
         <translation>Instalando el eliminador de ruido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <location filename="../mainwindow_denoiser.cpp" line="60"/>
         <source>The denoiser could not be installed: %1</source>
         <translation>No se pudo instalar el eliminador de ruido: %1</translation>
     </message>
@@ -2561,7 +2561,7 @@ No cambia cuántos fotogramas se renderizan (eso lo decide Número de fotogramas
         <translation>Imagen PNG (*.png);;Imagen PPM (*.ppm);;Imagen EXR, HDR lineal (*.exr)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="351"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="355"/>
         <source>Live Preview Settings</source>
         <translation>Ajustes de vista previa en vivo</translation>
     </message>
@@ -2586,117 +2586,117 @@ No cambia cuántos fotogramas se renderizan (eso lo decide Número de fotogramas
         <translation>Escala el movimiento WASD/Arriba/Abajo, el orbitado con flechas Izquierda/Derecha y el tamaño del paso de zoom con +/- en la Vista previa en vivo. 1x es un incremento moderado por pulsación; menos es más fino, más se mueve más por pulsación.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="72"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="76"/>
         <source>OptiX AI Denoiser</source>
         <translation>Eliminador de ruido OptiX AI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="106"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="110"/>
         <source>Show latest frame instead of accumulating</source>
         <translation>Mostrar el último fotograma en lugar de acumular</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="73"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="77"/>
         <source>SVGF Denoiser (experimental)</source>
         <translation>Eliminador de ruido SVGF (experimental)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="84"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="85"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
         <translation>⚠ La vista previa en vivo usa directamente el trazador de rutas progresivo de la GPU - ninguno de los ajustes de esta pestaña se aplica a ella, salvo la propia subsección &quot;Vista previa en vivo&quot; de la sección Eliminador de ruido, más abajo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="98"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="102"/>
         <source>Blend:</source>
         <translation>Mezcla:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="129"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="133"/>
         <source>SVGF Advanced Tuning</source>
         <translation>Ajuste avanzado de SVGF</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="153"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="157"/>
         <source>Denoiser:</source>
         <translation>Eliminador de ruido:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="221"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="225"/>
         <source>Temporal Alpha:</source>
         <translation>Alfa temporal:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="227"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="231"/>
         <source>Max History Length:</source>
         <translation>Longitud máxima de historial:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="232"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="236"/>
         <source>Variance Bootstrap Frames:</source>
         <translation>Fotogramas de arranque de varianza:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="240"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="244"/>
         <source>Variance Bootstrap Radius:</source>
         <translation>Radio de arranque de varianza:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="244"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="248"/>
         <source>Sigma Normal:</source>
         <translation>Sigma de normal:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="250"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="254"/>
         <source>Sigma Depth:</source>
         <translation>Sigma de profundidad:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="256"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="260"/>
         <source>Sigma Luminance:</source>
         <translation>Sigma de luminancia:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="262"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="266"/>
         <source>A-trous Radius:</source>
         <translation>Radio A-trous:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="267"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="271"/>
         <source>Min Albedo:</source>
         <translation>Albedo mínimo:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="274"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="278"/>
         <source>A-trous Passes:</source>
         <translation>Pasadas A-trous:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="281"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="285"/>
         <source>Reset to Defaults</source>
         <translation>Restablecer valores predeterminados</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="381"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="385"/>
         <source>ReSTIR GI</source>
         <translation>ReSTIR GI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="397"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="401"/>
         <source>ReSTIR DI</source>
         <translation>ReSTIR DI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="611"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="615"/>
         <source>Samples/Frame:</source>
         <translation>Muestras/fotograma:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="624"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="628"/>
         <source>Max Bounces:</source>
         <translation>Rebotes máx.:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="645"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="649"/>
         <source>Firefly Clamp:</source>
         <translation>Límite de destellos:</translation>
     </message>
@@ -3073,32 +3073,32 @@ La forma más rápida de acercar o alejar el zoom una vez que ya has encontrado 
         <translation>Imagen y vídeo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="416"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="420"/>
         <source>Radiance Cache</source>
         <translation>Caché de radiancia</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="437"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="441"/>
         <source>Path Guiding</source>
         <translation>Guiado de trayectoria</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="530"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="534"/>
         <source>Temporal Upscale:</source>
         <translation>Sobremuestreo temporal:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="509"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="513"/>
         <source>Off</source>
         <translation>Desactivado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="99"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="103"/>
         <source>Only matters when the OptiX AI Denoiser is selected above. Controls how much of the smoothing you actually see: 0.0 shows the fully smoothed image, 1.0 shows the original grainy image with no smoothing at all. Same control as the Image &amp; Video subsection&apos;s own Blend setting above, just set separately for Live Preview.</source>
         <translation>Solo importa cuando arriba está seleccionado el Eliminador de ruido con IA de OptiX. Controla cuánto del suavizado ves realmente: 0.0 muestra la imagen totalmente suavizada, 1.0 muestra la imagen original con todo su ruido, sin ningún suavizado. Es el mismo control que la Mezcla de la subsección Imagen y vídeo de arriba, solo que ajustado por separado para la Vista previa en vivo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="154"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="158"/>
         <source>None: shows the image exactly as it&apos;s rendered, with all its natural graininess - no smoothing applied.
 
 OptiX AI Denoiser: cleans up the grainy, low-detail look Live Preview has while you&apos;re moving around, using the same AI-powered smoothing the Image &amp; Video subsection above applies to finished renders. This makes the preview look reasonably clean right away instead of waiting for it to gradually clear up on its own. Costs a small amount of extra GPU time per frame.
@@ -3111,202 +3111,203 @@ Eliminador de ruido con IA de OptiX: limpia el aspecto granulado y con poco deta
 Eliminador de ruido SVGF: un filtro de reducción de ruido alternativo y experimental. En lugar de mezclar muchos fotogramas entre sí, sigue cómo va cambiando el brillo de cada píxel a lo largo del tiempo y lo suaviza a lo largo de los bordes naturales; se comporta mejor que el Eliminador de ruido con IA mientras mueves activamente la cámara. Siempre muestra el último fotograma suavizado en lugar de irse aclarando poco a poco (consulta el grupo Ajuste avanzado de SVGF más abajo para sus propias opciones de ajuste fino).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="180"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="184"/>
         <source>Only matters when the OptiX AI Denoiser is selected above. Shows each freshly smoothed frame on its own, instead of blending it together with earlier frames into a running average. You give up the extra quality that blending more frames together would eventually reach, in exchange for a view that always reflects only the most recent frame - useful while flying around with WASD, since older blended-in frames were rendered from a camera position you&apos;ve already left.</source>
         <translation>Solo importa cuando arriba está seleccionado el Eliminador de ruido con IA de OptiX. Muestra cada fotograma recién suavizado por sí solo, en lugar de mezclarlo con fotogramas anteriores en un promedio acumulado. A cambio de renunciar a la calidad extra que se lograría mezclando más fotogramas, obtienes una vista que siempre refleja solo el fotograma más reciente, útil mientras te desplazas con WASD, ya que los fotogramas antiguos mezclados se renderizaron desde una posición de cámara que ya has abandonado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="222"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="226"/>
         <source>Controls how quickly the filter forgets older frames. Lower values hold onto history longer, which gives smoother results but reacts more slowly when the scene changes; higher values adapt faster but leave more visible noise.</source>
         <translation>Controla con qué rapidez el filtro olvida los fotogramas anteriores. Los valores más bajos conservan el historial durante más tiempo, lo que da resultados más suaves pero reacciona más despacio cuando cambia la escena; los valores más altos se adaptan más rápido pero dejan más ruido visible.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="228"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="232"/>
         <source>The most frames of history a pixel is allowed to build up once it has settled down. Puts a ceiling on how &quot;sticky&quot; - i.e. slow to update - a settled pixel can become.</source>
         <translation>El máximo de fotogramas de historial que puede acumular un píxel una vez que se ha estabilizado. Pone un límite a lo &quot;pegajoso&quot; (es decir, lo lento para actualizarse) que puede llegar a ser un píxel ya estable.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="233"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="237"/>
         <source>Until a pixel has built up at least this many frames of history, its noise estimate is smoothed using its neighboring pixels instead of trusted on its own. This helps a brand-new pixel - for example, one just uncovered by a moving object - get reasonable edge-detection behavior before it has enough history of its own to judge from.</source>
         <translation>Hasta que un píxel no haya acumulado al menos este número de fotogramas de historial, su estimación de ruido se suaviza usando los píxeles vecinos en lugar de confiar solo en sí mismo. Esto ayuda a que un píxel recién aparecido, por ejemplo uno que un objeto en movimiento acaba de dejar al descubierto, tenga un comportamiento razonable de detección de bordes antes de tener suficiente historial propio para juzgar por sí mismo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="241"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="245"/>
         <source>How far out, in pixels, the neighbor-smoothing described above reaches. A radius of 3 means it looks at a 7x7 block of pixels.</source>
         <translation>Hasta qué distancia, en píxeles, llega el suavizado con píxeles vecinos descrito arriba. Un radio de 3 significa que se examina un bloque de 7x7 píxeles.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="245"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="249"/>
         <source>How sensitive the filter is to two neighboring pixels facing different directions. Higher values treat a smaller difference in surface angle as a different surface, which keeps the filter from blurring across curved surfaces or object edges.</source>
         <translation>Cuán sensible es el filtro a que dos píxeles vecinos miren en direcciones distintas. Los valores más altos tratan como superficies diferentes incluso una pequeña diferencia de ángulo, lo que evita que el filtro difumine superficies curvas o bordes de objetos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="251"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="255"/>
         <source>How sensitive the filter is to two neighboring pixels sitting at different distances from the camera. Higher values tolerate more depth difference before treating a neighbor as a separate, unrelated surface.</source>
         <translation>Cuán sensible es el filtro a que dos píxeles vecinos estén a distintas distancias de la cámara. Los valores más altos toleran una mayor diferencia de profundidad antes de tratar a un vecino como una superficie distinta y no relacionada.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="257"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="261"/>
         <source>How sensitive the filter is to two neighboring pixels having different brightness. Higher values let it blend across bigger brightness differences, which smooths more but risks blurring away real detail.</source>
         <translation>Cuán sensible es el filtro a que dos píxeles vecinos tengan un brillo distinto. Los valores más altos permiten mezclar diferencias de brillo mayores, lo que suaviza más pero corre el riesgo de difuminar detalle real.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="263"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="267"/>
         <source>How wide an area, in pixels, each smoothing pass covers. Limited to 0-2, where 2 covers a 5x5 block - the filter&apos;s internal weighting table only supports that range.</source>
         <translation>Cuán ancha, en píxeles, es el área que cubre cada pasada de suavizado. Limitado a un rango de 0 a 2, donde 2 cubre un bloque de 5x5; la tabla de ponderación interna del filtro solo admite ese rango.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="268"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="272"/>
         <source>A minimum surface-color value the filter substitutes in when it temporarily factors out surface color to smooth the lighting on its own. Prevents a very dark or black surface from causing math errors that would show up as flickering noise or a solid black patch.</source>
         <translation>Un valor mínimo de color de superficie que el filtro usa cuando descarta temporalmente el color de la superficie para suavizar la iluminación por separado. Evita que una superficie muy oscura o negra provoque errores matemáticos que se verían como parpadeos de ruido o una mancha negra sólida.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="275"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="279"/>
         <source>How many smoothing passes the filter runs, each one covering a wider area than the last (the step size doubles every pass: 1, 2, 4, 8, ...). More passes smooth a larger area but cost proportionally more GPU time.</source>
         <translation>Cuántas pasadas de suavizado ejecuta el filtro, cada una cubriendo un área más amplia que la anterior (el tamaño de paso se duplica en cada pasada: 1, 2, 4, 8, ...). Más pasadas suavizan un área mayor, pero cuestan proporcionalmente más tiempo de GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="354"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="358"/>
         <source>Covers ReSTIR DI/GI, the Radiance Cache, Path Guiding, Exposure, Samples/Max Bounces per frame, and the Firefly Clamp - all separate from the Advanced Parameters group below (which only affects Image/Video renders) and from the Denoiser section above. These settings only actually take effect when Output Mode above is set to &quot;Live Preview (interactive)&quot;, but you can still edit them in any mode.</source>
         <translation>Incluye ReSTIR DI/GI, la Caché de radiancia, el Guiado de trayectoria, la Exposición, las Muestras/Rebotes máximos por fotograma, y el Límite de destellos; todo esto es independiente del grupo Parámetros avanzados de más abajo (que solo afecta a los renderizados de Imagen/Vídeo) y de la sección Eliminador de ruido de arriba. Estos ajustes solo tienen efecto realmente cuando el Modo de salida de arriba está en &quot;Vista previa en vivo (interactiva)&quot;, aunque se pueden editar en cualquier modo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="387"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="391"/>
         <source>Improves indirect lighting - light that&apos;s bounced off at least one other surface before reaching what you&apos;re looking at - by reusing good light samples found at nearby pixels and in recent frames, instead of only trying once per pixel. Works independently of whichever denoiser is active above. Turning it off falls back to the simpler one-sample-per-pixel method, which looks noisier but is cheaper to render.</source>
         <translation>Mejora la iluminación indirecta (la luz que ha rebotado en al menos otra superficie antes de llegar a lo que estás mirando) reutilizando buenas muestras de luz encontradas en píxeles cercanos y en fotogramas recientes, en lugar de probar solo una vez por píxel. Funciona de forma independiente de cualquier eliminador de ruido activo arriba. Al desactivarlo, se vuelve al método más simple de una muestra por píxel, que se ve con más ruido pero es más barato de renderizar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="403"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="407"/>
         <source>Improves direct lighting - light that reaches a surface straight from a light source, with no bounces - the same way ReSTIR GI above improves indirect lighting: by reusing good light samples found at nearby pixels and in recent frames instead of only trying once per pixel. Independent of ReSTIR GI above (that one handles light that&apos;s already bounced at least once; this one handles light hitting a surface directly). Turning it off falls back to picking one light sample per pixel the plain way, which is noisier in scenes with many lights but cheaper to render.</source>
         <translation>Mejora la iluminación directa (la luz que llega a una superficie directamente desde una fuente de luz, sin rebotes) de la misma manera en que ReSTIR GI mejora arriba la iluminación indirecta: reutilizando buenas muestras de luz encontradas en píxeles cercanos y en fotogramas recientes, en lugar de probar solo una vez por píxel. Es independiente de ReSTIR GI de arriba (ese se ocupa de la luz que ya ha rebotado al menos una vez; este se ocupa de la luz que llega directamente a una superficie). Al desactivarlo, se vuelve a elegir una muestra de luz por píxel de la forma sencilla, lo que da más ruido en escenas con muchas luces pero es más barato de renderizar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="422"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="426"/>
         <source>Caches and reuses estimates of indirect lighting - light that&apos;s bounced two or more times - across frames and nearby points in space, instead of recalculating it completely from scratch every frame. Independent of ReSTIR GI above (that one only improves the very first bounce; this one covers every bounce after that). It needs a few seconds to catch up, so expect the lighting to look patchy or noisy right after you turn it on or fly the camera into a new area, then smooth out as it builds up data. Turning it off falls back to computing every bounce the plain way, which looks noisier in scenes with a lot of deep indirect light, but shows the correct result immediately with no warm-up delay.</source>
         <translation>Guarda en caché y reutiliza estimaciones de la iluminación indirecta (la luz que ha rebotado dos o más veces) entre fotogramas y puntos cercanos del espacio, en lugar de recalcularla por completo desde cero en cada fotograma. Es independiente de ReSTIR GI de arriba (ese solo mejora el primer rebote; este cubre todos los rebotes posteriores). Necesita unos segundos para ponerse al día, así que espera que la iluminación se vea irregular o con ruido justo después de activarlo o de mover la cámara a una zona nueva, y que luego se suavice a medida que acumula datos. Al desactivarlo, se vuelve a calcular cada rebote de la forma normal, lo que se ve con más ruido en escenas con mucha luz indirecta profunda, pero muestra el resultado correcto de inmediato, sin ningún retraso de calentamiento.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="443"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="447"/>
         <source>For shiny/metal surfaces, this learns roughly where the brightest light is coming from at each point in the scene, so bounce rays get aimed more toward useful directions instead of just guessing based on the surface&apos;s own reflective properties. Requires the Radiance Cache above to also be turned on - this feature reuses that cache&apos;s own data and does nothing without it. Like the Radiance Cache, it needs a few seconds to learn and improve; turning it off falls back to the material&apos;s own plain reflection-based guessing.</source>
         <translation>Para superficies brillantes o metálicas, esto aprende más o menos de dónde viene la luz más intensa en cada punto de la escena, de modo que los rayos de rebote se apuntan hacia direcciones más útiles en lugar de basarse solo en las propiedades reflectantes de la propia superficie. Requiere que también esté activada la Caché de radiancia de arriba; esta función reutiliza los datos de esa caché y no hace nada sin ella. Igual que la Caché de radiancia, necesita unos segundos para aprender y mejorar; al desactivarla, se vuelve a la simple estimación basada en la reflexión propia del material.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="458"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="462"/>
         <source>Neural Radiance Cache</source>
         <translation>Caché de radiancia neuronal</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="464"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="468"/>
         <source>A small AI model, trained live while you render, that learns to predict indirect lighting for both plain matte surfaces and shiny/metal ones - unlike the Radiance Cache above, which only handles matte surfaces and doesn&apos;t account for the angle you&apos;re viewing from. Like the Radiance Cache, it takes a while to catch up, so expect it to need several frames to settle in after you turn it on or move the camera into a new area. Turning it off falls back to tracing every bounce the plain way (or to the Radiance Cache, if that&apos;s also turned on).</source>
         <translation>Un pequeño modelo de IA, entrenado en vivo mientras renderizas, que aprende a predecir la iluminación indirecta tanto para superficies mate sencillas como para las brillantes o metálicas, a diferencia de la Caché de radiancia de arriba, que solo maneja superficies mate y no tiene en cuenta el ángulo desde el que miras. Igual que la Caché de radiancia, tarda un rato en ponerse al día, así que espera que necesite varios fotogramas para estabilizarse después de activarla o de mover la cámara a una zona nueva. Al desactivarla, se vuelve a trazar cada rebote de la forma normal (o se usa la Caché de radiancia, si también está activada).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="487"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="491"/>
         <source>Overrides the current scene&apos;s own camera lens size and focus distance with the Aperture and Focus Distance values below, without changing the scene file itself. Only works for scenes loaded from a scene file - it has no effect on the built-in demo gallery, which always uses its own fixed camera.</source>
         <translation>Sustituye el tamaño de lente y la distancia de enfoque propios de la cámara de la escena actual por los valores de Apertura y Distancia de enfoque de abajo, sin modificar el propio archivo de la escena. Solo funciona con escenas cargadas desde un archivo de escena; no tiene ningún efecto en la galería de demostraciones incluida, que siempre usa su propia cámara fija.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="510"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="514"/>
         <source>2x</source>
         <translation>2x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="511"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="515"/>
         <source>4x</source>
         <translation>4x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="531"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="535"/>
         <source>Builds up a sharper-looking image over several frames using a repeating pixel-shift pattern, instead of just stretching Live Preview&apos;s native low-resolution image to fit the window. The cost of rendering each individual frame doesn&apos;t change - 2x vs. 4x only changes how many frames it takes to reach a sharp image (4 frames for 2x, 16 frames for 4x, counting from when the camera stops moving). 4x uses noticeably more memory (roughly 150-200 MB) than 2x (roughly 40-50 MB). This doesn&apos;t combine with the Denoiser dropdown&apos;s SVGF mode or the &apos;Show latest frame&apos; option above - if either of those is on, it takes priority instead.</source>
         <translation>Construye a lo largo de varios fotogramas una imagen de aspecto más nítido usando un patrón repetitivo de desplazamiento de píxeles, en lugar de simplemente estirar la imagen nativa de baja resolución de la Vista previa en vivo para ajustarla a la ventana. El costo de renderizar cada fotograma individual no cambia: la diferencia entre 2x y 4x está solo en cuántos fotogramas hacen falta para llegar a una imagen nítida (4 fotogramas para 2x, 16 para 4x, contando desde que la cámara deja de moverse). 4x usa notablemente más memoria (unos 150-200 MB) que 2x (unos 40-50 MB). Esto no se combina con el modo SVGF del menú desplegable Eliminador de ruido ni con la opción &quot;Mostrar último fotograma&quot; de arriba; si cualquiera de los dos está activado, tiene prioridad en su lugar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="552"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="556"/>
         <source>Neural Reconstruction</source>
         <translation>Reconstrucción neuronal</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="559"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="563"/>
         <source>Replaces Temporal Upscale&apos;s own basic image-building method with a small AI model, trained live while you render, that blends nearby samples together more smartly instead of just copying pixel blocks into place - this cuts down on the blocky, ghost-like artifacts the plain method can show around moving object edges. Requires Temporal Upscale above to be set to 2x or 4x (does nothing at Off). Like the Radiance Cache, it takes a few seconds after you turn it on to start looking good. Works best with Samples/Frame set to 1 - higher values get averaged together before this feature sees them, which blurs the data it&apos;s learning from.</source>
         <translation>Sustituye el método básico de construcción de imagen del propio Sobremuestreo temporal por un pequeño modelo de IA, entrenado en vivo mientras renderizas, que mezcla las muestras cercanas de forma más inteligente en lugar de simplemente copiar bloques de píxeles en su lugar; esto reduce los artefactos en bloques y con aspecto fantasma que el método normal puede mostrar alrededor de los bordes de objetos en movimiento. Requiere que el Sobremuestreo temporal de arriba esté en 2x o 4x (no hace nada si está Desactivado). Igual que la Caché de radiancia, tarda unos segundos después de activarlo en empezar a verse bien. Funciona mejor con Muestras/Fotograma en 1; los valores más altos se promedian entre sí antes de que esta función los vea, lo que difumina los datos de los que está aprendiendo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="589"/>
         <source>A flat brightness multiplier applied to the image before final color adjustments. Same idea as this tab&apos;s own Output-group Exposure control above, but set separately just for Live Preview.</source>
         <translation>Un multiplicador de brillo uniforme que se aplica a la imagen antes de los ajustes finales de color. Es la misma idea que el propio control de Exposición del grupo Salida de esta pestaña, de arriba, solo que configurado por separado para la Vista previa en vivo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="612"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="616"/>
         <source>How many light rays are traced per pixel each time Live Preview renders a frame - more samples means a cleaner image but a slower frame. Separate from the Advanced Parameters group below, which only affects Image/Video renders.</source>
         <translation>Cuántos rayos de luz se trazan por píxel cada vez que la Vista previa en vivo renderiza un fotograma; más muestras significa una imagen más limpia pero un fotograma más lento. Es independiente del grupo Parámetros avanzados de abajo, que solo afecta a los renderizados de Imagen/Vídeo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="625"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="629"/>
         <source>The most times a light ray is allowed to bounce off surfaces before Live Preview stops tracing it - higher lets light reach further into a scene (useful for mirrors, glass, or rooms lit indirectly) at a higher cost per frame. Separate from the Advanced Parameters group below, which only affects Image/Video renders.</source>
         <translation>El máximo número de veces que se permite que un rayo de luz rebote en superficies antes de que la Vista previa en vivo deje de seguirlo; un valor más alto permite que la luz llegue más lejos en la escena (útil para espejos, vidrio o habitaciones iluminadas indirectamente) a un costo mayor por fotograma. Es independiente del grupo Parámetros avanzados de abajo, que solo afecta a los renderizados de Imagen/Vídeo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="646"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="650"/>
         <source>Puts a ceiling on how bright any single sample is allowed to be, to suppress fireflies - an isolated ray that happens to catch a very bright, small light at just the right angle, showing up as a stray bright speckle in the image. The tradeoff is that genuinely bright highlights can get dimmed too. Lower values clamp more aggressively.</source>
         <translation>Pone un tope a lo brillante que puede llegar a ser una sola muestra, para suprimir destellos: un rayo aislado que por casualidad capta una luz muy pequeña e intensa desde el ángulo justo, y que aparece como una mota brillante suelta en la imagen. La contrapartida es que también se pueden atenuar brillos que sí eran genuinos. Los valores más bajos recortan de forma más agresiva.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="666"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="670"/>
         <source>How wide the camera&apos;s lens opening is, in scene units - bigger values create more blur outside the focus distance. 0 means a pinhole-sharp image with no blur at all.</source>
         <translation>Cuán ancha es la abertura de la lente de la cámara, en unidades de escena; valores más grandes crean más desenfoque fuera de la distancia de enfoque. 0 significa una imagen tan nítida como la de un agujero de aguja, sin nada de desenfoque.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="683"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="687"/>
         <source>How far from the camera things are in perfectly sharp focus, in scene units.</source>
         <translation>A qué distancia de la cámara están las cosas en foco perfectamente nítido, en unidades de escena.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="694"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="698"/>
         <source>Adaptive Sampling</source>
         <translation>Muestreo adaptativo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="700"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="704"/>
         <source>Stops resampling a pixel once it&apos;s converged, and shows a black-and-white heatmap instead of the normal preview while it&apos;s on: white where a pixel is still noisy enough to need more samples (per the Convergence Threshold below), black where it&apos;s already converged and no longer being resampled.</source>
         <translation>Deja de volver a muestrear un píxel una vez que ha convergido, y muestra un mapa de calor en blanco y negro en lugar de la vista previa normal mientras está activado: blanco donde un píxel todavía tiene suficiente ruido como para necesitar más muestras (según el umbral de convergencia de abajo), negro donde ya ha convergido y ya no se vuelve a muestrear.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="718"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="722"/>
         <source>Convergence Threshold:</source>
         <translation>Umbral de convergencia:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="719"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="723"/>
         <source>How settled a pixel&apos;s brightness needs to be, relative to its own noise level, before Adaptive Sampling above considers it converged - lower values demand more certainty (more of the image reads as still-noisy for longer) before treating a pixel as done. 0.01 matches this project&apos;s own CPU/offline --adaptive-threshold default and Blender Cycles&apos; own default.</source>
         <translation>Indica cuánto debe haberse estabilizado el brillo de un píxel, en relación con su propio nivel de ruido, antes de que el Muestreo adaptativo de arriba lo considere convergido - valores más bajos exigen más certeza (más parte de la imagen se ve todavía ruidosa durante más tiempo) antes de tratar un píxel como terminado. 0.01 coincide con el valor predeterminado de --adaptive-threshold de la versión CPU/sin conexión de este proyecto y con el valor predeterminado de Blender Cycles.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="731"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="735"/>
         <source>Smooth noisy pixels</source>
         <translation>Suavizar píxeles ruidosos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="737"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="741"/>
         <source>Smooths the pixels that have only a few samples so far - right after a camera move, or in areas the move just revealed - using their neighbours on the same surface, so the picture looks calmer while it settles. It never touches pixels that have gathered enough samples, so a settled picture is exactly what was rendered, and it does not change what is accumulated. Turn it off to see the raw samples.</source>
         <translation>Suaviza los píxeles que de momento tienen pocas muestras (justo después de mover la cámara o en las zonas que el movimiento acaba de descubrir) usando sus vecinos de la misma superficie, de modo que la imagen se vea más tranquila mientras se asienta. Nunca toca los píxeles que ya han reunido suficientes muestras, así que una imagen asentada es exactamente lo que se renderizó, y no cambia lo que se acumula. Desactívalo para ver las muestras sin procesar.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="744"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="748"/>
         <source>Auto exposure</source>
         <translation>Exposición automática</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="750"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="754"/>
         <source>Brightens a dim scene so it does not come up nearly black: the average brightness of the lit pixels is brought up towards a mid-grey, up to 64x, following the picture smoothly. It never darkens anything - a normally exposed or bright scene looks exactly as it does with this off - and it multiplies the Exposure value above, which still works as a manual correction.</source>
         <translation>Aclara una escena oscura para que no salga casi negra: el brillo medio de los píxeles iluminados se eleva hacia un gris medio, hasta 64x, siguiendo la imagen con suavidad. Nunca oscurece nada: una escena con exposición normal o brillante se ve exactamente igual que con esto desactivado. Además multiplica el valor de Exposición de arriba, que sigue sirviendo como corrección manual.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="756"/>
+        <location filename="../mainwindow_selftest_modes.cpp" line="58"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="760"/>
         <source>AI denoise</source>
         <translation>Eliminar ruido con IA</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="761"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="780"/>
         <source>Cleans the grain out of the picture with Intel Open Image Denoise while it is still gathering samples - right after a camera move it looks calm instead of speckled. The effect fades out as the picture gains samples (gone at 512), so a settled picture is exactly what was rendered. Costs about 10 ms per frame. Needs the Open Image Denoise library: install it from the Diagnostics tab (the same one the Denoise option for finished renders uses). It replaces Smooth noisy pixels while it is on.</source>
         <translation>Elimina el grano de la imagen con Intel Open Image Denoise mientras aún reúne muestras: justo después de mover la cámara se ve calmada en lugar de moteada. El efecto se desvanece a medida que la imagen gana muestras (desaparece a las 512), así que una imagen asentada es exactamente la renderizada. Cuesta unos 10 ms por fotograma. Necesita la biblioteca Open Image Denoise: instálala desde la pestaña Diagnóstico (la misma que usa la opción Eliminar ruido de los renders terminados). Sustituye a Suavizar píxeles ruidosos mientras está activada.</translation>
     </message>
@@ -3346,9 +3347,8 @@ Eliminador de ruido SVGF: un filtro de reducción de ruido alternativo y experim
         <translation>Límite de píxeles atípicos (--maxcomponentvalue)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="979"/>
         <source>OptiX AI denoiser (GPU only)</source>
-        <translation>Eliminador de ruido con IA de OptiX (solo GPU)</translation>
+        <translation type="vanished">Eliminador de ruido con IA de OptiX (solo GPU)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="431"/>
@@ -3362,7 +3362,7 @@ Eliminador de ruido SVGF: un filtro de reducción de ruido alternativo y experim
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="632"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="584"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="588"/>
         <source>Exposure:</source>
         <translation>Exposición:</translation>
     </message>
@@ -3460,7 +3460,7 @@ rather than per whole sample). Not implemented under Metal
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="869"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="71"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="75"/>
         <source>None</source>
         <translation>Ninguno</translation>
     </message>
@@ -3490,7 +3490,7 @@ rather than per whole sample). Not implemented under Metal
         <translation>Renderizar solo una parte del cuadro (--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="80"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="81"/>
         <source>⚠ Live Preview uses the Metal progressive path tracer directly - none of the settings on this tab apply to it, except the &quot;Live Preview Settings&quot; group below.</source>
         <translation>⚠ La vista previa en vivo usa directamente el trazador de caminos progresivo de Metal: ninguno de los ajustes de esta pestaña se le aplica, salvo el grupo «Ajustes de vista previa en vivo» de abajo.</translation>
     </message>
@@ -3797,14 +3797,13 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>Activa comprobaciones de corrección adicionales dentro del propio proceso de renderizado en GPU, que detectan ciertos tipos de errores que, de otro modo, producirían en silencio una imagen incorrecta o provocarían un fallo impredecible. Es una ayuda para depurar pensada para quienes trabajan en el propio código de GPU del renderizador, no algo que beneficie a un renderizado normal: tiene un coste real de rendimiento y no cambia el aspecto de un renderizado correcto. Es específico del motor de GPU OptiX (Windows); no tiene equivalente en Metal, así que permanece en gris incluso con el Renderizador en GPU en macOS.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="989"/>
         <source>Runs an AI denoiser on the finished render to smooth out
 graininess, using extra information about each pixel&apos;s base
 color and surface direction to do a better job than a plain
 blur. OptiX GPU only, both GPU modes (recursive and wavefront
 each have their own denoiser) - not available under Metal
 (macOS GPU rendering).</source>
-        <translation>Ejecuta un eliminador de ruido con IA sobre el renderizado terminado para suavizar el grano, usando información adicional sobre el color base y la dirección de la superficie de cada píxel para hacerlo mejor que un simple desenfoque. Solo en la GPU con OptiX, en ambos modos de GPU (el recursivo y el wavefront tienen cada uno su propio eliminador de ruido); no disponible en Metal (renderizado por GPU de macOS).</translation>
+        <translation type="vanished">Ejecuta un eliminador de ruido con IA sobre el renderizado terminado para suavizar el grano, usando información adicional sobre el color base y la dirección de la superficie de cada píxel para hacerlo mejor que un simple desenfoque. Solo en la GPU con OptiX, en ambos modos de GPU (el recursivo y el wavefront tienen cada uno su propio eliminador de ruido); no disponible en Metal (renderizado por GPU de macOS).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1072"/>
@@ -3993,6 +3992,11 @@ Purely informational: it never changes the rendered image, it just tells you wha
         <translation>Eliminador de ruido con IA (Open Image Denoise)</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="979"/>
+        <source>AI denoiser (OptiX on the GPU, Open Image Denoise on the CPU)</source>
+        <translation>Eliminador de ruido con IA (OptiX en la GPU, Open Image Denoise en la CPU)</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="983"/>
         <source>Runs Intel&apos;s Open Image Denoise on the finished render to smooth
 out graininess - a few samples per pixel then look like many.
@@ -4002,6 +4006,21 @@ you are asked to download the denoiser (about 50 MB, once).</source>
 suavizar el grano: unas pocas muestras por píxel parecen muchas.
 Funciona con el renderizador de GPU (Metal). La primera vez que lo
 marques se te pedirá descargar el eliminador de ruido (unos 50 MB, una sola vez).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="989"/>
+        <source>Runs an AI denoiser on the finished render to smooth out
+graininess. With the GPU renderer it is NVIDIA&apos;s OptiX denoiser
+(both GPU modes, guided by each pixel&apos;s base color and surface
+direction). With the CPU renderer it is Intel&apos;s Open Image
+Denoise, on the default path tracer: the first time you tick it
+you are asked to download it (about 57 MB, once).</source>
+        <translation>Ejecuta un eliminador de ruido con IA sobre el render terminado para suavizar
+el grano. Con el renderizador de GPU es el eliminador OptiX de NVIDIA
+(ambos modos de GPU, guiado por el color base y la dirección de la superficie
+de cada píxel). Con el renderizador de CPU es Open Image Denoise de Intel,
+en el trazador de caminos por defecto: la primera vez que lo marques se te
+pedirá descargarlo (unos 57 MB, una sola vez).</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1004"/>
@@ -4084,7 +4103,7 @@ Desactivado por defecto (se usa el fotograma completo). Si un archivo de escena 
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1175"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="481"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="485"/>
         <source>Depth of Field</source>
         <translation>Profundidad de campo</translation>
     </message>
@@ -4117,7 +4136,7 @@ Desactivado por defecto (se respeta la cámara propia de la escena, sin cambios)
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1213"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="665"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="669"/>
         <source>Aperture:</source>
         <translation>Apertura:</translation>
     </message>
@@ -4128,7 +4147,7 @@ Desactivado por defecto (se respeta la cámara propia de la escena, sin cambios)
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1225"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="682"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="686"/>
         <source>Focus Distance:</source>
         <translation>Distancia de enfoque:</translation>
     </message>
@@ -4172,37 +4191,37 @@ Desactivado por defecto (aleatorio genuino en cada renderizado).</translation>
         <translation>El entero específico usado para sembrar el generador de números aleatorios del renderizado. Solo tiene efecto cuando Renderizado reproducible de arriba está marcado - la misma semilla en la misma escena/ajustes siempre produce un ruido idéntico píxel a píxel.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="116"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="117"/>
         <source>Render Options</source>
         <translation>Opciones de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="128"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="129"/>
         <source>Saved, but the scene list could not list it until the program is restarted.</source>
         <translation>Guardado, pero la lista de escenas no podrá mostrarlo hasta que se reinicie el programa.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="132"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
         <source>Added to the scene list as %1 (Settings tab).</source>
         <translation>Añadida a la lista de escenas como %1 (pestaña Configuración).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="134"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="135"/>
         <source>Scene Builder</source>
         <translation>Constructor de escenas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="368"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="335"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>Muestra en el Explorador la carpeta que contiene el renderizado de la pestaña activa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="380"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="347"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>Abre el renderizado de la pestaña activa en el visor del sistema</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="406"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="373"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
@@ -4231,7 +4250,7 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>Selecciona primero una escena</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="29"/>
+        <location filename="../mainwindow_denoiser.cpp" line="38"/>
         <location filename="../mainwindow_live_preview.cpp" line="263"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
@@ -4258,13 +4277,13 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>[Vista previa en vivo] ERROR: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="449"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="416"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Por qué se ve así&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="575"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="542"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
         <location filename="../mainwindow_tabs_settings_groups.cpp" line="277"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
@@ -4272,12 +4291,12 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>Pausar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
         <source>Play</source>
         <translation>Reproducir</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="598"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="565"/>
         <source>Video playback error (%1): %2</source>
         <translation>Error de reproducción de video (%1): %2</translation>
     </message>
@@ -7114,7 +7133,7 @@ Comprueba que tienes permiso para escribir allí y que el disco no está lleno.<
 <context>
     <name>denoiser_installer</name>
     <message>
-        <location filename="../denoiser_installer.cpp" line="76"/>
+        <location filename="../denoiser_installer.cpp" line="103"/>
         <source>about %1 MB</source>
         <translation>unos %1 MB</translation>
     </message>
@@ -7122,42 +7141,47 @@ Comprueba que tienes permiso para escribir allí y que el disco no está lleno.<
 <context>
     <name>denoiser_installer::Installer</name>
     <message>
-        <location filename="../denoiser_installer.cpp" line="86"/>
+        <location filename="../denoiser_installer.cpp" line="113"/>
         <source>This computer cannot install the denoiser here.</source>
         <translation>Este equipo no puede instalar aquí el eliminador de ruido.</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="102"/>
+        <location filename="../denoiser_installer.cpp" line="129"/>
         <source>Downloading the denoiser...</source>
         <translation>Descargando el eliminador de ruido...</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="117"/>
+        <location filename="../denoiser_installer.cpp" line="145"/>
         <source>Unpacking the denoiser...</source>
         <translation>Descomprimiendo el eliminador de ruido...</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="125"/>
+        <location filename="../denoiser_installer.cpp" line="163"/>
         <source>Could not unpack the download: %1</source>
         <translation>No se pudo descomprimir la descarga: %1</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="131"/>
+        <location filename="../denoiser_installer.cpp" line="169"/>
         <source>The download did not contain the denoiser library.</source>
         <translation>La descarga no contenía la biblioteca del eliminador de ruido.</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="139"/>
+        <location filename="../denoiser_installer.cpp" line="177"/>
+        <source>Could not install the denoiser: its files could not be copied.</source>
+        <translation>No se pudo instalar el eliminador de ruido: no se pudieron copiar sus archivos.</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="185"/>
         <source>Could not install the denoiser: %1</source>
         <translation>No se pudo instalar el eliminador de ruido: %1</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="147"/>
+        <location filename="../denoiser_installer.cpp" line="194"/>
         <source>The denoiser files are not where they should be after installing.</source>
         <translation>Tras instalar, los archivos del eliminador de ruido no están donde deberían.</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="150"/>
+        <location filename="../denoiser_installer.cpp" line="197"/>
         <source>The denoiser is installed.</source>
         <translation>El eliminador de ruido está instalado.</translation>
     </message>

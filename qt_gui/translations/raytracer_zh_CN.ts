@@ -681,7 +681,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="88"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="332"/>
         <source>Open Output &amp;Folder</source>
         <translation>打开输出文件夹(&amp;F)</translation>
     </message>
@@ -692,7 +692,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="98"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="344"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>用默认查看器打开(&amp;V)</translation>
     </message>
@@ -1363,7 +1363,7 @@ Use the pause/stop controls if a category turns out to take too long.</source>
     <message>
         <location filename="../mainwindow_live_preview.cpp" line="146"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="43"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
         <translation>实时预览</translation>
     </message>
@@ -1633,13 +1633,13 @@ Missing now:
         <translation>正在安装照片辅助程序</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="21"/>
-        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <location filename="../mainwindow_denoiser.cpp" line="30"/>
+        <location filename="../mainwindow_denoiser.cpp" line="60"/>
         <source>Install the denoiser</source>
         <translation>安装降噪器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="22"/>
+        <location filename="../mainwindow_denoiser.cpp" line="31"/>
         <source>The AI denoiser is Intel&apos;s Open Image Denoise (open source, Apache-2.0). It is not part of this app: it is downloaded once (%1) from its own release page on GitHub (github.com/RenderKit/oidn), checked against a known checksum, and kept in your user folder.
 
 Download it now?</source>
@@ -1648,7 +1648,7 @@ Download it now?</source>
 现在下载吗？</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="29"/>
+        <location filename="../mainwindow_denoiser.cpp" line="38"/>
         <location filename="../mainwindow_downloads.cpp" line="75"/>
         <location filename="../mainwindow_downloads.cpp" line="162"/>
         <location filename="../mainwindow_photo_install.cpp" line="86"/>
@@ -1656,12 +1656,12 @@ Download it now?</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="30"/>
+        <location filename="../mainwindow_denoiser.cpp" line="39"/>
         <source>Installing the denoiser</source>
         <translation>正在安装降噪器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <location filename="../mainwindow_denoiser.cpp" line="60"/>
         <source>The denoiser could not be installed: %1</source>
         <translation>无法安装降噪器：%1</translation>
     </message>
@@ -2533,7 +2533,7 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - onl
         <translation>PNG 图像 (*.png);;PPM 图像 (*.ppm);;EXR 图像，线性 HDR (*.exr)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="351"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="355"/>
         <source>Live Preview Settings</source>
         <translation>实时预览设置</translation>
     </message>
@@ -2558,117 +2558,117 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - onl
         <translation>缩放实时预览中 WASD/上/下移动、左/右方向键环绕以及 +/- 缩放的步进幅度。1x 为每次按键的适中幅度；数值越低越精细，越高每次按键移动越远。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="72"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="76"/>
         <source>OptiX AI Denoiser</source>
         <translation>OptiX AI 降噪器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="106"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="110"/>
         <source>Show latest frame instead of accumulating</source>
         <translation>显示最新一帧，而非累积平均</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="73"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="77"/>
         <source>SVGF Denoiser (experimental)</source>
         <translation>SVGF 降噪器（实验性）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="84"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="85"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
         <translation>⚠ 实时预览直接使用 GPU 渐进式路径追踪器——此标签页上的设置均不适用于它，唯独“降噪器”分区自己的“实时预览”子分区（在下方）除外。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="98"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="102"/>
         <source>Blend:</source>
         <translation>混合：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="129"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="133"/>
         <source>SVGF Advanced Tuning</source>
         <translation>SVGF 高级调优</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="153"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="157"/>
         <source>Denoiser:</source>
         <translation>降噪器：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="221"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="225"/>
         <source>Temporal Alpha:</source>
         <translation>时域 Alpha：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="227"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="231"/>
         <source>Max History Length:</source>
         <translation>最大历史长度：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="232"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="236"/>
         <source>Variance Bootstrap Frames:</source>
         <translation>方差引导帧数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="240"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="244"/>
         <source>Variance Bootstrap Radius:</source>
         <translation>方差引导半径：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="244"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="248"/>
         <source>Sigma Normal:</source>
         <translation>法线 Sigma：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="250"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="254"/>
         <source>Sigma Depth:</source>
         <translation>深度 Sigma：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="256"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="260"/>
         <source>Sigma Luminance:</source>
         <translation>亮度 Sigma：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="262"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="266"/>
         <source>A-trous Radius:</source>
         <translation>A-trous 半径：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="267"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="271"/>
         <source>Min Albedo:</source>
         <translation>最小反照率：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="274"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="278"/>
         <source>A-trous Passes:</source>
         <translation>A-trous 遍数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="281"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="285"/>
         <source>Reset to Defaults</source>
         <translation>恢复默认值</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="381"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="385"/>
         <source>ReSTIR GI</source>
         <translation>ReSTIR GI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="397"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="401"/>
         <source>ReSTIR DI</source>
         <translation>ReSTIR DI</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="611"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="615"/>
         <source>Samples/Frame:</source>
         <translation>每帧采样数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="624"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="628"/>
         <source>Max Bounces:</source>
         <translation>最大反弹次数：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="645"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="649"/>
         <source>Firefly Clamp:</source>
         <translation>萤火虫钳制：</translation>
     </message>
@@ -3042,32 +3042,32 @@ The quickest way to zoom in or pull back once you&apos;ve already found an angle
         <translation>图像和视频</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="416"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="420"/>
         <source>Radiance Cache</source>
         <translation>辐射缓存</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="437"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="441"/>
         <source>Path Guiding</source>
         <translation>路径引导</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="530"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="534"/>
         <source>Temporal Upscale:</source>
         <translation>时域超分辨率：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="509"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="513"/>
         <source>Off</source>
         <translation>关闭</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="99"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="103"/>
         <source>Only matters when the OptiX AI Denoiser is selected above. Controls how much of the smoothing you actually see: 0.0 shows the fully smoothed image, 1.0 shows the original grainy image with no smoothing at all. Same control as the Image &amp; Video subsection&apos;s own Blend setting above, just set separately for Live Preview.</source>
         <translation>只有在上方选中了 OptiX AI 降噪器时才有意义。控制你实际看到多少平滑效果：0.0 显示完全平滑后的图像，1.0 显示带有原始噪点、完全未平滑的图像。这与“图像和视频”分区里自己的“混合”设置作用相同，只是这里是单独为实时预览设置的。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="154"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="158"/>
         <source>None: shows the image exactly as it&apos;s rendered, with all its natural graininess - no smoothing applied.
 
 OptiX AI Denoiser: cleans up the grainy, low-detail look Live Preview has while you&apos;re moving around, using the same AI-powered smoothing the Image &amp; Video subsection above applies to finished renders. This makes the preview look reasonably clean right away instead of waiting for it to gradually clear up on its own. Costs a small amount of extra GPU time per frame.
@@ -3080,202 +3080,203 @@ SVGF Denoiser: an alternative, experimental noise-reduction filter. Instead of b
 “SVGF 降噪器”：一种可选的实验性降噪滤镜。它不是把很多帧混合在一起，而是跟踪每个像素的亮度随时间的变化情况，并沿着物体的自然边缘进行平滑处理——在你持续移动相机时，效果比 AI 降噪器更稳定。它始终显示最新的平滑帧，而不是随时间逐渐变得更清晰（更多微调选项见下方的“SVGF 高级调节”分组）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="180"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="184"/>
         <source>Only matters when the OptiX AI Denoiser is selected above. Shows each freshly smoothed frame on its own, instead of blending it together with earlier frames into a running average. You give up the extra quality that blending more frames together would eventually reach, in exchange for a view that always reflects only the most recent frame - useful while flying around with WASD, since older blended-in frames were rendered from a camera position you&apos;ve already left.</source>
         <translation>只有在上方选中了 OptiX AI 降噪器时才有意义。单独显示每一帧刚平滑处理过的画面，而不是把它与之前的帧混合成累计平均值。这样会放弃多帧混合累积原本能达到的更高画质，换来始终只反映最新一帧的画面——在用 WASD 到处飞行时很有用，因为混合进来的旧帧是在你已经离开的相机位置渲染的。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="222"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="226"/>
         <source>Controls how quickly the filter forgets older frames. Lower values hold onto history longer, which gives smoother results but reacts more slowly when the scene changes; higher values adapt faster but leave more visible noise.</source>
         <translation>控制滤镜遗忘旧帧的速度。数值越低，保留历史信息的时间越长，效果更平滑，但场景发生变化时反应也更慢；数值越高，适应变化越快，但留下的噪点也更明显。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="228"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="232"/>
         <source>The most frames of history a pixel is allowed to build up once it has settled down. Puts a ceiling on how &quot;sticky&quot; - i.e. slow to update - a settled pixel can become.</source>
         <translation>一个像素稳定下来后，最多允许累积多少帧的历史信息。这是给像素的“黏滞程度”（也就是更新有多慢）设置一个上限。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="233"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="237"/>
         <source>Until a pixel has built up at least this many frames of history, its noise estimate is smoothed using its neighboring pixels instead of trusted on its own. This helps a brand-new pixel - for example, one just uncovered by a moving object - get reasonable edge-detection behavior before it has enough history of its own to judge from.</source>
         <translation>在一个像素积累到至少这么多帧的历史信息之前，它的噪点估计会借助相邻像素来平滑，而不是单凭自己判断。这能帮助刚出现的新像素（比如刚被移动物体露出来的那部分）在积累出足够的自身历史之前，也能有比较合理的边缘识别效果。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="241"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="245"/>
         <source>How far out, in pixels, the neighbor-smoothing described above reaches. A radius of 3 means it looks at a 7x7 block of pixels.</source>
         <translation>上面所说的“借助相邻像素平滑”具体能延伸多远（以像素为单位）。半径为 3 表示会查看一个 7×7 的像素区块。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="245"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="249"/>
         <source>How sensitive the filter is to two neighboring pixels facing different directions. Higher values treat a smaller difference in surface angle as a different surface, which keeps the filter from blurring across curved surfaces or object edges.</source>
         <translation>滤镜对两个朝向不同方向的相邻像素有多敏感。数值越高，越小的表面角度差异就会被当作不同的表面，这样可以防止滤镜在弯曲表面或物体边缘上产生模糊。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="251"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="255"/>
         <source>How sensitive the filter is to two neighboring pixels sitting at different distances from the camera. Higher values tolerate more depth difference before treating a neighbor as a separate, unrelated surface.</source>
         <translation>滤镜对两个与相机距离不同的相邻像素有多敏感。数值越高，能容忍的深度差异就越大，超过这个差异才会把相邻像素当作不相关的独立表面。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="257"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="261"/>
         <source>How sensitive the filter is to two neighboring pixels having different brightness. Higher values let it blend across bigger brightness differences, which smooths more but risks blurring away real detail.</source>
         <translation>滤镜对两个亮度不同的相邻像素有多敏感。数值越高，允许混合的亮度差异就越大，平滑效果更强，但也更容易把真实细节也一并抹掉。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="263"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="267"/>
         <source>How wide an area, in pixels, each smoothing pass covers. Limited to 0-2, where 2 covers a 5x5 block - the filter&apos;s internal weighting table only supports that range.</source>
         <translation>每一轮平滑处理覆盖的区域宽度（以像素为单位）。取值范围限定在 0-2，其中 2 对应一个 5×5 的区块——因为滤镜内部的权重表只支持这个范围。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="268"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="272"/>
         <source>A minimum surface-color value the filter substitutes in when it temporarily factors out surface color to smooth the lighting on its own. Prevents a very dark or black surface from causing math errors that would show up as flickering noise or a solid black patch.</source>
         <translation>当滤镜暂时剔除表面颜色、单独对光照进行平滑处理时，用来代入的一个最小表面颜色数值。这可以防止非常暗或纯黑的表面引发计算错误，从而表现为闪烁的噪点或一整块死黑。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="275"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="279"/>
         <source>How many smoothing passes the filter runs, each one covering a wider area than the last (the step size doubles every pass: 1, 2, 4, 8, ...). More passes smooth a larger area but cost proportionally more GPU time.</source>
         <translation>滤镜要运行多少轮平滑处理，每一轮覆盖的范围都比上一轮更大（步长每轮翻倍：1、2、4、8……）。轮数越多，平滑覆盖的范围越大，但所耗费的 GPU 时间也会相应增加。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="354"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="358"/>
         <source>Covers ReSTIR DI/GI, the Radiance Cache, Path Guiding, Exposure, Samples/Max Bounces per frame, and the Firefly Clamp - all separate from the Advanced Parameters group below (which only affects Image/Video renders) and from the Denoiser section above. These settings only actually take effect when Output Mode above is set to &quot;Live Preview (interactive)&quot;, but you can still edit them in any mode.</source>
         <translation>包含 ReSTIR DI/GI、辐射缓存、路径引导、曝光、每帧采样数/最大反弹次数，以及萤火虫钳制——这些都独立于下方只影响图像/视频渲染的“高级参数”组，也独立于上方的“降噪器”部分。这些设置只有在上方的输出模式设为“实时预览（交互式）”时才会真正生效，但在任何模式下都可以编辑。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="387"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="391"/>
         <source>Improves indirect lighting - light that&apos;s bounced off at least one other surface before reaching what you&apos;re looking at - by reusing good light samples found at nearby pixels and in recent frames, instead of only trying once per pixel. Works independently of whichever denoiser is active above. Turning it off falls back to the simpler one-sample-per-pixel method, which looks noisier but is cheaper to render.</source>
         <translation>通过重复利用附近像素和最近几帧中找到的优质光照采样，而不是每个像素只尝试一次，来改善间接光照——也就是至少经过一次反弹才到达你所看画面的光。它的效果与上方启用的是哪种降噪器无关。关闭它会回退到更简单的每像素单采样方式，画面噪点更多，但渲染开销更低。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="403"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="407"/>
         <source>Improves direct lighting - light that reaches a surface straight from a light source, with no bounces - the same way ReSTIR GI above improves indirect lighting: by reusing good light samples found at nearby pixels and in recent frames instead of only trying once per pixel. Independent of ReSTIR GI above (that one handles light that&apos;s already bounced at least once; this one handles light hitting a surface directly). Turning it off falls back to picking one light sample per pixel the plain way, which is noisier in scenes with many lights but cheaper to render.</source>
         <translation>改善直接光照——也就是没有经过任何反弹、直接从光源到达表面的光——方式与上方 ReSTIR GI 改善间接光照的方式相同：重复利用附近像素和最近几帧中找到的优质光照采样，而不是每个像素只尝试一次。它与上方的 ReSTIR GI 相互独立（那个处理已经反弹过至少一次的光；这个处理直接照到表面的光）。关闭它会回退到每个像素只用普通方式挑选一个光照采样，在灯光较多的场景里噪点会更明显，但渲染开销更低。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="422"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="426"/>
         <source>Caches and reuses estimates of indirect lighting - light that&apos;s bounced two or more times - across frames and nearby points in space, instead of recalculating it completely from scratch every frame. Independent of ReSTIR GI above (that one only improves the very first bounce; this one covers every bounce after that). It needs a few seconds to catch up, so expect the lighting to look patchy or noisy right after you turn it on or fly the camera into a new area, then smooth out as it builds up data. Turning it off falls back to computing every bounce the plain way, which looks noisier in scenes with a lot of deep indirect light, but shows the correct result immediately with no warm-up delay.</source>
         <translation>在多帧画面和空间中相邻的点之间缓存并复用间接光照（即反弹两次或更多次的光）的估算结果，而不是每一帧都从头完全重新计算。它与上方的 ReSTIR GI 相互独立（那个只改善第一次反弹；这个覆盖第一次之后的每一次反弹）。它需要几秒钟才能跟上，所以刚打开它，或者把相机移动到新区域后，光照看起来可能会有些斑驳或带噪点，随着数据不断积累会逐渐平滑下来。关闭它会回退到用普通方式计算每一次反弹，在有大量深层间接光照的场景里噪点会更明显，但能立刻显示正确结果，没有预热延迟。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="443"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="447"/>
         <source>For shiny/metal surfaces, this learns roughly where the brightest light is coming from at each point in the scene, so bounce rays get aimed more toward useful directions instead of just guessing based on the surface&apos;s own reflective properties. Requires the Radiance Cache above to also be turned on - this feature reuses that cache&apos;s own data and does nothing without it. Like the Radiance Cache, it needs a few seconds to learn and improve; turning it off falls back to the material&apos;s own plain reflection-based guessing.</source>
         <translation>针对光滑/金属表面，这项功能会大致学习场景中每个点最亮的光是从哪个方向来的，让反弹光线更多地瞄准有用的方向，而不是单纯依据表面自身的反射特性去猜测。它需要同时开启上方的“辐射缓存”——因为这项功能复用的是辐射缓存自身的数据，缺了它就不起作用。和辐射缓存一样，它也需要几秒钟来学习和改进；关闭它会回退到材质自身基于反射特性的普通猜测方式。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="458"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="462"/>
         <source>Neural Radiance Cache</source>
         <translation>神经辐射缓存</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="464"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="468"/>
         <source>A small AI model, trained live while you render, that learns to predict indirect lighting for both plain matte surfaces and shiny/metal ones - unlike the Radiance Cache above, which only handles matte surfaces and doesn&apos;t account for the angle you&apos;re viewing from. Like the Radiance Cache, it takes a while to catch up, so expect it to need several frames to settle in after you turn it on or move the camera into a new area. Turning it off falls back to tracing every bounce the plain way (or to the Radiance Cache, if that&apos;s also turned on).</source>
         <translation>一个在你渲染过程中实时训练的小型 AI 模型，能同时学习预测哑光表面和光滑/金属表面的间接光照——这与上方的辐射缓存不同，后者只处理哑光表面，也不考虑观察角度。和辐射缓存一样，它也需要一段时间才能跟上，所以打开它或把相机移到新区域后，往往需要几帧才能稳定下来。关闭它会回退到用普通方式追踪每一次反弹（如果“辐射缓存”也开着，则回退到使用辐射缓存）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="487"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="491"/>
         <source>Overrides the current scene&apos;s own camera lens size and focus distance with the Aperture and Focus Distance values below, without changing the scene file itself. Only works for scenes loaded from a scene file - it has no effect on the built-in demo gallery, which always uses its own fixed camera.</source>
         <translation>用下方的“光圈”和“对焦距离”数值，覆盖当前场景自身的镜头大小和对焦距离，且不会改动场景文件本身。这只对从场景文件加载的场景有效——对内置的演示场景库没有影响，那些场景始终使用各自固定的相机设置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="510"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="514"/>
         <source>2x</source>
         <translation>2x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="511"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="515"/>
         <source>4x</source>
         <translation>4x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="531"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="535"/>
         <source>Builds up a sharper-looking image over several frames using a repeating pixel-shift pattern, instead of just stretching Live Preview&apos;s native low-resolution image to fit the window. The cost of rendering each individual frame doesn&apos;t change - 2x vs. 4x only changes how many frames it takes to reach a sharp image (4 frames for 2x, 16 frames for 4x, counting from when the camera stops moving). 4x uses noticeably more memory (roughly 150-200 MB) than 2x (roughly 40-50 MB). This doesn&apos;t combine with the Denoiser dropdown&apos;s SVGF mode or the &apos;Show latest frame&apos; option above - if either of those is on, it takes priority instead.</source>
         <translation>通过循环的像素偏移方式，用连续多帧逐步累积出更清晰的画面，而不是简单地把实时预览原本较低分辨率的图像拉伸以填满窗口。渲染每一帧本身的开销并不会改变——2 倍和 4 倍的区别只在于要多少帧才能得到清晰的画面（从相机停止移动算起，2 倍需要 4 帧，4 倍需要 16 帧）。4 倍所占用的内存（约 150-200 MB）明显多于 2 倍（约 40-50 MB）。这项功能不能与“降噪器”下拉菜单里的 SVGF 模式，或上方的“显示最新帧”选项同时使用——如果二者中任意一个开启，会优先生效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="552"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="556"/>
         <source>Neural Reconstruction</source>
         <translation>神经网络重建</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="559"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="563"/>
         <source>Replaces Temporal Upscale&apos;s own basic image-building method with a small AI model, trained live while you render, that blends nearby samples together more smartly instead of just copying pixel blocks into place - this cuts down on the blocky, ghost-like artifacts the plain method can show around moving object edges. Requires Temporal Upscale above to be set to 2x or 4x (does nothing at Off). Like the Radiance Cache, it takes a few seconds after you turn it on to start looking good. Works best with Samples/Frame set to 1 - higher values get averaged together before this feature sees them, which blurs the data it&apos;s learning from.</source>
         <translation>用一个在你渲染过程中实时训练的小型 AI 模型，取代“时域超分辨率”原本简单的画面构建方式：它会更智能地混合邻近的采样数据，而不是单纯把像素块复制粘贴到位——这能减少普通方式在移动物体边缘常见的块状、重影般的瑕疵。需要上方的“时域超分辨率”设为 2 倍或 4 倍才会生效（设为“关闭”时不起作用）。和辐射缓存一样，开启后也需要几秒钟才能开始呈现良好效果。搭配“每帧采样数”设为 1 时效果最好——数值更高的话，采样会在这项功能看到之前就先被平均处理，模糊了它用来学习的数据。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="589"/>
         <source>A flat brightness multiplier applied to the image before final color adjustments. Same idea as this tab&apos;s own Output-group Exposure control above, but set separately just for Live Preview.</source>
         <translation>在最终颜色调整之前，对整幅图像统一施加的亮度乘数。原理和本标签页“输出”分组里的“曝光”控件一样，只是这里是单独为实时预览设置的。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="612"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="616"/>
         <source>How many light rays are traced per pixel each time Live Preview renders a frame - more samples means a cleaner image but a slower frame. Separate from the Advanced Parameters group below, which only affects Image/Video renders.</source>
         <translation>实时预览每渲染一帧，每个像素要追踪多少条光线——采样数越多，画面越干净，但每一帧渲染得越慢。这与下方只影响图像/视频渲染的“高级参数”组相互独立。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="625"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="629"/>
         <source>The most times a light ray is allowed to bounce off surfaces before Live Preview stops tracing it - higher lets light reach further into a scene (useful for mirrors, glass, or rooms lit indirectly) at a higher cost per frame. Separate from the Advanced Parameters group below, which only affects Image/Video renders.</source>
         <translation>在实时预览放弃追踪之前，一条光线最多允许在表面之间反弹多少次——数值越高，光线能在场景中传播得越远（对镜面、玻璃或依靠间接光照明的房间很有用），但每一帧的渲染开销也越高。这与下方只影响图像/视频渲染的“高级参数”组相互独立。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="646"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="650"/>
         <source>Puts a ceiling on how bright any single sample is allowed to be, to suppress fireflies - an isolated ray that happens to catch a very bright, small light at just the right angle, showing up as a stray bright speckle in the image. The tradeoff is that genuinely bright highlights can get dimmed too. Lower values clamp more aggressively.</source>
         <translation>给单个采样允许达到的亮度设置一个上限，用来抑制萤火虫噪点——也就是某条光线恰好以合适的角度捕捉到一个很亮的小光源，从而在画面上表现为一个突兀的亮点。代价是真正明亮的高光也可能因此被压暗。数值越低，限制就越严格。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="666"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="670"/>
         <source>How wide the camera&apos;s lens opening is, in scene units - bigger values create more blur outside the focus distance. 0 means a pinhole-sharp image with no blur at all.</source>
         <translation>相机镜头开口的宽度（以场景单位表示）——数值越大，对焦距离以外的区域就越模糊。0 表示针孔般的清晰画面，完全没有虚化。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="683"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="687"/>
         <source>How far from the camera things are in perfectly sharp focus, in scene units.</source>
         <translation>距离相机多远的位置能够完全清晰对焦（以场景单位表示）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="694"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="698"/>
         <source>Adaptive Sampling</source>
         <translation>自适应采样</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="700"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="704"/>
         <source>Stops resampling a pixel once it&apos;s converged, and shows a black-and-white heatmap instead of the normal preview while it&apos;s on: white where a pixel is still noisy enough to need more samples (per the Convergence Threshold below), black where it&apos;s already converged and no longer being resampled.</source>
         <translation>一旦像素收敛就停止对其重新采样，并在启用期间以黑白热力图代替正常预览显示：白色表示该像素噪点仍然较多、需要更多采样（依据下方的收敛阈值判定），黑色表示该像素已经收敛、不再重新采样。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="718"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="722"/>
         <source>Convergence Threshold:</source>
         <translation>收敛阈值：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="719"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="723"/>
         <source>How settled a pixel&apos;s brightness needs to be, relative to its own noise level, before Adaptive Sampling above considers it converged - lower values demand more certainty (more of the image reads as still-noisy for longer) before treating a pixel as done. 0.01 matches this project&apos;s own CPU/offline --adaptive-threshold default and Blender Cycles&apos; own default.</source>
         <translation>表示像素亮度相对于自身噪点水平需要稳定到什么程度，才会被上方的自适应采样判定为已收敛——数值越低，要求的确定性越高（图像中会有更多区域在更长时间内显得仍有噪点），才会将某像素视为已完成。0.01 与本项目自身 CPU/离线版 --adaptive-threshold 的默认值以及 Blender Cycles 自身的默认值一致。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="731"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="735"/>
         <source>Smooth noisy pixels</source>
         <translation>平滑噪点像素</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="737"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="741"/>
         <source>Smooths the pixels that have only a few samples so far - right after a camera move, or in areas the move just revealed - using their neighbours on the same surface, so the picture looks calmer while it settles. It never touches pixels that have gathered enough samples, so a settled picture is exactly what was rendered, and it does not change what is accumulated. Turn it off to see the raw samples.</source>
         <translation>利用同一表面上的相邻像素，平滑那些目前采样数还很少的像素（相机刚移动之后，或移动刚露出的区域），让画面在收敛过程中显得更平静。已经收集到足够采样的像素绝不会被处理，因此收敛后的画面就是实际渲染的结果，也不会改变累积的内容。关闭它即可查看原始采样。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="744"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="748"/>
         <source>Auto exposure</source>
         <translation>自动曝光</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="750"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="754"/>
         <source>Brightens a dim scene so it does not come up nearly black: the average brightness of the lit pixels is brought up towards a mid-grey, up to 64x, following the picture smoothly. It never darkens anything - a normally exposed or bright scene looks exactly as it does with this off - and it multiplies the Exposure value above, which still works as a manual correction.</source>
         <translation>提亮较暗的场景，避免画面几乎全黑：把被照亮像素的平均亮度向中灰提升，最多 64 倍，并平滑地跟随画面变化。它绝不会让任何东西变暗，曝光正常或较亮的场景与关闭时完全一样。它会与上方的曝光值相乘，曝光值仍可作为手动修正。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="756"/>
+        <location filename="../mainwindow_selftest_modes.cpp" line="58"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="760"/>
         <source>AI denoise</source>
         <translation>AI 降噪</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="761"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="780"/>
         <source>Cleans the grain out of the picture with Intel Open Image Denoise while it is still gathering samples - right after a camera move it looks calm instead of speckled. The effect fades out as the picture gains samples (gone at 512), so a settled picture is exactly what was rendered. Costs about 10 ms per frame. Needs the Open Image Denoise library: install it from the Diagnostics tab (the same one the Denoise option for finished renders uses). It replaces Smooth noisy pixels while it is on.</source>
         <translation>在图像仍在积累采样时，用 Intel Open Image Denoise 去除噪点：相机移动后立刻看起来平稳，而不是满是斑点。随着采样增多，效果逐渐减弱（达到 512 时消失），因此稳定后的画面就是实际渲染的结果。每帧约耗时 10 毫秒。需要 Open Image Denoise 库：请在诊断选项卡中安装（与已完成渲染的降噪选项使用的是同一个）。开启时它会取代“平滑噪点像素”。</translation>
     </message>
@@ -3315,9 +3316,8 @@ SVGF Denoiser: an alternative, experimental noise-reduction filter. Instead of b
         <translation>萤火虫噪点截断(--maxcomponentvalue)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="979"/>
         <source>OptiX AI denoiser (GPU only)</source>
-        <translation>OptiX AI 降噪器(仅限 GPU)</translation>
+        <translation type="vanished">OptiX AI 降噪器(仅限 GPU)</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="431"/>
@@ -3331,7 +3331,7 @@ SVGF Denoiser: an alternative, experimental noise-reduction filter. Instead of b
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="632"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="584"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="588"/>
         <source>Exposure:</source>
         <translation>曝光:</translation>
     </message>
@@ -3429,7 +3429,7 @@ rather than per whole sample). Not implemented under Metal
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="869"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="71"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="75"/>
         <source>None</source>
         <translation>无</translation>
     </message>
@@ -3459,7 +3459,7 @@ rather than per whole sample). Not implemented under Metal
         <translation>仅渲染画面的一部分(--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="80"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="81"/>
         <source>⚠ Live Preview uses the Metal progressive path tracer directly - none of the settings on this tab apply to it, except the &quot;Live Preview Settings&quot; group below.</source>
         <translation>⚠ 实时预览直接使用 Metal 渐进式路径追踪器：除下方的“实时预览设置”组外，此选项卡上的设置都不适用于它。</translation>
     </message>
@@ -3761,14 +3761,13 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>在 GPU 渲染过程内部启用额外的正确性检查，用来发现某些类型的错误，否则这些错误会悄悄生成错误的图像或导致不可预测的崩溃。这是为开发渲染器 GPU 代码的人准备的调试辅助功能，对正常渲染没有好处：它有实际的性能开销，也不会改变正确渲染的外观。它专用于 OptiX GPU 后端（Windows）；Metal 没有对应功能，因此即使在 macOS 上把渲染器设为 GPU，它也保持灰色。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="989"/>
         <source>Runs an AI denoiser on the finished render to smooth out
 graininess, using extra information about each pixel&apos;s base
 color and surface direction to do a better job than a plain
 blur. OptiX GPU only, both GPU modes (recursive and wavefront
 each have their own denoiser) - not available under Metal
 (macOS GPU rendering).</source>
-        <translation>对完成的渲染运行 AI 降噪器以平滑颗粒感，它会利用每个像素的基础颜色和表面朝向等额外信息，效果比简单模糊更好。仅限 OptiX GPU，两种 GPU 模式都支持（递归和波前各有自己的降噪器）；Metal（macOS GPU 渲染）下不可用。</translation>
+        <translation type="vanished">对完成的渲染运行 AI 降噪器以平滑颗粒感，它会利用每个像素的基础颜色和表面朝向等额外信息，效果比简单模糊更好。仅限 OptiX GPU，两种 GPU 模式都支持（递归和波前各有自己的降噪器）；Metal（macOS GPU 渲染）下不可用。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1072"/>
@@ -3955,6 +3954,11 @@ Purely informational: it never changes the rendered image, it just tells you wha
         <translation>AI 降噪器 (Open Image Denoise)</translation>
     </message>
     <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="979"/>
+        <source>AI denoiser (OptiX on the GPU, Open Image Denoise on the CPU)</source>
+        <translation>AI 降噪器（GPU 使用 OptiX，CPU 使用 Open Image Denoise）</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="983"/>
         <source>Runs Intel&apos;s Open Image Denoise on the finished render to smooth
 out graininess - a few samples per pixel then look like many.
@@ -3962,6 +3966,21 @@ Works with the GPU (Metal) renderer. The first time you tick it
 you are asked to download the denoiser (about 50 MB, once).</source>
         <translation>对完成的渲染运行 Intel 的 Open Image Denoise 来平滑噪点，每像素少量采样也能看起来像大量采样。
 适用于 GPU (Metal) 渲染器。首次勾选时会提示下载降噪器（约 50 MB，仅一次）。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="989"/>
+        <source>Runs an AI denoiser on the finished render to smooth out
+graininess. With the GPU renderer it is NVIDIA&apos;s OptiX denoiser
+(both GPU modes, guided by each pixel&apos;s base color and surface
+direction). With the CPU renderer it is Intel&apos;s Open Image
+Denoise, on the default path tracer: the first time you tick it
+you are asked to download it (about 57 MB, once).</source>
+        <translation>对已完成的渲染运行 AI 降噪器，以消除颗粒感。
+使用 GPU 渲染器时为 NVIDIA 的 OptiX 降噪器
+（两种 GPU 模式，由每个像素的基础颜色和表面方向引导）。
+使用 CPU 渲染器时为 Intel 的 Open Image Denoise，
+用于默认路径追踪器：首次勾选时
+会提示下载（约 57 MB，仅需一次）。</translation>
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1004"/>
@@ -4044,7 +4063,7 @@ Off by default (the full frame). If a loaded .pbrt scene file already requests i
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1175"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="481"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="485"/>
         <source>Depth of Field</source>
         <translation>景深</translation>
     </message>
@@ -4077,7 +4096,7 @@ Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loa
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1213"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="665"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="669"/>
         <source>Aperture:</source>
         <translation>光圈：</translation>
     </message>
@@ -4088,7 +4107,7 @@ Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loa
     </message>
     <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1225"/>
-        <location filename="../mainwindow_tabs_render_live.cpp" line="682"/>
+        <location filename="../mainwindow_tabs_render_live.cpp" line="686"/>
         <source>Focus Distance:</source>
         <translation>对焦距离：</translation>
     </message>
@@ -4132,37 +4151,37 @@ Off by default (genuinely random every render).</source>
         <translation>用于播种渲染随机数生成器的具体整数。仅当上方勾选了“可复现渲染”时才生效——相同的种子在相同的场景/设置下，总会产生像素完全相同的噪点。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="116"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="117"/>
         <source>Render Options</source>
         <translation>渲染选项</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="128"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="129"/>
         <source>Saved, but the scene list could not list it until the program is restarted.</source>
         <translation>已保存，但在重启程序之前场景列表无法列出它。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="132"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
         <source>Added to the scene list as %1 (Settings tab).</source>
         <translation>已作为 %1 添加到场景列表（“设置”标签页）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="134"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="135"/>
         <source>Scene Builder</source>
         <translation>场景构建器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="368"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="335"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>在资源管理器中显示当前标签页渲染结果所在的文件夹</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="380"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="347"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>使用系统查看器打开当前标签页的渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="406"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="373"/>
         <source>Preview</source>
         <translation>预览</translation>
     </message>
@@ -4191,7 +4210,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>请先选择一个场景</translation>
     </message>
     <message>
-        <location filename="../mainwindow_denoiser.cpp" line="29"/>
+        <location filename="../mainwindow_denoiser.cpp" line="38"/>
         <location filename="../mainwindow_live_preview.cpp" line="263"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
@@ -4218,13 +4237,13 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>[实时预览] 错误：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="449"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="416"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;为什么看起来是这样&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="575"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="542"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
         <location filename="../mainwindow_tabs_settings_groups.cpp" line="277"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
@@ -4232,12 +4251,12 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>暂停</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
         <source>Play</source>
         <translation>播放</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="598"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="565"/>
         <source>Video playback error (%1): %2</source>
         <translation>视频播放错误 (%1):%2</translation>
     </message>
@@ -7069,7 +7088,7 @@ Check that you have permission to write there and that the disk is not full.</so
 <context>
     <name>denoiser_installer</name>
     <message>
-        <location filename="../denoiser_installer.cpp" line="76"/>
+        <location filename="../denoiser_installer.cpp" line="103"/>
         <source>about %1 MB</source>
         <translation>约 %1 MB</translation>
     </message>
@@ -7077,42 +7096,47 @@ Check that you have permission to write there and that the disk is not full.</so
 <context>
     <name>denoiser_installer::Installer</name>
     <message>
-        <location filename="../denoiser_installer.cpp" line="86"/>
+        <location filename="../denoiser_installer.cpp" line="113"/>
         <source>This computer cannot install the denoiser here.</source>
         <translation>此电脑无法在此安装降噪器。</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="102"/>
+        <location filename="../denoiser_installer.cpp" line="129"/>
         <source>Downloading the denoiser...</source>
         <translation>正在下载降噪器...</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="117"/>
+        <location filename="../denoiser_installer.cpp" line="145"/>
         <source>Unpacking the denoiser...</source>
         <translation>正在解压降噪器...</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="125"/>
+        <location filename="../denoiser_installer.cpp" line="163"/>
         <source>Could not unpack the download: %1</source>
         <translation>无法解压下载内容：%1</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="131"/>
+        <location filename="../denoiser_installer.cpp" line="169"/>
         <source>The download did not contain the denoiser library.</source>
         <translation>下载内容中不包含降噪器库。</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="139"/>
+        <location filename="../denoiser_installer.cpp" line="177"/>
+        <source>Could not install the denoiser: its files could not be copied.</source>
+        <translation>无法安装降噪器：无法复制其文件。</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="185"/>
         <source>Could not install the denoiser: %1</source>
         <translation>无法安装降噪器：%1</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="147"/>
+        <location filename="../denoiser_installer.cpp" line="194"/>
         <source>The denoiser files are not where they should be after installing.</source>
         <translation>安装后降噪器文件不在应有的位置。</translation>
     </message>
     <message>
-        <location filename="../denoiser_installer.cpp" line="150"/>
+        <location filename="../denoiser_installer.cpp" line="197"/>
         <source>The denoiser is installed.</source>
         <translation>降噪器已安装。</translation>
     </message>

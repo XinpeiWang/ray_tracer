@@ -18,6 +18,7 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 * **Material presets in the Scene Builder**: a Preset list at the top of a material's properties sets gold, copper, chrome, brushed steel, clear or frosted glass, water, diamond, red or blue plastic, car paint, ceramic, wax, leaf, paper and more in one step; the values stay editable afterwards. [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
 * **Pictures in the Scene Builder**: a diffuse or glossy-paint material can take an image instead of a colour, on any shape (on a quad the picture is upright and the quad takes its shape). Meshes can be `.obj` as well as `.ply`.
 * **Object from a photo** (Scene Builder, Add menu): one photo becomes a textured 3D mesh, made on your own computer by the open TripoSR model (nothing is uploaded). It is an optional helper set up once with `scripts/setup_photo_to_mesh.ps1` (about 5 GB; an NVIDIA card makes a photo take about half a minute), and the Diagnostics tab lists what it has and what is missing, with an **Install Photo Helper...** button that downloads and installs the missing parts (Windows). The shape is a guess, the back is invented. [docs/PHOTO_TO_SCENE.md](docs/PHOTO_TO_SCENE.md) also covers bringing in a many-photo scan from COLMAP or Meshroom.
+* **AI denoising on the CPU** (`--cpu --denoise`, or the **AI denoiser** box with the CPU renderer): Intel's Open Image Denoise runs on the linear image before tone mapping, so `.exr` output is denoised too. It works on Windows as well as a Mac: the GUI offers to download the library (about 57 MB, checked against a pinned checksum) the first time, and the command line finds it in your user folder or `RT_OIDN_DIR`. Measured at 8 samples per pixel against a 1024-sample reference, the error drops 2.8x to 6x on the Cornell scenes. `--denoise-guides` also gives it each pixel's surface colour and normal: better on matte, textured scenes (checkers 1.8x), worse on glossy ones, so it is off by default. [docs/DENOISING.md](docs/DENOISING.md).
 * The command line takes a `.pbrt` path where a scene id goes (`ray_tracer.exe --cpu 800 64 8 my-scene.pbrt`) and `--height N` for a non-square picture.
 
 ### Changed
@@ -26,6 +27,10 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 * **AI denoising on a Mac.** The Metal renderer can now denoise with Intel's Open Image Denoise (`--denoise`, or the **AI denoiser** box in Render Options): a render with a handful of samples per pixel comes out clean. The library (~50 MB) is not inside the app: ticking the box offers to download it once from OIDN's own release page (checksum-verified). See [docs/DENOISING.md](docs/DENOISING.md).
 * `--maxcomponentvalue` (the explicit firefly clamp) now works on Metal too.
 * **Render passes (AOVs).** `--aovs` (or **Also write render passes** in Render Options) writes albedo, normal, depth, uv and a coverage alpha next to the image: merged into the same file for an `.exr` output (a multilayer EXR with the render's R G B), else into `<name>.aovs.exr`. Works with every renderer. See [docs/RENDER_PASSES.md](docs/RENDER_PASSES.md).
+
+* **One table of what each renderer reads** (`src/shared/backend_capabilities.h`): the command line's "has no effect" warnings and the greyed-out Render Options controls both come from it. This fixed `--adaptive` being treated as ignored on Metal, which does read it. [docs/BACKEND_SUPPORT.md](docs/BACKEND_SUPPORT.md) is the same facts for people: CPU, both OptiX renderers and Metal in one table.
+* **Live Preview controls follow the renderer's real features**, not the platform: the library says which optional features it has (`realtime_backend_features()`), and its C interface is declared once (`src/shared/realtime_api.h`) instead of copied into the GUI and each library.
+* **The Scene Builder log is more complete**: a deleted object is named correctly, the last edit is written before a render and on quit, restoring the unsaved scene and a failing backup write are logged, and so are selections, the 3D tool keys, scene problems and meshes the 3D view cannot read. [docs/LOGGING.md](docs/LOGGING.md).
 
 ### Scenes
 
@@ -61,6 +66,9 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 * The slow test tier uses 8.5 GB instead of 23 GB; incremental builds and a fast test tier were added.
 * A `LICENSE` (MIT), [third-party notices](THIRD_PARTY_NOTICES.md), a README gallery, a CPU-only quick start, [CONTRIBUTING](CONTRIBUTING.md), issue and pull request templates, and a code of conduct.
 * A fresh clone is clean again (stale Git LFS rules removed).
+* **`scripts/backend_parity.py`** compares the CPU with both OptiX renderers the way the Mac's Metal sweep does (same seed, small image, whole-image, per-channel and a 6x6 block grid): 195 of 206 scene/backend pairs pass, 5 are marginal, and 3 scenes are documented known gaps (`scripts/backend_parity_known_gaps.txt`).
+* **A Windows GUI job** (`.github/workflows/windows-gui.yml`) builds the CPU-only GUI and runs the headless GUI smoke test, like the macOS release workflow.
+* **The big files are split by topic** (no code changed; seeded renders are byte-identical on the CPU, both OptiX renderers): no source file is over 2,000 lines now, and the largest functions went from about 1,400 lines to a few hundred.
 
 ### Known gaps
 
