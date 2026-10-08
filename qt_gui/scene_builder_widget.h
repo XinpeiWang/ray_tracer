@@ -53,6 +53,7 @@ public:
 	// The 3D view, for the self-test: show it (or go back to the 2D views), drag an object on the floor, or along one axis arrow of the selected item.
 	void show3dView(bool on);
 	bool dragObject3dForTest(int index, const QPointF &deltaPx);
+	QPointF shiftPanBackground3dForTest(int index, const QPointF &deltaPx);
 	bool dragAxis3dForTest(int index, int axis, double pixels);
 	bool dragRotate3dForTest(int index, int axis, double degrees);
 	bool dragScale3dForTest(int index, int axis, double ratio);

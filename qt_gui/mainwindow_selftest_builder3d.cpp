@@ -34,6 +34,12 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 		check(std::fabs(ball1.x * 4 - std::round(ball1.x * 4)) < 1e-9 && std::fabs(ball1.z * 4 - std::round(ball1.z * 4)) < 1e-9, "its new position is on the grid");
 		check(ball1.x != ball0.x || ball1.z != ball0.z, "it moved on the floor");
 		check(sb->undo() && sb->document().objects[1].position.x == ball0.x && sb->document().objects[1].position.z == ball0.z, "one undo puts it back");
+		{
+			// Shift-drag on the background pans (the trackpad's way, with no right button): the scene follows the mouse instead of turning.
+			const QPointF moved = sb->shiftPanBackground3dForTest(1, QPointF(60, 30));
+			log(QString("Shift-drag moved the ball on screen by %1, %2").arg(moved.x()).arg(moved.y()));
+			check(moved.x() > 35 && moved.x() < 90 && moved.y() > 15 && moved.y() < 45, "a Shift-drag on the background pans the 3D view (the scene follows the mouse)");
+		}
 		const char *names[3] = {"X", "Y", "Z"};
 		for (int axis = 0; axis < 3; ++axis) {
 			const scene_doc::Float3 before = sb->document().objects[2].position;

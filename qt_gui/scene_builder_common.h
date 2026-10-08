@@ -2,6 +2,7 @@
 // scene_builder_common.h - colour conversion and display names shared by the Scene Builder's layout view, property panel and widget.
 
 #include <QColor>
+#include <QKeySequence>
 #include <QObject>
 #include <QString>
 #include <QStringList>
@@ -50,6 +51,21 @@ inline QString shapeLabel(ShapeKind k) {
 	}
 	return QString();
 }
+// What this platform calls the key that overrides snapping (Alt on Windows, Option on a Mac), and a standard shortcut as the user's keyboard writes it
+// (Ctrl+Z, or the Command symbol on a Mac), so a tooltip never names a key that does nothing here.
+inline QString altKeyName() {
+#ifdef Q_OS_MAC
+	return QObject::tr("Option");
+#else
+	return QStringLiteral("Alt");
+#endif
+}
+inline QString shortcutText(QKeySequence::StandardKey key) { return QKeySequence(key).toString(QKeySequence::NativeText); }
+inline QString viewHint2d() { return QObject::tr("Wheel: zoom. Drag the background or right-drag: pan."); }
+inline QString viewHint3d() {
+	return QObject::tr("Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.");
+}
+
 inline QString propLabel(scene_doc::PropKind k) {
 	switch (k) {
 		case scene_doc::PropKind::Table: return QObject::tr("Table");

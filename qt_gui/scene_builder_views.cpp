@@ -19,6 +19,8 @@
 
 #include <cmath>
 
+using namespace scene_builder_ui;
+
 using scene_doc::Float3;
 
 void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayout) {
@@ -31,9 +33,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	m_viewStack->addWidget(m_view);
 	m_viewStack->addWidget(m_view3d);
 	m_viewHint = new QLabel(layoutBox);
-	const QString hint2d = tr("Wheel: zoom. Right-drag: pan.");
-	const QString hint3d = tr("Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.");
-	m_viewHint->setText(hint2d);
+	m_viewHint->setText(viewHint2d());
 	m_gizmoBar = new QWidget(layoutBox);  // the Move / Rotate / Scale tools of the 3D view (W, E, R); shown with it
 	auto *gizmoLayout = new QHBoxLayout(m_gizmoBar);
 	gizmoLayout->setContentsMargins(0, 0, 0, 0);
@@ -65,10 +65,10 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		b->setChecked(pl.second == SceneLayoutView::Plane::Top);
 		planeGroup->addButton(b);
 		planeRow->addWidget(b);
-		connect(b, &QPushButton::clicked, this, [this, pl, hint2d]() {
+		connect(b, &QPushButton::clicked, this, [this, pl]() {
 			m_viewStack->setCurrentWidget(m_view);
 			m_view->setPlane(pl.second);
-			m_viewHint->setText(hint2d);
+			m_viewHint->setText(viewHint2d());
 			m_gizmoBar->setVisible(false);
 		});
 	}
@@ -78,15 +78,15 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	b3d->setToolTip(tr("Look at the scene from any side, and move things in 3D"));
 	planeGroup->addButton(b3d);
 	planeRow->addWidget(b3d);
-	connect(b3d, &QPushButton::clicked, this, [this, hint3d]() {
+	connect(b3d, &QPushButton::clicked, this, [this]() {
 		m_viewStack->setCurrentWidget(m_view3d);
-		m_viewHint->setText(hint3d);
+		m_viewHint->setText(viewHint3d());
 		m_gizmoBar->setVisible(true);
 	});
 
 	auto *snap = new QCheckBox(tr("Snap to grid"), layoutBox);
 	snap->setChecked(true);
-	snap->setToolTip(tr("Dragging moves things in steps of 0.25. Hold Alt to drag freely."));
+	snap->setToolTip(tr("Dragging moves things in steps of 0.25. Hold %1 to drag freely.").arg(altKeyName()));
 	connect(snap, &QCheckBox::toggled, this, [this](bool on) {
 		m_view->setSnap(on);
 		m_view3d->setSnap(on);
@@ -161,9 +161,11 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		auto *redoView = new QShortcut(QKeySequence::Redo, view);
 		redoView->setContext(Qt::WidgetShortcut);
 		connect(redoView, &QShortcut::activated, this, [this]() { redo(); });
-		auto *delView = new QShortcut(QKeySequence::Delete, view);
-		delView->setContext(Qt::WidgetShortcut);
-		connect(delView, &QShortcut::activated, this, [this]() { deleteSelected(); });
+		for (const QKeySequence &key : {QKeySequence(QKeySequence::Delete), QKeySequence(Qt::Key_Backspace)}) {   // Backspace is a Mac's "delete" key
+			auto *delView = new QShortcut(key, view);
+			delView->setContext(Qt::WidgetShortcut);
+			connect(delView, &QShortcut::activated, this, [this]() { deleteSelected(); });
+		}
 	}
 }
 
@@ -190,14 +192,23 @@ void SceneBuilderWidget::frameViews() {
 // ---- self-test helpers for the 3D view (real mouse events, like dragObjectForTest for the 2D one) -----------------------------------------
 void SceneBuilderWidget::show3dView(bool on) {
 	m_viewStack->setCurrentWidget(on ? static_cast<QWidget *>(m_view3d) : static_cast<QWidget *>(m_view));
-	m_viewHint->setText(on ? tr("Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.")
-	                       : tr("Wheel: zoom. Right-drag: pan."));
+	m_viewHint->setText(on ? viewHint3d() : viewHint2d());
 	m_gizmoBar->setVisible(on);
 }
 
-static void sendMouse(QWidget *w, QEvent::Type type, const QPointF &pos, Qt::MouseButton button, Qt::MouseButtons buttons) {
-	QMouseEvent e(type, pos, w->mapToGlobal(pos), button, buttons, Qt::NoModifier);
+static void sendMouse(QWidget *w, QEvent::Type type, const QPointF &pos, Qt::MouseButton button, Qt::MouseButtons buttons, Qt::KeyboardModifiers mods = Qt::NoModifier) {
+	QMouseEvent e(type, pos, w->mapToGlobal(pos), button, buttons, mods);
 	QApplication::sendEvent(w, &e);
+}
+
+// A Shift-drag on empty background pans (an orbit would turn the scene instead): returns how far, in pixels, the object at `index` appeared to move.
+QPointF SceneBuilderWidget::shiftPanBackground3dForTest(int index, const QPointF &deltaPx) {
+	const QPointF before = m_view3d->itemScreenPos({SelKind::Object, index});
+	const QPointF start(6, 6);   // a corner of the view: nothing there
+	sendMouse(m_view3d, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton, Qt::ShiftModifier);
+	for (int step = 1; step <= 4; ++step) sendMouse(m_view3d, QEvent::MouseMove, start + deltaPx * (step / 4.0), Qt::NoButton, Qt::LeftButton, Qt::ShiftModifier);
+	sendMouse(m_view3d, QEvent::MouseButtonRelease, start + deltaPx, Qt::LeftButton, Qt::NoButton, Qt::ShiftModifier);
+	return m_view3d->itemScreenPos({SelKind::Object, index}) - before;
 }
 
 bool SceneBuilderWidget::dragObject3dForTest(int index, const QPointF &deltaPx) {

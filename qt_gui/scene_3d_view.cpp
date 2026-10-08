@@ -655,8 +655,8 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 	if (e->button() != Qt::LeftButton) return;
 	const Hit h = hitTest(px);
 	if (h.kind == Hit::Kind::None) {
-		// A click on nothing deselects; a drag on nothing orbits.
-		m_mode = Mode::Orbit;
+		// A click on nothing deselects; a drag on nothing orbits, or pans with Shift (for a trackpad, where a right-drag is awkward).
+		m_mode = (e->modifiers() & Qt::ShiftModifier) ? Mode::Pan : Mode::Orbit;
 		emit selectionRequested(BuilderSelection{});
 		return;
 	}
