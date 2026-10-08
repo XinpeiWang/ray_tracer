@@ -63,6 +63,21 @@ inline bool fileExists(const std::string& p) {
 	return true;
 }
 
+// An environment variable's value, "" if unset. (_dupenv_s on Windows: MSVC rejects getenv in a project without _CRT_SECURE_NO_WARNINGS.)
+inline std::string envValue(const char* name) {
+#ifdef _WIN32
+	char* value = nullptr;
+	size_t length = 0;
+	std::string out;
+	if (_dupenv_s(&value, &length, name) == 0 && value) out = value;
+	std::free(value);
+	return out;
+#else
+	const char* value = std::getenv(name);
+	return value ? std::string(value) : std::string();
+#endif
+}
+
 inline const char* libraryName() {
 #if defined(__APPLE__)
 	return "libOpenImageDenoise.dylib";
@@ -82,8 +97,8 @@ inline std::vector<std::string> candidates() {
 		out.push_back(dir + "/" + name);
 		out.push_back(dir + "/lib/" + name);
 	};
-	if (const char* e = std::getenv("RT_OIDN_DIR")) addDir(e);
-	if (const char* u = std::getenv("RAY_TRACER_USER_ASSETS")) addDir(std::string(u) + "/denoiser");
+	addDir(envValue("RT_OIDN_DIR"));
+	if (const std::string u = envValue("RAY_TRACER_USER_ASSETS"); !u.empty()) addDir(u + "/denoiser");
 	addDir("/opt/homebrew");
 	addDir("/usr/local");
 	return out;
