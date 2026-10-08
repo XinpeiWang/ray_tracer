@@ -39,6 +39,8 @@
 #include <QSplitter>
 #include <QSignalBlocker>
 #include <QQueue>
+#include <QTableView>
+#include "render_queue_model.h"
 #include <QListWidget>
 #include <QToolButton>
 #include <QScrollArea>
@@ -221,6 +223,8 @@ public:
 	void runSelfTest(const QString &mode, const QString &outPrefix);
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
 	void selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);      // (mainwindow_selftest_builder3d.cpp)
+	void runQueueSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);   // mainwindow_selftest_builder3d.cpp
+	void selfTestRenderQueue(const std::function<void(bool, const QString &)> &check);
 	void selfTestCrashRecovery(const std::function<void(bool, const QString &)> &check);
 	void selfTestWindowGeometry(const std::function<void(bool, const QString &)> &check);
 	void selfTestWheelGuard(const std::function<void(bool, const QString &)> &check);
@@ -258,8 +262,12 @@ private slots:
 	void onRenderComplete(bool success, const QString &message, double totalTime, const QString &outputPath);
 	void onLogMessage(const QString &message);
 	void onElapsedTick();        // fires every second during render to update status label
-	void onRemoveSelectedQueueItem();  // Removes the currently-selected row from m_renderQueue
-	void onClearQueue();               // Empties m_renderQueue entirely
+	void onRemoveSelectedQueueItem();  // Removes the selected waiting or finished job
+	void onMoveQueueItemUp();
+	void onMoveQueueItemDown();
+	void onRetryQueueItem();           // Queues a failed or cancelled job again
+	void onClearFinishedJobs();        // Forgets the history (done, failed, cancelled)
+	void onClearQueue();               // Removes every waiting job
 	void onRunDiagnosticsClicked();
 	void onDiagnosticsReportReady(const QString &report);
 	void onDiagnosticsFailed(const QString &message);
@@ -1850,19 +1858,25 @@ private:
 	// case is just "enqueue one job into an empty, immediately-idle queue",
 	// so there is no separate "start now" code path to keep in sync with
 	// the queued one.
-	QQueue<RenderJob> m_renderQueue;
+	// Waiting, running and finished jobs, as a table model (render_queue_model.h, over src/shared/job_queue.h): the Progress tab shows what became of the
+	// last renders as well as what is still to come.
+	RenderQueueModel *m_queueModel = nullptr;
+	int m_currentQueueId = 0;   // the queue row of the job that is rendering now (0 when idle)
 	// The job actually passed to the RenderController currently running (or
 	// most recently run). onRenderComplete() reads its videoMode/sceneId/
 	// displayTitle from here, not from the live UI widgets - once renders
 	// can queue, the user may have already changed the scene/mode combo for
 	// the *next* job by the time an earlier one's completion signal arrives.
 	RenderJob m_currentJob;
-	InfoGroupBox *m_queueGroup = nullptr;       // Hidden whenever m_renderQueue is empty
-	QListWidget *m_queueListWidget = nullptr;
+	InfoGroupBox *m_queueGroup = nullptr;
+	QTableView *m_queueView = nullptr;
+	QPushButton *m_queueRemoveButton = nullptr, *m_queueUpButton = nullptr, *m_queueDownButton = nullptr, *m_queueRetryButton = nullptr;
+	QPushButton *m_queueClearFinishedButton = nullptr, *m_queueClearButton = nullptr;
+	void updateQueueButtons();                // enables each button for the selected row's state
 	RenderJob captureRenderJob();             // Snapshots every render field currently in the UI
 	void startRenderJob(const RenderJob &job); // Builds a RenderController for `job` and starts it
 	void processQueueIfIdle();                // Dequeues and starts the front job if nothing is running
-	void refreshQueuePanel();                 // Rebuilds m_queueListWidget from m_renderQueue
+	void refreshQueuePanel();                 // The panel's title and buttons follow the model
 	static QString describeRenderJob(const RenderJob &job); // One-line queue-row summary
 	// Shared by describeRenderJob(), describeRecentRenderEntry()
 	// (recent_renders.cpp), and refreshStatusBarInfo() (mainwindow_actions.cpp) -

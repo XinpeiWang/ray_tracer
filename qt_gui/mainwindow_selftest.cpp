@@ -163,6 +163,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		selfTestWheelGuard(check);
 		selfTestWindowGeometry(check);
 		selfTestCrashRecovery(check);
+		selfTestRenderQueue(check);
 		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
 		sb->newScene();
 		sb->selectObject(2);
@@ -218,6 +219,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	// RT_GUI_SELFTEST=photo: see mainwindow_selftest_photo.cpp
 	if (mode == "photo") { runPhotoSelfTest(log, shot); return; }
 	if (mode == "builder3d") { runBuilder3dSelfTest(log, shot); return; }
+	if (mode == "queue") { runQueueSelfTest(log, shot); return; }
 	if (mode == "installphoto") { runInstallPhotoSelfTest(log, shot); return; }
 
 	// RT_GUI_SELFTEST=diagnostics: runs the Diagnostics tab's action (the CLI report plus the GUI's Network section) and logs the

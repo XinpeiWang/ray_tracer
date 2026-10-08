@@ -167,7 +167,7 @@ void MainWindow::onRenderClicked() {
 	// separate "start immediately" branch whose behaviour could drift from
 	// the queued path. See processQueueIfIdle()'s own comment for what
 	// happens after a render this triggers actually finishes.
-	m_renderQueue.enqueue(captureRenderJob());
+	m_queueModel->add(captureRenderJob());
 	refreshQueuePanel();
 	processQueueIfIdle();
 }
@@ -438,7 +438,7 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 	m_progressBar->setValue(0);
 	startProgressGlow();
 	QString statusText = job.videoMode ? tr("Rendering video frames...") : tr("Rendering...");
-	if (!m_renderQueue.isEmpty()) statusText += tr(" (%1 more queued)").arg(m_renderQueue.size());
+	if (m_queueModel->hasWaiting()) statusText += tr(" (%1 more queued)").arg(m_queueModel->waitingCount());
 	m_statusLabel->setText(statusText);
 
 	// Start elapsed timer. Its 1 Hz tick doubles as the ETA sampling clock,
@@ -466,8 +466,11 @@ void MainWindow::startRenderJob(const RenderJob &job) {
 }
 
 void MainWindow::processQueueIfIdle() {
-	if (m_isRendering || m_renderQueue.isEmpty()) return;
-	RenderJob job = m_renderQueue.dequeue();
+	if (m_isRendering || !m_queueModel->hasWaiting()) return;
+	RenderJob job;
+	int id = 0;
+	if (!m_queueModel->takeNext(id, job)) return;
+	m_currentQueueId = id;
 	refreshQueuePanel();
 	startRenderJob(job);
 }
@@ -507,19 +510,54 @@ QString MainWindow::describeRenderJob(const RenderJob &job) {
 }
 
 void MainWindow::refreshQueuePanel() {
-	if (!m_queueGroup || !m_queueListWidget) return;
-	m_queueListWidget->clear();
-	for (const RenderJob &job : m_renderQueue) {
-		m_queueListWidget->addItem(describeRenderJob(job));
-	}
-	m_queueGroup->setTitle(tr("Render Queue (%1)").arg(m_renderQueue.size()));
+	if (!m_queueGroup || !m_queueModel) return;
+	m_queueGroup->setTitle(m_queueModel->hasWaiting() ? tr("Render Queue (%1 waiting)").arg(m_queueModel->waitingCount()) : tr("Render Queue"));
+	updateQueueButtons();
+}
+
+// Each button is available only where it means something: a running job is stopped with Stop, not removed; only waiting jobs move; only a failed or
+// cancelled one can be run again.
+void MainWindow::updateQueueButtons() {
+	if (!m_queueView || !m_queueModel) return;
+	const QModelIndex current = m_queueView->currentIndex();
+	const int row = current.isValid() ? current.row() : -1;
+	const job_queue::State state = m_queueModel->stateAt(row);
+	const bool has = row >= 0;
+	m_queueRemoveButton->setEnabled(has && state != job_queue::State::Running);
+	m_queueUpButton->setEnabled(has && state == job_queue::State::Waiting);
+	m_queueDownButton->setEnabled(has && state == job_queue::State::Waiting);
+	m_queueRetryButton->setEnabled(has && (state == job_queue::State::Failed || state == job_queue::State::Cancelled));
+	m_queueClearFinishedButton->setEnabled(m_queueModel->finishedCount() > 0);
+	m_queueClearButton->setEnabled(m_queueModel->hasWaiting());
 }
 
 void MainWindow::onRemoveSelectedQueueItem() {
-	if (!m_queueListWidget) return;
-	const int row = m_queueListWidget->currentRow();
-	if (row < 0 || row >= m_renderQueue.size()) return;
-	m_renderQueue.removeAt(row);
+	if (!m_queueView) return;
+	const int id = m_queueModel->idAt(m_queueView->currentIndex().row());
+	if (id && m_queueModel->remove(id)) refreshQueuePanel();
+}
+
+void MainWindow::onMoveQueueItemUp() {
+	const int id = m_queueModel->idAt(m_queueView->currentIndex().row());
+	if (id && m_queueModel->moveUp(id)) m_queueView->selectRow(m_queueModel->queue().rowOf(id));
+	refreshQueuePanel();
+}
+
+void MainWindow::onMoveQueueItemDown() {
+	const int id = m_queueModel->idAt(m_queueView->currentIndex().row());
+	if (id && m_queueModel->moveDown(id)) m_queueView->selectRow(m_queueModel->queue().rowOf(id));
+	refreshQueuePanel();
+}
+
+void MainWindow::onRetryQueueItem() {
+	const int id = m_queueModel->idAt(m_queueView->currentIndex().row());
+	if (!id || !m_queueModel->retry(id)) return;
+	refreshQueuePanel();
+	processQueueIfIdle();   // nothing running: it starts at once, like a new render would
+}
+
+void MainWindow::onClearFinishedJobs() {
+	m_queueModel->clearFinished();
 	refreshQueuePanel();
 }
 
@@ -527,15 +565,16 @@ void MainWindow::onClearQueue() {
 	// The one destructive, irreversible action in this app with no undo -
 	// worth a confirmation given "Clear Queue" sits right next to "Remove
 	// Selected" in the same row (mainwindow_tabs.cpp) and a misclick would
-	// silently discard every queued job's configuration. Skipped when the
-	// queue is already empty - nothing destructive to confirm.
-	if (m_renderQueue.isEmpty()) return;
+	// silently discard every queued job's configuration. Skipped when nothing
+	// is waiting - nothing destructive to confirm. Finished jobs and the one
+	// that is rendering are not touched (Clear Finished and Stop do those).
+	if (!m_queueModel->hasWaiting()) return;
 	const auto choice = QMessageBox::question(this, tr("Clear Render Queue"),
-		tr("Remove all %n queued render(s)? This can't be undone.", "", m_renderQueue.size()),
+		tr("Remove all %n queued render(s)? This can't be undone.", "", m_queueModel->waitingCount()),
 		QMessageBox::Yes | QMessageBox::No, QMessageBox::No);
 	if (choice != QMessageBox::Yes) return;
 
-	m_renderQueue.clear();
+	m_queueModel->clearWaiting();
 	refreshQueuePanel();
 }
 
@@ -688,7 +727,7 @@ QStringList MainWindow::eligibleThumbnailIds(const QString &category) const {
 // of reusing m_renderController/m_renderQueue precisely so it never needs to
 // cooperate with those at all, only avoid running alongside them.
 void MainWindow::onGenerateThumbnailsClicked() {
-	if (m_isRendering || !m_renderQueue.isEmpty()) {
+	if (m_isRendering || m_queueModel->hasWaiting()) {
 		setStatusWarning(tr("Can't generate thumbnails while a render is in progress or queued."));
 		return;
 	}
@@ -1533,6 +1572,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	// comment. Everything below reads finishedJob, never m_currentJob
 	// directly.
 	const RenderJob finishedJob = m_currentJob;
+	const int finishedQueueId = m_currentQueueId;   // the queue row to give the result to (the next job will take m_currentQueueId over)
+	m_currentQueueId = 0;
 
 	m_isRendering = false;
 	m_renderButton->setEnabled(true);
@@ -1563,6 +1604,11 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	// the translation happens only here, for display.
 	const QString shownMessage = stoppedByUser ? tr("Render stopped by user")
 		: abandonedByUser ? tr("Render abandoned by user") : message;
+
+	if (finishedQueueId)
+		m_queueModel->finish(finishedQueueId, success ? job_queue::State::Done : userEndedWithoutFailure ? job_queue::State::Cancelled : job_queue::State::Failed,
+		                     totalTime, shownMessage);
+	refreshQueuePanel();
 
 	// A failed render leaves the taskbar button red so the outcome is visible
 	// without switching to the window; anything else clears it. Leaving a
@@ -1679,8 +1725,8 @@ void MainWindow::onRenderComplete(bool success, const QString &message, double t
 	// form as one more job at the back - see onRenderClicked()'s own comment.
 	if (!stoppedByUser) {
 		processQueueIfIdle();
-	} else if (!m_renderQueue.isEmpty()) {
-		m_statusLabel->setText(tr("Stopped - %1 more queued (click Start Render to resume)").arg(m_renderQueue.size()));
+	} else if (m_queueModel->hasWaiting()) {
+		m_statusLabel->setText(tr("Stopped - %1 more queued (click Start Render to resume)").arg(m_queueModel->waitingCount()));
 	}
 }
 

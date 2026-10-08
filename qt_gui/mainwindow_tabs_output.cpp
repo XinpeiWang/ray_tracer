@@ -38,6 +38,8 @@
 #include <QStandardPaths>
 #include <QFile>
 #include <QToolButton>
+#include <QHeaderView>
+#include <QTableView>
 #include <QSettings>
 #include <QStatusBar>
 #include <QWheelEvent>
@@ -96,37 +98,58 @@ void MainWindow::createProgressTab() {
 	// time the queue drains, rather than like a stable panel).
 	m_queueGroup = new InfoGroupBox(tr("Render Queue"), progressWidget);
 	m_queueGroup->setInfoIcon(createInfoIcon(
-		tr("Jobs waiting their turn behind the one currently rendering - "
-		"clicking Render while something is already in progress adds "
-		"another job here instead of interrupting it. Waiting jobs start "
-		"automatically, one after another, as each one finishes.")));
+		tr("Every render of this session, one row each: waiting, running, and what became of the finished ones. "
+		"Clicking Render while something is already in progress adds another job here instead of interrupting it; "
+		"waiting jobs start automatically, one after another, as each one finishes. Waiting jobs can be moved up or down, "
+		"and a failed or cancelled one can be run again.")));
 	QVBoxLayout *queueLayout = new QVBoxLayout(m_queueGroup);
 
-	m_queueListWidget = new QListWidget(m_queueGroup);
-	m_queueListWidget->setSelectionMode(QAbstractItemView::SingleSelection);
-	m_queueListWidget->setMaximumHeight(120);
+	m_queueModel = new RenderQueueModel(
+		[](const RenderJob &job) { return MainWindow::rendererLabel(job.useGPU, job.useWavefront); },
+		[](const RenderJob &job) { return MainWindow::describeRenderJob(job); }, this);
+	m_queueView = new QTableView(m_queueGroup);
+	m_queueView->setModel(m_queueModel);
+	m_queueView->setSelectionBehavior(QAbstractItemView::SelectRows);
+	m_queueView->setSelectionMode(QAbstractItemView::SingleSelection);
+	m_queueView->setEditTriggers(QAbstractItemView::NoEditTriggers);
+	m_queueView->setShowGrid(false);
+	m_queueView->setMaximumHeight(170);
+	m_queueView->setMinimumHeight(90);
+	m_queueView->verticalHeader()->hide();
+	m_queueView->verticalHeader()->setDefaultSectionSize(24);
+	m_queueView->horizontalHeader()->setStretchLastSection(false);
+	m_queueView->horizontalHeader()->setSectionResizeMode(QHeaderView::ResizeToContents);
+	m_queueView->horizontalHeader()->setSectionResizeMode(RenderQueueModel::SceneColumn, QHeaderView::Stretch);
 	// Clicking empty space below the rows otherwise leaves whatever was
 	// selected stuck selected - see ListEmptyAreaDeselectFilter's comment.
-	m_queueListWidget->viewport()->installEventFilter(new ListEmptyAreaDeselectFilter(m_queueListWidget));
-	queueLayout->addWidget(m_queueListWidget);
+	m_queueView->viewport()->installEventFilter(new ListEmptyAreaDeselectFilter(m_queueView));
+	queueLayout->addWidget(m_queueView);
 
+	auto queueButton = [this](const QString &text, const QString &tip, void (MainWindow::*slot)()) {
+		auto *b = new QPushButton(text, m_queueGroup);
+		b->setToolTip(tip);
+		connect(b, &QPushButton::clicked, this, slot);
+		return b;
+	};
 	QHBoxLayout *queueButtonLayout = new QHBoxLayout();
-	QPushButton *removeQueueItemButton = new QPushButton(tr("Re&move Selected"), m_queueGroup);
-	removeQueueItemButton->setToolTip(tr("Remove the selected job from the render queue"));
-	connect(removeQueueItemButton, &QPushButton::clicked, this, &MainWindow::onRemoveSelectedQueueItem);
-	// Discards every queued job at once (unlike removeQueueItemButton above,
+	m_queueRemoveButton = queueButton(tr("Re&move Selected"), tr("Remove the selected job from the list (a running job is stopped with Stop)"), &MainWindow::onRemoveSelectedQueueItem);
+	m_queueUpButton = queueButton(tr("Move &Up"), tr("Run the selected waiting job earlier"), &MainWindow::onMoveQueueItemUp);
+	m_queueDownButton = queueButton(tr("Move &Down"), tr("Run the selected waiting job later"), &MainWindow::onMoveQueueItemDown);
+	m_queueRetryButton = queueButton(tr("&Retry"), tr("Queue the selected failed or cancelled job again"), &MainWindow::onRetryQueueItem);
+	m_queueClearFinishedButton = queueButton(tr("Clear &Finished"), tr("Forget the jobs that are done, failed or cancelled"), &MainWindow::onClearFinishedJobs);
+	// Discards every waiting job at once (unlike m_queueRemoveButton above,
 	// which only drops the one job you selected), so it gets the danger
 	// styling too.
-	QPushButton *clearQueueButton = new QPushButton(tr("Clear &Queue"), m_queueGroup);
-	clearQueueButton->setObjectName("dangerAction");
-	clearQueueButton->setToolTip(tr("Remove every job from the render queue"));
-	connect(clearQueueButton, &QPushButton::clicked, this, &MainWindow::onClearQueue);
-	applyElevation(clearQueueButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
-	clearQueueButton->installEventFilter(
-		new HoverLiftFilter(clearQueueButton, 14, 22, 6, /*idlePulse=*/false, clearQueueButton));
-	queueButtonLayout->addWidget(removeQueueItemButton);
-	queueButtonLayout->addWidget(clearQueueButton);
+	m_queueClearButton = queueButton(tr("Clear &Queue"), tr("Remove every waiting job from the render queue"), &MainWindow::onClearQueue);
+	m_queueClearButton->setObjectName("dangerAction");
+	applyElevation(m_queueClearButton, /*blurRadius=*/14, /*offsetY=*/3, /*alpha=*/90);
+	m_queueClearButton->installEventFilter(
+		new HoverLiftFilter(m_queueClearButton, 14, 22, 6, /*idlePulse=*/false, m_queueClearButton));
+	for (QPushButton *b : {m_queueRemoveButton, m_queueUpButton, m_queueDownButton, m_queueRetryButton, m_queueClearFinishedButton, m_queueClearButton}) queueButtonLayout->addWidget(b);
 	queueLayout->addLayout(queueButtonLayout);
+	connect(m_queueView->selectionModel(), &QItemSelectionModel::currentChanged, this, [this]() { updateQueueButtons(); });
+	connect(m_queueModel, &RenderQueueModel::countsChanged, this, [this]() { refreshQueuePanel(); });
+	updateQueueButtons();
 
 	layout->addWidget(m_queueGroup);
 	layout->addStretch(1);
