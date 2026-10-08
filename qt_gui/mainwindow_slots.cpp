@@ -549,6 +549,7 @@ void MainWindow::onRunDiagnosticsClicked() {
 		m_diagTextEdit->setPlainText(tr("Running diagnostics..."));
 	}
 	if (m_runDiagnosticsButton) m_runDiagnosticsButton->setEnabled(false);
+	if (m_installPhotoHelperButton) m_installPhotoHelperButton->setEnabled(false);
 
 	m_diagnosticsRunner = new DiagnosticsRunner(this);
 	connect(m_diagnosticsRunner, &DiagnosticsRunner::reportReady,
@@ -612,6 +613,7 @@ void MainWindow::startPhotoHelperCheck() {
 				rebuildDiagPane();
 			}
 			if (m_runDiagnosticsButton && !diagnosticsBusy()) m_runDiagnosticsButton->setEnabled(true);
+			updateInstallPhotoButton();
 		});
 	}
 	m_photoCheck->start();
@@ -622,6 +624,7 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 	// m_lastDiagReport keeps a later theme change from trying to recolour
 	// a report that isn't showing anymore.
 	m_lastDiagReport.clear();
+	updateInstallPhotoButton();
 	if (m_diagTextEdit) m_diagTextEdit->setPlainText(tr("Diagnostics failed:\n\n%1").arg(message));
 }
 

@@ -282,6 +282,13 @@ void MainWindow::createDiagnosticsTab() {
 	m_runDiagnosticsButton->setStyleSheet(diagBtnStyle);
 	connect(m_runDiagnosticsButton, &QPushButton::clicked, this, &MainWindow::onRunDiagnosticsClicked);
 
+	// Enabled by updateInstallPhotoButton() once a report shows the optional photo helper is missing something.
+	m_installPhotoHelperButton = new QPushButton(tr("&Install Photo Helper..."));
+	icon_tint::apply(m_installPhotoHelperButton, ":/icons/save.svg", icon_tint::Role::Body, m_activeTheme.textBody);
+	m_installPhotoHelperButton->setStyleSheet(diagBtnStyle);
+	connect(m_installPhotoHelperButton, &QPushButton::clicked, this, &MainWindow::onInstallPhotoHelperClicked);
+	updateInstallPhotoButton();
+
 	QPushButton *copyButton = new QPushButton(tr("&Copy All"));
 	icon_tint::apply(copyButton, ":/icons/copy.svg", icon_tint::Role::Body, m_activeTheme.textBody);
 	copyButton->setStyleSheet(diagBtnStyle);
@@ -293,6 +300,7 @@ void MainWindow::createDiagnosticsTab() {
 	connect(saveButton, &QPushButton::clicked, this, &MainWindow::saveDiagReportToFile);
 
 	btnLayout->addWidget(m_runDiagnosticsButton);
+	btnLayout->addWidget(m_installPhotoHelperButton);
 	btnLayout->addStretch();
 	btnLayout->addWidget(copyButton);
 	btnLayout->addWidget(saveButton);

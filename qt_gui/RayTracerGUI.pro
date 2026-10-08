@@ -44,6 +44,7 @@ SOURCES += \
 	mainwindow_tabs_render_live.cpp \
 	mainwindow_selftest.cpp \
 	mainwindow_selftest_photo.cpp \
+	mainwindow_photo_install.cpp \
 	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \

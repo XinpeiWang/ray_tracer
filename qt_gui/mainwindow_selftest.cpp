@@ -194,6 +194,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 
 	// RT_GUI_SELFTEST=photo: see mainwindow_selftest_photo.cpp
 	if (mode == "photo") { runPhotoSelfTest(log, shot); return; }
+	if (mode == "installphoto") { runInstallPhotoSelfTest(log, shot); return; }
 
 	// RT_GUI_SELFTEST=diagnostics: runs the Diagnostics tab's action (the CLI report plus the GUI's Network section) and logs the
 	// finished report. RT_ASSET_BASE_URL can point the network check at a local or dead address.

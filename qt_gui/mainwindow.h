@@ -75,6 +75,7 @@ namespace SceneMetadataClient { struct SceneMetadata; }
 class RealtimePreviewSession;
 class SceneBuilderWidget;
 class PhotoHelperCheck;
+class PhotoHelperInstaller;
 
 
 // ============================================================================
@@ -214,6 +215,7 @@ public:
 	// application with a status code. Modes: "ui" (report the Output Mode items), "livepreview" (start Live Preview, let it
 	// render, report frames).
 	void runSelfTest(const QString &mode, const QString &outPrefix);
+	void runInstallPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 	void runPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 
 	// Called from main.cpp, before any MainWindow exists, to decide which
@@ -1594,6 +1596,13 @@ private:
 	PhotoHelperCheck *m_photoCheck = nullptr;
 	bool diagnosticsBusy() const;
 	void startPhotoHelperCheck();
+	// "Install Photo Helper" (mainwindow_photo_install.cpp): enabled when the Photo helper section lists something missing.
+	QPushButton *m_installPhotoHelperButton = nullptr;
+	PhotoHelperInstaller *m_photoInstaller = nullptr;
+	void updateInstallPhotoButton();
+	void onInstallPhotoHelperClicked();
+	// `confirm` false skips the question (the self-test). `onDone` is called with the result.
+	void startPhotoHelperInstall(bool confirm, const std::function<void(bool ok, const QString &message)> &onDone = nullptr);
 	void onDownloadMissingAssetsClicked();
 	// Runs the download; `confirm` false skips the dialogs (the self-test). `onDone` is called with the result.
 	void startAssetDownload(const QList<asset_downloader::Job> &jobs, bool confirm,

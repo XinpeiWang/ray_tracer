@@ -56,6 +56,11 @@ model weights (about 1.7 GB, from Hugging Face) and the background-removal model
 An NVIDIA card with about 6 GB of memory makes a photo take seconds; on the processor it takes several minutes. A Mac has no
 CUDA, and the helper has not been tried there.
 
+**From the program (Windows).** Open the **Diagnostics** tab, press **Run Diagnostics**, and if its *Photo helper* section
+lists something missing, press **Install Photo Helper...**. It says what will be downloaded and from where, asks you to confirm, runs the same
+setup script with its output in a window (Cancel stops it and everything it started), and runs the diagnostics again when it is done, so the
+report shows the result. It needs Python 3.10 to 3.12 and git on your PATH; on macOS and Linux the button is disabled and the guide's other steps apply.
+
 **Checking what is installed.** Run the **Diagnostics** tab: its last section, *Photo helper*, lists the helper script, the
 Python environment, each package with its version (PyTorch, Transformers, rembg, xatlas, scikit-image, SciPy, trimesh, NumPy,
 Pillow, einops, OmegaConf, Hugging Face Hub, ONNX Runtime), the graphics card PyTorch can use, the TripoSR code, and whether the two
