@@ -4,17 +4,17 @@
 <context>
     <name>DiagnosticsRunner</name>
     <message>
-        <location filename="../mainwindow.cpp" line="735"/>
+        <location filename="../mainwindow.cpp" line="736"/>
         <source>Failed to start ray_tracer.exe: %1</source>
         <translation>ray_tracer.exe を起動できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="745"/>
+        <location filename="../mainwindow.cpp" line="746"/>
         <source>Diagnostics process crashed (exit code %1)</source>
         <translation>診断プロセスがクラッシュしました（終了コード %1）</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="747"/>
+        <location filename="../mainwindow.cpp" line="748"/>
         <source>Diagnostics process exited with code %1:
 %2</source>
         <translation>診断プロセスがコード %1 で終了しました:
@@ -537,7 +537,7 @@
         <translation>ログのフォントサイズをリセット</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="209"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="210"/>
         <source>Log font size: %1 pt</source>
         <translation>ログのフォントサイズ: %1 pt</translation>
     </message>
@@ -584,60 +584,60 @@
         <translation>言語(&amp;L)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="925"/>
+        <location filename="../mainwindow.cpp" line="926"/>
         <source>Ray Tracer - Path Tracing Renderer</source>
         <translation>Ray Tracer - パストレーシングレンダラー</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1021"/>
+        <location filename="../mainwindow.cpp" line="1020"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1248"/>
-        <location filename="../mainwindow_slots.cpp" line="2117"/>
+        <location filename="../mainwindow.cpp" line="1245"/>
+        <location filename="../mainwindow_slots.cpp" line="2130"/>
         <source>START &amp;RENDER</source>
         <translation>レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1258"/>
+        <location filename="../mainwindow.cpp" line="1255"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>現在の設定で選択したシーンをレンダリングします
 (すでにレンダリング中の場合はキューに追加されます)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1269"/>
+        <location filename="../mainwindow.cpp" line="1266"/>
         <source>S&amp;TOP RENDER</source>
         <translation>レンダリング停止(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1276"/>
+        <location filename="../mainwindow.cpp" line="1273"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>実行中のレンダリングを停止し、出力を破棄します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1289"/>
+        <location filename="../mainwindow.cpp" line="1286"/>
         <location filename="../mainwindow_slots.cpp" line="429"/>
-        <location filename="../mainwindow_slots.cpp" line="984"/>
+        <location filename="../mainwindow_slots.cpp" line="986"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>レンダリングを一時停止(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1295"/>
+        <location filename="../mainwindow.cpp" line="1292"/>
         <location filename="../mainwindow_actions.cpp" line="80"/>
-        <location filename="../mainwindow_slots.cpp" line="986"/>
+        <location filename="../mainwindow_slots.cpp" line="988"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>実行中のレンダリングをその場で一時停止します - 「再開」は全く同じピクセルから続行します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1304"/>
+        <location filename="../mainwindow.cpp" line="1301"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>破棄して次へ進む(&amp;N)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1311"/>
+        <location filename="../mainwindow.cpp" line="1308"/>
         <location filename="../mainwindow_actions.cpp" line="85"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>実行中のレンダリングの出力を破棄し、キュー内の次のジョブをただちに開始します</translation>
@@ -670,7 +670,7 @@
     <message>
         <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="432"/>
-        <location filename="../mainwindow_slots.cpp" line="988"/>
+        <location filename="../mainwindow_slots.cpp" line="990"/>
         <source>&amp;Pause Render</source>
         <translation>レンダリングを一時停止(&amp;P)</translation>
     </message>
@@ -713,7 +713,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="113"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="256"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="257"/>
         <source>&amp;Save Log…</source>
         <translation>ログを保存(&amp;S)…</translation>
     </message>
@@ -724,7 +724,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="124"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="261"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="262"/>
         <source>C&amp;lear Log</source>
         <translation>ログをクリア(&amp;L)</translation>
     </message>
@@ -750,6 +750,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="137"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="271"/>
         <source>Open the folder holding the program&apos;s log file (send it with a bug report)</source>
         <translation>プログラムのログファイルがあるフォルダーを開きます (不具合の報告に添付してください)</translation>
     </message>
@@ -958,12 +959,12 @@
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="589"/>
+        <location filename="../mainwindow_slots.cpp" line="590"/>
         <source>Running diagnostics...</source>
         <translation>診断を実行中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="675"/>
+        <location filename="../mainwindow_slots.cpp" line="677"/>
         <source>Diagnostics failed:
 
 %1</source>
@@ -972,220 +973,220 @@
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="872"/>
+        <location filename="../mainwindow_slots.cpp" line="874"/>
         <source>Thumbnail generation finished.</source>
         <translation>サムネイルの生成が完了しました。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="916"/>
+        <location filename="../mainwindow_slots.cpp" line="918"/>
         <source>Stopping render...</source>
         <translation>レンダリングを停止中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1185"/>
+        <location filename="../mainwindow_slots.cpp" line="1187"/>
         <source>&lt;b&gt;Description:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;説明:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1194"/>
+        <location filename="../mainwindow_slots.cpp" line="1196"/>
         <source>&lt;b&gt;Recommended SPP:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;推奨SPP:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1195"/>
+        <location filename="../mainwindow_slots.cpp" line="1197"/>
         <source>&lt;b&gt;GPU Support:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;GPU対応:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1195"/>
+        <location filename="../mainwindow_slots.cpp" line="1197"/>
         <source>Yes</source>
         <translation>はい</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1195"/>
+        <location filename="../mainwindow_slots.cpp" line="1197"/>
         <source>CPU only</source>
         <translation>CPUのみ</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1248"/>
+        <location filename="../mainwindow_slots.cpp" line="1250"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Requires external files&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; 外部ファイルが必要です&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1253"/>
+        <location filename="../mainwindow_slots.cpp" line="1255"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; CPU renderer only&lt;/b&gt;</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; CPUレンダラーのみ対応&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1290"/>
+        <location filename="../mainwindow_slots.cpp" line="1292"/>
         <source>Integrator &quot;%1&quot;</source>
         <translation>インテグレータ「%1」</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1295"/>
+        <location filename="../mainwindow_slots.cpp" line="1297"/>
         <source>Sampler &quot;%1&quot;</source>
         <translation>サンプラー「%1」</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1300"/>
+        <location filename="../mainwindow_slots.cpp" line="1302"/>
         <source>Light Sampler &quot;%1&quot;</source>
         <translation>光源サンプラー「%1」</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1313"/>
+        <location filename="../mainwindow_slots.cpp" line="1315"/>
         <source>, </source>
         <translation>、</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1400"/>
+        <location filename="../mainwindow_slots.cpp" line="1402"/>
         <source>No scenes in this category.</source>
         <translation>このカテゴリにはシーンがありません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1401"/>
+        <location filename="../mainwindow_slots.cpp" line="1403"/>
         <source>No scenes match &quot;%1&quot; in this category.</source>
         <translation>このカテゴリには「%1」に一致するシーンがありません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1565"/>
+        <location filename="../mainwindow_slots.cpp" line="1567"/>
         <source>Rendering... %1%</source>
         <translation>レンダリング中... %1%</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1623"/>
+        <location filename="../mainwindow_slots.cpp" line="1625"/>
         <source>✅ %1 - Total time: %2 seconds</source>
         <translation>✅ %1 - 合計時間: %2秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1626"/>
+        <location filename="../mainwindow_slots.cpp" line="1628"/>
         <source>Video frames rendered successfully. Starting video assembly...</source>
         <translation>動画フレームのレンダリングが完了しました。動画の合成を開始します...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1627"/>
+        <location filename="../mainwindow_slots.cpp" line="1629"/>
         <source>⚙️ Assembling video from frames...</source>
         <translation>⚙️ フレームから動画を合成中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1310"/>
+        <location filename="../mainwindow_slots.cpp" line="1312"/>
         <source>⚠ This scene&apos;s file recommends %1, but the Render Options tab is currently set to the default(s) instead - click Apply, or change it there yourself, to match the scene&apos;s own settings.</source>
         <translation>⚠ このシーンのファイルは%1を推奨していますが、レンダリングオプションタブは現在デフォルトのままです - 「適用」をクリックするか、シーンの設定に合わせてそちらで変更してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1658"/>
+        <location filename="../mainwindow_slots.cpp" line="1660"/>
         <source>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</source>
         <translation>%1  •  %2×%3  •  %4 KB  •  %5s  •  %6spp · %7%8</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1673"/>
-        <location filename="../mainwindow_slots.cpp" line="1688"/>
+        <location filename="../mainwindow_slots.cpp" line="1675"/>
+        <location filename="../mainwindow_slots.cpp" line="1690"/>
         <source>✅ Render complete (%1s)</source>
         <translation>✅ レンダリング完了 (%1s)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1674"/>
+        <location filename="../mainwindow_slots.cpp" line="1676"/>
         <source>Warning: preview image failed to load at %1</source>
         <translation>警告: プレビュー画像を%1から読み込めませんでした</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1689"/>
+        <location filename="../mainwindow_slots.cpp" line="1691"/>
         <source>Warning: output file not found at %1</source>
         <translation>警告: 出力ファイルが%1に見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1704"/>
+        <location filename="../mainwindow_slots.cpp" line="1706"/>
         <source>❌ %1</source>
         <translation>❌ %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1709"/>
-        <location filename="../mainwindow_slots.cpp" line="2313"/>
+        <location filename="../mainwindow_slots.cpp" line="1711"/>
+        <location filename="../mainwindow_slots.cpp" line="2326"/>
         <source>Render Failed</source>
         <translation>レンダリングに失敗しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1729"/>
+        <location filename="../mainwindow_slots.cpp" line="1731"/>
         <source>Stopped - %1 more queued (click Start Render to resume)</source>
         <translation>停止しました - 他に%1件がキュー待ち (再開するには「レンダリング開始」をクリック)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1869"/>
+        <location filename="../mainwindow_slots.cpp" line="1882"/>
         <source>Rendering  ·  %1%  ·  elapsed %2</source>
         <translation>レンダリング中  ·  %1%  ·  経過時間 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1879"/>
+        <location filename="../mainwindow_slots.cpp" line="1892"/>
         <source>  ·  %1 %/s</source>
         <translation>  ·  %1 %/秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1887"/>
+        <location filename="../mainwindow_slots.cpp" line="1900"/>
         <source>  ·  ETA %1</source>
         <translation>  ·  残り時間 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1890"/>
+        <location filename="../mainwindow_slots.cpp" line="1903"/>
         <source>  ·  ETA --:--</source>
         <translation>  ·  残り時間 --:--</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1913"/>
+        <location filename="../mainwindow_slots.cpp" line="1926"/>
         <source>Render complete</source>
         <translation>レンダリング完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1914"/>
+        <location filename="../mainwindow_slots.cpp" line="1927"/>
         <source>Render stopped</source>
         <translation>レンダリング停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1914"/>
+        <location filename="../mainwindow_slots.cpp" line="1927"/>
         <source>Render failed</source>
         <translation>レンダリング失敗</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1916"/>
+        <location filename="../mainwindow_slots.cpp" line="1929"/>
         <source>Finished in %1 seconds</source>
         <translation>%1秒で完了しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1931"/>
+        <location filename="../mainwindow_slots.cpp" line="1944"/>
         <source>%1 – %2</source>
         <translation>%1 – %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1940"/>
+        <location filename="../mainwindow_slots.cpp" line="1953"/>
         <source>[DEBUG] No system tray available; skipping completion notification</source>
         <translation>[DEBUG] システムトレイが利用できないため、完了通知をスキップします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1944"/>
+        <location filename="../mainwindow_slots.cpp" line="1957"/>
         <source>[DEBUG] System tray does not support messages; skipping notification</source>
         <translation>[DEBUG] システムトレイがメッセージ表示に対応していないため、通知をスキップします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2098"/>
+        <location filename="../mainwindow_slots.cpp" line="2111"/>
         <source>START VIDEO &amp;RENDER</source>
         <translation>動画レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2103"/>
+        <location filename="../mainwindow_slots.cpp" line="2116"/>
         <source>Ready to render video frames</source>
         <translation>動画フレームのレンダリング準備完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2122"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="76"/>
+        <location filename="../mainwindow_slots.cpp" line="2135"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="77"/>
         <source>Ready to render</source>
         <translation>レンダリング準備完了</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2136"/>
+        <location filename="../mainwindow_slots.cpp" line="2149"/>
         <source>Mode changed to: %1</source>
         <translation>モードを%1に変更しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2132"/>
+        <location filename="../mainwindow_slots.cpp" line="2145"/>
         <source>Video Generation</source>
         <translation>動画生成</translation>
     </message>
@@ -1200,38 +1201,38 @@
         <translation>レンダーキュー (待機中 %1 件)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="656"/>
+        <location filename="../mainwindow_slots.cpp" line="657"/>
         <source>(could not be created)</source>
         <translation>(作成できませんでした)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="731"/>
+        <location filename="../mainwindow_slots.cpp" line="733"/>
         <source>Can&apos;t generate thumbnails while a render is in progress or queued.</source>
         <translation>レンダリングの実行中またはキュー待ちの間は、サムネイルを生成できません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="740"/>
-        <location filename="../mainwindow_slots.cpp" line="898"/>
+        <location filename="../mainwindow_slots.cpp" line="742"/>
+        <location filename="../mainwindow_slots.cpp" line="900"/>
         <source>Nothing to generate thumbnails for in the current view.</source>
         <translation>現在のビューにはサムネイルを生成する対象がありません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="803"/>
+        <location filename="../mainwindow_slots.cpp" line="805"/>
         <source>Resume</source>
         <translation>再開</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="847"/>
+        <location filename="../mainwindow_slots.cpp" line="849"/>
         <source>Generating thumbnail %1 of %2: %3</source>
         <translation>サムネイルを生成中 (%1/%2): %3</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="871"/>
+        <location filename="../mainwindow_slots.cpp" line="873"/>
         <source>Thumbnail generation finished - %1 failed.</source>
         <translation>サムネイルの生成が完了しました - 失敗: %1件。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="893"/>
+        <location filename="../mainwindow_slots.cpp" line="895"/>
         <source>Creates a small preview image for each ready-to-render scene in the CURRENT view that
 doesn&apos;t already have one saved. Runs on the CPU only, at low resolution - it can still take a
 while for a &quot;Very Slow&quot; whole-environment scene, since loading and BVH-building a
@@ -1244,161 +1245,161 @@ Use the pause/stop controls if a category turns out to take too long.</source>
 カテゴリの処理に時間がかかりすぎる場合は、一時停止/停止コントロールを使用してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="946"/>
+        <location filename="../mainwindow_slots.cpp" line="948"/>
         <source>Abandoning render...</source>
         <translation>レンダリングを破棄中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="965"/>
+        <location filename="../mainwindow_slots.cpp" line="967"/>
         <source>&amp;RESUME RENDER</source>
         <translation>レンダリングを再開(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="967"/>
+        <location filename="../mainwindow_slots.cpp" line="969"/>
         <source>Resume the paused render from the exact same pixels</source>
         <translation>一時停止したレンダリングを全く同じピクセルから再開します</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="969"/>
+        <location filename="../mainwindow_slots.cpp" line="971"/>
         <source>&amp;Resume Render</source>
         <translation>レンダリングを再開(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="972"/>
+        <location filename="../mainwindow_slots.cpp" line="974"/>
         <source>⏸ Paused</source>
         <translation>⏸ 一時停止中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1188"/>
+        <location filename="../mainwindow_slots.cpp" line="1190"/>
         <source>under 10 s</source>
         <translation>10 秒未満</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1189"/>
+        <location filename="../mainwindow_slots.cpp" line="1191"/>
         <source>10 to 30 s</source>
         <translation>10〜30 秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1190"/>
+        <location filename="../mainwindow_slots.cpp" line="1192"/>
         <source>30 s to 2 min</source>
         <translation>30 秒〜2 分</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1191"/>
+        <location filename="../mainwindow_slots.cpp" line="1193"/>
         <source>over 2 min</source>
         <translation>2 分以上</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1192"/>
+        <location filename="../mainwindow_slots.cpp" line="1194"/>
         <source>not measured</source>
         <translation>未計測</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1193"/>
+        <location filename="../mainwindow_slots.cpp" line="1195"/>
         <source>&lt;b&gt;Performance:&lt;/b&gt; %1 (%2)&lt;br&gt;</source>
         <translation>&lt;b&gt;パフォーマンス:&lt;/b&gt; %1 (%2)&lt;br&gt;</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="1221"/>
+        <location filename="../mainwindow_slots.cpp" line="1223"/>
         <source>Download %n missing file(s) (%1)</source>
         <translation>
             <numerusform>不足している %n 個のファイルをダウンロード (%1)</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1231"/>
+        <location filename="../mainwindow_slots.cpp" line="1233"/>
         <source>Download &quot;%1&quot; (%2)</source>
         <translation>「%1」をダウンロード (%2)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1238"/>
+        <location filename="../mainwindow_slots.cpp" line="1240"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; This scene&apos;s file was not found: %2&lt;/b&gt;&lt;br&gt;Expected in: %3&lt;br&gt;Rendering this scene will fail until it is installed.</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; このシーンのファイルが見つかりません: %2&lt;/b&gt;&lt;br&gt;配置先: %3&lt;br&gt;インストールするまで、このシーンはレンダリングできません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1242"/>
+        <location filename="../mainwindow_slots.cpp" line="1244"/>
         <source>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; Missing external files: %2 of %3 not found (first: %4)&lt;/b&gt;&lt;br&gt;Put them in: %5&lt;br&gt;Rendering this scene will fail until they are installed.</source>
         <translation>&lt;br&gt;&lt;b style=&apos;color: %1;&apos;&gt;&amp;#9888; 外部ファイルが不足しています: %3 個中 %2 個が見つかりません（最初のファイル: %4）&lt;/b&gt;&lt;br&gt;配置先: %5&lt;br&gt;インストールするまで、このシーンはレンダリングできません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1605"/>
+        <location filename="../mainwindow_slots.cpp" line="1607"/>
         <source>Render stopped by user</source>
         <translation>ユーザーによりレンダリングが停止されました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="1606"/>
+        <location filename="../mainwindow_slots.cpp" line="1608"/>
         <source>Render abandoned by user</source>
         <translation>ユーザーによりレンダリングが破棄されました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2101"/>
+        <location filename="../mainwindow_slots.cpp" line="2114"/>
         <source>Renders the camera path frame by frame and assembles a video. Queues behind it instead if a render is already running.</source>
         <translation>カメラパスをフレームごとにレンダリングして動画を合成します。すでにレンダリングが実行中の場合は、代わりにその後ろのキューに入ります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2107"/>
+        <location filename="../mainwindow_slots.cpp" line="2120"/>
         <source>START LIVE &amp;PREVIEW</source>
         <translation>ライブプレビューを開始(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2110"/>
+        <location filename="../mainwindow_slots.cpp" line="2123"/>
         <source>Starts an interactive GPU preview you can orbit/zoom with the mouse. Disabled while a batch render is running.</source>
         <translation>マウスで視点を回転/ズームできるインタラクティブな GPU プレビューを開始します。バッチレンダリングの実行中は無効になります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2112"/>
+        <location filename="../mainwindow_slots.cpp" line="2125"/>
         <source>Ready to start live preview</source>
         <translation>ライブプレビューを開始する準備ができました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2120"/>
+        <location filename="../mainwindow_slots.cpp" line="2133"/>
         <source>Renders the selected scene with the current settings. Queues behind it instead if a render is already running.</source>
         <translation>現在の設定で選択したシーンをレンダリングします。すでにレンダリングが実行中の場合は、代わりにその後ろのキューに入ります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2131"/>
+        <location filename="../mainwindow_slots.cpp" line="2144"/>
         <source>Single Image</source>
         <translation>単一画像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2134"/>
+        <location filename="../mainwindow_slots.cpp" line="2147"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1716"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="42"/>
         <source>Live Preview</source>
         <translation>ライブプレビュー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2246"/>
+        <location filename="../mainwindow_slots.cpp" line="2259"/>
         <source>Integrator changed to: %1</source>
         <translation>インテグレータを変更しました: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2294"/>
+        <location filename="../mainwindow_slots.cpp" line="2307"/>
         <source>⚠️ Video file not found, checking for frames...</source>
         <translation>⚠️ 動画ファイルが見つかりません。フレームを確認中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2295"/>
+        <location filename="../mainwindow_slots.cpp" line="2308"/>
         <source>WARNING: Video file not found at any of the expected locations</source>
         <translation>WARNING: 想定されるいずれの場所にも動画ファイルが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2304"/>
+        <location filename="../mainwindow_slots.cpp" line="2317"/>
         <source>⚠️ Found %1 frames but no video file</source>
         <translation>⚠️ %1個のフレームが見つかりましたが、動画ファイルがありません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2305"/>
+        <location filename="../mainwindow_slots.cpp" line="2318"/>
         <source>Frames were rendered (%1 files) but video assembly may have failed.</source>
         <translation>フレームはレンダリングされました (%1ファイル) が、動画の合成に失敗した可能性があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2306"/>
+        <location filename="../mainwindow_slots.cpp" line="2319"/>
         <source>Video Not Created</source>
         <translation>動画が作成されませんでした</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2307"/>
+        <location filename="../mainwindow_slots.cpp" line="2320"/>
         <source>Frames were rendered successfully (%1 files), but the video file was not created.
 
 Expected video at: %2
@@ -1411,17 +1412,17 @@ Please check the render log for ffmpeg errors.</source>
 ffmpegのエラーについてはレンダリングログを確認してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2311"/>
+        <location filename="../mainwindow_slots.cpp" line="2324"/>
         <source>❌ No frames or video found</source>
         <translation>❌ フレームも動画も見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2312"/>
+        <location filename="../mainwindow_slots.cpp" line="2325"/>
         <source>ERROR: No frames or video file found</source>
         <translation>ERROR: フレームまたは動画ファイルが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2314"/>
+        <location filename="../mainwindow_slots.cpp" line="2327"/>
         <source>Neither frames nor video file were created.
 
 Please check the render log for errors.</source>
@@ -1430,22 +1431,22 @@ Please check the render log for errors.</source>
 エラーについてはレンダリングログを確認してください。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2317"/>
+        <location filename="../mainwindow_slots.cpp" line="2330"/>
         <source>❌ Frames directory not found</source>
         <translation>❌ フレームディレクトリが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2318"/>
+        <location filename="../mainwindow_slots.cpp" line="2331"/>
         <source>ERROR: Frames directory not found: %1</source>
         <translation>ERROR: フレームディレクトリが見つかりません: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2319"/>
+        <location filename="../mainwindow_slots.cpp" line="2332"/>
         <source>Directory Not Found</source>
         <translation>ディレクトリが見つかりません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2320"/>
+        <location filename="../mainwindow_slots.cpp" line="2333"/>
         <source>Frames directory not found:
 %1
 
@@ -1456,56 +1457,56 @@ The render may have failed to create output.</source>
 レンダリングが出力の作成に失敗した可能性があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2326"/>
+        <location filename="../mainwindow_slots.cpp" line="2339"/>
         <source>✅ Video created successfully!</source>
         <translation>✅ 動画の作成が完了しました!</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2327"/>
+        <location filename="../mainwindow_slots.cpp" line="2340"/>
         <source>✅ Video assembled successfully: %1</source>
         <translation>✅ 動画の合成が完了しました: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2328"/>
+        <location filename="../mainwindow_slots.cpp" line="2341"/>
         <source>Video size: %1 MB</source>
         <translation>動画サイズ: %1 MB</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2349"/>
+        <location filename="../mainwindow_slots.cpp" line="2362"/>
         <source>%1 (Video)</source>
         <translation>%1 (動画)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2351"/>
+        <location filename="../mainwindow_slots.cpp" line="2364"/>
         <source>%1  •  %2 MB  •  %3 frames  •  %4spp · %5%6</source>
         <translation>%1  •  %2 MB  •  %3フレーム  •  %4spp · %5%6</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2363"/>
+        <location filename="../mainwindow_slots.cpp" line="2376"/>
         <source>Playing video inline: %1</source>
         <translation>動画をインライン再生中: %1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2388"/>
+        <location filename="../mainwindow_slots.cpp" line="2401"/>
         <source>… and %n more</source>
         <translation>
             <numerusform>… ほか %n 個</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2389"/>
         <location filename="../mainwindow_slots.cpp" line="2402"/>
-        <location filename="../mainwindow_slots.cpp" line="2434"/>
-        <location filename="../mainwindow_slots.cpp" line="2465"/>
-        <location filename="../mainwindow_slots.cpp" line="2481"/>
-        <location filename="../mainwindow_slots.cpp" line="2489"/>
-        <location filename="../mainwindow_slots.cpp" line="2521"/>
-        <location filename="../mainwindow_slots.cpp" line="2527"/>
+        <location filename="../mainwindow_slots.cpp" line="2415"/>
+        <location filename="../mainwindow_slots.cpp" line="2447"/>
+        <location filename="../mainwindow_slots.cpp" line="2478"/>
+        <location filename="../mainwindow_slots.cpp" line="2494"/>
+        <location filename="../mainwindow_slots.cpp" line="2502"/>
+        <location filename="../mainwindow_slots.cpp" line="2534"/>
+        <location filename="../mainwindow_slots.cpp" line="2540"/>
         <source>Download missing files</source>
         <translation>不足しているファイルをダウンロード</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2390"/>
+        <location filename="../mainwindow_slots.cpp" line="2403"/>
         <source>Download %n file(s) (%1) from %2?
 
 %3
@@ -1522,9 +1523,9 @@ They will be saved in:
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2401"/>
-        <location filename="../mainwindow_slots.cpp" line="2488"/>
-        <location filename="../mainwindow_slots.cpp" line="2504"/>
+        <location filename="../mainwindow_slots.cpp" line="2414"/>
+        <location filename="../mainwindow_slots.cpp" line="2501"/>
+        <location filename="../mainwindow_slots.cpp" line="2517"/>
         <source>Downloading…</source>
         <translation>ダウンロード中…</translation>
     </message>
@@ -1634,8 +1635,8 @@ Missing now:
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="86"/>
-        <location filename="../mainwindow_slots.cpp" line="2401"/>
-        <location filename="../mainwindow_slots.cpp" line="2488"/>
+        <location filename="../mainwindow_slots.cpp" line="2414"/>
+        <location filename="../mainwindow_slots.cpp" line="2501"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -1655,39 +1656,39 @@ Missing now:
         <translation>閉じる</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2417"/>
-        <location filename="../mainwindow_slots.cpp" line="2504"/>
+        <location filename="../mainwindow_slots.cpp" line="2430"/>
+        <location filename="../mainwindow_slots.cpp" line="2517"/>
         <source>Downloading %1…</source>
         <translation>%1 をダウンロード中…</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2431"/>
-        <location filename="../mainwindow_slots.cpp" line="2518"/>
+        <location filename="../mainwindow_slots.cpp" line="2444"/>
+        <location filename="../mainwindow_slots.cpp" line="2531"/>
         <source>Downloaded %n file(s).</source>
         <translation>
             <numerusform>%n 個のファイルをダウンロードしました。</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2433"/>
-        <location filename="../mainwindow_slots.cpp" line="2520"/>
+        <location filename="../mainwindow_slots.cpp" line="2446"/>
+        <location filename="../mainwindow_slots.cpp" line="2533"/>
         <source>Download failed: %1</source>
         <translation>ダウンロードに失敗しました: %1</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2439"/>
+        <location filename="../mainwindow_slots.cpp" line="2452"/>
         <source>Downloading %n file(s) (%1) from %2…</source>
         <translation>
             <numerusform>%2 から %n 個のファイル (%1) をダウンロード中…</numerusform>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2462"/>
+        <location filename="../mainwindow_slots.cpp" line="2475"/>
         <source>There is not enough free disk space for &quot;%1&quot;: it needs about %2 and %3 is available in %4.</source>
         <translation>「%1」に必要なディスクの空き容量が足りません。約 %2 が必要ですが、%4 の空きは %3 です。</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_slots.cpp" line="2475"/>
+        <location filename="../mainwindow_slots.cpp" line="2488"/>
         <source>Download &quot;%1&quot;?
 
 %2
@@ -1710,7 +1711,7 @@ Source: %7</source>
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2480"/>
+        <location filename="../mainwindow_slots.cpp" line="2493"/>
         <source>
 
 This is a large download and may take a while.</source>
@@ -1719,7 +1720,7 @@ This is a large download and may take a while.</source>
 ダウンロードサイズが大きいため、時間がかかる場合があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2528"/>
+        <location filename="../mainwindow_slots.cpp" line="2541"/>
         <source>The scene was downloaded. It appears with its own camera and settings after the app restarts. Restart now?
 
 (A render in progress or queued jobs would be lost.)</source>
@@ -1728,7 +1729,7 @@ This is a large download and may take a while.</source>
 （実行中のレンダリングやキュー内のジョブは失われます。）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="2534"/>
+        <location filename="../mainwindow_slots.cpp" line="2547"/>
         <source>Downloading &quot;%1&quot; (%2)…</source>
         <translation>「%1」をダウンロード中 (%2)…</translation>
     </message>
@@ -4123,8 +4124,8 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>&lt;b&gt;なぜこのように見えるのか&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_slots.cpp" line="764"/>
-        <location filename="../mainwindow_slots.cpp" line="803"/>
+        <location filename="../mainwindow_slots.cpp" line="766"/>
+        <location filename="../mainwindow_slots.cpp" line="805"/>
         <location filename="../mainwindow_tabs.cpp" line="512"/>
         <location filename="../mainwindow_tabs_render.cpp" line="2684"/>
         <location filename="../mainwindow_tabs_render.cpp" line="2697"/>
@@ -4142,120 +4143,126 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>動画再生エラー(%1): %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="55"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="157"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="56"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="158"/>
         <source>Progress</source>
         <translation>進捗</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="514"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="99"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="100"/>
         <source>Render Queue</source>
         <translation>レンダリングキュー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="57"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="58"/>
         <source>Shows what&apos;s rendering right now - which job it is, how far along it is (as a percentage), and how much time has passed and is left. Pause, Stop, and Abandon only affect this job.</source>
         <translation>現在レンダリング中の内容を表示します。どのジョブか、どこまで進んだか(パーセント)、経過時間と残り時間がわかります。「一時停止」「停止」「破棄」は、いずれもこのジョブにのみ影響します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="135"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="136"/>
         <source>Re&amp;move Selected</source>
         <translation>選択項目を削除(&amp;M)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="143"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="144"/>
         <source>Clear &amp;Queue</source>
         <translation>キューをクリア(&amp;Q)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="101"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="102"/>
         <source>Every render of this session, one row each: waiting, running, and what became of the finished ones. Clicking Render while something is already in progress adds another job here instead of interrupting it; waiting jobs start automatically, one after another, as each one finishes. Waiting jobs can be moved up or down, and a failed or cancelled one can be run again.</source>
         <translation>このセッションのすべてのレンダリングを 1 行ずつ表示します。待機中、実行中、そして終了したものの結果です。レンダリング中に「レンダリング」をクリックしても中断せず、ここにジョブが追加されます。待機中のジョブは前のジョブが終わるたびに自動的に順番に開始されます。待機中のジョブは上下に移動でき、失敗またはキャンセルしたジョブは再実行できます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="135"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="136"/>
         <source>Remove the selected job from the list (a running job is stopped with Stop)</source>
         <translation>選択したジョブを一覧から削除します (実行中のジョブは「停止」で止めます)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="136"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="137"/>
         <source>Move &amp;Up</source>
         <translation>上へ(&amp;U)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="136"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="137"/>
         <source>Run the selected waiting job earlier</source>
         <translation>選択した待機中のジョブをより早く実行します</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="137"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="138"/>
         <source>Move &amp;Down</source>
         <translation>下へ(&amp;D)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="137"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="138"/>
         <source>Run the selected waiting job later</source>
         <translation>選択した待機中のジョブをより後で実行します</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="138"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="139"/>
         <source>&amp;Retry</source>
         <translation>再試行(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="138"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="139"/>
         <source>Queue the selected failed or cancelled job again</source>
         <translation>選択した失敗またはキャンセルしたジョブをもう一度キューに入れます</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="139"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="140"/>
         <source>Clear &amp;Finished</source>
         <translation>完了分をクリア(&amp;F)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="139"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="140"/>
         <source>Forget the jobs that are done, failed or cancelled</source>
         <translation>完了・失敗・キャンセルしたジョブを一覧から消します</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="143"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="144"/>
         <source>Remove every waiting job from the render queue</source>
         <translation>待機中のジョブをすべてレンダーキューから削除します</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="251"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="315"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="252"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="327"/>
         <source>&amp;Copy All</source>
         <translation>すべてコピー(&amp;C)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="272"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="268"/>
+        <source>Show Log &amp;Folder</source>
+        <translation>ログフォルダーを表示(&amp;F)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_output.cpp" line="283"/>
         <source>Log Output</source>
         <translation>ログ出力</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="289"/>
+        <location filename="../mainwindow_slots.cpp" line="1822"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="300"/>
         <source>Click &quot;Run Diagnostics&quot; to check GPU/CUDA/OptiX availability, CPU/RAM, disk space, and scene asset availability.</source>
         <translation>「診断を実行」をクリックすると、GPU/CUDA/OptiXの利用可否、CPU/RAM、ディスク空き容量、シーンアセットの有無を確認します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="303"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="315"/>
         <source>&amp;Run Diagnostics</source>
         <translation>診断を実行(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="309"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="321"/>
         <source>&amp;Install Photo Helper...</source>
         <translation>写真ヘルパーをインストール(&amp;I)...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="320"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="332"/>
         <source>&amp;Save Report…</source>
         <translation>レポートを保存(&amp;S)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="332"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="344"/>
         <source>Diagnostics</source>
         <translation>診断</translation>
     </message>
@@ -4346,12 +4353,12 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
         <translation> - 上限5000でクリップ</translation>
     </message>
     <message>
-        <location filename="../theme_switch.cpp" line="50"/>
+        <location filename="../theme_switch.cpp" line="51"/>
         <source>Theme: %1</source>
         <translation>テーマ: %1</translation>
     </message>
     <message>
-        <location filename="../theme_switch.cpp" line="58"/>
+        <location filename="../theme_switch.cpp" line="59"/>
         <source>&amp;Theme</source>
         <translation>テーマ(&amp;T)</translation>
     </message>
@@ -5499,27 +5506,27 @@ If the program keeps stopping at start, choose Start fresh: it resets the window
 <context>
     <name>RenderController</name>
     <message>
-        <location filename="../mainwindow.cpp" line="552"/>
+        <location filename="../mainwindow.cpp" line="553"/>
         <source>Failed to start renderer: %1</source>
         <translation>レンダラーを起動できませんでした: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="633"/>
+        <location filename="../mainwindow.cpp" line="634"/>
         <source>Render completed successfully!</source>
         <translation>レンダリングが正常に完了しました！</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="670"/>
+        <location filename="../mainwindow.cpp" line="671"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Troubleshooting:&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;トラブルシューティング:&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="672"/>
+        <location filename="../mainwindow.cpp" line="673"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;small&gt;Error Code: %1 | Category: %2&lt;/small&gt;</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;small&gt;エラーコード: %1 | カテゴリ: %2&lt;/small&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="674"/>
+        <location filename="../mainwindow.cpp" line="675"/>
         <source>
 
 Output:
@@ -5533,13 +5540,13 @@ Output:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="380"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="383"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>待機中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="398"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="401"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 秒</translation>
@@ -5905,7 +5912,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="434"/>
-        <location filename="../scene_builder_widget.cpp" line="783"/>
+        <location filename="../scene_builder_widget.cpp" line="788"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>メッシュ (*.ply *.obj)</translation>
     </message>
@@ -6058,52 +6065,52 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>このシーンの名前です。シーンリストに表示されます</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="142"/>
+        <location filename="../scene_builder_widget.cpp" line="146"/>
         <source>Name:</source>
         <translation>名前:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="162"/>
+        <location filename="../scene_builder_widget.cpp" line="167"/>
         <source>Add</source>
         <translation>追加</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="165"/>
+        <location filename="../scene_builder_widget.cpp" line="170"/>
         <source>Objects</source>
         <translation>オブジェクト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="168"/>
+        <location filename="../scene_builder_widget.cpp" line="173"/>
         <source>Props (several objects at once)</source>
         <translation>小道具 (複数のオブジェクトをまとめて追加)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="170"/>
+        <location filename="../scene_builder_widget.cpp" line="175"/>
         <source>More</source>
         <translation>その他</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="171"/>
+        <location filename="../scene_builder_widget.cpp" line="176"/>
         <source>Object from a photo...</source>
         <translation>写真からオブジェクトを作成...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="172"/>
+        <location filename="../scene_builder_widget.cpp" line="177"/>
         <source>Light panel (emitting quad)</source>
         <translation>ライトパネル (発光する四角形)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="181"/>
+        <location filename="../scene_builder_widget.cpp" line="186"/>
         <source>Lights</source>
         <translation>ライト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="185"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Duplicate</source>
         <translation>複製</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="186"/>
+        <location filename="../scene_builder_widget.cpp" line="191"/>
         <source>Delete</source>
         <translation>削除</translation>
     </message>
@@ -6158,7 +6165,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>シーンを任意の方向から見て、3D で物を動かします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="253"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="255"/>
         <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>グリッドにスナップ</translation>
@@ -6174,140 +6181,140 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>すべてを表示</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="246"/>
+        <location filename="../scene_builder_widget.cpp" line="251"/>
         <source>Draft</source>
         <translation>ドラフト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="247"/>
+        <location filename="../scene_builder_widget.cpp" line="252"/>
         <source>Good</source>
         <translation>標準</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="248"/>
+        <location filename="../scene_builder_widget.cpp" line="253"/>
         <source>Best</source>
         <translation>最高</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="251"/>
+        <location filename="../scene_builder_widget.cpp" line="256"/>
         <source>Use the GPU</source>
         <translation>GPU を使用</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="252"/>
+        <location filename="../scene_builder_widget.cpp" line="257"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>グラフィックスカードでレンダリングします (Windows では NVIDIA OptiX、Mac では Metal)。大きな画像ではずっと高速ですが、対応する GPU が必要です。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="253"/>
-        <location filename="../scene_builder_widget.cpp" line="980"/>
+        <location filename="../scene_builder_widget.cpp" line="258"/>
+        <location filename="../scene_builder_widget.cpp" line="986"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="255"/>
+        <location filename="../scene_builder_widget.cpp" line="260"/>
         <source>Render picture...</source>
         <translation>画像をレンダリング...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="257"/>
+        <location filename="../scene_builder_widget.cpp" line="262"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>カメラで設定した画像サイズとサンプル数でレンダリングし、PNG として保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="259"/>
+        <location filename="../scene_builder_widget.cpp" line="264"/>
         <source>Quality:</source>
         <translation>品質:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="270"/>
+        <location filename="../scene_builder_widget.cpp" line="275"/>
         <source>Press Preview to see the scene.</source>
         <translation>「プレビュー」を押すとシーンが表示されます。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="363"/>
+        <location filename="../scene_builder_widget.cpp" line="368"/>
         <source>Cannot open %1.</source>
         <translation>%1 を開けません。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="418"/>
+        <location filename="../scene_builder_widget.cpp" line="423"/>
         <source>Unsaved changes</source>
         <translation>未保存の変更</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="418"/>
+        <location filename="../scene_builder_widget.cpp" line="423"/>
         <source>The scene has changes that are not saved. Save them first?</source>
         <translation>シーンに未保存の変更があります。先に保存しますか？</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="430"/>
+        <location filename="../scene_builder_widget.cpp" line="435"/>
         <source>Open a Scene Builder scene</source>
         <translation>シーンビルダーのシーンを開く</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="431"/>
-        <location filename="../scene_builder_widget.cpp" line="449"/>
+        <location filename="../scene_builder_widget.cpp" line="436"/>
+        <location filename="../scene_builder_widget.cpp" line="454"/>
         <source>pbrt scenes (*.pbrt)</source>
         <translation>pbrt シーン (*.pbrt)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="434"/>
+        <location filename="../scene_builder_widget.cpp" line="439"/>
         <source>Cannot open the scene</source>
         <translation>シーンを開けません</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="442"/>
-        <location filename="../scene_builder_widget.cpp" line="452"/>
-        <location filename="../scene_builder_widget.cpp" line="523"/>
+        <location filename="../scene_builder_widget.cpp" line="447"/>
+        <location filename="../scene_builder_widget.cpp" line="457"/>
+        <location filename="../scene_builder_widget.cpp" line="528"/>
         <source>Cannot save</source>
         <translation>保存できません</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="442"/>
-        <location filename="../scene_builder_widget.cpp" line="452"/>
-        <location filename="../scene_builder_widget.cpp" line="490"/>
-        <location filename="../scene_builder_widget.cpp" line="935"/>
+        <location filename="../scene_builder_widget.cpp" line="447"/>
+        <location filename="../scene_builder_widget.cpp" line="457"/>
+        <location filename="../scene_builder_widget.cpp" line="495"/>
+        <location filename="../scene_builder_widget.cpp" line="941"/>
         <source>Could not write %1.</source>
         <translation>%1 に書き込めませんでした。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="443"/>
-        <location filename="../scene_builder_widget.cpp" line="453"/>
+        <location filename="../scene_builder_widget.cpp" line="448"/>
+        <location filename="../scene_builder_widget.cpp" line="458"/>
         <source>Saved %1</source>
         <translation>%1 を保存しました</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="449"/>
+        <location filename="../scene_builder_widget.cpp" line="454"/>
         <source>Save the scene</source>
         <translation>シーンを保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="503"/>
+        <location filename="../scene_builder_widget.cpp" line="508"/>
         <source>No scenes folder</source>
         <translation>シーンフォルダーがありません</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="510"/>
+        <location filename="../scene_builder_widget.cpp" line="515"/>
         <source>Add to the scene list</source>
         <translation>シーンリストに追加</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="511"/>
+        <location filename="../scene_builder_widget.cpp" line="516"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>このシーンは「%1」としてすでにリストにあります。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="512"/>
+        <location filename="../scene_builder_widget.cpp" line="517"/>
         <source>Add as a new scene</source>
         <translation>新しいシーンとして追加</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="513"/>
+        <location filename="../scene_builder_widget.cpp" line="518"/>
         <source>Update the existing one</source>
         <translation>既存のものを更新</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="528"/>
+        <location filename="../scene_builder_widget.cpp" line="533"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -6316,17 +6323,17 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 シーンリスト（設定タブの「マイシーン」）に追加されました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="858"/>
+        <location filename="../scene_builder_widget.cpp" line="863"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  オブジェクト %3 個、ライト %4 個</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="783"/>
+        <location filename="../scene_builder_widget.cpp" line="788"/>
         <source>Choose a mesh</source>
         <translation>メッシュを選択</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="473"/>
+        <location filename="../scene_builder_widget.cpp" line="478"/>
         <source>The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.</source>
         <translation>プログラムと同じ場所にシーンフォルダー (pbrt_scenes) が見つかりません。「名前を付けて保存」で好きな場所にファイルを保存し、環境変数 RAY_TRACER_PBRT_DIR にそのフォルダーを設定すると、プログラムの一覧に表示されます。</translation>
     </message>
@@ -6346,72 +6353,72 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>やり直し (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="250"/>
+        <location filename="../scene_builder_widget.cpp" line="255"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>ドラフト: 幅 480 ピクセル、16 サンプル。標準: 幅 720、64 サンプル。最高: 幅 960、256 サンプル。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="527"/>
+        <location filename="../scene_builder_widget.cpp" line="532"/>
         <source>Added to the scene list</source>
         <translation>シーンリストに追加しました</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="674"/>
+        <location filename="../scene_builder_widget.cpp" line="679"/>
         <source>Camera and image</source>
         <translation>カメラと画像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="695"/>
+        <location filename="../scene_builder_widget.cpp" line="700"/>
         <source>, light</source>
         <translation>、ライト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="852"/>
+        <location filename="../scene_builder_widget.cpp" line="857"/>
         <source>not saved yet</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="874"/>
+        <location filename="../scene_builder_widget.cpp" line="880"/>
         <source>No problems found.</source>
         <translation>問題は見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="880"/>
+        <location filename="../scene_builder_widget.cpp" line="886"/>
         <source>Fix this:</source>
         <translation>修正してください:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="880"/>
+        <location filename="../scene_builder_widget.cpp" line="886"/>
         <source>Note:</source>
         <translation>注意:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="908"/>
+        <location filename="../scene_builder_widget.cpp" line="914"/>
         <source>Save the rendered picture</source>
         <translation>レンダリングした画像を保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="908"/>
+        <location filename="../scene_builder_widget.cpp" line="914"/>
         <source>PNG images (*.png)</source>
         <translation>PNG 画像 (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="912"/>
+        <location filename="../scene_builder_widget.cpp" line="918"/>
         <source>The render failed</source>
         <translation>レンダリングに失敗しました</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="923"/>
+        <location filename="../scene_builder_widget.cpp" line="929"/>
         <source>A render is already running.</source>
         <translation>すでにレンダリング中です。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="925"/>
+        <location filename="../scene_builder_widget.cpp" line="931"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>先にプロパティに表示されている問題を修正してください。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="926"/>
+        <location filename="../scene_builder_widget.cpp" line="932"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>プログラムと同じ場所にレンダラー (%1) が見つかりません。</translation>
     </message>
@@ -6482,7 +6489,7 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
-        <location filename="../scene_builder_widget.cpp" line="965"/>
+        <location filename="../scene_builder_widget.cpp" line="971"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -6507,44 +6514,44 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
         <translation>写真から %1 を追加しました。形は推測なので、あらゆる角度から確認してください。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="968"/>
+        <location filename="../scene_builder_widget.cpp" line="974"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>%1 x %2、%3 サンプルでレンダリング中...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="996"/>
+        <location filename="../scene_builder_widget.cpp" line="1002"/>
         <source>The render was cancelled.</source>
         <translation>レンダリングはキャンセルされました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="996"/>
+        <location filename="../scene_builder_widget.cpp" line="1002"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>レンダラーが予期せず停止しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="996"/>
+        <location filename="../scene_builder_widget.cpp" line="1002"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>レンダラーは画像を生成しませんでした (終了コード %1)。
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="997"/>
+        <location filename="../scene_builder_widget.cpp" line="1003"/>
         <source>The render failed.</source>
         <translation>レンダリングに失敗しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="1003"/>
+        <location filename="../scene_builder_widget.cpp" line="1009"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>%1 秒で完了しました (%2 x %3)。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="1006"/>
+        <location filename="../scene_builder_widget.cpp" line="1012"/>
         <source>Saved %1.</source>
         <translation>%1 を保存しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="1007"/>
+        <location filename="../scene_builder_widget.cpp" line="1013"/>
         <source>Could not save to %1.</source>
         <translation>%1 に保存できませんでした。</translation>
     </message>

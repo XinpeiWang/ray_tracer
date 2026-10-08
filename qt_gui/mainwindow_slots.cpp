@@ -585,6 +585,7 @@ void MainWindow::onRunDiagnosticsClicked() {
 
 	m_lastDiagReport.clear();  // no report to recolour until reportReady fires
 	if (m_diagTextEdit) {
+		m_diagShowsHint = false;
 		m_diagTextEdit->clear();
 		m_diagTextEdit->setPlainText(tr("Running diagnostics..."));
 	}
@@ -672,6 +673,7 @@ void MainWindow::onDiagnosticsFailed(const QString &message) {
 	// a report that isn't showing anymore.
 	m_lastDiagReport.clear();
 	updateInstallPhotoButton();
+	m_diagShowsHint = false;
 	if (m_diagTextEdit) m_diagTextEdit->setPlainText(tr("Diagnostics failed:\n\n%1").arg(message));
 }
 
@@ -1811,7 +1813,18 @@ void MainWindow::rebuildLogPane() {
 // and same "replace, don't recolour" constraint as rebuildLogPane() above.
 // A no-op when the pane isn't currently showing a report (m_lastDiagReport
 // empty - e.g. it's showing "Running diagnostics..." or a failure message).
+// The empty Diagnostics pane says what to do, as real text in the theme's muted colour (the view's placeholder text was drawn in a colour the style sheet left
+// unreadable, so the pane looked broken instead of waiting for a click).
+void MainWindow::showDiagnosticsHint() {
+	if (!m_diagTextEdit) return;
+	m_diagShowsHint = true;
+	m_diagTextEdit->setHtml(QStringLiteral("<p style=\"color:%1\">%2</p>")
+	                            .arg(m_activeTheme.textMuted.name(), tr("Click \"Run Diagnostics\" to check GPU/CUDA/OptiX availability, CPU/RAM, "
+	                                                                    "disk space, and scene asset availability.").toHtmlEscaped()));
+}
+
 void MainWindow::rebuildDiagPane() {
+	if (m_diagTextEdit && m_lastDiagReport.isEmpty() && m_diagShowsHint) showDiagnosticsHint();   // a theme change re-colours the hint
 	if (!m_diagTextEdit || m_lastDiagReport.isEmpty()) return;
 
 	const bool scrolledToBottom =
@@ -2243,7 +2256,7 @@ void MainWindow::onIntegratorChanged(int) {
 	m_integratorVideoWarningLabelBasic->setVisible(showIntegratorVideoWarning);
 
 	refreshStatusBarInfo();
-	onLogMessage(tr("Integrator changed to: %1").arg(m_integratorCombo->currentText()));
+	if (isVisible()) onLogMessage(tr("Integrator changed to: %1").arg(m_integratorCombo->currentText()));   // not the start-up default being applied
 
 	if (m_sceneCombo) updateSceneRecommendedSettingsHint(m_sceneCombo->currentData().toString());
 }

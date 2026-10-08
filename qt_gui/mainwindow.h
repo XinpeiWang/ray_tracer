@@ -223,6 +223,7 @@ public:
 	void runSelfTest(const QString &mode, const QString &outPrefix);
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
 	void selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);      // (mainwindow_selftest_builder3d.cpp)
+	void runTourSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
 	void runQueueSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);   // mainwindow_selftest_builder3d.cpp
 	void selfTestRenderQueue(const std::function<void(bool, const QString &)> &check);
 	void selfTestCrashRecovery(const std::function<void(bool, const QString &)> &check);
@@ -1773,6 +1774,8 @@ private:
 
 	// Diagnostics
 	QTextEdit *m_diagTextEdit = nullptr;      // Diagnostics report display
+	bool m_diagShowsHint = false;             // the pane shows the "click Run Diagnostics" text (re-coloured on a theme change)
+	void showDiagnosticsHint();
 	QPushButton *m_runDiagnosticsButton;    // Disabled while a probe is running
 	int m_diagnosticsTabIndex = -1;         // Index of the Diagnostics tab within m_tabWidget
 	DiagnosticsRunner *m_diagnosticsRunner = nullptr;  // nullptr when not running

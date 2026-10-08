@@ -99,11 +99,14 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		m_view->frameAll();
 		m_view3d->frameAll();
 	});
-	planeRow->addSpacing(8);
-	planeRow->addWidget(snap);
-	planeRow->addWidget(frame);
 	planeRow->addStretch(1);
 	layoutLayout->addLayout(planeRow);
+	// Snap and Frame all on a row of their own: with the four view buttons they were wider than the column at an ordinary window size and got clipped.
+	auto *optionsRow = new QHBoxLayout;
+	optionsRow->addWidget(snap);
+	optionsRow->addWidget(frame);
+	optionsRow->addStretch(1);
+	layoutLayout->addLayout(optionsRow);
 	// The tools get a row of their own (only in 3D), so neither row is wider than the column.
 	gizmoLayout->addStretch(1);
 	layoutLayout->addWidget(m_gizmoBar);

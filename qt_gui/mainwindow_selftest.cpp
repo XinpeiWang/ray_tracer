@@ -219,6 +219,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	// RT_GUI_SELFTEST=photo: see mainwindow_selftest_photo.cpp
 	if (mode == "photo") { runPhotoSelfTest(log, shot); return; }
 	if (mode == "builder3d") { runBuilder3dSelfTest(log, shot); return; }
+	if (mode == "tour") { runTourSelfTest(log, shot); return; }
 	if (mode == "queue") { runQueueSelfTest(log, shot); return; }
 	if (mode == "installphoto") { runInstallPhotoSelfTest(log, shot); return; }
 

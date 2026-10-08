@@ -13,6 +13,8 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QRegularExpression>
+#include <QTextEdit>
 #include <QComboBox>
 #include <QScreen>
 #include <QGuiApplication>
@@ -452,4 +454,31 @@ void MainWindow::runQueueSelfTest(const std::function<void(const QString &)> &lo
 		QApplication::exit(ok ? 0 : 1);
 	});
 	poll->start(300);
+}
+
+// RT_GUI_SELFTEST=tour (RT_GUI_SELFTEST_WIDTH / _HEIGHT size the window): a screenshot of every tab, for looking over the whole UI at one window size.
+void MainWindow::runTourSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot) {
+	const int w = qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") : 1100;
+	const int h = qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") : 800;
+	resize(w, h);
+	if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST_THEME")) switchTheme(qEnvironmentVariable("RT_GUI_SELFTEST_THEME"));   // e.g. solarized-light
+	auto *index = new int(0);
+	auto *step = new QTimer(this);
+	connect(step, &QTimer::timeout, this, [this, step, index, log, shot]() {
+		if (*index >= m_tabWidget->count()) {
+			step->stop();
+			log("RESULT: OK");
+			QApplication::exit(0);
+			return;
+		}
+		m_tabWidget->setCurrentIndex(*index);
+		QApplication::processEvents();
+		if (m_tabWidget->currentWidget()->findChild<QTextEdit *>() == m_diagTextEdit)
+			log(QString("diagnostics pane: empty=%1 placeholder length=%2 visible=%3").arg(m_diagTextEdit->document()->isEmpty()).arg(m_diagTextEdit->placeholderText().size()).arg(m_diagTextEdit->isVisible()));
+		QString name = m_tabWidget->tabText(*index);
+		name.remove(QRegularExpression("[^A-Za-z0-9]+"));
+		QTimer::singleShot(350, this, [shot, name, index]() { shot(QString("tour%1_%2").arg(*index - 1).arg(name)); });
+		++*index;
+	});
+	step->start(900);
 }
