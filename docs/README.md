@@ -19,6 +19,7 @@ A guide to this folder and the other documents. The repository's front page is t
 
 | Document | What it is |
 |---|---|
+| [GPU_SCENE_COMMON.md](GPU_SCENE_COMMON.md) | Proposal: one scene-to-GPU conversion shared by the OptiX and Metal backends |
 | [BACKEND_SUPPORT.md](BACKEND_SUPPORT.md) | One table: what the CPU, OptiX (recursive, wavefront) and Metal renderers each support |
 | [PBRT_SUPPORT.md](PBRT_SUPPORT.md) | What happens to each pbrt-v4 directive when a scene file is loaded, per backend (Full / Approx / Fallback / Unsupported) |
 | [FEATURE_INVENTORY.md](FEATURE_INVENTORY.md) | Feature by feature and backend by backend, and the gaps from pbrt-v4 |
