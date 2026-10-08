@@ -57,32 +57,75 @@ WavefrontPathTracer::~WavefrontPathTracer() {
 // render — main wavefront render loop
 // ============================================================================
 
-bool WavefrontPathTracer::render(
-	int width, int height, int samples_per_pixel, int max_depth,
-	const GpuCameraParams& camera,
-	float*  framebuffer,          // host-side output
-	OptixTraversableHandle gas_handle,
-	CUdeviceptr d_materials,
-	CUdeviceptr d_spheres,
-	CUdeviceptr d_quads,
-	CUdeviceptr d_light_indices,
-	CUdeviceptr d_lightKinds,
-	CUdeviceptr d_alias_table,
-	unsigned int num_materials,
-	unsigned int num_spheres,
-	unsigned int num_quads,
-	unsigned int num_lights,
-	CUdeviceptr d_punctual_lights,
-	unsigned int num_punctual_lights,
-	CUdeviceptr d_bilinear_patches,
-	unsigned int num_bilinear_patches,
-	CUdeviceptr d_triangles,
-	unsigned int num_triangles,
-	CUdeviceptr d_disks,
-	unsigned int num_disks,
-	CUdeviceptr d_cylinders,
-	unsigned int num_cylinders)
-{
+// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
+// project's own plan for why wavefront is the one backend that gets
+// this for free: every field here is already a real, host-visible
+// readQueueSize() result computed for launch sizing every bounce -
+// summing them into a report is the only new work, no new device-side
+// counters). Printed once at the end of render() as a [WF-STATS] block.
+struct WavefrontRenderStats {
+	long long primaryRays = 0;      // sum of numRays across all bounces
+	long long hits = 0;             // regular hitQueue
+	long long simpleHits = 0;       // simpleHitQueue (Lambertian/Metal)
+	long long dielectricHits = 0;   // dielectricHitQueue
+	long long misses = 0;
+	long long shadowRays = 0;
+	long long probeRays = 0;        // BSSRDF probe walk
+	long long probeExits = 0;
+	long long bounceIterations = 0; // total inner-loop iterations across all samples
+	int samplesCompleted = 0;
+};
+
+struct RenderCall {
+	int width;
+	int height;
+	int samples_per_pixel;
+	int max_depth;
+	const GpuCameraParams& camera;
+	float*  framebuffer;
+	OptixTraversableHandle gas_handle;
+	CUdeviceptr d_materials;
+	CUdeviceptr d_spheres;
+	CUdeviceptr d_quads;
+	CUdeviceptr d_light_indices;
+	CUdeviceptr d_lightKinds;
+	CUdeviceptr d_alias_table;
+	unsigned int num_materials;
+	unsigned int num_spheres;
+	unsigned int num_quads;
+	unsigned int num_lights;
+	CUdeviceptr d_punctual_lights;
+	unsigned int num_punctual_lights;
+	CUdeviceptr d_bilinear_patches;
+	unsigned int num_bilinear_patches;
+	CUdeviceptr d_triangles;
+	unsigned int num_triangles;
+	CUdeviceptr d_disks;
+	unsigned int num_disks;
+	CUdeviceptr d_cylinders;
+	unsigned int num_cylinders;
+	int numPixels{};
+	bool regularize{};
+	CUdeviceptr d_fb{};
+	float3* d_fbPtr{};
+	CUdeviceptr d_weight{};
+	float* d_weightPtr{};
+	CUdeviceptr d_activePixelMaskPtr{};
+	bool needsAovGuideBuffers{};
+	bool needsWorldPosHistory{};
+	float3* d_albedoAovPtr{};
+	float3* d_normalAovPtr{};
+	bool checkerboardActive{};
+	WavefrontLaunchParams lp{};
+	int progressPrintInterval{};
+	WavefrontRenderStats stats{};
+};
+
+bool WavefrontPathTracer::renderPrepareBuffers(RenderCall &rc) {
+	int width = rc.width;
+	int height = rc.height;
+	const auto &camera = rc.camera;
+	unsigned int num_punctual_lights = rc.num_punctual_lights;
 	const int numPixels = width * height;
 	// See restirImageWidth_/restirImageHeight_'s own header comment.
 	restirImageWidth_ = width;
@@ -109,24 +152,6 @@ bool WavefrontPathTracer::render(
 	// today's pre-existing behavior, whatever that happens to be.
 	if (camera.userSeed >= 0) frameNumber_ = static_cast<unsigned int>(camera.userSeed);
 
-	// Render-time instrumentation (pbrt-v4 STAT_COUNTER-inspired, see this
-	// project's own plan for why wavefront is the one backend that gets
-	// this for free: every field here is already a real, host-visible
-	// readQueueSize() result computed for launch sizing every bounce -
-	// summing them into a report is the only new work, no new device-side
-	// counters). Printed once at the end of render() as a [WF-STATS] block.
-	struct WavefrontRenderStats {
-		long long primaryRays = 0;      // sum of numRays across all bounces
-		long long hits = 0;             // regular hitQueue
-		long long simpleHits = 0;       // simpleHitQueue (Lambertian/Metal)
-		long long dielectricHits = 0;   // dielectricHitQueue
-		long long misses = 0;
-		long long shadowRays = 0;
-		long long probeRays = 0;        // BSSRDF probe walk
-		long long probeExits = 0;
-		long long bounceIterations = 0; // total inner-loop iterations across all samples
-		int samplesCompleted = 0;
-	} stats;
 
 	if (!allocateQueues(numPixels, static_cast<int>(num_punctual_lights))) return false;
 
@@ -232,7 +257,25 @@ bool WavefrontPathTracer::render(
 		// render - denoise and svgf both off - wrote past its end).
 		destroyAovBuffers();
 	}
+	rc.numPixels = numPixels;
+	rc.regularize = regularize;
+	rc.d_fb = d_fb;
+	rc.d_fbPtr = d_fbPtr;
+	rc.d_weight = d_weight;
+	rc.d_weightPtr = d_weightPtr;
+	rc.d_activePixelMaskPtr = d_activePixelMaskPtr;
+	rc.needsAovGuideBuffers = needsAovGuideBuffers;
+	rc.needsWorldPosHistory = needsWorldPosHistory;
+	rc.d_albedoAovPtr = d_albedoAovPtr;
+	rc.d_normalAovPtr = d_normalAovPtr;
+	return true;
+}
 
+void WavefrontPathTracer::renderPrepareRestirSvgf(RenderCall &rc) {
+	int width = rc.width;
+	int height = rc.height;
+	const int numPixels = rc.numPixels;
+	const bool needsWorldPosHistory = rc.needsWorldPosHistory;
 	// Live Preview reprojection guide buffer (see setWorldPosOutputEnabled()'s
 	// own comment) - same resolution-keyed allocate-once/only-realloc-on-
 	// change lifecycle as d_fb_/d_weight_ above. Kept around after this call
@@ -512,7 +555,41 @@ bool WavefrontPathTracer::render(
 	// running-mean path (which just tolerates an occasional held-over
 	// pixel) does not. See this project's own plan for the full rationale.
 	const bool checkerboardActive = svgfEnabled_ && svgfHistoryValid_ && restirGiHistoryValid_ && !temporalUpscaleJitterEnabled_;
+	rc.checkerboardActive = checkerboardActive;
+}
 
+void WavefrontPathTracer::renderPrepareLaunch(RenderCall &rc) {
+	int width = rc.width;
+	int height = rc.height;
+	int samples_per_pixel = rc.samples_per_pixel;
+	int max_depth = rc.max_depth;
+	const auto &camera = rc.camera;
+	OptixTraversableHandle gas_handle = rc.gas_handle;
+	CUdeviceptr d_materials = rc.d_materials;
+	CUdeviceptr d_spheres = rc.d_spheres;
+	CUdeviceptr d_quads = rc.d_quads;
+	CUdeviceptr d_light_indices = rc.d_light_indices;
+	CUdeviceptr d_lightKinds = rc.d_lightKinds;
+	CUdeviceptr d_alias_table = rc.d_alias_table;
+	unsigned int num_materials = rc.num_materials;
+	unsigned int num_spheres = rc.num_spheres;
+	unsigned int num_quads = rc.num_quads;
+	unsigned int num_lights = rc.num_lights;
+	CUdeviceptr d_bilinear_patches = rc.d_bilinear_patches;
+	unsigned int num_bilinear_patches = rc.num_bilinear_patches;
+	CUdeviceptr d_triangles = rc.d_triangles;
+	unsigned int num_triangles = rc.num_triangles;
+	CUdeviceptr d_disks = rc.d_disks;
+	unsigned int num_disks = rc.num_disks;
+	CUdeviceptr d_cylinders = rc.d_cylinders;
+	unsigned int num_cylinders = rc.num_cylinders;
+	const int numPixels = rc.numPixels;
+	float3* d_fbPtr = rc.d_fbPtr;
+	const bool needsAovGuideBuffers = rc.needsAovGuideBuffers;
+	const bool needsWorldPosHistory = rc.needsWorldPosHistory;
+	float3* d_albedoAovPtr = rc.d_albedoAovPtr;
+	float3* d_normalAovPtr = rc.d_normalAovPtr;
+	const bool checkerboardActive = rc.checkerboardActive;
 	// Checkerboard temporal upsampling's frame-clear (see this function's own
 	// checkerboardActive comment above, and svgf_checkerboard_clear_frame's
 	// own comment, wavefront_kernels_svgf.cu, for the full rationale). Only
@@ -622,7 +699,49 @@ bool WavefrontPathTracer::render(
 	// every-10-samples so a short/low-spp render (which finishes in a couple
 	// seconds anyway) keeps the same fine-grained updates as before.
 	const int progressPrintInterval = std::max(10, samples_per_pixel / 50);
+	rc.d_fbPtr = d_fbPtr;
+	rc.d_albedoAovPtr = d_albedoAovPtr;
+	rc.d_normalAovPtr = d_normalAovPtr;
+	rc.lp = lp;
+	rc.progressPrintInterval = progressPrintInterval;
+}
 
+void WavefrontPathTracer::renderSampleLoop(RenderCall &rc) {
+	int width = rc.width;
+	int height = rc.height;
+	int samples_per_pixel = rc.samples_per_pixel;
+	int max_depth = rc.max_depth;
+	const auto &camera = rc.camera;
+	float*  framebuffer = rc.framebuffer;
+	CUdeviceptr d_materials = rc.d_materials;
+	CUdeviceptr d_spheres = rc.d_spheres;
+	CUdeviceptr d_quads = rc.d_quads;
+	CUdeviceptr d_light_indices = rc.d_light_indices;
+	CUdeviceptr d_lightKinds = rc.d_lightKinds;
+	CUdeviceptr d_alias_table = rc.d_alias_table;
+	unsigned int num_materials = rc.num_materials;
+	unsigned int num_spheres = rc.num_spheres;
+	unsigned int num_quads = rc.num_quads;
+	unsigned int num_lights = rc.num_lights;
+	CUdeviceptr d_punctual_lights = rc.d_punctual_lights;
+	unsigned int num_punctual_lights = rc.num_punctual_lights;
+	CUdeviceptr d_bilinear_patches = rc.d_bilinear_patches;
+	unsigned int num_bilinear_patches = rc.num_bilinear_patches;
+	CUdeviceptr d_triangles = rc.d_triangles;
+	unsigned int num_triangles = rc.num_triangles;
+	CUdeviceptr d_disks = rc.d_disks;
+	unsigned int num_disks = rc.num_disks;
+	CUdeviceptr d_cylinders = rc.d_cylinders;
+	unsigned int num_cylinders = rc.num_cylinders;
+	const int numPixels = rc.numPixels;
+	const bool regularize = rc.regularize;
+	float3* d_fbPtr = rc.d_fbPtr;
+	float* d_weightPtr = rc.d_weightPtr;
+	CUdeviceptr d_activePixelMaskPtr = rc.d_activePixelMaskPtr;
+	const bool checkerboardActive = rc.checkerboardActive;
+	WavefrontLaunchParams lp = rc.lp;
+	const int progressPrintInterval = rc.progressPrintInterval;
+	WavefrontRenderStats stats = rc.stats;
 	// -------------------------------------------------------------------------
 	// Outer sample loop
 	// -------------------------------------------------------------------------
@@ -968,7 +1087,37 @@ bool WavefrontPathTracer::render(
 	// SECOND, separate "pre-history-overwrite" hook of its own.
 	launchNormalizeFramebuffer((unsigned int)numPixels, d_weightPtr, d_fbPtr);
 	CUDA_CHECK(cudaStreamSynchronize(stream_));
+	rc.d_fbPtr = d_fbPtr;
+	rc.d_weightPtr = d_weightPtr;
+	rc.d_activePixelMaskPtr = d_activePixelMaskPtr;
+	rc.lp = lp;
+	rc.stats = stats;
+}
 
+void WavefrontPathTracer::renderFinish(RenderCall &rc) {
+	int width = rc.width;
+	int height = rc.height;
+	int samples_per_pixel = rc.samples_per_pixel;
+	int max_depth = rc.max_depth;
+	const auto &camera = rc.camera;
+	float*  framebuffer = rc.framebuffer;
+	CUdeviceptr d_materials = rc.d_materials;
+	CUdeviceptr d_spheres = rc.d_spheres;
+	CUdeviceptr d_quads = rc.d_quads;
+	CUdeviceptr d_bilinear_patches = rc.d_bilinear_patches;
+	CUdeviceptr d_triangles = rc.d_triangles;
+	CUdeviceptr d_disks = rc.d_disks;
+	CUdeviceptr d_cylinders = rc.d_cylinders;
+	const int numPixels = rc.numPixels;
+	CUdeviceptr d_fb = rc.d_fb;
+	CUdeviceptr d_weight = rc.d_weight;
+	float* d_weightPtr = rc.d_weightPtr;
+	const bool needsAovGuideBuffers = rc.needsAovGuideBuffers;
+	const bool needsWorldPosHistory = rc.needsWorldPosHistory;
+	float3* d_albedoAovPtr = rc.d_albedoAovPtr;
+	float3* d_normalAovPtr = rc.d_normalAovPtr;
+	WavefrontLaunchParams lp = rc.lp;
+	WavefrontRenderStats stats = rc.stats;
 	// Normalize the accumulated albedo/normal AOV buffers (plain mean over
 	// samples_per_pixel - see launchNormalizeAovBuffers()'s own comment) -
 	// needed by EITHER the OptiX AI denoiser below or SVGF, so gated on
@@ -1133,7 +1282,47 @@ bool WavefrontPathTracer::render(
 				  << "  |  exits: " << stats.probeExits << "\n";
 		std::cout << "[WF-STATS] ─────────────────────────────────────────────────\n";
 	}
+	rc.d_fb = d_fb;
+	rc.d_weight = d_weight;
+	rc.d_weightPtr = d_weightPtr;
+	rc.d_albedoAovPtr = d_albedoAovPtr;
+	rc.d_normalAovPtr = d_normalAovPtr;
+	rc.lp = lp;
+	rc.stats = stats;
+}
 
+bool WavefrontPathTracer::render(
+	int width, int height, int samples_per_pixel, int max_depth,
+	const GpuCameraParams& camera,
+	float*  framebuffer,          // host-side output
+	OptixTraversableHandle gas_handle,
+	CUdeviceptr d_materials,
+	CUdeviceptr d_spheres,
+	CUdeviceptr d_quads,
+	CUdeviceptr d_light_indices,
+	CUdeviceptr d_lightKinds,
+	CUdeviceptr d_alias_table,
+	unsigned int num_materials,
+	unsigned int num_spheres,
+	unsigned int num_quads,
+	unsigned int num_lights,
+	CUdeviceptr d_punctual_lights,
+	unsigned int num_punctual_lights,
+	CUdeviceptr d_bilinear_patches,
+	unsigned int num_bilinear_patches,
+	CUdeviceptr d_triangles,
+	unsigned int num_triangles,
+	CUdeviceptr d_disks,
+	unsigned int num_disks,
+	CUdeviceptr d_cylinders,
+	unsigned int num_cylinders)
+{
+	RenderCall rc{width, height, samples_per_pixel, max_depth, camera, framebuffer, gas_handle, d_materials, d_spheres, d_quads, d_light_indices, d_lightKinds, d_alias_table, num_materials, num_spheres, num_quads, num_lights, d_punctual_lights, num_punctual_lights, d_bilinear_patches, num_bilinear_patches, d_triangles, num_triangles, d_disks, num_disks, d_cylinders, num_cylinders};
+	if (!renderPrepareBuffers(rc)) return false;
+	renderPrepareRestirSvgf(rc);
+	renderPrepareLaunch(rc);
+	renderSampleLoop(rc);
+	renderFinish(rc);
 	return true;
 }
 
@@ -1260,4 +1449,4 @@ void WavefrontPathTracer::cleanup() {
 // for why cpu_renderer.vcxproj itself can't carry this) and
 // tests/CMakeLists.txt's source list - there is no single shared target
 // providing this dependency to every consumer once.
-#include "../../src/data/rgb_spectrum_table_data.cpp"
+#include "../../src/data/rgb_spectrum_table_data.cpp"

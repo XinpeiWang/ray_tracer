@@ -80,7 +80,11 @@ inline bool write_exr_channels(const std::string &path, int width, int height, c
 	header.requested_pixel_types = static_cast<int *>(std::malloc(sizeof(int) * static_cast<size_t>(n)));
 	for (int i = 0; i < n; ++i) {
 		std::memset(header.channels[i].name, 0, sizeof(header.channels[i].name));
-		std::strncpy(header.channels[i].name, names[order[i]].c_str(), sizeof(header.channels[i].name) - 1);
+		{   // (a bounded memcpy: MSVC rejects strncpy as unsafe, and the name was zeroed above)
+			const std::string &channelName = names[order[i]];
+			const size_t room = sizeof(header.channels[i].name) - 1;
+			std::memcpy(header.channels[i].name, channelName.c_str(), channelName.size() < room ? channelName.size() : room);
+		}
 		header.pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
 		header.requested_pixel_types[i] = TINYEXR_PIXELTYPE_FLOAT;
 	}

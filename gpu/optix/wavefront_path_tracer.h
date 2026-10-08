@@ -18,6 +18,8 @@
 
 namespace optix_renderer {
 
+struct RenderCall;
+
 class WavefrontPathTracer : public PathTracingStrategy {
 public:
     WavefrontPathTracer();
@@ -380,6 +382,12 @@ public:
     void invalidateRestirHistory() { restirHistoryValid_ = false; restirGiHistoryValid_ = false; svgfHistoryValid_ = false; neuralUpscaleHistoryValid_ = false; probeUpdateCursor_ = 0; }
 
 private:
+    // The stages render() runs in order (wavefront_path_tracer.cpp); RenderCall is its arguments plus what one stage hands the next.
+    bool renderPrepareBuffers(RenderCall &rc);
+    void renderPrepareRestirSvgf(RenderCall &rc);
+    void renderPrepareLaunch(RenderCall &rc);
+    void renderSampleLoop(RenderCall &rc);
+    void renderFinish(RenderCall &rc);
     // Resize-on-resolution-change helper for a per-pixel GPU buffer: frees
     // and reallocates only when `capacity` doesn't already match `numPixels`,
     // exactly the pattern every resize-on-demand buffer in this class already

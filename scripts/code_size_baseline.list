@@ -14,9 +14,9 @@ func gpu/optix/optix_renderer_scene.cpp::OptiXRenderer::uploadLightBuffers 326
 func gpu/optix/pbrt_gpu_builder.h::setupMediumLookup 310
 func gpu/optix/scene_builder.cpp::apply_loaded_scene_settings 308
 func gpu/optix/scene_builder.cpp::build_loaded_pbrt_scene 421
-func gpu/optix/wavefront_path_tracer.cpp::WavefrontPathTracer::render 1054
+func gpu/optix/wavefront_path_tracer.cpp::WavefrontPathTracer::renderSampleLoop 387
 func gpu/optix/wavefront_path_tracer_setup.cpp::WavefrontPathTracer::createProgramGroups 301
-func launcher/main.cpp::render_single_image 390
+func launcher/main.cpp::render_single_image 391
 func launcher/main.cpp::run_video_render 408
 func qt_gui/mainwindow_style.cpp::MainWindow::applyTheme 777
 func qt_gui/mainwindow_tabs_render_groups.cpp::MainWindow::buildSamplingGroup 361
