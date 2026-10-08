@@ -284,9 +284,16 @@ void SceneBuilderWidget::buildUi() {
 	centre->setStretchFactor(0, 3);
 	centre->setStretchFactor(1, 2);
 	centre->setSizes({500, 280});
+	// The view and the preview keep a usable height: in a window too short for both, the column scrolls instead of squeezing them.
+	layoutBox->setMinimumHeight(400);
+	previewBox->setMinimumHeight(300);
 
 	split->addWidget(left);
-	split->addWidget(centre);
+	auto *centreScroll = new QScrollArea(split);
+	centreScroll->setWidget(centre);
+	centreScroll->setWidgetResizable(true);
+	centreScroll->setFrameShape(QFrame::NoFrame);
+	split->addWidget(centreScroll);
 	split->addWidget(right);
 	split->setStretchFactor(0, 0);
 	split->setStretchFactor(1, 1);
