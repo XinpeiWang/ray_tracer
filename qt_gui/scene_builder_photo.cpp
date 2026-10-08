@@ -97,12 +97,15 @@ bool SceneBuilderWidget::importPhoto(const QString &photo, QString *error) {
 		message = text;
 		loop.quit();
 	});
-	connect(&progress, &QProgressDialog::canceled, &job, [&]() {
+	const QMetaObject::Connection cancelConnection = connect(&progress, &QProgressDialog::canceled, &job, [&]() {
 		cancelled = true;
 		job.cancel();
 	});
 	job.start();
 	loop.exec();
+	// QProgressDialog::closeEvent emits canceled(): once the job is over, closing the window is not the user cancelling (a real failure
+	// would be reported as a cancel and its message dropped).
+	disconnect(cancelConnection);
 	progress.close();
 
 	if (!ok) {

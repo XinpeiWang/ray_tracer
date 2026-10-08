@@ -9,6 +9,8 @@
 #include <QColorDialog>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDateTime>
+#include <QImage>
 #include <QDir>
 #include <QAbstractSpinBox>
 #include <QDoubleSpinBox>
@@ -212,6 +214,26 @@ void SceneBuilderWidget::addText(QFormLayout *f, const QString &label, const std
 	f->addRow(label, e);
 }
 
+// A phone photo is often stored sideways with an EXIF "rotate me" tag. The renderer ignores that tag, so the picture would show sideways (and a quad
+// would take the wrong shape). When the tag asks for a rotation, this writes an upright PNG copy under <data>/pictures and returns its path;
+// otherwise (no rotation, or a format Qt cannot read, such as .exr/.hdr/.tga) it returns `path` unchanged. `size` gets the upright size when known.
+QString SceneBuilderWidget::uprightPictureCopy(const QString &path, QSize *size) {
+	QImageReader reader(path);
+	reader.setAutoTransform(true);
+	const bool rotated = reader.transformation() != QImageIOHandler::TransformationNone;
+	const QImage img = reader.read();
+	if (img.isNull()) return path;
+	if (size) *size = img.size();
+	if (!rotated) return path;
+	const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/pictures";
+	const QFileInfo info(path);
+	const QString key = QString::number(qHash(info.absoluteFilePath() + QString::number(info.lastModified().toSecsSinceEpoch())), 16);
+	const QString copy = dir + "/" + info.completeBaseName() + "-" + key + ".png";
+	if (QFileInfo::exists(copy)) return copy;
+	if (!QDir().mkpath(dir) || !img.save(copy)) return path;
+	return copy;
+}
+
 void SceneBuilderWidget::addFile(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, const QString &filter, bool clearable,
                                  const std::function<void(const QString &)> &alsoApply) {
 	auto *row = new QWidget;
@@ -304,9 +326,11 @@ void SceneBuilderWidget::inspectMaterial(QFormLayout *f, int i) {
 	const auto addPicture = [&]() {
 		addFile(f, tr("Picture"), [mat]() { return mat() ? &mat()->imageFile : nullptr; }, tr("Images (*.png *.jpg *.jpeg *.bmp *.tga *.exr *.hdr)"), true,
 		        [this, i](const QString &path) {
-			        if (i >= static_cast<int>(m_doc.objects.size()) || m_doc.objects[i].shape != ShapeKind::Quad) return;
-			        const QSize px = QImageReader(path).size();
-			        if (px.isValid() && px.width() > 0) m_doc.objects[i].size.z = m_doc.objects[i].size.x * px.height() / px.width();
+			        if (i >= static_cast<int>(m_doc.objects.size())) return;
+			        QSize px;
+			        scene_doc::Object &o = m_doc.objects[i];
+			        o.material.imageFile = uprightPictureCopy(path, &px).toStdString();
+			        if (o.shape == ShapeKind::Quad && px.isValid() && px.width() > 0) o.size.z = o.size.x * px.height() / px.width();
 		        });
 	};
 	switch (m.kind) {

@@ -373,6 +373,46 @@ TEST(SceneDocumentValidateTest, APictureOnAMaterialThatCannotShowItIsAWarning) {
 	EXPECT_FALSE(hasErrors(validate(d)));
 }
 
+// The renderer renders a missing picture without it and says nothing the Builder can show, so the problem list has to: a picture, mesh or sky file
+// that is an absolute path to nothing is a warning (not an error: a preview still works), and one that exists is not mentioned.
+TEST(SceneDocumentValidateTest, AMissingPictureMeshOrSkyFileIsAWarningNamingIt) {
+	const std::string gone = std::filesystem::absolute("scene_builder_no_such_file.png").string();
+	ASSERT_FALSE(std::filesystem::exists(gone));
+	Document d = makeStarterScene();
+	Object pic = makeObject(ShapeKind::Quad, "Photo wall");
+	pic.material.imageFile = gone;
+	d.objects.push_back(pic);
+	Object mesh = makeObject(ShapeKind::Mesh, "Scan");
+	mesh.meshFile = std::filesystem::absolute("scene_builder_no_such_mesh.obj").string();
+	d.objects.push_back(mesh);
+	Light sky;
+	sky.name = "Sky";
+	sky.kind = LightKind::Infinite;
+	sky.imageFile = std::filesystem::absolute("scene_builder_no_such_sky.exr").string();
+	d.lights.push_back(sky);
+	const std::vector<Problem> ps = validate(d);
+	EXPECT_FALSE(hasErrors(ps));
+	EXPECT_TRUE(mentions(ps, Problem::Severity::Warning, "picture file was not found"));
+	EXPECT_TRUE(mentions(ps, Problem::Severity::Warning, "mesh file was not found"));
+	EXPECT_TRUE(mentions(ps, Problem::Severity::Warning, "sky image was not found"));
+	EXPECT_TRUE(mentions(ps, Problem::Severity::Warning, gone)) << "the message says which file";
+}
+
+TEST(SceneDocumentValidateTest, APictureThatExistsOrIsRelativeIsNotMentioned) {
+	const std::string here = "scene_builder_exists_picture.bmp";
+	{ std::ofstream out(here, std::ios::binary); out << "x"; }
+	Document d = makeStarterScene();
+	Object a = makeObject(ShapeKind::Quad, "Real");
+	a.material.imageFile = std::filesystem::absolute(here).string();
+	d.objects.push_back(a);
+	Object b = makeObject(ShapeKind::Quad, "Relative");
+	b.material.imageFile = "somewhere/else.png";  // relative to the saved scene: unknowable here
+	d.objects.push_back(b);
+	const std::vector<Problem> ps = validate(d);
+	std::remove(here.c_str());
+	EXPECT_FALSE(mentions(ps, Problem::Severity::Warning, "was not found"));
+}
+
 namespace {
 
 std::string findLauncher() {

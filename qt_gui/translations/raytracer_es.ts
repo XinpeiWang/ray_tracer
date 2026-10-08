@@ -682,7 +682,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="86"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1560"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1571"/>
         <source>Open Output &amp;Folder</source>
         <translation>Abrir &amp;carpeta de salida</translation>
     </message>
@@ -693,7 +693,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="96"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1572"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1583"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Abrir en el &amp;visor predeterminado</translation>
     </message>
@@ -1349,7 +1349,7 @@ Use los controles de pausa/detener si una categoría resulta tardar demasiado.</
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="2066"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1705"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1716"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="42"/>
         <source>Live Preview</source>
         <translation>Vista previa en vivo</translation>
@@ -1555,7 +1555,6 @@ Se guardarán en:
         <translation>El instalador es para Windows. En otros sistemas consulta docs/PHOTO_TO_SCENE.md.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="46"/>
         <source>Install the photo helper?
 
 This downloads about 5 GB and installs it for your user only, in %1:
@@ -1567,7 +1566,7 @@ It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You
 
 Missing now:
 %2</source>
-        <translation>¿Instalar el asistente de fotos?
+        <translation type="vanished">¿Instalar el asistente de fotos?
 
 Se descargan unos 5 GB y se instala solo para tu usuario, en %1:
   - PyTorch (de download.pytorch.org) y los paquetes de Python que necesita el asistente (de PyPI)
@@ -1580,34 +1579,71 @@ Falta ahora:
 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="53"/>
+        <location filename="../mainwindow_photo_install.cpp" line="46"/>
+        <location filename="../mainwindow_photo_install.cpp" line="58"/>
         <source>Install the photo helper</source>
         <translation>Instalar el asistente de fotos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="58"/>
+        <location filename="../mainwindow_photo_install.cpp" line="46"/>
+        <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
+        <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="51"/>
+        <source>Install the photo helper?
+
+This downloads about 5 GB and installs it for your user only, in %1:
+  - PyTorch (from download.pytorch.org) and the Python packages the helper needs (from PyPI)
+  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
+  - the background-removal model, about 176 MB (from GitHub)
+
+It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.
+
+Missing now:
+%2
+
+The script that will run (PowerShell, with the execution policy bypassed):
+%3</source>
+        <translation>¿Instalar el asistente de fotos?
+
+Se descargan unos 5 GB y se instala solo para tu usuario, en %1:
+  - PyTorch (de download.pytorch.org) y los paquetes de Python que necesita el asistente (de PyPI)
+  - el código de TripoSR (de GitHub) y sus pesos del modelo, unos 1,7 GB (de Hugging Face)
+  - el modelo de eliminación de fondo, unos 176 MB (de GitHub)
+
+Requiere Python 3.10 a 3.12 y git en el PATH, y tarda varios minutos. Puedes seguir usando el programa mientras tanto.
+
+Falta ahora:
+%2
+
+El script que se ejecutará (PowerShell, con la directiva de ejecución omitida):
+%3</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="63"/>
         <source>Installing the photo helper</source>
         <translation>Instalando el asistente de fotos</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="71"/>
+        <location filename="../mainwindow_photo_install.cpp" line="76"/>
         <location filename="../mainwindow_slots.cpp" line="2333"/>
         <location filename="../mainwindow_slots.cpp" line="2420"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="96"/>
+        <location filename="../mainwindow_photo_install.cpp" line="101"/>
         <source>Installed. Running the diagnostics again to check it...</source>
         <translation>Instalado. Ejecutando de nuevo los diagnósticos para comprobarlo...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="96"/>
+        <location filename="../mainwindow_photo_install.cpp" line="101"/>
         <source>The installation did not finish: %1</source>
         <translation>La instalación no terminó: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="97"/>
+        <location filename="../mainwindow_photo_install.cpp" line="102"/>
         <source>Close</source>
         <translation>Cerrar</translation>
     </message>
@@ -4024,27 +4060,37 @@ Desactivado por defecto (aleatorio genuino en cada renderizado).</translation>
         <translation>Opciones de renderizado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1331"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1336"/>
+        <source>Saved, but the scene list could not list it until the program is restarted.</source>
+        <translation>Guardado, pero la lista de escenas no podrá mostrarlo hasta que se reinicie el programa.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1340"/>
+        <source>Added to the scene list as %1 (Settings tab).</source>
+        <translation>Añadida a la lista de escenas como %1 (pestaña Configuración).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="1342"/>
         <source>Scene Builder</source>
         <translation>Constructor de escenas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1563"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1574"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>Muestra en el Explorador la carpeta que contiene el renderizado de la pestaña activa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1575"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1586"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>Abre el renderizado de la pestaña activa en el visor del sistema</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1601"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1612"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1675"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1686"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -4053,48 +4099,48 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/Abajo para volar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1701"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1712"/>
         <source>Live Preview — %1</source>
         <translation>Vista previa en vivo — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1706"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1717"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>Vista previa interactiva por GPU - arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/Abajo para volar, Izquierda/Derecha para orbitar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1732"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1743"/>
         <source>Select a scene first</source>
         <translation>Selecciona primero una escena</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="61"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="1822"/>
+        <location filename="../mainwindow_photo_install.cpp" line="66"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1833"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1838"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1849"/>
         <source>Stopped</source>
         <translation>Detenido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1864"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1875"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En vivo (con ruido eliminado, sin acumular)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1866"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1877"/>
         <source>%1 samples</source>
         <translation>%1 muestras</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="1891"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="1902"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[Vista previa en vivo] ERROR: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2547"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2558"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Por qué se ve así&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
@@ -4102,18 +4148,18 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <location filename="../mainwindow_slots.cpp" line="717"/>
         <location filename="../mainwindow_slots.cpp" line="756"/>
         <location filename="../mainwindow_tabs.cpp" line="512"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="2673"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="2686"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2684"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2697"/>
         <source>Pause</source>
         <translation>Pausar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2686"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2697"/>
         <source>Play</source>
         <translation>Reproducir</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="2696"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="2707"/>
         <source>Video playback error (%1): %2</source>
         <translation>Error de reproducción de video (%1): %2</translation>
     </message>
@@ -4630,22 +4676,22 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
 <context>
     <name>PhotoHelperInstaller</name>
     <message>
-        <location filename="../photo_import.cpp" line="116"/>
+        <location filename="../photo_import.cpp" line="129"/>
         <source>Cancelled.</source>
         <translation>Cancelado.</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="117"/>
+        <location filename="../photo_import.cpp" line="130"/>
         <source>The installer stopped (exit code %1).</source>
         <translation>El instalador se detuvo (código de salida %1).</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="129"/>
+        <location filename="../photo_import.cpp" line="142"/>
         <source>Could not start PowerShell to run the installer.</source>
         <translation>No se pudo iniciar PowerShell para ejecutar el instalador.</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="136"/>
+        <location filename="../photo_import.cpp" line="116"/>
         <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
         <translation>No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
     </message>
@@ -4653,17 +4699,17 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
 <context>
     <name>PhotoToMeshJob</name>
     <message>
-        <location filename="../photo_import.cpp" line="269"/>
+        <location filename="../photo_import.cpp" line="277"/>
         <source>Could not start the photo helper (%1).</source>
         <translation>No se pudo iniciar el asistente de fotos (%1).</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="308"/>
+        <location filename="../photo_import.cpp" line="314"/>
         <source>Cancelled.</source>
         <translation>Cancelado.</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="317"/>
+        <location filename="../photo_import.cpp" line="323"/>
         <source>The helper stopped unexpectedly (exit code %1).</source>
         <translation>El asistente se detuvo inesperadamente (código de salida %1).</translation>
     </message>
@@ -5291,12 +5337,23 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
         <translation>Translúcido (papel, hojas)</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="43"/>
+        <location filename="../photo_import.cpp" line="55"/>
+        <location filename="../photo_import.cpp" line="60"/>
+        <source>none yet</source>
+        <translation>ninguno todavía</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="61"/>
+        <source>%1 folders, %2 MB</source>
+        <translation>%1 carpetas, %2 MB</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="78"/>
         <source>The helper script (tools/photo_to_mesh/photo_to_mesh.py) was not found next to the program.</source>
         <translation>No se encontró el script del asistente (tools/photo_to_mesh/photo_to_mesh.py) junto al programa.</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="45"/>
+        <location filename="../photo_import.cpp" line="80"/>
         <source>The photo helper has not been set up on this computer yet.</source>
         <translation>El asistente de fotos aún no se ha configurado en este equipo.</translation>
     </message>
@@ -5338,7 +5395,7 @@ Salida:
 <context>
     <name>SceneBuilderWidget</name>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="73"/>
+        <location filename="../scene_builder_inspector.cpp" line="75"/>
         <source>Pick something in the list or the layout view to edit it.
 
 Add shapes and lights with the Add button. Drag them in the layout view, then press Preview to see the picture. Save writes an ordinary .pbrt file that the renderer (and this tab) can open.</source>
@@ -5347,247 +5404,247 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
 Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposición y pulsa Vista previa para ver la imagen. Guardar escribe un archivo .pbrt normal que el renderizador (y esta pestaña) puede abrir.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="171"/>
+        <location filename="../scene_builder_inspector.cpp" line="173"/>
         <source>Click to choose a colour. Colours are picked as ordinary (sRGB) colours and stored as linear values for the renderer.</source>
         <translation>Haz clic para elegir un color. Los colores se eligen como colores normales (sRGB) y se guardan como valores lineales para el renderizador.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="184"/>
+        <location filename="../scene_builder_inspector.cpp" line="186"/>
         <source>Choose a colour</source>
         <translation>Elegir un color</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="224"/>
+        <location filename="../scene_builder_inspector.cpp" line="246"/>
         <source>Browse...</source>
         <translation>Examinar...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="228"/>
+        <location filename="../scene_builder_inspector.cpp" line="250"/>
         <source>Choose a file</source>
         <translation>Elegir un archivo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="240"/>
+        <location filename="../scene_builder_inspector.cpp" line="262"/>
         <source>Clear</source>
         <translation>Quitar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="254"/>
+        <location filename="../scene_builder_inspector.cpp" line="276"/>
         <source>Scene</source>
         <translation>Escena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="255"/>
+        <location filename="../scene_builder_inspector.cpp" line="277"/>
         <source>Title</source>
         <translation>Título</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="256"/>
+        <location filename="../scene_builder_inspector.cpp" line="278"/>
         <source>Camera</source>
         <translation>Cámara</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="257"/>
-        <location filename="../scene_builder_inspector.cpp" line="358"/>
-        <location filename="../scene_builder_inspector.cpp" line="416"/>
+        <location filename="../scene_builder_inspector.cpp" line="279"/>
+        <location filename="../scene_builder_inspector.cpp" line="382"/>
+        <location filename="../scene_builder_inspector.cpp" line="440"/>
         <source>Position</source>
         <translation>Posición</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="258"/>
+        <location filename="../scene_builder_inspector.cpp" line="280"/>
         <source>Looks at</source>
         <translation>Mira a</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="259"/>
+        <location filename="../scene_builder_inspector.cpp" line="281"/>
         <source>Field of view</source>
         <translation>Campo de visión</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="260"/>
+        <location filename="../scene_builder_inspector.cpp" line="282"/>
         <source>Lens radius</source>
         <translation>Radio de la lente</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="261"/>
+        <location filename="../scene_builder_inspector.cpp" line="283"/>
         <source>Focus distance</source>
         <translation>Distancia de enfoque</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="262"/>
+        <location filename="../scene_builder_inspector.cpp" line="284"/>
         <source>A lens radius above 0 blurs what is not at the focus distance (depth of field).</source>
         <translation>Un radio de lente mayor que 0 desenfoca lo que no está a la distancia de enfoque (profundidad de campo).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="265"/>
-        <location filename="../scene_builder_inspector.cpp" line="305"/>
+        <location filename="../scene_builder_inspector.cpp" line="287"/>
+        <location filename="../scene_builder_inspector.cpp" line="327"/>
         <source>Picture</source>
         <translation>Imagen</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="266"/>
+        <location filename="../scene_builder_inspector.cpp" line="288"/>
         <source>Width (pixels)</source>
         <translation>Ancho (píxeles)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="267"/>
+        <location filename="../scene_builder_inspector.cpp" line="289"/>
         <source>Height (pixels)</source>
         <translation>Alto (píxeles)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="269"/>
+        <location filename="../scene_builder_inspector.cpp" line="291"/>
         <source>Set height from width...</source>
         <translation>Fijar el alto a partir del ancho...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="278"/>
+        <location filename="../scene_builder_inspector.cpp" line="300"/>
         <source>Aspect ratio</source>
         <translation>Relación de aspecto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="279"/>
+        <location filename="../scene_builder_inspector.cpp" line="301"/>
         <source>Samples per pixel</source>
         <translation>Muestras por píxel</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="280"/>
+        <location filename="../scene_builder_inspector.cpp" line="302"/>
         <source>Light bounces (max depth)</source>
         <translation>Rebotes de luz (profundidad máxima)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="284"/>
+        <location filename="../scene_builder_inspector.cpp" line="306"/>
         <source>Material</source>
         <translation>Material</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="300"/>
-        <location filename="../scene_builder_inspector.cpp" line="414"/>
+        <location filename="../scene_builder_inspector.cpp" line="322"/>
+        <location filename="../scene_builder_inspector.cpp" line="438"/>
         <source>Type</source>
         <translation>Tipo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="305"/>
+        <location filename="../scene_builder_inspector.cpp" line="327"/>
         <source>Images (*.png *.jpg *.jpeg *.bmp *.tga *.exr *.hdr)</source>
         <translation>Imágenes (*.png *.jpg *.jpeg *.bmp *.tga *.exr *.hdr)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="316"/>
+        <location filename="../scene_builder_inspector.cpp" line="340"/>
         <source>Colour A</source>
         <translation>Color A</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="316"/>
-        <location filename="../scene_builder_inspector.cpp" line="324"/>
-        <location filename="../scene_builder_inspector.cpp" line="432"/>
+        <location filename="../scene_builder_inspector.cpp" line="340"/>
+        <location filename="../scene_builder_inspector.cpp" line="348"/>
+        <location filename="../scene_builder_inspector.cpp" line="456"/>
         <source>Colour</source>
         <translation>Color</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="317"/>
+        <location filename="../scene_builder_inspector.cpp" line="341"/>
         <source>Checker pattern</source>
         <translation>Patrón de cuadros</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="319"/>
+        <location filename="../scene_builder_inspector.cpp" line="343"/>
         <source>Colour B</source>
         <translation>Color B</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="320"/>
+        <location filename="../scene_builder_inspector.cpp" line="344"/>
         <source>Checks across</source>
         <translation>Cuadros a lo ancho</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="325"/>
-        <location filename="../scene_builder_inspector.cpp" line="329"/>
+        <location filename="../scene_builder_inspector.cpp" line="349"/>
+        <location filename="../scene_builder_inspector.cpp" line="353"/>
         <source>Roughness</source>
         <translation>Rugosidad</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="328"/>
+        <location filename="../scene_builder_inspector.cpp" line="352"/>
         <source>Index of refraction</source>
         <translation>Índice de refracción</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="333"/>
+        <location filename="../scene_builder_inspector.cpp" line="357"/>
         <source>Paint colour</source>
         <translation>Color de la pintura</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="334"/>
+        <location filename="../scene_builder_inspector.cpp" line="358"/>
         <source>Coat index of refraction</source>
         <translation>Índice de refracción de la capa</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="335"/>
+        <location filename="../scene_builder_inspector.cpp" line="359"/>
         <source>Coat roughness</source>
         <translation>Rugosidad de la capa</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="338"/>
+        <location filename="../scene_builder_inspector.cpp" line="362"/>
         <source>Reflects</source>
         <translation>Refleja</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="339"/>
+        <location filename="../scene_builder_inspector.cpp" line="363"/>
         <source>Lets through</source>
         <translation>Deja pasar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="346"/>
+        <location filename="../scene_builder_inspector.cpp" line="370"/>
         <source>Object</source>
         <translation>Objeto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="347"/>
-        <location filename="../scene_builder_inspector.cpp" line="404"/>
+        <location filename="../scene_builder_inspector.cpp" line="371"/>
+        <location filename="../scene_builder_inspector.cpp" line="428"/>
         <source>Name</source>
         <translation>Nombre</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="357"/>
+        <location filename="../scene_builder_inspector.cpp" line="381"/>
         <source>Shape</source>
         <translation>Forma</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="359"/>
+        <location filename="../scene_builder_inspector.cpp" line="383"/>
         <source>Rotation (degrees)</source>
         <translation>Rotación (grados)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="365"/>
-        <location filename="../scene_builder_inspector.cpp" line="369"/>
+        <location filename="../scene_builder_inspector.cpp" line="389"/>
+        <location filename="../scene_builder_inspector.cpp" line="393"/>
         <source>Radius</source>
         <translation>Radio</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="370"/>
+        <location filename="../scene_builder_inspector.cpp" line="394"/>
         <source>Height</source>
         <translation>Altura</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="373"/>
+        <location filename="../scene_builder_inspector.cpp" line="397"/>
         <source>Size</source>
         <translation>Tamaño</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="376"/>
+        <location filename="../scene_builder_inspector.cpp" line="400"/>
         <source>Width (X)</source>
         <translation>Ancho (X)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="377"/>
+        <location filename="../scene_builder_inspector.cpp" line="401"/>
         <source>Depth (Z)</source>
         <translation>Profundidad (Z)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="380"/>
+        <location filename="../scene_builder_inspector.cpp" line="404"/>
         <source>Mesh file</source>
         <translation>Archivo de malla</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="380"/>
-        <location filename="../scene_builder_widget.cpp" line="712"/>
+        <location filename="../scene_builder_inspector.cpp" line="404"/>
+        <location filename="../scene_builder_widget.cpp" line="713"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Mallas (*.ply *.obj)</translation>
     </message>
@@ -5596,84 +5653,84 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation type="vanished">Mallas PLY (*.ply)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="381"/>
+        <location filename="../scene_builder_inspector.cpp" line="405"/>
         <source>Scale</source>
         <translation>Escala</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="387"/>
-        <location filename="../scene_builder_inspector.cpp" line="403"/>
+        <location filename="../scene_builder_inspector.cpp" line="411"/>
+        <location filename="../scene_builder_inspector.cpp" line="427"/>
         <source>Light</source>
         <translation>Luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="388"/>
+        <location filename="../scene_builder_inspector.cpp" line="412"/>
         <source>Gives off light</source>
         <translation>Emite luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="390"/>
+        <location filename="../scene_builder_inspector.cpp" line="414"/>
         <source>Light colour</source>
         <translation>Color de la luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="391"/>
-        <location filename="../scene_builder_inspector.cpp" line="433"/>
+        <location filename="../scene_builder_inspector.cpp" line="415"/>
+        <location filename="../scene_builder_inspector.cpp" line="457"/>
         <source>Strength</source>
         <translation>Intensidad</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="392"/>
+        <location filename="../scene_builder_inspector.cpp" line="416"/>
         <source>Both sides</source>
         <translation>Ambas caras</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="394"/>
+        <location filename="../scene_builder_inspector.cpp" line="418"/>
         <source>A quad or disk lights the side that faces up. Rotate it 180 degrees about X to make a ceiling light.</source>
         <translation>Un cuadrilátero o un disco ilumina la cara que mira hacia arriba. Gíralo 180 grados sobre X para hacer una luz de techo.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="418"/>
+        <location filename="../scene_builder_inspector.cpp" line="442"/>
         <source>Aims at</source>
         <translation>Apunta a</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="419"/>
+        <location filename="../scene_builder_inspector.cpp" line="443"/>
         <source>Cone angle</source>
         <translation>Ángulo del cono</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="420"/>
+        <location filename="../scene_builder_inspector.cpp" line="444"/>
         <source>Soft edge</source>
         <translation>Borde suave</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="423"/>
+        <location filename="../scene_builder_inspector.cpp" line="447"/>
         <source>Shines from</source>
         <translation>Brilla desde</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="424"/>
+        <location filename="../scene_builder_inspector.cpp" line="448"/>
         <source>Towards</source>
         <translation>Hacia</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="427"/>
+        <location filename="../scene_builder_inspector.cpp" line="451"/>
         <source>Sky image</source>
         <translation>Imagen del cielo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="427"/>
+        <location filename="../scene_builder_inspector.cpp" line="451"/>
         <source>Images (*.exr *.hdr *.png *.jpg *.jpeg)</source>
         <translation>Imágenes (*.exr *.hdr *.png *.jpg *.jpeg)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="428"/>
+        <location filename="../scene_builder_inspector.cpp" line="452"/>
         <source>Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama.</source>
         <translation>Deja la imagen vacía para un cielo de color liso. Una imagen es un panorama equirrectangular (latitud-longitud).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="433"/>
+        <location filename="../scene_builder_inspector.cpp" line="457"/>
         <source>Brightness</source>
         <translation>Brillo</translation>
     </message>
@@ -5723,9 +5780,8 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Añadir a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="118"/>
         <source>Save the scene into the scenes folder so it shows up in the Settings tab (after a restart)</source>
-        <translation>Guardar la escena en la carpeta de escenas para que aparezca en la pestaña Configuración (tras reiniciar)</translation>
+        <translation type="vanished">Guardar la escena en la carpeta de escenas para que aparezca en la pestaña Configuración (tras reiniciar)</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="119"/>
@@ -5849,7 +5905,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="288"/>
-        <location filename="../scene_builder_widget.cpp" line="895"/>
+        <location filename="../scene_builder_widget.cpp" line="896"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
@@ -5915,7 +5971,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <location filename="../scene_builder_widget.cpp" line="441"/>
         <location filename="../scene_builder_widget.cpp" line="451"/>
         <location filename="../scene_builder_widget.cpp" line="491"/>
-        <location filename="../scene_builder_widget.cpp" line="852"/>
+        <location filename="../scene_builder_widget.cpp" line="853"/>
         <source>Could not write %1.</source>
         <translation>No se pudo escribir %1.</translation>
     </message>
@@ -5936,7 +5992,16 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>No hay carpeta de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="712"/>
+        <location filename="../scene_builder_widget.cpp" line="520"/>
+        <source>Saved a copy as %1.
+
+It is in the scene list now (Settings tab, Custom Scenes).</source>
+        <translation>Se guardó una copia como %1.
+
+Ya está en la lista de escenas (pestaña Configuración, Escenas personalizadas).</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="713"/>
         <source>Choose a mesh</source>
         <translation>Elegir una malla</translation>
     </message>
@@ -5944,6 +6009,11 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <location filename="../scene_builder_widget.cpp" line="481"/>
         <source>The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.</source>
         <translation>No se encontró la carpeta de escenas (pbrt_scenes) junto al programa. Usa Guardar como para dejar el archivo donde quieras, y define la variable de entorno RAY_TRACER_PBRT_DIR con esa carpeta para que el programa la incluya en la lista.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="118"/>
+        <source>Save the scene into the scenes folder so it shows up in the Settings tab</source>
+        <translation>Guardar la escena en la carpeta de escenas para que aparezca en la pestaña Configuración</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="510"/>
@@ -5956,26 +6026,25 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>%1 ya existe. ¿Reemplazarlo?</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="518"/>
+        <location filename="../scene_builder_widget.cpp" line="519"/>
         <source>Added to the scene list</source>
         <translation>Añadida a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="519"/>
         <source>Saved a copy as %1.
 
 Restart the program to see it in the scene list (Settings tab, Custom Scenes).</source>
-        <translation>Se guardó una copia como %1.
+        <translation type="vanished">Se guardó una copia como %1.
 
 Reinicia el programa para verla en la lista de escenas (pestaña Configuración, Escenas personalizadas).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="631"/>
+        <location filename="../scene_builder_widget.cpp" line="632"/>
         <source>Camera and image</source>
         <translation>Cámara e imagen</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="652"/>
+        <location filename="../scene_builder_widget.cpp" line="653"/>
         <source>, light</source>
         <translation>, luz</translation>
     </message>
@@ -5984,57 +6053,57 @@ Reinicia el programa para verla en la lista de escenas (pestaña Configuración,
         <translation type="vanished">Elegir una malla .ply</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="781"/>
+        <location filename="../scene_builder_widget.cpp" line="782"/>
         <source>not saved yet</source>
         <translation>sin guardar todavía</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="782"/>
+        <location filename="../scene_builder_widget.cpp" line="783"/>
         <source>%1 (%2)%3  |  %4 objects, %5 lights</source>
         <translation>%1 (%2)%3  |  %4 objetos, %5 luces</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="798"/>
+        <location filename="../scene_builder_widget.cpp" line="799"/>
         <source>No problems found.</source>
         <translation>No se encontraron problemas.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="804"/>
+        <location filename="../scene_builder_widget.cpp" line="805"/>
         <source>Fix this:</source>
         <translation>Corrige esto:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="804"/>
+        <location filename="../scene_builder_widget.cpp" line="805"/>
         <source>Note:</source>
         <translation>Nota:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="826"/>
+        <location filename="../scene_builder_widget.cpp" line="827"/>
         <source>Save the rendered picture</source>
         <translation>Guardar la imagen renderizada</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="826"/>
+        <location filename="../scene_builder_widget.cpp" line="827"/>
         <source>PNG images (*.png)</source>
         <translation>Imágenes PNG (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="830"/>
+        <location filename="../scene_builder_widget.cpp" line="831"/>
         <source>The render failed</source>
         <translation>Error de renderizado</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="840"/>
+        <location filename="../scene_builder_widget.cpp" line="841"/>
         <source>A render is already running.</source>
         <translation>Ya hay un renderizado en curso.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="842"/>
+        <location filename="../scene_builder_widget.cpp" line="843"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>Corrige primero los problemas indicados en las propiedades.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="843"/>
+        <location filename="../scene_builder_widget.cpp" line="844"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>No se encontró el renderizador (%1) junto al programa.</translation>
     </message>
@@ -6105,7 +6174,7 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="80"/>
-        <location filename="../scene_builder_widget.cpp" line="880"/>
+        <location filename="../scene_builder_widget.cpp" line="881"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
@@ -6120,54 +6189,54 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
         <translation>Creando un objeto 3D a partir de la foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="117"/>
+        <location filename="../scene_builder_photo.cpp" line="120"/>
         <source>Photo object</source>
         <translation>Objeto de foto</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="127"/>
+        <location filename="../scene_builder_photo.cpp" line="130"/>
         <source>Added %1 from the photo. The shape is a guess; check it from every side.</source>
         <translation>Se añadió %1 a partir de la foto. La forma es una suposición; revísala desde todos los lados.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="883"/>
+        <location filename="../scene_builder_widget.cpp" line="884"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>Renderizando %1 x %2, %3 muestras...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="904"/>
+        <location filename="../scene_builder_widget.cpp" line="905"/>
         <source>The render was cancelled.</source>
         <translation>Se canceló el renderizado.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="904"/>
+        <location filename="../scene_builder_widget.cpp" line="905"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>El renderizador se detuvo inesperadamente.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="904"/>
+        <location filename="../scene_builder_widget.cpp" line="905"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>El renderizador no produjo ninguna imagen (código de salida %1).
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="905"/>
+        <location filename="../scene_builder_widget.cpp" line="906"/>
         <source>The render failed.</source>
         <translation>Falló el renderizado.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="911"/>
+        <location filename="../scene_builder_widget.cpp" line="912"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>Terminado en %1 s (%2 x %3).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="914"/>
+        <location filename="../scene_builder_widget.cpp" line="915"/>
         <source>Saved %1.</source>
         <translation>Se guardó %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="915"/>
+        <location filename="../scene_builder_widget.cpp" line="916"/>
         <source>Could not save to %1.</source>
         <translation>No se pudo guardar en %1.</translation>
     </message>
@@ -6175,62 +6244,62 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
 <context>
     <name>SceneCategory</name>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="189"/>
+        <location filename="../scene_metadata_client.cpp" line="206"/>
         <source>Basics</source>
         <translation>Fundamentos</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="190"/>
+        <location filename="../scene_metadata_client.cpp" line="207"/>
         <source>Materials</source>
         <translation>Materiales</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="191"/>
+        <location filename="../scene_metadata_client.cpp" line="208"/>
         <source>Lights</source>
         <translation>Luces</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="192"/>
+        <location filename="../scene_metadata_client.cpp" line="209"/>
         <source>Cameras</source>
         <translation>Cámaras</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="193"/>
+        <location filename="../scene_metadata_client.cpp" line="210"/>
         <source>Volumes</source>
         <translation>Volúmenes</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="194"/>
+        <location filename="../scene_metadata_client.cpp" line="211"/>
         <source>Geometry</source>
         <translation>Geometría</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="195"/>
+        <location filename="../scene_metadata_client.cpp" line="212"/>
         <source>Models</source>
         <translation>Modelos</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="196"/>
+        <location filename="../scene_metadata_client.cpp" line="213"/>
         <source>Large Scenes</source>
         <translation>Escenas grandes</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="197"/>
+        <location filename="../scene_metadata_client.cpp" line="214"/>
         <source>Education</source>
         <translation>Educación</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="198"/>
+        <location filename="../scene_metadata_client.cpp" line="215"/>
         <source>Textures</source>
         <translation>Texturas</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="199"/>
+        <location filename="../scene_metadata_client.cpp" line="216"/>
         <source>Custom Scenes</source>
         <translation>Escenas personalizadas</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="200"/>
+        <location filename="../scene_metadata_client.cpp" line="217"/>
         <source>Test Scenes</source>
         <translation>Escenas de prueba</translation>
     </message>
@@ -6271,27 +6340,27 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
 <context>
     <name>ScenePerformance</name>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="209"/>
+        <location filename="../scene_metadata_client.cpp" line="226"/>
         <source>Fast</source>
         <translation>Rápido</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="210"/>
+        <location filename="../scene_metadata_client.cpp" line="227"/>
         <source>Medium</source>
         <translation>Medio</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="211"/>
+        <location filename="../scene_metadata_client.cpp" line="228"/>
         <source>Slow</source>
         <translation>Lento</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="212"/>
+        <location filename="../scene_metadata_client.cpp" line="229"/>
         <source>Very Slow</source>
         <translation>Muy lento</translation>
     </message>
     <message>
-        <location filename="../scene_metadata_client.cpp" line="213"/>
+        <location filename="../scene_metadata_client.cpp" line="230"/>
         <source>Unknown</source>
         <translation>Desconocido</translation>
     </message>

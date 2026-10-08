@@ -2,10 +2,42 @@
 
 #include <QCoreApplication>
 #include <QDir>
+#include <QDirIterator>
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QStringList>
 #include <QTimer>
+
+namespace {
+
+// <relative path> in the program's own folder or the one above it (three above for a macOS .app, which keeps its files beside the bundle), else "".
+QString nextToProgram(const QString &relative) {
+	const QString app = QCoreApplication::applicationDirPath();
+	QStringList up{"", "../"};
+	if (app.contains(".app/Contents/")) up << "../../../";
+	for (const QString &u : up) {
+		const QString candidate = app + "/" + u + relative;
+		if (QFileInfo::exists(candidate)) return QDir::cleanPath(candidate);
+	}
+	return QString();
+}
+
+// A process whose output (stdout and stderr) arrives together; `python` also makes Python's output UTF-8 and unbuffered so progress is live.
+QProcess *newProcess(QObject *parent, bool python) {
+	auto *p = new QProcess(parent);
+	p->setProcessChannelMode(QProcess::MergedChannels);
+	if (python) {
+		QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+		env.insert("PYTHONIOENCODING", "utf-8");
+		env.insert("PYTHONUNBUFFERED", "1");
+		p->setProcessEnvironment(env);
+	}
+	return p;
+}
+
+std::string toBytes(const QByteArray &b) { return std::string(b.constData(), static_cast<size_t>(b.size())); }
+
+}  // namespace
 
 namespace photo_import {
 
@@ -18,6 +50,17 @@ QString resultsFolder() {
 	return QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) + "/photo_meshes";
 }
 
+QString resultsSummary() {
+	const QDir root(resultsFolder());
+	if (!root.exists()) return QObject::tr("none yet");
+	const int folders = root.entryList(QDir::Dirs | QDir::NoDotAndDotDot).size();
+	qint64 bytes = 0;
+	QDirIterator it(root.absolutePath(), QDir::Files, QDirIterator::Subdirectories);
+	while (it.hasNext()) bytes += QFileInfo(it.next()).size();
+	if (folders == 0) return QObject::tr("none yet");
+	return QObject::tr("%1 folders, %2 MB").arg(folders).arg(bytes / 1000000);
+}
+
 static QString environmentPython() {
 #ifdef Q_OS_WIN
 	return environmentFolder() + "/venv/Scripts/python.exe";
@@ -26,17 +69,9 @@ static QString environmentPython() {
 #endif
 }
 
-static QString helperScript() {
-	const QString app = QCoreApplication::applicationDirPath();
-	for (const QString &c : {app + "/tools/photo_to_mesh/photo_to_mesh.py", app + "/../tools/photo_to_mesh/photo_to_mesh.py",
-	                         app + "/../../tools/photo_to_mesh/photo_to_mesh.py", app + "/../../../tools/photo_to_mesh/photo_to_mesh.py"})
-		if (QFileInfo::exists(c)) return QDir::cleanPath(c);
-	return QString();
-}
-
 Setup locate() {
 	Setup s;
-	s.script = helperScript();
+	s.script = nextToProgram("tools/photo_to_mesh/photo_to_mesh.py");
 	const QString overridePython = qEnvironmentVariable("RAY_TRACER_PHOTO3D_PYTHON");
 	s.python = overridePython.isEmpty() ? environmentPython() : overridePython;
 	if (s.script.isEmpty())
@@ -48,50 +83,23 @@ Setup locate() {
 	return s;
 }
 
-bool parseProgressLine(const QString &line, int *percent, QString *message) {
-	static const QString tag = QStringLiteral("PROGRESS ");
-	if (!line.startsWith(tag)) return false;
-	const QString rest = line.mid(tag.size());
-	const int space = rest.indexOf(' ');
-	bool ok = false;
-	const int p = (space < 0 ? rest : rest.left(space)).toInt(&ok);
-	if (!ok) return false;
-	if (percent) *percent = qBound(0, p, 100);
-	if (message) *message = space < 0 ? QString() : rest.mid(space + 1).trimmed();
-	return true;
-}
-
 QString setupScript() {
 	const QString overridePath = qEnvironmentVariable("RAY_TRACER_PHOTO3D_SETUP");
-	if (!overridePath.isEmpty()) return QFileInfo::exists(overridePath) ? overridePath : QString();
-	const QString app = QCoreApplication::applicationDirPath();
-	for (const QString &c : {app + "/scripts/setup_photo_to_mesh.ps1", app + "/../scripts/setup_photo_to_mesh.ps1", app + "/../../scripts/setup_photo_to_mesh.ps1",
-	                         app + "/../../../scripts/setup_photo_to_mesh.ps1"})
-		if (QFileInfo::exists(c)) return QDir::cleanPath(c);
-	return QString();
+	if (!overridePath.isEmpty() && qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) return QFileInfo::exists(overridePath) ? overridePath : QString();
+	return nextToProgram("scripts/setup_photo_to_mesh.ps1");
 }
 
 QStringList missingFacts(const QString &report) {
 	QStringList out;
-	const int at = report.indexOf(QStringLiteral("=== Photo helper"));
-	if (at < 0) return out;
-	QString section = report.mid(at);
-	const int next = section.indexOf(QStringLiteral("\n==="));  // the next section's banner (this one's own banner is on the first line)
-	if (next > 0) section = section.left(next);
-	for (const QString &raw : section.split('\n')) {
-		const QString line = raw.trimmed();
-		const int colon = line.indexOf(':');
-		if (line.startsWith("===") || colon < 0) continue;
-		const QString key = line.left(colon);
-		if (key == "Helper Script" || key == "Expected At" || key.startsWith("Graphics Card") || key == "Python") continue;  // not something setup fixes
-		const QString lower = line.toLower();
-		if (lower.contains("missing") || lower.contains("not usable") || lower.contains("not available")) out << line;
-	}
+	for (const std::string &fact : photo_report::missingFacts(report.toStdString())) out << QString::fromStdString(fact);
 	return out;
 }
 
 }  // namespace photo_import
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// PhotoHelperInstaller
+// ---------------------------------------------------------------------------------------------------------------------------------
 PhotoHelperInstaller::~PhotoHelperInstaller() {
 	if (m_process) {
 		m_process->disconnect(this);
@@ -103,14 +111,19 @@ PhotoHelperInstaller::~PhotoHelperInstaller() {
 void PhotoHelperInstaller::start() {
 	if (m_process) return;
 	const QString script = photo_import::setupScript();
-	m_process = new QProcess(this);
-	m_process->setProcessChannelMode(QProcess::MergedChannels);
+	if (script.isEmpty()) {
+		m_done = true;
+		QTimer::singleShot(0, this, [this]() { emit finished(false, tr("The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.")); });
+		return;
+	}
+	m_process = newProcess(this, false);
 	connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() { onOutput(); });
 	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus st) {
 		if (m_done) return;
 		m_done = true;
 		onOutput();
-		if (!m_pending.trimmed().isEmpty()) emit line(m_pending.trimmed());
+		const QString rest = QString::fromLocal8Bit(m_splitter.flush().c_str());
+		if (!rest.isEmpty()) emit line(rest);
 		const bool ok = st == QProcess::NormalExit && code == 0 && !m_cancelled;
 		QString message;
 		if (m_cancelled) message = tr("Cancelled.");
@@ -128,14 +141,6 @@ void PhotoHelperInstaller::start() {
 		p->deleteLater();
 		emit finished(false, tr("Could not start PowerShell to run the installer."));
 	});
-	if (script.isEmpty()) {
-		m_done = true;
-		QProcess *p = m_process;
-		m_process = nullptr;
-		p->deleteLater();
-		QTimer::singleShot(0, this, [this]() { emit finished(false, tr("The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.")); });
-		return;
-	}
 	m_process->start("powershell.exe", {"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script});
 }
 
@@ -155,29 +160,29 @@ void PhotoHelperInstaller::killTree() {
 
 void PhotoHelperInstaller::onOutput() {
 	if (!m_process) return;
-	m_pending += QString::fromLocal8Bit(m_process->readAllStandardOutput());
-	// pip redraws its progress bar with \r; a bare \r replaces the status text, \n ends a line.
-	int i = 0;
-	QString current;
-	for (; i < m_pending.size(); ++i) {
-		const QChar c = m_pending[i];
-		if (c == '\n') {
-			const QString text = current.trimmed();
-			if (!text.isEmpty()) {
-				emit line(text);
-				emit status(text);
-				m_tail << text;
-				while (m_tail.size() > 8) m_tail.removeFirst();
-			}
-			current.clear();
-		} else if (c == '\r') {
-			if (!current.trimmed().isEmpty()) emit status(current.trimmed());
-			current.clear();
-		} else {
-			current += c;
+	for (const auto &piece : m_splitter.feed(toBytes(m_process->readAllStandardOutput()))) {
+		const QString text = QString::fromLocal8Bit(piece.text.c_str());
+		if (piece.endsLine) {
+			emit line(text);
+			m_tail << text;
+			while (m_tail.size() > 8) m_tail.removeFirst();
 		}
+		emit status(text);
 	}
-	m_pending = current;
+}
+
+// ---------------------------------------------------------------------------------------------------------------------------------
+// PhotoHelperCheck
+// ---------------------------------------------------------------------------------------------------------------------------------
+PhotoHelperCheck::PhotoHelperCheck(QObject *parent) : QObject(parent) {
+	m_timeout = new QTimer(this);
+	m_timeout->setSingleShot(true);
+	m_timeout->setInterval(60000);  // importing PyTorch takes a few seconds; a hung or broken install must not hold the Diagnostics button forever
+	connect(m_timeout, &QTimer::timeout, this, [this]() {
+		if (!m_running) return;
+		dropProcess();
+		finish(QStringLiteral("Python Check: not usable (no answer after 60 seconds)\n"));
+	});
 }
 
 PhotoHelperCheck::~PhotoHelperCheck() {
@@ -188,9 +193,18 @@ PhotoHelperCheck::~PhotoHelperCheck() {
 	}
 }
 
+void PhotoHelperCheck::dropProcess() {
+	if (!m_process) return;
+	m_process->disconnect(this);
+	m_process->kill();
+	m_process->deleteLater();
+	m_process = nullptr;
+}
+
 void PhotoHelperCheck::start() {
 	if (m_running) return;
 	m_running = true;
+	dropProcess();
 	const photo_import::Setup setup = photo_import::locate();
 	m_head = QStringLiteral("=== Photo helper (Scene Builder, Add > Object from a photo; optional) ===\n");
 	m_head += setup.script.isEmpty() ? QStringLiteral("Helper Script: missing (tools/photo_to_mesh/photo_to_mesh.py was not found next to the program)\n")
@@ -206,13 +220,11 @@ void PhotoHelperCheck::start() {
 		finish(QString());
 		return;
 	}
-	m_process = new QProcess(this);
-	m_process->setProcessChannelMode(QProcess::MergedChannels);
-	QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-	env.insert("PYTHONIOENCODING", "utf-8");
-	m_process->setProcessEnvironment(env);
-	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus st) {
-		const QString out = QString::fromUtf8(m_process->readAll());
+	m_process = newProcess(this, true);
+	QProcess *process = m_process;
+	connect(process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this, process](int code, QProcess::ExitStatus st) {
+		if (process != m_process) return;
+		const QString out = QString::fromUtf8(process->readAll());
 		if (st == QProcess::NormalExit && code == 0) {
 			finish(out);
 		} else {
@@ -221,28 +233,29 @@ void PhotoHelperCheck::start() {
 			finish(QStringLiteral("Python Check: not usable (%1)\n").arg(lines.isEmpty() ? QStringLiteral("exit code %1").arg(code) : lines.last().trimmed().left(200)));
 		}
 	});
-	connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
-		if (e == QProcess::FailedToStart) finish(QStringLiteral("Python Check: not usable (could not start python)\n"));
+	connect(process, &QProcess::errorOccurred, this, [this, process](QProcess::ProcessError e) {
+		if (process == m_process && e == QProcess::FailedToStart) finish(QStringLiteral("Python Check: not usable (could not start python)\n"));
 	});
-	// Importing PyTorch takes a few seconds; a hung or broken install must not hold the Diagnostics button forever.
-	QTimer::singleShot(60000, this, [this]() {
-		if (m_running && m_process) {
-			m_process->disconnect(this);
-			m_process->kill();
-			finish(QStringLiteral("Python Check: not usable (no answer after 60 seconds)\n"));
-		}
-	});
-	m_process->start(setup.python, {setup.script, "--check"});
+	m_timeout->start();
+	process->start(setup.python, {setup.script, "--check"});
 }
 
 void PhotoHelperCheck::finish(const QString &facts) {
 	if (!m_running) return;
 	m_running = false;
-	QString section = m_head + facts;
+	m_timeout->stop();
+	QString clean = facts;
+	clean.remove('\r');  // Python writes \r\n to a pipe on Windows; the report uses \n like the rest of it
+	QString section = m_head + clean;
 	if (!section.endsWith('\n')) section += '\n';
+	section += QStringLiteral("Saved Photo Objects: %1 (%2; safe to delete when no saved scene uses them)\n")
+	               .arg(photo_import::resultsSummary(), QDir::toNativeSeparators(photo_import::resultsFolder()));
 	emit finished(section);
 }
 
+// ---------------------------------------------------------------------------------------------------------------------------------
+// PhotoToMeshJob
+// ---------------------------------------------------------------------------------------------------------------------------------
 PhotoToMeshJob::PhotoToMeshJob(const photo_import::Setup &setup, const QString &image, const QString &outFolder, bool removeBackground, QObject *parent)
     : QObject(parent), m_setup(setup), m_image(image), m_out(outFolder), m_removeBackground(removeBackground) {}
 
@@ -255,12 +268,7 @@ PhotoToMeshJob::~PhotoToMeshJob() {
 }
 
 void PhotoToMeshJob::start() {
-	m_process = new QProcess(this);
-	m_process->setProcessChannelMode(QProcess::MergedChannels);
-	QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
-	env.insert("PYTHONIOENCODING", "utf-8");
-	env.insert("PYTHONUNBUFFERED", "1");
-	m_process->setProcessEnvironment(env);
+	m_process = newProcess(this, true);
 	connect(m_process, &QProcess::readyReadStandardOutput, this, [this]() { onOutput(); });
 	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus st) { onFinished(code, st); });
 	connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
@@ -280,21 +288,19 @@ void PhotoToMeshJob::cancel() {
 }
 
 void PhotoToMeshJob::onOutput() {
-	m_pending += QString::fromUtf8(m_process->readAllStandardOutput());
-	int nl;
-	while ((nl = m_pending.indexOf('\n')) >= 0) {
-		const QString line = m_pending.left(nl).trimmed();
-		m_pending.remove(0, nl + 1);
+	for (const auto &piece : m_splitter.feed(toBytes(m_process->readAllStandardOutput()))) {
+		const QString text = QString::fromUtf8(piece.text.c_str());
 		int percent = 0;
-		QString message;
-		if (photo_import::parseProgressLine(line, &percent, &message))
-			emit progress(percent, message);
-		else if (line.startsWith("ERROR "))
-			m_lastError = line.mid(6);
-		else if (line.startsWith("NOTE "))
-			m_note = line.mid(5);
-		else if (!line.isEmpty()) {
-			m_tail << line;  // the end of a Python traceback, when it crashes
+		std::string message;
+		if (!piece.endsLine) continue;  // the helper only ever ends its lines
+		if (photo_report::parseProgressLine(piece.text, percent, message)) {
+			emit progress(percent, QString::fromUtf8(message.c_str()));
+		} else if (text.startsWith("ERROR ")) {
+			m_lastError = text.mid(6);
+		} else if (text.startsWith("NOTE ")) {
+			m_note = text.mid(5);
+		} else {
+			m_tail << text;  // the end of a Python traceback, when it crashes
 			while (m_tail.size() > 6) m_tail.removeFirst();
 		}
 	}

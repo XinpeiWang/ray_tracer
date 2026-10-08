@@ -23,6 +23,7 @@
 #include <cmath>
 #include <cstdio>
 #include <cstdlib>
+#include <filesystem>
 #include <iomanip>
 #include <locale>
 #include <sstream>
@@ -575,6 +576,17 @@ inline bool fromJson(const std::string& text, Document& out, std::string& err) {
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Checks, shown to the user before rendering
 // ---------------------------------------------------------------------------------------------------------------------------------
+namespace detail {
+// An absolute path to a file that is not there. (A relative path is relative to wherever the .pbrt file ends up, which validate() cannot know;
+// the Scene Builder's file dialogs only ever store absolute ones.)
+inline bool absoluteFileMissing(const std::string& path) {
+	if (path.empty()) return false;
+	std::error_code ec;
+	const std::filesystem::path p(path);
+	return p.is_absolute() && !std::filesystem::exists(p, ec);
+}
+}  // namespace detail
+
 inline std::vector<Problem> validate(const Document& d) {
 	std::vector<Problem> out;
 	auto err = [&](const std::string& m) { out.push_back({Problem::Severity::Error, m}); };
@@ -622,7 +634,11 @@ inline std::vector<Problem> validate(const Document& d) {
 			if (o.material.kind != MaterialKind::Diffuse && o.material.kind != MaterialKind::CoatedDiffuse)
 				warn(who + "a picture only applies to diffuse and glossy paint materials.");
 			else if (o.material.checker) warn(who + "the picture replaces the checker pattern.");
+			if (detail::absoluteFileMissing(o.material.imageFile))
+				warn(who + "the picture file was not found (" + o.material.imageFile + "), so it will render without it. Choose it again.");
 		}
+		if (o.shape == ShapeKind::Mesh && detail::absoluteFileMissing(o.meshFile))
+			warn(who + "the mesh file was not found (" + o.meshFile + "). Choose it again.");
 		if (o.material.checker && o.material.kind != MaterialKind::Diffuse) warn(who + "the checker pattern only applies to diffuse materials.");
 		if (o.material.checker && o.shape == ShapeKind::Box) warn(who + "the checker pattern is not applied to boxes.");
 		if ((o.material.kind == MaterialKind::Dielectric || o.material.kind == MaterialKind::CoatedDiffuse) && !(o.material.ior >= 1.0 && o.material.ior <= 3.0))
@@ -637,6 +653,7 @@ inline std::vector<Problem> validate(const Document& d) {
 	for (const Light& l : d.lights) {
 		const std::string who = "'" + l.name + "': ";
 		if (l.intensity < 0.0) err(who + "the light strength cannot be negative.");
+		if (l.kind == LightKind::Infinite && detail::absoluteFileMissing(l.imageFile)) warn(who + "the sky image was not found (" + l.imageFile + "). Choose it again.");
 		if (l.kind == LightKind::Spot && !(l.coneAngle > 0.0 && l.coneAngle < 90.0)) err(who + "the spot cone angle must be between 0 and 90 degrees.");
 		if (l.kind == LightKind::Spot && (l.coneDelta < 0.0 || l.coneDelta > l.coneAngle)) err(who + "the spot soft edge must be between 0 and the cone angle.");
 		if ((l.kind == LightKind::Spot || l.kind == LightKind::Distant) && l.position.x == l.target.x && l.position.y == l.target.y && l.position.z == l.target.z)
