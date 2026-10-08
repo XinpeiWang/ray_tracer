@@ -17,8 +17,9 @@
 
 // The scenes compiled into this binary. Everything the full registry holds
 // beyond these came from a .pbrt file found on disk at startup.
-inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
-    static const std::vector<SceneDescriptor> registry = {
+// Part 1 of 7 of the compiled-in scene table (the order of the parts is the order of the registry).
+inline std::vector<SceneDescriptor> builtin_scenes_part1() {
+    return {
         // CameraMode::UserControlled is passed explicitly: the Cornell-box camera is user-controlled, and the default
         // (Fixed) would silently disable --cam_x/y/z and the GUI's camera controls for this scene.
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
@@ -126,6 +127,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "F1", 200, SceneNames::BilinearPatchScene, SceneCategories::Geometry,
             "Cornell box with curved bilinear patch saddle surface (pbrt-v4 BilinearPatch shape)",
             "Fast", "bilinear-patch-scene.pbrt", CameraMode::UserControlled),
+    };
+}
+
+// Part 2 of 7 of the compiled-in scene table (the order of the parts is the order of the registry).
+inline std::vector<SceneDescriptor> builtin_scenes_part2() {
+    return {
         // ---- pbrt-v4 light / camera / medium showcase ----
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "C1", 203, SceneNames::HdriSky, SceneCategories::Lights,
@@ -234,6 +241,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "F2", 188, SceneNames::TriangleMesh, SceneCategories::Geometry,
             "Procedurally-generated icosahedron showcasing real triangle-mesh geometry (watertight Moller-Trumbore intersection)",
             "Fast", "triangle-mesh-scene.pbrt"),
+    };
+}
+
+// Part 3 of 7 of the compiled-in scene table (the order of the parts is the order of the registry).
+inline std::vector<SceneDescriptor> builtin_scenes_part3() {
+    return {
         build_instanced_spheres_descriptor(),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F4", 189, SceneNames::CurveFibers, SceneCategories::Geometry,
@@ -379,6 +392,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "H12", 81, SceneNames::PowerPlant, SceneCategories::LargeScene,
             "Power Plant - a complete model of an actual coal-fired power plant (12.76M triangles, 5.98M vertices), the largest scene in this collection by triangle count, with flat per-face .mtl colors (no image textures), lit by an open sky, loaded from an external .obj file (requires models/powerplant.obj). Twelfth 'whole environment' mesh scene, and the first needing a real coordinate rescale rather than raw OBJ units -- see build_power_plant()'s own comment.",
             "Slow", "environment-power-plant.pbrt", CameraMode::Fixed, /*requires_files=*/true),
+    };
+}
+
+// Part 4 of 7 of the compiled-in scene table (the order of the parts is the order of the registry).
+inline std::vector<SceneDescriptor> builtin_scenes_part4() {
+    return {
         // H13/H14: real pbrt-v4-scenes bundles (github.com/mmp/pbrt-v4-scenes),
         // NOT git-tracked (see build_curated_external_pbrt_scene_descriptor()'s
         // own comment, scene_registry.h, for why) - download into
@@ -479,6 +498,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "A real pbrt-v4-scenes bundle (not bundled with this repo - see pbrt_scenes/README.md): detailed mechanical objects (gears, casings) rendered in transparent glass-like materials, shot as an animated camera fly-through. Five frames ship in the bundle (frame542/675/812/888/1266.pbrt); this entry renders a representative middle one (frame812).",
             "Medium", "transparent-machines/frame812.pbrt"),
 
+    };
+}
+
+// Part 5 of 7 of the compiled-in scene table (the order of the parts is the order of the registry).
+inline std::vector<SceneDescriptor> builtin_scenes_part5() {
+    return {
         // ---------------------------------------------------------------
         // Education (I1-I6): curated demos of the Render Options tab's own
         // controls (Sampler, Spectral rendering, Exposure, Tone mapping,
@@ -689,6 +714,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "The same rough-glass Cornell box as Cornell Rough Glass: render once plain, once with Regularize checked and once with Firefly clamp (--maxcomponentvalue) checked (both on the Render Options tab). The hard caustic through the frosted sphere is what each is built to tame, one by blurring the BSDF and the other by clamping the sample.",
             "Fast", "cornell-rough-glass.pbrt", CameraMode::UserControlled),
 
+    };
+}
+
+// Part 6 of 7 of the compiled-in scene table (the order of the parts is the order of the registry).
+inline std::vector<SceneDescriptor> builtin_scenes_part6() {
+    return {
         // ---------------------------------------------------------------
         // Curated pbrt_scenes/*.pbrt example scenes, under their real topic
         // tab instead of only the generic "Custom Scenes" bucket every
@@ -813,6 +844,12 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "Three saturated, close-range coloured lights on a plain diffuse surface under --spectral rendering, chosen so their overlap sits at the sRGB gamut boundary, where a gamut-clamping error would darken and desaturate the colours.",
             "Fast", "spectral-gamut-saturation.pbrt"),
 
+    };
+}
+
+// Part 7 of 7 of the compiled-in scene table (the order of the parts is the order of the registry).
+inline std::vector<SceneDescriptor> builtin_scenes_part7() {
+    return {
         // -- Cameras --
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "D9", 116, SceneNames::DepthOfFieldPbrtExample, SceneCategories::Cameras,
@@ -913,5 +950,19 @@ inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
             "The classic pbrt-v4 \"killeroo\" statue example scene, loaded end-to-end from its own .pbrt file rather than a compiled-in scene.",
             "Fast", "killeroo-simple.pbrt"),
     };
-    return registry;
 }
+
+inline const std::vector<SceneDescriptor>& get_builtin_scene_registry() {
+    static const std::vector<SceneDescriptor> registry = [] {
+        std::vector<SceneDescriptor> all;
+        { auto part = builtin_scenes_part1(); all.insert(all.end(), part.begin(), part.end()); }
+        { auto part = builtin_scenes_part2(); all.insert(all.end(), part.begin(), part.end()); }
+        { auto part = builtin_scenes_part3(); all.insert(all.end(), part.begin(), part.end()); }
+        { auto part = builtin_scenes_part4(); all.insert(all.end(), part.begin(), part.end()); }
+        { auto part = builtin_scenes_part5(); all.insert(all.end(), part.begin(), part.end()); }
+        { auto part = builtin_scenes_part6(); all.insert(all.end(), part.begin(), part.end()); }
+        { auto part = builtin_scenes_part7(); all.insert(all.end(), part.begin(), part.end()); }
+        return all;
+    }();
+    return registry;
+}

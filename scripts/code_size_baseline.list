@@ -1,7 +1,6 @@
 # Written by scripts/check_code_size.py --update. Functions over 300 lines and files over 2000 lines that exist today;
 # CI fails when one grows or a new one appears. Lower or delete a line after splitting something. Format: <key> <lines>
 file gpu/optix/optix_device_helpers.h 2562
-file gpu/optix/optix_renderer_scene.cpp 2330
 file gpu/optix/optix_types.h 2223
 file gpu/optix/wavefront_device_helpers.h 3312
 file src/TheRestOfYourLife/camera.h 2646
@@ -29,7 +28,6 @@ func src/TheRestOfYourLife/camera.h::ray_color_spectral 395
 func src/TheRestOfYourLife/camera.h::render 556
 func src/TheRestOfYourLife/mesh_mtl.h::load_obj_mtl 370
 func src/TheRestOfYourLife/scene_registry.h::wire_pbrt_backed_scene 312
-func src/TheRestOfYourLife/scene_registry_data.h::get_builtin_scene_registry 898
 func src/shared/pbrt_flatten_materials.h::readMaterialBindings 462
 func src/shared/pbrt_flatten_materials.h::readMaterialKindParams 496
 func src/shared/pbrt_flatten_scene_parts.h::flattenMedia 311

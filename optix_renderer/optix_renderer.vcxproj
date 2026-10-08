@@ -98,6 +98,7 @@
   <ItemGroup>
     <ClCompile Include="..\gpu\optix\optix_renderer_init.cpp" />
     <ClCompile Include="..\gpu\optix\optix_renderer_scene.cpp" />
+    <ClCompile Include="..\gpu\optix\optix_renderer_upload.cpp" />
     <ClCompile Include="..\gpu\optix\optix_renderer_render.cpp" />
     <ClCompile Include="..\gpu\optix\optix_interface.cpp" />
     <ClCompile Include="..\gpu\optix\scene_builder.cpp" />
