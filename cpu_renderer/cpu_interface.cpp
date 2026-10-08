@@ -863,6 +863,10 @@ extern "C" int cpu_scene_count() {
 	return scene_count();
 }
 
+extern "C" int cpu_refresh_user_scenes() {
+	return refresh_user_scenes();
+}
+
 extern "C" const char* cpu_scene_id(int index) {
 	const auto& reg = get_scene_registry();
 	if (index < 0 || index >= (int)reg.size()) return "";
@@ -990,6 +994,18 @@ extern "C" const char* cpu_scene_name_by_id(const char* scene_id) {
 extern "C" const char* cpu_scene_slug_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return s ? s->slug.c_str() : "";
+}
+
+extern "C" const char* cpu_scene_id_for_file(const char* path) {
+	if (!path) return "";
+	for (const auto& kv : pbrt_scene_registry::paths()) {
+		std::error_code ec;
+		if (std::filesystem::equivalent(kv.second, path, ec) && !ec) {
+			const SceneDescriptor* s = find_scene(kv.first);
+			return s ? s->id.c_str() : "";
+		}
+	}
+	return "";
 }
 
 // The id of the scene a key (an id or a slug) names, or "" - a pointer into the registry, valid for the life of the process.

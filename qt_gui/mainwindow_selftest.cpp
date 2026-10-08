@@ -12,6 +12,8 @@
 #include <QFileInfo>
 #include <QImage>
 #include <QPixmap>
+#include <QProcess>
+#include <QSysInfo>
 #include <QPainter>
 #include <QList>
 #include <QScrollArea>
@@ -115,7 +117,27 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			check(!listed.isEmpty() && QFile::exists(listed), "added to the scene list: " + (listed.isEmpty() ? listError : listed));
 			if (QCoreApplication::applicationDirPath().contains(".app/Contents/"))
 				check(!listed.contains(".app/Contents/") && listed.contains("user_scenes"), "from a .app bundle the scene went to the per-user folder, not into the bundle");
-			// (That scene discovery lists a file in that folder is covered by the unit test ScanTree.ScenesInTheUserFolder...)
+			// It must be in the scene list NOW, without a restart: the library lists it, under one id that the renderer this GUI starts also knows
+			// (the id is a persistent number, not a position, so a separate process agrees on it).
+			const int addedNow = SceneMetadataClient::refreshUserScenes();
+			const QString listedId = SceneMetadataClient::sceneIdForFile(listed);
+			check(addedNow >= 0 && !listedId.isEmpty(), "the scene is in the scene list without a restart: " + listedId);
+			if (!listedId.isEmpty()) {
+				check(SceneMetadataClient::sceneName(listedId) == QString("My scene"), "its name in the list is the title the builder saved");
+				QProcess renderer;
+				const QString exe = QCoreApplication::applicationDirPath() + QStringLiteral("/ray_tracer") + (QSysInfo::productType() == "windows" ? ".exe" : "");
+				renderer.setWorkingDirectory(QCoreApplication::applicationDirPath());
+				const QString outPpm = QFileInfo(listed).absolutePath() + "/listed_render.ppm";
+				renderer.start(exe, QStringList() << "--cpu" << "--output" << outPpm << "64" << "4" << "3" << listedId);
+				const bool ran = renderer.waitForFinished(180000) && renderer.exitCode() == 0;
+				check(ran && QFileInfo(outPpm.left(outPpm.size() - 4) + ".png").exists() || ran && QFileInfo(outPpm).exists(),
+				      "the renderer the GUI starts renders that scene by its id (exit " + QString::number(renderer.exitCode()) + ")");
+				QFile::remove(outPpm);
+				QFile::remove(outPpm.left(outPpm.size() - 4) + ".png");
+				// What "Add to scene list" does in the real window: the main window lists the scene and selects it in the Settings tab's scene picker.
+				emit sb->sceneListed(listed);
+				check(m_sceneCombo && m_sceneCombo->currentData().toString() == listedId, "the Settings tab's scene picker now shows it selected");
+			}
 			QFile::remove(listed);
 		}
 		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.

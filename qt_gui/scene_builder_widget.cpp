@@ -115,7 +115,7 @@ void SceneBuilderWidget::buildUi() {
 	auto *openB = button(tr("Open..."), tr("Open a .pbrt file saved by the Scene Builder"));
 	auto *saveB = button(tr("Save"), tr("Save the scene as a .pbrt file"));
 	auto *saveAsB = button(tr("Save As..."), tr("Save the scene under a new name"));
-	auto *listB = button(tr("Add to scene list"), tr("Save the scene into the scenes folder so it shows up in the Settings tab (after a restart)"));
+	auto *listB = button(tr("Add to scene list"), tr("Save the scene into the scenes folder so it shows up in the Settings tab"));
 	m_undoButton = button(tr("Undo"), tr("Undo the last change (Ctrl+Z)"));
 	m_redoButton = button(tr("Redo"), tr("Redo (Ctrl+Y)"));
 	m_titleLabel = new QLabel(this);
@@ -515,8 +515,9 @@ void SceneBuilderWidget::onSaveToSceneListClicked() {
 		QMessageBox::warning(this, tr("Cannot save"), error);
 		return;
 	}
+	emit sceneListed(path);   // the main window lists it and selects it - no restart needed
 	QMessageBox::information(this, tr("Added to the scene list"),
-	                         tr("Saved a copy as %1.\n\nRestart the program to see it in the scene list (Settings tab, Custom Scenes).").arg(path));
+	                         tr("Saved a copy as %1.\n\nIt is in the scene list now (Settings tab, Custom Scenes).").arg(path));
 }
 
 // ---- undo, autosave -------------------------------------------------------------------------------------------------------------

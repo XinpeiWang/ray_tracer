@@ -29,6 +29,7 @@
 #include <filesystem>
 #include <functional>
 #include <map>
+#include <mutex>
 #include <iostream>
 #include <vector>
 #include <string>
@@ -860,6 +861,114 @@ inline std::string displayNameFor(const pbrt_discover::Discovered& d) {
     return pretty;
 }
 
+// The strings a SceneDescriptor points at (it holds `const char*`) have to outlive the registry; a deque never reallocates its elements, so pointers
+// taken earlier stay valid as more scenes are appended - at start-up and later, when the GUI adds a scene while the program runs.
+inline std::deque<std::string>& namesPool() { static std::deque<std::string> p; return p; }
+inline std::deque<std::string>& descriptionsPool() { static std::deque<std::string> p; return p; }
+
+// Lists one scene found on disk: builds its descriptor and appends it to `registry`. Returns false (and adds nothing) for a file that does not parse
+// or that a curated entry already lists. `nextNumber`, `takenSlugs` and `legacy_id` are the running state of the numbering (see append()).
+inline bool appendOne(std::vector<SceneDescriptor>& registry, const pbrt_discover::Discovered& d, std::map<char, int>& nextNumber,
+                      std::set<std::string>& takenSlugs, int& legacy_id) {
+    // A file that will not even parse its header is skipped rather than
+    // listed: offering a scene that cannot possibly render is worse than
+    // not offering it. The warning goes to stderr so the CLI and the GUI
+    // log both surface it.
+    if (!d.ok) {
+        std::cerr << "warning: skipping " << d.path << ": " << d.error << "\n";
+        return false;
+    }
+
+    // A file a curated entry (build_curated_pbrt_scene_descriptor() and its external sibling, which register paths() as part of building the built-in
+    // registry, before this runs) already lists is not listed a second time: it would be the same scene twice, one with a real name, category and
+    // description and one with a file name. Matched with std::filesystem::equivalent, not string equality, since a curated entry and this scan can reach the
+    // same file through different-looking path strings (separators, or a different defaultSearchPaths() entry winning for each).
+    {
+        bool listed = false;
+        for (const auto& entry : paths()) {
+            std::error_code ec;
+            if (std::filesystem::equivalent(entry.second, d.path, ec) && !ec) { listed = true; break; }
+        }
+        if (listed) return false;
+    }
+
+    namesPool().push_back(displayNameFor(d));
+    // The file's own description if it gives one ("# @rt-description ..."), else what can be said about any pbrt file from its header.
+    descriptionsPool().push_back(!d.description.empty()
+        ? d.description
+        : "A pbrt-v4 scene file (" + d.path + "), set up for " + std::to_string(d.xResolution) + " x " + std::to_string(d.yResolution)
+            + " at " + std::to_string(d.samplesPerPixel) + " samples per pixel as the file itself says. Its geometry is read when it is first rendered, "
+              "so a large scene starts slowly.");
+
+    // The category the file names, if it is one of ours; anything else is a Custom Scene.
+    const char* category = SceneCategories::CustomScenes;
+    for (const char* known : SceneCategories::kAll)
+        if (d.category == known) category = known;
+    if (!d.category.empty() && d.category != category)
+        std::cerr << "warning: " << d.path << ": unknown @rt-category \"" << d.category << "\" - listed under Custom Scenes\n";
+
+    SceneDescriptor s;
+    // Uses SceneCategories::letter_for_category() rather than a
+    // hardcoded 'I', so this can't silently drift from
+    // SceneCategories::kAll's declared order (see that function's
+    // comment in scene_descriptor.h).
+    const char letter = SceneCategories::letter_for_category(category);
+    // A scene in the per-user folder has a persistent number (pbrt_discover::userSceneNumber): the same id in every process and session. Any other
+    // scene is numbered in the order found, per category letter.
+    s.id = d.userSceneNumber > 0
+        ? std::string(1, letter) + std::to_string(pbrt_discover::kUserSceneIdBase + d.userSceneNumber)
+        : std::string(1, letter) + std::to_string(++nextNumber[letter]);
+    s.legacy_id = legacy_id++;
+    // A file's slug is its name (a scene in a downloaded collection's own folder is prefixed with that folder, since "frame25" alone says nothing);
+    // unlike the id it does not depend on which other files are present.
+    {
+        std::string base = d.name;
+        if (d.nested) {
+            const std::string folder = std::filesystem::path(d.path).parent_path().filename().string();
+            // "villa/villa-lights-on" is just "villa-lights-on"; "zero-day/frame25" needs its folder.
+            if (!folder.empty() && scene_slugs::slugify(d.name).rfind(scene_slugs::slugify(folder), 0) != 0) base = folder + "-" + d.name;
+        }
+        s.slug = scene_slugs::uniqueSlug(scene_slugs::slugify(base), takenSlugs);
+    }
+    s.name = namesPool().back().c_str();
+    s.category = category;
+    s.description = descriptionsPool().back().c_str();
+    // Honest rather than flattering: a .pbrt file can hold anything from
+    // three triangles to ten million, and nothing in the header says
+    // which. "Unknown" is the truthful answer at this point.
+    s.performance = "Unknown";
+    // ...unless the file itself says ("# @rt-performance Fast").
+    for (const char* word : {"Fast", "Medium", "Slow", "Very Slow"})
+        if (d.performance == word) s.performance = word;
+    // Not unconditionally true: a hand-authored scene bundled directly
+    // in pbrt_scenes/ (git-tracked, no assets beyond the repo checkout)
+    // is exactly as self-contained as a builtin scene, but a scene from
+    // a downloaded per-scene-folder collection (gitignored, possibly
+    // hundreds of MB of its own geometry/textures) is not - see
+    // pbrt_discover::Discovered::nested's comment for how that
+    // distinction is made.
+    s.requires_files = d.nested;
+    // gpu/optix/pbrt_gpu_builder.h consumes the same FlatScene this does,
+    // so both backends render the same file, and they now agree on what
+    // they can sample: sphere, parallelogram AND individual-triangle area
+    // lights (GpuLightKind), plus instanced triangles and spheres. The GPU
+    // used to be the weaker of the two - it could only sample lights that
+    // were spheres or parallelograms - which is no longer true and is why
+    // this no longer carries a caveat.
+    s.gpu_compatible = d.gpuCompatible;   // true unless the file says "# @rt-gpu no"
+
+    // Camera, recommended_spp, lazy-load/cache, and world/lights/sky/
+    // punct accessors all come from the file itself - see
+    // wire_pbrt_backed_scene's own comment for why this is shared with
+    // build_instanced_spheres_descriptor()'s curated entry instead of
+    // each hand-writing its own copy.
+    wire_pbrt_backed_scene(s, d, d.path);
+
+    paths()[s.id] = d.path;
+    registry.push_back(s);
+    return true;
+}
+
 inline void append(std::vector<SceneDescriptor>& registry) {
     std::vector<pbrt_discover::Discovered> found = pbrt_discover::scanDefaultPaths();
 
@@ -881,13 +990,6 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     std::stable_partition(found.begin(), found.begin() + std::count_if(found.begin(), found.end(),
         [](const pbrt_discover::Discovered& d) { return !d.userFile; }),
         [](const pbrt_discover::Discovered& d) { return !d.nested; });
-
-    // SceneDescriptor holds `const char*`, so the strings have to outlive the
-    // registry. A deque is used rather than a vector because it never
-    // reallocates its elements, so pointers taken here stay valid as more
-    // scenes are appended.
-    static std::deque<std::string> names;
-    static std::deque<std::string> descriptions;
 
     // legacy_id keeps counting up from one past the HIGHEST legacy_id any
     // builtin scene actually uses (see SceneDescriptor::legacy_id's comment)
@@ -925,100 +1027,7 @@ inline void append(std::vector<SceneDescriptor>& registry) {
     std::set<std::string> takenSlugs;
     for (const SceneDescriptor& existing : registry)
         if (!existing.slug.empty()) takenSlugs.insert(existing.slug);
-    for (const pbrt_discover::Discovered& d : found) {
-        // A file that will not even parse its header is skipped rather than
-        // listed: offering a scene that cannot possibly render is worse than
-        // not offering it. The warning goes to stderr so the CLI and the GUI
-        // log both surface it.
-        if (!d.ok) {
-            std::cerr << "warning: skipping " << d.path << ": " << d.error << "\n";
-            continue;
-        }
-
-        // A file a curated entry (build_curated_pbrt_scene_descriptor() and its external sibling, which register paths() as part of building the built-in
-        // registry, before this runs) already lists is not listed a second time: it would be the same scene twice, one with a real name, category and
-        // description and one with a file name. Matched with std::filesystem::equivalent, not string equality, since a curated entry and this scan can reach the
-        // same file through different-looking path strings (separators, or a different defaultSearchPaths() entry winning for each).
-        {
-            bool listed = false;
-            for (const auto& entry : paths()) {
-                std::error_code ec;
-                if (std::filesystem::equivalent(entry.second, d.path, ec) && !ec) { listed = true; break; }
-            }
-            if (listed) continue;
-        }
-
-        names.push_back(displayNameFor(d));
-        // The file's own description if it gives one ("# @rt-description ..."), else what can be said about any pbrt file from its header.
-        descriptions.push_back(!d.description.empty()
-            ? d.description
-            : "A pbrt-v4 scene file (" + d.path + "), set up for " + std::to_string(d.xResolution) + " x " + std::to_string(d.yResolution)
-                + " at " + std::to_string(d.samplesPerPixel) + " samples per pixel as the file itself says. Its geometry is read when it is first rendered, "
-                  "so a large scene starts slowly.");
-
-        // The category the file names, if it is one of ours; anything else is a Custom Scene.
-        const char* category = SceneCategories::CustomScenes;
-        for (const char* known : SceneCategories::kAll)
-            if (d.category == known) category = known;
-        if (!d.category.empty() && d.category != category)
-            std::cerr << "warning: " << d.path << ": unknown @rt-category \"" << d.category << "\" - listed under Custom Scenes\n";
-
-        SceneDescriptor s;
-        // Uses SceneCategories::letter_for_category() rather than a
-        // hardcoded 'I', so this can't silently drift from
-        // SceneCategories::kAll's declared order (see that function's
-        // comment in scene_descriptor.h).
-        const char letter = SceneCategories::letter_for_category(category);
-        s.id = std::string(1, letter) + std::to_string(++nextNumber[letter]);
-        s.legacy_id = legacy_id++;
-        // A file's slug is its name (a scene in a downloaded collection's own folder is prefixed with that folder, since "frame25" alone says nothing);
-        // unlike the id it does not depend on which other files are present.
-        {
-            std::string base = d.name;
-            if (d.nested) {
-                const std::string folder = std::filesystem::path(d.path).parent_path().filename().string();
-                // "villa/villa-lights-on" is just "villa-lights-on"; "zero-day/frame25" needs its folder.
-                if (!folder.empty() && scene_slugs::slugify(d.name).rfind(scene_slugs::slugify(folder), 0) != 0) base = folder + "-" + d.name;
-            }
-            s.slug = scene_slugs::uniqueSlug(scene_slugs::slugify(base), takenSlugs);
-        }
-        s.name = names.back().c_str();
-        s.category = category;
-        s.description = descriptions.back().c_str();
-        // Honest rather than flattering: a .pbrt file can hold anything from
-        // three triangles to ten million, and nothing in the header says
-        // which. "Unknown" is the truthful answer at this point.
-        s.performance = "Unknown";
-        // ...unless the file itself says ("# @rt-performance Fast").
-        for (const char* word : {"Fast", "Medium", "Slow", "Very Slow"})
-            if (d.performance == word) s.performance = word;
-        // Not unconditionally true: a hand-authored scene bundled directly
-        // in pbrt_scenes/ (git-tracked, no assets beyond the repo checkout)
-        // is exactly as self-contained as a builtin scene, but a scene from
-        // a downloaded per-scene-folder collection (gitignored, possibly
-        // hundreds of MB of its own geometry/textures) is not - see
-        // pbrt_discover::Discovered::nested's comment for how that
-        // distinction is made.
-        s.requires_files = d.nested;
-        // gpu/optix/pbrt_gpu_builder.h consumes the same FlatScene this does,
-        // so both backends render the same file, and they now agree on what
-        // they can sample: sphere, parallelogram AND individual-triangle area
-        // lights (GpuLightKind), plus instanced triangles and spheres. The GPU
-        // used to be the weaker of the two - it could only sample lights that
-        // were spheres or parallelograms - which is no longer true and is why
-        // this no longer carries a caveat.
-        s.gpu_compatible = d.gpuCompatible;   // true unless the file says "# @rt-gpu no"
-
-        // Camera, recommended_spp, lazy-load/cache, and world/lights/sky/
-        // punct accessors all come from the file itself - see
-        // wire_pbrt_backed_scene's own comment for why this is shared with
-        // build_instanced_spheres_descriptor()'s curated entry instead of
-        // each hand-writing its own copy.
-        wire_pbrt_backed_scene(s, d, d.path);
-
-        paths()[s.id] = d.path;
-        registry.push_back(s);
-    }
+    for (const pbrt_discover::Discovered& d : found) appendOne(registry, d, nextNumber, takenSlugs, legacy_id);
 }
 
 // The .pbrt file each loaded scene came from, keyed by scene id. Kept beside
@@ -1041,24 +1050,69 @@ inline bool& scene_registry_built() {
     return built;
 }
 
-inline const std::vector<SceneDescriptor>& get_scene_registry() {
-    static const std::vector<SceneDescriptor> registry = []() {
+// How many scenes can be added to the registry after it was built (see refresh_user_scenes()). The storage is reserved up front so a push_back never
+// reallocates: the SceneDescriptor pointers find_scene() has handed out stay valid.
+constexpr std::size_t kRuntimeSceneCapacity = 1024;
+
+inline std::vector<SceneDescriptor>& scene_registry_storage() {
+    static std::vector<SceneDescriptor> registry = []() {
         scene_registry_built() = true;
         std::vector<SceneDescriptor> all = get_builtin_scene_registry();
         for (SceneDescriptor& s : all) s.slug = scene_slugs::builtinSlugForId(s.id);
         pbrt_scene_registry::append(all);
+        all.reserve(all.size() + kRuntimeSceneCapacity);
         return all;
     }();
     return registry;
 }
 
+inline const std::vector<SceneDescriptor>& get_scene_registry() {
+    return scene_registry_storage();
+}
+
+// Adds the scenes saved in the per-user scenes folder (pbrt_discover::userSceneDir(), where the Scene Builder's "Add to scene list" writes) that the
+// registry does not list yet, and returns how many it added. This is what lets a scene appear while the program runs, without a restart: the GUI calls it
+// (through scene_metadata_refresh_user_scenes()) after saving one, and find_scene() calls it when it does not know an id or slug. A scene's id is its
+// persistent number (pbrt_discover::userSceneNumber), so it is the same in every process. Safe to call as often as you like; not meant to race with
+// another thread iterating the registry (the GUI calls it from its own thread, and each library has its own registry).
+inline int refresh_user_scenes() {
+    std::vector<SceneDescriptor>& registry = scene_registry_storage();
+    const std::string dir = pbrt_discover::userSceneDir();
+    if (dir.empty()) return 0;
+    static std::mutex refreshMutex;
+    std::lock_guard<std::mutex> lock(refreshMutex);
+    int legacy_id = 0;
+    for (const SceneDescriptor& s : registry) legacy_id = std::max(legacy_id, s.legacy_id + 1);
+    std::set<std::string> takenSlugs;
+    for (const SceneDescriptor& s : registry)
+        if (!s.slug.empty()) takenSlugs.insert(s.slug);
+    std::map<char, int> nextNumber;
+    int added = 0;
+    for (pbrt_discover::Discovered& d : pbrt_discover::scanDirectory(dir)) {
+        if (registry.size() >= registry.capacity()) {
+            std::cerr << "warning: the scene list is full (" << kRuntimeSceneCapacity << " scenes added while running); restart to list more\n";
+            break;
+        }
+        d.userFile = true;
+        d.userSceneNumber = pbrt_discover::userSceneNumber(dir, std::filesystem::path(d.path).filename().string());
+        if (pbrt_scene_registry::appendOne(registry, d, nextNumber, takenSlugs, legacy_id)) ++added;
+    }
+    return added;
+}
+
 // Lookup by id ("B10") or by slug ("rough-glass") -- returns nullptr if not found. The two kinds of key cannot collide: an id is upper case, a slug is not.
 inline const SceneDescriptor* find_scene(const std::string& key) {
-    const auto& registry = get_scene_registry();
-    for (const auto& s : registry)
-        if (s.id == key) return &s;
-    for (const auto& s : registry)
-        if (!s.slug.empty() && s.slug == key) return &s;
+    const auto lookup = [&key]() -> const SceneDescriptor* {
+        const auto& registry = get_scene_registry();
+        for (const auto& s : registry)
+            if (s.id == key) return &s;
+        for (const auto& s : registry)
+            if (!s.slug.empty() && s.slug == key) return &s;
+        return nullptr;
+    };
+    if (const SceneDescriptor* found = lookup()) return found;
+    // Not listed: it may be a scene saved to the per-user folder after this process built its registry (another process - the GUI - added it).
+    if (!key.empty() && refresh_user_scenes() > 0) return lookup();
     return nullptr;
 }
 
