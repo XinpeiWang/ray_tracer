@@ -197,6 +197,7 @@
     <ClCompile Include="unit\log_format_tests.cpp" />
     <ClCompile Include="unit\oidn_runtime_tests.cpp" />
     <ClCompile Include="unit\job_queue_tests.cpp" />
+    <ClCompile Include="unit\live_spp_scheduler_tests.cpp" />
     <ClCompile Include="unit\scene_gizmo_tests.cpp" />
     <ClCompile Include="unit\snapshot_history_tests.cpp" />
     <ClCompile Include="unit\pbrt_quadify_tests.cpp" />
