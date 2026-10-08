@@ -13,6 +13,7 @@
 // Only the C API's handful of entry points used here are declared (the constants below are the ones in OIDN's oidn.h, which has kept them stable across 2.x), so
 // building needs no OIDN headers. std-only apart from dlopen.
 
+#include <cstdio>
 #include <cstdlib>
 #include <cstring>
 #include <string>
@@ -32,6 +33,8 @@ typedef struct OIDNBufferImpl* Buffer;
 
 constexpr int kDeviceTypeDefault = 0;
 constexpr int kFormatFloat3 = 3;
+constexpr int kQualityFast = 4;
+constexpr int kQualityBalanced = 5;
 constexpr int kQualityHigh = 6;
 constexpr int kErrorNone = 0;
 
@@ -225,5 +228,100 @@ inline bool denoiseHdr(float* pixels, int width, int height, int pixelStrideFloa
 		}
 	return true;
 }
+
+// A denoiser kept open for one image size, for callers that denoise many pictures of the same size (Live Preview): the device, the two buffers and the
+// filter are created once, so each run() is just a copy in, the network, and a copy out. Not thread-safe; use one Session per thread.
+class Session {
+public:
+	enum class Quality { Fast = detail::kQualityFast, Balanced = detail::kQualityBalanced, High = detail::kQualityHigh };
+
+	Session() = default;
+	Session(const Session&) = delete;
+	Session& operator=(const Session&) = delete;
+	~Session() { close(); }
+
+	bool isOpen() const { return m_filter != nullptr; }
+	int width() const { return m_width; }
+	int height() const { return m_height; }
+
+	// Opens (or reopens) the session for width x height RGB images. False, with the reason in `error`, when OIDN is missing or refuses.
+	bool open(int width, int height, Quality quality, std::string& error) {
+		using namespace detail;
+		close();
+		Api& a = api();
+		if (!a.handle) { error = a.error; return false; }
+		if (width < 1 || height < 1) { error = "bad image size"; return false; }
+		m_device = a.newDevice(kDeviceTypeDefault);
+		if (!m_device) { error = "could not create an Open Image Denoise device"; return false; }
+		a.commitDevice(m_device);
+		const char* message = nullptr;
+		if (a.getDeviceError(m_device, &message) != kErrorNone) {
+			error = std::string("Open Image Denoise: ") + (message ? message : "device error");
+			close();
+			return false;
+		}
+		m_bytes = static_cast<size_t>(width) * static_cast<size_t>(height) * 3 * sizeof(float);
+		m_in = a.newBuffer(m_device, m_bytes);
+		m_out = a.newBuffer(m_device, m_bytes);
+		m_filter = a.newFilter(m_device, "RT");
+		if (!m_in || !m_out || !m_filter) { error = "could not allocate Open Image Denoise buffers"; close(); return false; }
+		const size_t pixelStride = 3 * sizeof(float), rowStride = pixelStride * static_cast<size_t>(width);
+		a.setFilterImage(m_filter, "color", m_in, kFormatFloat3, static_cast<size_t>(width), static_cast<size_t>(height), 0, pixelStride, rowStride);
+		a.setFilterImage(m_filter, "output", m_out, kFormatFloat3, static_cast<size_t>(width), static_cast<size_t>(height), 0, pixelStride, rowStride);
+		a.setFilterBool(m_filter, "hdr", true);
+		a.setFilterInt(m_filter, "quality", static_cast<int>(quality));
+		a.commitFilter(m_filter);
+		if (a.getDeviceError(m_device, &message) != kErrorNone) {
+			error = std::string("Open Image Denoise: ") + (message ? message : "could not set up the filter");
+			close();
+			return false;
+		}
+		m_width = width;
+		m_height = height;
+		m_scratch.resize(static_cast<size_t>(width) * static_cast<size_t>(height) * 3);
+		return true;
+	}
+
+	// Denoises `in` (width*height*3 linear floats) into `out` (the same size). Non-finite and negative values are treated as 0.
+	bool run(const float* in, float* out, std::string& error) {
+		using namespace detail;
+		if (!isOpen()) { error = "the denoiser session is not open"; return false; }
+		Api& a = api();
+		const size_t n = m_scratch.size();
+		for (size_t i = 0; i < n; ++i) m_scratch[i] = (in[i] == in[i] && in[i] > 0.0f) ? in[i] : 0.0f;
+		a.writeBuffer(m_in, 0, m_bytes, m_scratch.data());
+		a.executeFilter(m_filter);
+		const char* message = nullptr;
+		if (a.getDeviceError(m_device, &message) != kErrorNone) {
+			error = std::string("Open Image Denoise: ") + (message ? message : "error while denoising");
+			return false;
+		}
+		a.readBuffer(m_out, 0, m_bytes, out);
+		return true;
+	}
+
+	void close() {
+		using namespace detail;
+		Api& a = api();
+		if (a.handle) {
+			if (m_filter) a.releaseFilter(m_filter);
+			if (m_in) a.releaseBuffer(m_in);
+			if (m_out) a.releaseBuffer(m_out);
+			if (m_device) a.releaseDevice(m_device);
+		}
+		m_filter = nullptr;
+		m_in = m_out = nullptr;
+		m_device = nullptr;
+		m_width = m_height = 0;
+	}
+
+private:
+	detail::Device m_device = nullptr;
+	detail::Buffer m_in = nullptr, m_out = nullptr;
+	detail::Filter m_filter = nullptr;
+	size_t m_bytes = 0;
+	int m_width = 0, m_height = 0;
+	std::vector<float> m_scratch;
+};
 
 }  // namespace oidn_runtime

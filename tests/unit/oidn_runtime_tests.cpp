@@ -68,3 +68,73 @@ TEST(OidnRuntimeTest, ANoisyGradientGetsMuchCloserToTheCleanOne) {
 	EXPECT_GT(mid, after) << "a half blend sits between the original and the denoised image";
 	EXPECT_LT(mid, before);
 }
+
+// ---- Session: the denoiser kept open for Live Preview ----
+
+TEST(OidnSessionTest, WithoutALibraryOpenFailsCleanlyAndRunRefuses) {
+	if (oidn_runtime::available()) GTEST_SKIP() << "an Open Image Denoise library is installed: " << oidn_runtime::libraryPath();
+	oidn_runtime::Session s;
+	std::string error;
+	EXPECT_FALSE(s.open(32, 32, oidn_runtime::Session::Quality::Fast, error));
+	EXPECT_FALSE(error.empty());
+	EXPECT_FALSE(s.isOpen());
+	std::vector<float> in(32 * 32 * 3, 0.5f), out(in.size());
+	EXPECT_FALSE(s.run(in.data(), out.data(), error));
+}
+
+TEST(OidnSessionTest, BadSizesAreRefusedAndRunNeedsAnOpenSession) {
+	oidn_runtime::Session s;
+	std::string error;
+	EXPECT_FALSE(s.open(0, 10, oidn_runtime::Session::Quality::Fast, error));
+	std::vector<float> in(3, 0.5f), out(3);
+	EXPECT_FALSE(s.run(in.data(), out.data(), error));
+	EXPECT_NE(error.find("not open"), std::string::npos);
+}
+
+TEST(OidnSessionTest, AnOpenSessionDenoisesRepeatedlyAndCanBeReopenedAtAnotherSize) {
+	if (!oidn_runtime::available()) GTEST_SKIP() << "no Open Image Denoise library (set RT_OIDN_DIR to run this): " << oidn_runtime::unavailableReason();
+	auto noisyRamp = [](int w, int h, std::vector<float>& clean, unsigned seed) {
+		std::vector<float> noisy(static_cast<size_t>(w) * h * 3);
+		clean.resize(noisy.size());
+		std::mt19937 rng(seed);
+		std::normal_distribution<float> gauss(0.0f, 0.35f);
+		for (int y = 0; y < h; ++y)
+			for (int x = 0; x < w; ++x)
+				for (int c = 0; c < 3; ++c) {
+					const float base = (0.2f + 0.8f * x / (w - 1)) * (1.0f - 0.2f * c);
+					const size_t i = (static_cast<size_t>(y) * w + x) * 3 + c;
+					clean[i] = base;
+					noisy[i] = std::max(0.0f, base + gauss(rng));
+				}
+		return noisy;
+	};
+	auto mse = [](const std::vector<float>& a, const std::vector<float>& b) {
+		double s = 0;
+		for (size_t i = 0; i < a.size(); ++i) { const double d = a[i] - b[i]; s += d * d; }
+		return s / static_cast<double>(a.size());
+	};
+	oidn_runtime::Session s;
+	std::string error;
+	for (auto quality : {oidn_runtime::Session::Quality::Fast, oidn_runtime::Session::Quality::High}) {
+		ASSERT_TRUE(s.open(96, 64, quality, error)) << error;
+		EXPECT_TRUE(s.isOpen());
+		EXPECT_EQ(s.width(), 96);
+		for (unsigned frame = 0; frame < 3; ++frame) {   // the same session, different pictures
+			std::vector<float> clean, out(96 * 64 * 3);
+			const std::vector<float> noisy = noisyRamp(96, 64, clean, 10 + frame);
+			ASSERT_TRUE(s.run(noisy.data(), out.data(), error)) << error;
+			EXPECT_LT(mse(out, clean), mse(noisy, clean) * 0.35) << "frame " << frame;
+		}
+	}
+	// A different size: reopen, and a non-finite or negative input value is treated as 0 instead of poisoning the picture.
+	ASSERT_TRUE(s.open(48, 32, oidn_runtime::Session::Quality::Fast, error)) << error;
+	EXPECT_EQ(s.height(), 32);
+	std::vector<float> clean, out(48 * 32 * 3);
+	std::vector<float> noisy = noisyRamp(48, 32, clean, 3);
+	noisy[10] = std::nanf("");
+	noisy[11] = -5.0f;
+	ASSERT_TRUE(s.run(noisy.data(), out.data(), error)) << error;
+	for (float v : out) ASSERT_TRUE(std::isfinite(v));
+	s.close();
+	EXPECT_FALSE(s.isOpen());
+}

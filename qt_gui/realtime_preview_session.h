@@ -17,6 +17,7 @@
 // though this file is never compiled by nvcc itself.
 #include "../src/shared/adaptive_sampling.h"
 #include "../src/shared/live_spp_scheduler.h"
+#include "../src/shared/oidn_runtime.h"
 
 // ============================================================================
 // RealtimePreviewSession
@@ -211,6 +212,11 @@ public slots:
 	// pixel stops being smoothed as it gains samples. No accumulation reset.
 	void setSmoothLowSample(bool enabled);
 
+	// AI denoising of the accumulated picture for the display (Intel Open Image Denoise, needs its library: see src/shared/oidn_runtime.h): strongest while
+	// the picture has few samples, fading out as it gains them, so a settled picture is exactly what was rendered. Display only - the accumulation is
+	// untouched. If the library is missing the picture is shown undenoised and the status says so. No accumulation reset.
+	void setAiDenoise(bool enabled);
+
 	// Auto exposure: scales the displayed picture so that a dim scene is not shown (nearly) black - the log-average brightness of the lit
 	// pixels is brought up towards a mid-grey, never lowered below the manual Exposure (a bright scene is left as it is), and the factor
 	// follows the picture smoothly. Multiplies the manual setExposure() value. Display only: no accumulation reset.
@@ -396,6 +402,15 @@ private:
 	bool m_smoothLowSample = false;
 	std::vector<float> m_smoothed;
 	std::vector<float> m_smoothLuminance;   // scratch for smoothLowSampleAccum()
+
+	// AI denoise of the display (setAiDenoise() above). aiDenoiseAccum() fills m_aiDisplay from m_accum; m_aiSession is the open OIDN denoiser for the
+	// current picture size, m_aiOut its raw output.
+	bool m_aiDenoise = false;
+	bool m_aiDenoiseUnavailable = false;   // set when OIDN could not be opened; cleared when the setting is switched on again
+	oidn_runtime::Session m_aiSession;
+	std::vector<float> m_aiOut;
+	std::vector<float> m_aiDisplay;
+	bool aiDenoiseAccum();
 
 	// Auto exposure (setAutoExposure()): m_autoFactor is the current brightening factor (>= 1), updated every few frames by
 	// updateAutoExposure(); m_autoFactorValid is false until the first estimate (the first one is applied at once, later ones eased in).
@@ -623,6 +638,7 @@ public:
 	void setNeuralUpscale(bool enabled);
 	void setDof(bool enabled, double aperture, double focusDistance);
 	void setSmoothLowSample(bool enabled);
+	void setAiDenoise(bool enabled);
 	void setAutoExposure(bool enabled);
 	void setSppAndMaxDepth(int spp, int maxDepth);
 	void setFireflyClamp(double fireflyClamp);

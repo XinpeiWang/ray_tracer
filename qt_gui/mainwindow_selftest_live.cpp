@@ -1,6 +1,7 @@
 // mainwindow_selftest_live.cpp - the Live Preview self-test modes (livepreview, livepreview_sweep, livepreview_drag) (see mainwindow_selftest.cpp).
 
 #include "mainwindow.h"
+#include "live_ai_denoise.h"
 #include "app_log.h"
 #include "../src/shared/pbrt_asset_check.h"
 
@@ -146,6 +147,7 @@ void MainWindow::runLivePreviewSelfTest(const std::function<void(const QString &
 	m_modeCombo->setCurrentIndex(idx);
 	if (qEnvironmentVariable("RT_GUI_SELFTEST_SMOOTH") == "0" && m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
 	if (qEnvironmentVariable("RT_GUI_SELFTEST_AUTOEXP") == "0" && m_liveAutoExposureCheck) m_liveAutoExposureCheck->setChecked(false);
+	if (qEnvironmentVariable("RT_GUI_SELFTEST_AIDENOISE") == "1") live_ai_denoise::saveEnabled(true);   // (needs RT_OIDN_DIR or an installed library)
 	// Optional overrides so the same test can cover other scenes / Resolution settings:
 	//   RT_GUI_SELFTEST_SCENE=<scene id>   RT_GUI_SELFTEST_RES=<W>x<H>
 	const QString sceneOverride = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE");
