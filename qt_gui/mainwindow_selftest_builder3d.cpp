@@ -7,6 +7,8 @@
 #include "app_log.h"
 #include "window_geometry.h"
 #include "atomic_file.h"
+#include "crash_recovery.h"
+#include "scene_builder_widget.h"
 
 #include <QApplication>
 #include <QCheckBox>
@@ -341,4 +343,23 @@ void MainWindow::selfTestWindowGeometry(const std::function<void(bool, const QSt
 	}
 	setGeometry(original);
 	QApplication::processEvents();
+}
+
+// Part of the "builder" mode: "Start fresh" after a crash forgets the saved window layout and sets the unsaved scene aside (renamed, not deleted).
+void MainWindow::selfTestCrashRecovery(const std::function<void(bool, const QString &)> &check) {
+	const QString dir = QDir::tempPath() + "/rt_recovery_selftest";
+	QDir(dir).removeRecursively();
+	QDir().mkpath(dir);
+	qputenv("RAY_TRACER_STATE_DIR", dir.toUtf8());   // the unsaved scene lives here for this test, not in the real per-user folder
+	check(!SceneBuilderWidget::hasAutosave() && crash_recovery::startFresh().isEmpty(), "with no unsaved scene, a fresh start sets nothing aside");
+	check(writeFileAtomically(dir + "/scene_builder_autosave.pbrt", "# unsaved") && SceneBuilderWidget::hasAutosave(), "an unsaved scene is waiting");
+	window_geometry::save(this);
+	const QString aside = crash_recovery::startFresh();
+	check(!aside.isEmpty() && QFileInfo::exists(aside) && !SceneBuilderWidget::hasAutosave(), "a fresh start renames the unsaved scene (it is not deleted): " + aside);
+	QFile f(aside);
+	check(f.open(QIODevice::ReadOnly) && f.readAll() == "# unsaved", "and the renamed file still has its content");
+	f.close();
+	check(!window_geometry::restore(this), "and forgets the saved window layout");
+	qunsetenv("RAY_TRACER_STATE_DIR");
+	QDir(dir).removeRecursively();
 }

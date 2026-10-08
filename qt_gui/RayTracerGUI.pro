@@ -40,6 +40,7 @@ SOURCES += \
 	main.cpp \
 	app_log.cpp \
 	window_geometry.cpp \
+	crash_recovery.cpp \
 	ui_logger.cpp \
 	wheel_guard.cpp \
 	mainwindow.cpp \
@@ -81,6 +82,7 @@ SOURCES += \
 HEADERS += \
 	app_log.h \
 	window_geometry.h \
+	crash_recovery.h \
 	atomic_file.h \
 	ui_logger.h \
 	wheel_guard.h \

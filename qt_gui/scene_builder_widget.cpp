@@ -14,6 +14,7 @@
 #include <QColorDialog>
 #include <QComboBox>
 #include <QCoreApplication>
+#include <QDateTime>
 #include <QDir>
 #include <QAbstractSpinBox>
 #include <QDoubleSpinBox>
@@ -609,10 +610,22 @@ void SceneBuilderWidget::documentChanged() {
 	scheduleAutosave();
 }
 
+// Where the unsaved scene is kept while it is being edited (RAY_TRACER_STATE_DIR names another folder, for tests).
 static QString autosavePath() {
-	const QString dir = QStandardPaths::writableLocation(QStandardPaths::AppDataLocation);
+	const QString env = qEnvironmentVariable("RAY_TRACER_STATE_DIR");
+	const QString dir = env.isEmpty() ? QStandardPaths::writableLocation(QStandardPaths::AppDataLocation) : env;
 	QDir().mkpath(dir);
 	return dir + "/scene_builder_autosave.pbrt";
+}
+
+bool SceneBuilderWidget::hasAutosave() { return QFileInfo::exists(autosavePath()); }
+
+// "Start fresh" after a crash: the autosave is renamed, not deleted - if it was the scene that crashed the program, the user can still open it by hand.
+QString SceneBuilderWidget::setAsideAutosave() {
+	const QString path = autosavePath();
+	if (!QFileInfo::exists(path)) return QString();
+	const QString aside = QFileInfo(path).absolutePath() + "/scene_builder_autosave.set-aside-" + QDateTime::currentDateTime().toString("yyyyMMdd-HHmmss") + ".pbrt";
+	return QFile::rename(path, aside) ? aside : QString();
 }
 
 void SceneBuilderWidget::scheduleAutosave() {

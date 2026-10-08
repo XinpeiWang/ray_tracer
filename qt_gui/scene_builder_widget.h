@@ -86,6 +86,8 @@ public:
 	QString problemsText() const;
 	// Where a scene is saved so the scene list finds it (empty if no scene folder exists); see saveToSceneList().
 	static QString sceneListFolder();
+	static bool hasAutosave();           // an unsaved scene from the last run is waiting to be restored
+	static QString setAsideAutosave();   // renames it (never deletes it); returns the new path, "" if there was none
 	// Saves a copy of the scene into the scene-list folder (see sceneListFolder()); no dialogs. Returns the path, or "" with `error` set. An existing file
 	// of that name is replaced.
 	// With `update` false (the default) a scene of that name already in the folder is never touched: the copy gets the next free name ("my-scene-2").
