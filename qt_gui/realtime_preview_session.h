@@ -285,6 +285,14 @@ private:
 	// see m_epoch's own comment for why renderLoop() needs to know that,
 	// not just read the current m_running/m_epoch.
 	void renderLoop(int epoch);
+	// The steps of one renderLoop() iteration (realtime_preview_session.cpp).
+	void applyAdaptiveSamplingMask(bool useAdaptive, bool cameraJustMoved);
+	bool renderOneFrame(bool cameraJustMoved, bool scheduleSpp, bool useUpscale, bool useAdaptive, int batchCount);
+	void processFrame(bool cameraJustMoved, bool useUpscale, bool useAdaptive, int batchCount);
+	void foldNeuralUpscale();
+	void foldTemporalUpscale();
+	void foldAccumulation(bool showLatest, bool useAdaptive, int batchCount);
+	void displayAccumulated();
 	void resetAccumulation();
 	void reprojectAccumulation();
 	// Temporal upscale's own reprojection - see this project's own plan.

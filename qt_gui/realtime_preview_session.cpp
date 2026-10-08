@@ -904,36 +904,8 @@ void RealtimePreviewWorker::setExposure(double exposure) {
 	m_exposure = exposure;
 }
 
-void RealtimePreviewWorker::renderLoop(int epoch) {
-	// epoch != m_epoch means a stop()+start() cycle already happened since
-	// THIS continuation was posted (start() bumps m_epoch) - it belongs to
-	// an old, already-superseded chain and must not run at all, let alone
-	// repost itself, or it would keep running forever alongside the new
-	// chain start() began. See m_epoch's own header comment for the exact
-	// race this closes.
-	if (!m_running || epoch != m_epoch) return;
-
-	// Captured before clearing: renders the NEXT frame with the already-
-	// updated (new) m_camX/etc below, then - once that frame's own world
-	// positions are in - reprojectAccumulation() uses THIS flag to decide
-	// whether to remap the OLD accumulation into the new view first. No
-	// immediate resetAccumulation() here anymore - that used to be this
-	// block's whole job before reprojection replaced it.
-	const bool cameraJustMoved = m_cameraDirty;
-	m_cameraDirty = false;
-
-	// Computed here (before the render call, not after) so the value SENT
-	// to the GPU this frame matches the value the CPU side will actually
-	// act on once the call returns - see useTemporalUpscale()'s own comment.
-	// Sending the raw m_temporalUpscaleEnabled instead (this function used
-	// to) meant the GPU's own checkerboardActive gate
-	// (wavefront_path_tracer.cpp) could see "upscale on" and defensively
-	// disable SVGF's checkerboard optimization even on a frame where the
-	// CPU had already fallen back to ordinary SVGF display because
-	// effectiveShowLatest() was true - a real, confirmed mismatch (this
-	// project's own code review caught it), not just a theoretical one.
-	const bool useUpscale = useTemporalUpscale();
-
+// Live Preview's adaptive-sampling mask for this frame (Stage 2a of this project's own plan) - see the comment below. `useAdaptive` is
+// useAdaptiveSampling(), decided once in renderLoop() so the render call, the fold-in and the display all act on the same answer.
 	// Live Preview's adaptive sampling (Stage 2a of this project's own
 	// plan) - computed here, before the render call, from m_pixelVariance's
 	// state as of the END of the PREVIOUS frame, so the mask actually SENT
@@ -954,56 +926,45 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	// applied to this class's own per-frame-BATCH granularity (coarser than
 	// the CPU path's per-raw-sample one - m_pixelVariance's own header
 	// comment) rather than a literal copy of its formula.
-	const bool useAdaptive = useAdaptiveSampling();
-	if (useAdaptive) {
-		if (cameraJustMoved) {
-			// Load-bearing, not just an optimization skip: m_pixelVariance
-			// still reflects the OLD camera's screen alignment right now -
-			// reprojectAccumulation() (below, after the render call) is what
-			// remaps it into the NEW alignment, and it can only do that once
-			// THIS frame's own world-position buffer exists, which the
-			// render() call this very mask feeds into is what produces. So
-			// there is no way to know, at this point, which pixels the move
-			// is about to disocclude - has_converged() against the
-			// pre-move variance would mark a soon-to-be-disoccluded pixel
-			// "converged" from whatever UNRELATED content used to be at that
-			// screen position, and both the GPU and the fold-in loop below
-			// would then skip resampling it for this frame, leaving it at
-			// reprojectAccumulation()'s own zero-fill for a disoccluded
-			// pixel with no real sample to replace it - a one-frame-late,
-			// incorrect "converged" readout right at the moving edges the
-			// user is actively looking at. Forcing every pixel active on
-			// exactly the frame the camera moves costs one frame of the
-			// optimization; convergence resumes normally next frame, built
-			// from the now-correctly-reprojected variance below.
-			std::fill(m_activePixelMask.begin(), m_activePixelMask.end(), uint8_t{1});
-		} else {
-			constexpr int64_t kMinBatchesBeforeConverged = 8;
-			const int numPixels = m_width * m_height;
-			for (int pixel = 0; pixel < numPixels; ++pixel) {
-				const bool converged = m_pixelVariance[pixel].Count() >= kMinBatchesBeforeConverged &&
-					pixel_convergence::has_converged(m_pixelVariance[pixel], m_adaptiveSamplingThreshold,
-													  /*black_floor=*/1e-4, m_exposure);
-				m_activePixelMask[pixel] = converged ? uint8_t{0} : uint8_t{1};
-			}
+void RealtimePreviewWorker::applyAdaptiveSamplingMask(bool useAdaptive, bool cameraJustMoved) {
+if (useAdaptive) {
+	if (cameraJustMoved) {
+		// Load-bearing, not just an optimization skip: m_pixelVariance
+		// still reflects the OLD camera's screen alignment right now -
+		// reprojectAccumulation() (below, after the render call) is what
+		// remaps it into the NEW alignment, and it can only do that once
+		// THIS frame's own world-position buffer exists, which the
+		// render() call this very mask feeds into is what produces. So
+		// there is no way to know, at this point, which pixels the move
+		// is about to disocclude - has_converged() against the
+		// pre-move variance would mark a soon-to-be-disoccluded pixel
+		// "converged" from whatever UNRELATED content used to be at that
+		// screen position, and both the GPU and the fold-in loop below
+		// would then skip resampling it for this frame, leaving it at
+		// reprojectAccumulation()'s own zero-fill for a disoccluded
+		// pixel with no real sample to replace it - a one-frame-late,
+		// incorrect "converged" readout right at the moving edges the
+		// user is actively looking at. Forcing every pixel active on
+		// exactly the frame the camera moves costs one frame of the
+		// optimization; convergence resumes normally next frame, built
+		// from the now-correctly-reprojected variance below.
+		std::fill(m_activePixelMask.begin(), m_activePixelMask.end(), uint8_t{1});
+	} else {
+		constexpr int64_t kMinBatchesBeforeConverged = 8;
+		const int numPixels = m_width * m_height;
+		for (int pixel = 0; pixel < numPixels; ++pixel) {
+			const bool converged = m_pixelVariance[pixel].Count() >= kMinBatchesBeforeConverged &&
+				pixel_convergence::has_converged(m_pixelVariance[pixel], m_adaptiveSamplingThreshold,
+												  /*black_floor=*/1e-4, m_exposure);
+			m_activePixelMask[pixel] = converged ? uint8_t{0} : uint8_t{1};
 		}
 	}
+}
+}
 
-	// Samples-per-frame scheduling (src/shared/live_spp_scheduler.h): one batch while the camera moves, more once it is still, so a still picture
-	// converges faster. Only on the plain running-mean path on macOS; RT_LIVE_SCHEDULER=0 turns it off (to compare). Every other mode, and Windows
-	// with its OptiX-only denoise/SVGF/upscale/adaptive paths, renders exactly one batch per frame as before.
-	static const bool kSchedulerAvailable = [] {
-#ifdef Q_OS_MACOS
-		const char* off = std::getenv("RT_LIVE_SCHEDULER");
-		return !(off && off[0] == '0');
-#else
-		return false;
-#endif
-	}();
-	const bool scheduleSpp = kSchedulerAvailable && !useUpscale && !useAdaptive && !effectiveShowLatest();
-	if (cameraJustMoved || !scheduleSpp) m_sppScheduler.reset();   // a move is rendered at one batch at once, not at the size the still picture had grown to
-	const int batchCount = scheduleSpp ? m_sppScheduler.batch() : 1;
-
+// One call of the renderer library for this frame (samples per frame x the scheduler's batch count), timed for the scheduler. Returns false - with the
+// reason sent to the status line - when it failed or the library is missing.
+bool RealtimePreviewWorker::renderOneFrame(bool cameraJustMoved, bool scheduleSpp, bool useUpscale, bool useAdaptive, int batchCount) {
 	RenderFrameFn renderFrame = handle().renderFrameFn;
 	bool ok = false;
 	const auto renderStart = std::chrono::steady_clock::now();
@@ -1060,375 +1021,467 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 			emit statusChanged(message);
 		}
 	}
+	return ok;
+}
 
-	if (ok) {
-		// m_denoise is part of the first term (not m_denoiseShowLatest
-		// alone): without denoise, "show the latest raw single-sample frame
-		// instead of accumulating" would mean Live Preview never converges
-		// at all - see setDenoise()'s own comment on why toggling either
-		// side of that term resets accumulation. m_svgf is unconditionally
-		// its own reason to show-latest (no equivalent "without X this would
-		// never converge" gate): SVGF's own GPU-side temporal integration
-		// (gpu/optix/wavefront_svgf_math.h) already IS the accumulation -
-		// m_tmp is already temporally stable by the time it reaches here,
-		// and re-blending it into m_accum's own separate running mean would
-		// double-integrate the same signal through two different, competing
-		// temporal filters - see this project's own SVGF plan for why GPU-
-		// side integration REPLACES this CPU-side one for that mode, rather
-		// than sitting on top of it.
-		const bool showLatest = effectiveShowLatest();
-		// useUpscale was already computed above, before the render call -
-		// see its own comment there for why (must match what was actually
-		// sent to the GPU this frame).
-
-		// Reprojection would be immediately thrown away by the show-latest
-		// branch below (which overwrites m_accum wholesale every frame
-		// regardless), so skip the work entirely in that mode.
-		if (cameraJustMoved) {
-			// Neural reconstruction does its own reprojection GPU-side every
-			// frame regardless (gpu/optix/wavefront_kernels_upscale.cu's own
-			// upscale_infer, via wf_restir_reproject_prev_pixel) - this CPU-
-			// side reprojection exists only for the OLD block-splat path's
-			// own m_accumHi/m_worldPosHi, which m_neuralUpscale bypasses
-			// entirely (see the useUpscale branch below).
-			if (useUpscale && !m_neuralUpscale) {
-				reprojectAccumulationHi();
-			} else if (!useUpscale && !showLatest) {
-				reprojectAccumulation();
-			}
+// Neural temporal upscale: the GPU already produced the final high-resolution picture; tone-map it for display.
+void RealtimePreviewWorker::foldNeuralUpscale() {
+	// --- Neural temporal upscale ---
+	// The GPU already produced the final high-res result
+	// (m_neuralUpscaleOut, filled via renderFrame()'s own
+	// out_neural_upscale_buffer parameter) - just tonemap it
+	// directly. No CPU-side reprojection/block-splat/reconstruction
+	// at all in this mode - see this project's own plan for why this
+	// REPLACES the old-path block below rather than augmenting it.
+	m_sampleCount = 1;
+	const int Wh = m_width * m_upscaleFactor;
+	const int Hh = m_height * m_upscaleFactor;
+	for (int y = 0; y < Hh; ++y) {
+		uchar* row = m_displayImage.scanLine(y);
+		for (int x = 0; x < Wh; ++x) {
+			const int cell = y * Wh + x;
+			const size_t idx = static_cast<size_t>(cell) * 3;
+			double r = m_neuralUpscaleOut[idx + 0];
+			double g = m_neuralUpscaleOut[idx + 1];
+			double b = m_neuralUpscaleOut[idx + 2];
+			if (!std::isfinite(r)) r = 0.0;
+			if (!std::isfinite(g)) g = 0.0;
+			if (!std::isfinite(b)) b = 0.0;
+			r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
+			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+			b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+			row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
+			row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
+			row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
 		}
-
-		if (useUpscale && m_neuralUpscale) {
-			// --- Neural temporal upscale ---
-			// The GPU already produced the final high-res result
-			// (m_neuralUpscaleOut, filled via renderFrame()'s own
-			// out_neural_upscale_buffer parameter) - just tonemap it
-			// directly. No CPU-side reprojection/block-splat/reconstruction
-			// at all in this mode - see this project's own plan for why this
-			// REPLACES the old-path block below rather than augmenting it.
-			m_sampleCount = 1;
-			const int Wh = m_width * m_upscaleFactor;
-			const int Hh = m_height * m_upscaleFactor;
-			for (int y = 0; y < Hh; ++y) {
-				uchar* row = m_displayImage.scanLine(y);
-				for (int x = 0; x < Wh; ++x) {
-					const int cell = y * Wh + x;
-					const size_t idx = static_cast<size_t>(cell) * 3;
-					double r = m_neuralUpscaleOut[idx + 0];
-					double g = m_neuralUpscaleOut[idx + 1];
-					double b = m_neuralUpscaleOut[idx + 2];
-					if (!std::isfinite(r)) r = 0.0;
-					if (!std::isfinite(g)) g = 0.0;
-					if (!std::isfinite(b)) b = 0.0;
-					r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
-					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
-					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
-					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
-					row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
-					row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
-					row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
-				}
-			}
-			// Still track prev camera/world-pos bookkeeping, matching the old
-			// path's own end-of-branch update just below, so toggling neural
-			// reconstruction OFF mid-session leaves the old path's own
-			// reprojection with a sane, up-to-date starting point next frame
-			// rather than a stale one from whenever neural mode was enabled.
-			m_worldPosPrev = m_worldPos;
-			m_prevCameraBasis = m_cameraBasis;
-
-			const unsigned int neuralPeriod = static_cast<unsigned int>(m_upscaleFactor * m_upscaleFactor);
-			m_temporalJitterCounter = (neuralPeriod > 0) ? ((m_temporalJitterCounter + static_cast<unsigned int>(m_spp)) % neuralPeriod) : 0;
-			m_temporalUpscaleWriteCounter = (neuralPeriod > 0) ? ((m_temporalUpscaleWriteCounter + 1u) % neuralPeriod) : 0;
-		} else if (useUpscale) {
-			// --- Temporal upscale: write step + reconstruction ---
-			// This call's own place in the write step's OWN sequence
-			// (m_temporalUpscaleWriteCounter - see its own comment on the
-			// header for why this is a SEPARATE counter from
-			// m_temporalJitterCounter) selects ONE sub-cell shared by every
-			// low-res pixel this frame - each low-res pixel's raw sample
-			// (m_tmp, not the running mean) overwrites that one high-res
-			// cell, never blended (see this project's own plan for why a
-			// running mean doesn't apply at the per-cell level the way it
-			// does for m_accum). NOTE: when Samples/Frame > 1, m_tmp is
-			// already an average across several GPU-side jitter phases -
-			// the write step below still treats it as if it were a single
-			// phase, a known v1 simplification that slightly blurs the
-			// splatted cell at Samples/Frame > 1 (recommend Samples/Frame=1
-			// for the sharpest reconstruction). This blur is independent of
-			// - and much less severe than - full-grid coverage, which is
-			// what m_temporalUpscaleWriteCounter's own separate, always-by-1
-			// advance guarantees regardless of Samples/Frame.
-			const int Wh = m_width * m_upscaleFactor;
-			const int Hh = m_height * m_upscaleFactor;
-			int subCx = 0, subCy = 0;
-			camera_math::temporalUpscaleSubcell(m_temporalUpscaleWriteCounter, m_upscaleFactor, subCx, subCy);
-			for (int y = 0; y < m_height; ++y) {
-				for (int x = 0; x < m_width; ++x) {
-					const int pixel = y * m_width + x;
-					const int target = (y * m_upscaleFactor + subCy) * Wh + (x * m_upscaleFactor + subCx);
-					const size_t srcColorIdx = static_cast<size_t>(pixel) * 3;
-					const size_t dstColorIdx = static_cast<size_t>(target) * 3;
-					m_accumHi[dstColorIdx + 0] = m_tmp[srcColorIdx + 0];
-					m_accumHi[dstColorIdx + 1] = m_tmp[srcColorIdx + 1];
-					m_accumHi[dstColorIdx + 2] = m_tmp[srcColorIdx + 2];
-					const size_t srcWpIdx = static_cast<size_t>(pixel) * 4;
-					const size_t dstWpIdx = static_cast<size_t>(target) * 4;
-					m_worldPosHi[dstWpIdx + 0] = m_worldPos[srcWpIdx + 0];
-					m_worldPosHi[dstWpIdx + 1] = m_worldPos[srcWpIdx + 1];
-					m_worldPosHi[dstWpIdx + 2] = m_worldPos[srcWpIdx + 2];
-					m_worldPosHi[dstWpIdx + 3] = m_worldPos[srcWpIdx + 3];
-				}
-			}
-			// No uniform per-pixel convergence metric applies once each
-			// high-res cell converges to a single direct sample rather than
-			// a running mean - same "1" showLatest already reports for the
-			// analogous "no meaningful running-mean count" case below.
-			m_sampleCount = 1;
-
-			// This frame's world-pos/camera-basis (and the just-updated Hi
-			// buffers) become "the data backing the display" for whenever
-			// the NEXT camera move needs to reproject FROM it - see
-			// reprojectAccumulationHi()'s own comment.
-			m_worldPosHiPrev = m_worldPosHi;
-			m_worldPosPrev = m_worldPos;
-			m_prevCameraBasis = m_cameraBasis;
-
-			// Tonemap the Hi buffer into m_displayImage (already sized
-			// Wh x Hh, see resetAccumulation()). A cell whose m_worldPosHi
-			// validity is still 0 (never splatted into - e.g. right after
-			// enabling the feature) falls back to a plain nearest-neighbor
-			// upscale of THIS frame's own m_tmp - display-only, never
-			// written into m_accumHi itself, so it never contaminates
-			// history once a real splat arrives (see this project's own
-			// plan's first-frame/cold-cell fallback).
-			for (int y = 0; y < Hh; ++y) {
-				uchar* row = m_displayImage.scanLine(y);
-				const int lowY = std::min(y / m_upscaleFactor, m_height - 1);
-				for (int x = 0; x < Wh; ++x) {
-					const int cell = y * Wh + x;
-					const size_t wpIdx = static_cast<size_t>(cell) * 4;
-					const size_t idx = static_cast<size_t>(cell) * 3;
-					double r, g, b;
-					if (m_worldPosHi[wpIdx + 3] != 0.0f) {
-						r = m_accumHi[idx + 0]; g = m_accumHi[idx + 1]; b = m_accumHi[idx + 2];
-					} else {
-						const int lowX = std::min(x / m_upscaleFactor, m_width - 1);
-						const size_t lowIdx = (static_cast<size_t>(lowY) * m_width + lowX) * 3;
-						r = m_tmp[lowIdx + 0]; g = m_tmp[lowIdx + 1]; b = m_tmp[lowIdx + 2];
-					}
-					if (!std::isfinite(r)) r = 0.0;
-					if (!std::isfinite(g)) g = 0.0;
-					if (!std::isfinite(b)) b = 0.0;
-					r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
-					r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
-					g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
-					b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
-					row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
-					row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
-					row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
-				}
-			}
-
-			// Advance this call's own place in the GPU-side jitter sequence
-			// by m_spp (matching how many samples-per-call this render just
-			// consumed, the same per-call advance frameNumber_ itself
-			// already gets), wrapped modulo the sequence's own period.
-			const unsigned int period = static_cast<unsigned int>(m_upscaleFactor * m_upscaleFactor);
-			m_temporalJitterCounter = (period > 0) ? ((m_temporalJitterCounter + static_cast<unsigned int>(m_spp)) % period) : 0;
-			// Advance the write step's OWN counter by exactly 1 - see its
-			// declaration's own comment for why this must NOT track m_spp.
-			m_temporalUpscaleWriteCounter = (period > 0) ? ((m_temporalUpscaleWriteCounter + 1u) % period) : 0;
-		} else {
-			int minSampleCount = 0;
-			if (showLatest) {
-				// Skip accumulation entirely - each already-denoised frame is
-				// clean enough on its own that averaging it with older, possibly
-				// differently-denoised frames would only add lag, not quality.
-				m_accum = m_tmp;
-				std::fill(m_sampleCounts.begin(), m_sampleCounts.end(), uint16_t{1});
-				minSampleCount = 1;
-			} else {
-				// Running mean: accum += (sample - accum) / (n+1), n now READ
-				// PER PIXEL (m_sampleCounts) rather than one shared scalar -
-				// reprojectAccumulation() just above can leave different pixels
-				// with wildly different effective history (0 for a freshly
-				// disoccluded pixel, carried-forward-and-capped for a
-				// successfully reprojected one). Both buffers are linear RGB
-				// (rt_realtime_render_frame()'s own contract), so this is still
-				// a plain per-channel average - no dividing/multiplying needed
-				// beyond this, unlike CPU/GPU's own filter-weighted
-				// reconstruction (this preview uses a trivial 1-sample-per-pixel
-				// box filter, no splatting).
-				constexpr uint16_t kMaxSampleCount = 65535;
-				minSampleCount = kMaxSampleCount;
-				// See m_pixelVariance's own comment - fed the same m_tmp batch
-				// average m_accum's own mean folds in below, one .Add() per
-				// pixel per iteration. Just an alias for the already-computed
-				// useAdaptive local (above, before the render call) - kept as
-				// its own name here since this loop's variance-tracking and
-				// pixel-skip roles are conceptually separate, even though
-				// today they happen to share one condition.
-				const bool trackVariance = useAdaptive;
-				// True once at least one pixel actually updates below - lets
-				// the fully-converged edge case (every pixel skipped this
-				// frame) fall back to the PREVIOUS m_sampleCount afterward
-				// instead of reporting kMaxSampleCount's raw sentinel value.
-				bool anyPixelUpdated = false;
-				// Row-major (not a flat 0..numPixels loop) so the noise-
-				// heatmap write below (useAdaptive only) can share this same
-				// pass instead of a second full-resolution walk afterward -
-				// scanLine(y) is looked up once per row here, same call
-				// frequency the heatmap's own separate loop already paid,
-				// rather than once per PIXEL if that write were bolted onto
-				// a flat per-pixel loop instead.
-				for (int y = 0; y < m_height; ++y) {
-					uchar* row = useAdaptive ? m_displayImage.scanLine(y) : nullptr;
-					for (int x = 0; x < m_width; ++x) {
-						const int pixel = y * m_width + x;
-						if (useAdaptive) {
-							// Noise-heatmap debug view: white where still-
-							// active, black where converged - deliberately
-							// NOT run through the ACES+sRGB tonemap below
-							// (this is a diagnostic overlay, not a radiance
-							// value). Written for EVERY pixel here (active or
-							// not), before the skip-gate just below, so an
-							// inactive pixel still gets its (black) heatmap
-							// byte even though it skips the rest of this
-							// iteration.
-							const uchar v = m_activePixelMask[pixel] ? uchar{255} : uchar{0};
-							row[x * 3 + 0] = v;
-							row[x * 3 + 1] = v;
-							row[x * 3 + 2] = v;
-						}
-						// Load-bearing: a pixel useAdaptive marked inactive
-						// this frame (m_activePixelMask built above, before
-						// the render call) was never resampled GPU-side
-						// either - the SAME mask crossed the DLL boundary
-						// this call - so m_tmp holds nothing meaningful for
-						// it (normalize_framebuffer's own zero-weight guard
-						// leaves a never-enqueued pixel at black). Skipping
-						// the mean/count/variance update entirely leaves it
-						// exactly as it was, rather than dragging an
-						// already-converged pixel toward black. See
-						// wf_adaptive_pixel_active()'s own comment (gpu/optix/
-						// wavefront_svgf_math.h) for the GPU-side half of
-						// this gate.
-						if (useAdaptive && !m_activePixelMask[pixel]) continue;
-						anyPixelUpdated = true;
-						const int n = m_sampleCounts[pixel];
-						const size_t idx = static_cast<size_t>(pixel) * 3;
-						// A frame of `batchCount` batches counts as that many batches of history (1 unless the scheduler grew it).
-						for (int c = 0; c < 3; ++c) {
-							m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) * static_cast<float>(batchCount) / static_cast<float>(n + batchCount);
-						}
-						m_sampleCounts[pixel] = static_cast<uint16_t>(std::min<int>(n + batchCount, kMaxSampleCount));
-						minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
-						if (trackVariance) {
-							const double lum = pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]);
-							// A NaN/Inf raw sample (a degenerate BSDF/light-sampling
-							// case the firefly clamp doesn't always catch) would
-							// otherwise permanently poison this pixel's Welford
-							// mean/S to NaN - has_converged()'s comparisons against
-							// NaN are always false, so that pixel would get stuck
-							// reading "still needs sampling" forever with no
-							// self-correction, unlike m_accum's own display (a few
-							// lines below) which already guards isfinite() before
-							// use. Simplest fix: just don't feed a non-finite
-							// sample into the estimator at all - skipping one
-							// batch's worth of variance data for one pixel is
-							// harmless.
-							if (std::isfinite(lum)) {
-								m_pixelVariance[pixel].Add(lum);
-							}
-						}
-					}
-				}
-				// Every pixel converged and was skipped this frame - keep
-				// reporting whatever m_sampleCount already held rather than
-				// kMaxSampleCount's raw, never-updated sentinel value.
-				if (!anyPixelUpdated) minSampleCount = m_sampleCount;
-			}
-			m_sampleCount = minSampleCount;
-
-			// This frame's world-pos/camera-basis become "the data backing
-			// m_accum" for whenever the NEXT camera move needs to reproject
-			// FROM it - see the member declarations' own comment.
-			m_worldPosPrev = m_worldPos;
-			m_prevCameraBasis = m_cameraBasis;
-
-			// Noise-heatmap debug view: white where m_activePixelMask says
-			// still-active, black where converged - deliberately NOT run
-			// through the ACES+sRGB tonemap below (this is a diagnostic
-			// overlay, not a radiance value). Reads the SAME mask this
-			// frame's render call and fold-in loop just used (built once,
-			// before the render call - see its own comment above) rather
-			// than recomputing has_converged() a second time, so the heatmap
-			// can never disagree with what was actually skipped this frame.
-			// useAdaptive's own display (the noise heatmap) was already
-			// written above, merged into the fold-in loop itself - nothing
-			// left to do here for that case.
-			if (!useAdaptive) {
-				// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
-				// project's CPU/GPU display convention exactly - see tone_map.h)
-				// into m_displayImage IN PLACE. Tonemapping the per-call noisy
-				// sample instead would defeat the whole point of accumulating in
-				// linear space first.
-				updateAutoExposure();
-				// Pixels with few samples may be shown smoothed (smoothLowSampleAccum()); m_accum itself is never altered.
-				// m_sampleCount is the minimum over all pixels: once even the weakest pixel is past the threshold there is nothing to do.
-				// The AI denoise (when on and available) supersedes the cheaper smoothing; both are display only.
-				const bool aiNow = m_aiDenoise && m_sampleCount * m_spp < kAiDenoiseOffSamples && aiDenoiseAccum();
-				const bool smoothNow = !aiNow && m_smoothLowSample && m_sampleCount < kSmoothFullSamples;
-				if (smoothNow) smoothLowSampleAccum();
-				const std::vector<float>& displaySource = aiNow ? m_aiDisplay : (smoothNow ? m_smoothed : m_accum);
-				for (int y = 0; y < m_height; ++y) {
-					uchar* row = m_displayImage.scanLine(y);
-					for (int x = 0; x < m_width; ++x) {
-						const size_t idx = (static_cast<size_t>(y) * m_width + x) * 3;
-						double r = displaySource[idx + 0], g = displaySource[idx + 1], b = displaySource[idx + 2];
-						if (!std::isfinite(r)) r = 0.0;
-						if (!std::isfinite(g)) g = 0.0;
-						if (!std::isfinite(b)) b = 0.0;
-						// Same exposure multiply the batch/CLI path applies right
-						// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
-						// see m_exposure's own comment for why Live Preview needs this
-						// pulled down further than batch's default for the same scene.
-						r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
-						r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
-						g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
-						b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
-						row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
-						row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
-						row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
-					}
-				}
-			}
-		}
-
-		// .copy() rather than emitting m_displayImage directly: QImage is
-		// implicitly shared, and frameReady() carries this image across a
-		// queued cross-thread signal to the GUI thread - without a detach,
-		// the NEXT loop iteration's in-place scanLine() writes (above,
-		// possibly before the GUI thread has consumed the queued copy)
-		// would race with whatever the GUI thread reads from the "same"
-		// shared buffer. .copy() gives this emit its own buffer up front,
-		// letting m_displayImage keep being mutated in place next iteration
-		// with no such hazard.
-		//
-		// m_sampleCount * m_spp, not m_sampleCount alone: m_sampleCount is a
-		// BATCH count (see its own comment) - each batch already IS an
-		// m_spp-sample average from a single render call, so the status
-		// label needs this multiply to show the true number of samples
-		// traced, not the number of calls made. Scaling by the CURRENT
-		// m_spp rather than tracking a separate running total keeps this a
-		// pure display fix with no new per-pixel state to reproject/cap -
-		// the one imprecision this trades away is retroactive: if the user
-		// changes Samples/Frame mid-session, batches accumulated at the OLD
-		// value get re-reported as if they'd used the new one too. Harmless
-		// for a live status number nobody is auditing frame-by-frame.
-		emit frameReady(m_displayImage.copy(), m_sampleCount * m_spp);
 	}
+	// Still track prev camera/world-pos bookkeeping, matching the old
+	// path's own end-of-branch update just below, so toggling neural
+	// reconstruction OFF mid-session leaves the old path's own
+	// reprojection with a sane, up-to-date starting point next frame
+	// rather than a stale one from whenever neural mode was enabled.
+	m_worldPosPrev = m_worldPos;
+	m_prevCameraBasis = m_cameraBasis;
+
+	const unsigned int neuralPeriod = static_cast<unsigned int>(m_upscaleFactor * m_upscaleFactor);
+	m_temporalJitterCounter = (neuralPeriod > 0) ? ((m_temporalJitterCounter + static_cast<unsigned int>(m_spp)) % neuralPeriod) : 0;
+	m_temporalUpscaleWriteCounter = (neuralPeriod > 0) ? ((m_temporalUpscaleWriteCounter + 1u) % neuralPeriod) : 0;
+}
+
+// Temporal upscale (the block-splat path): the write step into the high-resolution accumulation, and the reconstruction for display.
+void RealtimePreviewWorker::foldTemporalUpscale() {
+	// --- Temporal upscale: write step + reconstruction ---
+	// This call's own place in the write step's OWN sequence
+	// (m_temporalUpscaleWriteCounter - see its own comment on the
+	// header for why this is a SEPARATE counter from
+	// m_temporalJitterCounter) selects ONE sub-cell shared by every
+	// low-res pixel this frame - each low-res pixel's raw sample
+	// (m_tmp, not the running mean) overwrites that one high-res
+	// cell, never blended (see this project's own plan for why a
+	// running mean doesn't apply at the per-cell level the way it
+	// does for m_accum). NOTE: when Samples/Frame > 1, m_tmp is
+	// already an average across several GPU-side jitter phases -
+	// the write step below still treats it as if it were a single
+	// phase, a known v1 simplification that slightly blurs the
+	// splatted cell at Samples/Frame > 1 (recommend Samples/Frame=1
+	// for the sharpest reconstruction). This blur is independent of
+	// - and much less severe than - full-grid coverage, which is
+	// what m_temporalUpscaleWriteCounter's own separate, always-by-1
+	// advance guarantees regardless of Samples/Frame.
+	const int Wh = m_width * m_upscaleFactor;
+	const int Hh = m_height * m_upscaleFactor;
+	int subCx = 0, subCy = 0;
+	camera_math::temporalUpscaleSubcell(m_temporalUpscaleWriteCounter, m_upscaleFactor, subCx, subCy);
+	for (int y = 0; y < m_height; ++y) {
+		for (int x = 0; x < m_width; ++x) {
+			const int pixel = y * m_width + x;
+			const int target = (y * m_upscaleFactor + subCy) * Wh + (x * m_upscaleFactor + subCx);
+			const size_t srcColorIdx = static_cast<size_t>(pixel) * 3;
+			const size_t dstColorIdx = static_cast<size_t>(target) * 3;
+			m_accumHi[dstColorIdx + 0] = m_tmp[srcColorIdx + 0];
+			m_accumHi[dstColorIdx + 1] = m_tmp[srcColorIdx + 1];
+			m_accumHi[dstColorIdx + 2] = m_tmp[srcColorIdx + 2];
+			const size_t srcWpIdx = static_cast<size_t>(pixel) * 4;
+			const size_t dstWpIdx = static_cast<size_t>(target) * 4;
+			m_worldPosHi[dstWpIdx + 0] = m_worldPos[srcWpIdx + 0];
+			m_worldPosHi[dstWpIdx + 1] = m_worldPos[srcWpIdx + 1];
+			m_worldPosHi[dstWpIdx + 2] = m_worldPos[srcWpIdx + 2];
+			m_worldPosHi[dstWpIdx + 3] = m_worldPos[srcWpIdx + 3];
+		}
+	}
+	// No uniform per-pixel convergence metric applies once each
+	// high-res cell converges to a single direct sample rather than
+	// a running mean - same "1" showLatest already reports for the
+	// analogous "no meaningful running-mean count" case below.
+	m_sampleCount = 1;
+
+	// This frame's world-pos/camera-basis (and the just-updated Hi
+	// buffers) become "the data backing the display" for whenever
+	// the NEXT camera move needs to reproject FROM it - see
+	// reprojectAccumulationHi()'s own comment.
+	m_worldPosHiPrev = m_worldPosHi;
+	m_worldPosPrev = m_worldPos;
+	m_prevCameraBasis = m_cameraBasis;
+
+	// Tonemap the Hi buffer into m_displayImage (already sized
+	// Wh x Hh, see resetAccumulation()). A cell whose m_worldPosHi
+	// validity is still 0 (never splatted into - e.g. right after
+	// enabling the feature) falls back to a plain nearest-neighbor
+	// upscale of THIS frame's own m_tmp - display-only, never
+	// written into m_accumHi itself, so it never contaminates
+	// history once a real splat arrives (see this project's own
+	// plan's first-frame/cold-cell fallback).
+	for (int y = 0; y < Hh; ++y) {
+		uchar* row = m_displayImage.scanLine(y);
+		const int lowY = std::min(y / m_upscaleFactor, m_height - 1);
+		for (int x = 0; x < Wh; ++x) {
+			const int cell = y * Wh + x;
+			const size_t wpIdx = static_cast<size_t>(cell) * 4;
+			const size_t idx = static_cast<size_t>(cell) * 3;
+			double r, g, b;
+			if (m_worldPosHi[wpIdx + 3] != 0.0f) {
+				r = m_accumHi[idx + 0]; g = m_accumHi[idx + 1]; b = m_accumHi[idx + 2];
+			} else {
+				const int lowX = std::min(x / m_upscaleFactor, m_width - 1);
+				const size_t lowIdx = (static_cast<size_t>(lowY) * m_width + lowX) * 3;
+				r = m_tmp[lowIdx + 0]; g = m_tmp[lowIdx + 1]; b = m_tmp[lowIdx + 2];
+			}
+			if (!std::isfinite(r)) r = 0.0;
+			if (!std::isfinite(g)) g = 0.0;
+			if (!std::isfinite(b)) b = 0.0;
+			r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
+			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+			b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+			row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
+			row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
+			row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+		}
+	}
+
+	// Advance this call's own place in the GPU-side jitter sequence
+	// by m_spp (matching how many samples-per-call this render just
+	// consumed, the same per-call advance frameNumber_ itself
+	// already gets), wrapped modulo the sequence's own period.
+	const unsigned int period = static_cast<unsigned int>(m_upscaleFactor * m_upscaleFactor);
+	m_temporalJitterCounter = (period > 0) ? ((m_temporalJitterCounter + static_cast<unsigned int>(m_spp)) % period) : 0;
+	// Advance the write step's OWN counter by exactly 1 - see its
+	// declaration's own comment for why this must NOT track m_spp.
+	m_temporalUpscaleWriteCounter = (period > 0) ? ((m_temporalUpscaleWriteCounter + 1u) % period) : 0;
+}
+
+// The ordinary path: fold this frame's m_tmp into the running mean m_accum (or, showing the latest frame, copy it), then display the result.
+void RealtimePreviewWorker::foldAccumulation(bool showLatest, bool useAdaptive, int batchCount) {
+	int minSampleCount = 0;
+	if (showLatest) {
+		// Skip accumulation entirely - each already-denoised frame is
+		// clean enough on its own that averaging it with older, possibly
+		// differently-denoised frames would only add lag, not quality.
+		m_accum = m_tmp;
+		std::fill(m_sampleCounts.begin(), m_sampleCounts.end(), uint16_t{1});
+		minSampleCount = 1;
+	} else {
+		// Running mean: accum += (sample - accum) / (n+1), n now READ
+		// PER PIXEL (m_sampleCounts) rather than one shared scalar -
+		// reprojectAccumulation() just above can leave different pixels
+		// with wildly different effective history (0 for a freshly
+		// disoccluded pixel, carried-forward-and-capped for a
+		// successfully reprojected one). Both buffers are linear RGB
+		// (rt_realtime_render_frame()'s own contract), so this is still
+		// a plain per-channel average - no dividing/multiplying needed
+		// beyond this, unlike CPU/GPU's own filter-weighted
+		// reconstruction (this preview uses a trivial 1-sample-per-pixel
+		// box filter, no splatting).
+		constexpr uint16_t kMaxSampleCount = 65535;
+		minSampleCount = kMaxSampleCount;
+		// See m_pixelVariance's own comment - fed the same m_tmp batch
+		// average m_accum's own mean folds in below, one .Add() per
+		// pixel per iteration. Just an alias for the already-computed
+		// useAdaptive local (above, before the render call) - kept as
+		// its own name here since this loop's variance-tracking and
+		// pixel-skip roles are conceptually separate, even though
+		// today they happen to share one condition.
+		const bool trackVariance = useAdaptive;
+		// True once at least one pixel actually updates below - lets
+		// the fully-converged edge case (every pixel skipped this
+		// frame) fall back to the PREVIOUS m_sampleCount afterward
+		// instead of reporting kMaxSampleCount's raw sentinel value.
+		bool anyPixelUpdated = false;
+		// Row-major (not a flat 0..numPixels loop) so the noise-
+		// heatmap write below (useAdaptive only) can share this same
+		// pass instead of a second full-resolution walk afterward -
+		// scanLine(y) is looked up once per row here, same call
+		// frequency the heatmap's own separate loop already paid,
+		// rather than once per PIXEL if that write were bolted onto
+		// a flat per-pixel loop instead.
+		for (int y = 0; y < m_height; ++y) {
+			uchar* row = useAdaptive ? m_displayImage.scanLine(y) : nullptr;
+			for (int x = 0; x < m_width; ++x) {
+				const int pixel = y * m_width + x;
+				if (useAdaptive) {
+					// Noise-heatmap debug view: white where still-
+					// active, black where converged - deliberately
+					// NOT run through the ACES+sRGB tonemap below
+					// (this is a diagnostic overlay, not a radiance
+					// value). Written for EVERY pixel here (active or
+					// not), before the skip-gate just below, so an
+					// inactive pixel still gets its (black) heatmap
+					// byte even though it skips the rest of this
+					// iteration.
+					const uchar v = m_activePixelMask[pixel] ? uchar{255} : uchar{0};
+					row[x * 3 + 0] = v;
+					row[x * 3 + 1] = v;
+					row[x * 3 + 2] = v;
+				}
+				// Load-bearing: a pixel useAdaptive marked inactive
+				// this frame (m_activePixelMask built above, before
+				// the render call) was never resampled GPU-side
+				// either - the SAME mask crossed the DLL boundary
+				// this call - so m_tmp holds nothing meaningful for
+				// it (normalize_framebuffer's own zero-weight guard
+				// leaves a never-enqueued pixel at black). Skipping
+				// the mean/count/variance update entirely leaves it
+				// exactly as it was, rather than dragging an
+				// already-converged pixel toward black. See
+				// wf_adaptive_pixel_active()'s own comment (gpu/optix/
+				// wavefront_svgf_math.h) for the GPU-side half of
+				// this gate.
+				if (useAdaptive && !m_activePixelMask[pixel]) continue;
+				anyPixelUpdated = true;
+				const int n = m_sampleCounts[pixel];
+				const size_t idx = static_cast<size_t>(pixel) * 3;
+				// A frame of `batchCount` batches counts as that many batches of history (1 unless the scheduler grew it).
+				for (int c = 0; c < 3; ++c) {
+					m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) * static_cast<float>(batchCount) / static_cast<float>(n + batchCount);
+				}
+				m_sampleCounts[pixel] = static_cast<uint16_t>(std::min<int>(n + batchCount, kMaxSampleCount));
+				minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
+				if (trackVariance) {
+					const double lum = pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]);
+					// A NaN/Inf raw sample (a degenerate BSDF/light-sampling
+					// case the firefly clamp doesn't always catch) would
+					// otherwise permanently poison this pixel's Welford
+					// mean/S to NaN - has_converged()'s comparisons against
+					// NaN are always false, so that pixel would get stuck
+					// reading "still needs sampling" forever with no
+					// self-correction, unlike m_accum's own display (a few
+					// lines below) which already guards isfinite() before
+					// use. Simplest fix: just don't feed a non-finite
+					// sample into the estimator at all - skipping one
+					// batch's worth of variance data for one pixel is
+					// harmless.
+					if (std::isfinite(lum)) {
+						m_pixelVariance[pixel].Add(lum);
+					}
+				}
+			}
+		}
+		// Every pixel converged and was skipped this frame - keep
+		// reporting whatever m_sampleCount already held rather than
+		// kMaxSampleCount's raw, never-updated sentinel value.
+		if (!anyPixelUpdated) minSampleCount = m_sampleCount;
+	}
+	m_sampleCount = minSampleCount;
+
+	// This frame's world-pos/camera-basis become "the data backing
+	// m_accum" for whenever the NEXT camera move needs to reproject
+	// FROM it - see the member declarations' own comment.
+	m_worldPosPrev = m_worldPos;
+	m_prevCameraBasis = m_cameraBasis;
+
+	// Noise-heatmap debug view: white where m_activePixelMask says
+	// still-active, black where converged - deliberately NOT run
+	// through the ACES+sRGB tonemap below (this is a diagnostic
+	// overlay, not a radiance value). Reads the SAME mask this
+	// frame's render call and fold-in loop just used (built once,
+	// before the render call - see its own comment above) rather
+	// than recomputing has_converged() a second time, so the heatmap
+	// can never disagree with what was actually skipped this frame.
+	// useAdaptive's own display (the noise heatmap) was already
+	// written above, merged into the fold-in loop itself - nothing
+	// left to do here for that case.
+	if (!useAdaptive) displayAccumulated();
+}
+
+// Tone-maps the accumulated picture (AI-denoised or smoothed first, when those are on) into m_displayImage, in place.
+void RealtimePreviewWorker::displayAccumulated() {
+	// Tonemap the ACCUMULATED result (ACES + sRGB, matching this
+	// project's CPU/GPU display convention exactly - see tone_map.h)
+	// into m_displayImage IN PLACE. Tonemapping the per-call noisy
+	// sample instead would defeat the whole point of accumulating in
+	// linear space first.
+	updateAutoExposure();
+	// Pixels with few samples may be shown smoothed (smoothLowSampleAccum()); m_accum itself is never altered.
+	// m_sampleCount is the minimum over all pixels: once even the weakest pixel is past the threshold there is nothing to do.
+	// The AI denoise (when on and available) supersedes the cheaper smoothing; both are display only.
+	const bool aiNow = m_aiDenoise && m_sampleCount * m_spp < kAiDenoiseOffSamples && aiDenoiseAccum();
+	const bool smoothNow = !aiNow && m_smoothLowSample && m_sampleCount < kSmoothFullSamples;
+	if (smoothNow) smoothLowSampleAccum();
+	const std::vector<float>& displaySource = aiNow ? m_aiDisplay : (smoothNow ? m_smoothed : m_accum);
+	for (int y = 0; y < m_height; ++y) {
+		uchar* row = m_displayImage.scanLine(y);
+		for (int x = 0; x < m_width; ++x) {
+			const size_t idx = (static_cast<size_t>(y) * m_width + x) * 3;
+			double r = displaySource[idx + 0], g = displaySource[idx + 1], b = displaySource[idx + 2];
+			if (!std::isfinite(r)) r = 0.0;
+			if (!std::isfinite(g)) g = 0.0;
+			if (!std::isfinite(b)) b = 0.0;
+			// Same exposure multiply the batch/CLI path applies right
+			// before its own identical ACES+sRGB tonemap (optix_interface.cpp) -
+			// see m_exposure's own comment for why Live Preview needs this
+			// pulled down further than batch's default for the same scene.
+			r *= effectiveExposure(); g *= effectiveExposure(); b *= effectiveExposure();
+			r = linear_to_srgb(apply_tone_map(r, ToneMapMode::ACES));
+			g = linear_to_srgb(apply_tone_map(g, ToneMapMode::ACES));
+			b = linear_to_srgb(apply_tone_map(b, ToneMapMode::ACES));
+			row[x * 3 + 0] = static_cast<uchar>(std::fmin(std::fmax(r, 0.0), 1.0) * 255.0 + 0.5);
+			row[x * 3 + 1] = static_cast<uchar>(std::fmin(std::fmax(g, 0.0), 1.0) * 255.0 + 0.5);
+			row[x * 3 + 2] = static_cast<uchar>(std::fmin(std::fmax(b, 0.0), 1.0) * 255.0 + 0.5);
+		}
+	}
+}
+
+// Everything after a successful render call: reproject the old accumulation if the camera moved, fold the frame in by whichever path applies, and send
+// the picture to the window.
+void RealtimePreviewWorker::processFrame(bool cameraJustMoved, bool useUpscale, bool useAdaptive, int batchCount) {
+	// m_denoise is part of the first term (not m_denoiseShowLatest
+	// alone): without denoise, "show the latest raw single-sample frame
+	// instead of accumulating" would mean Live Preview never converges
+	// at all - see setDenoise()'s own comment on why toggling either
+	// side of that term resets accumulation. m_svgf is unconditionally
+	// its own reason to show-latest (no equivalent "without X this would
+	// never converge" gate): SVGF's own GPU-side temporal integration
+	// (gpu/optix/wavefront_svgf_math.h) already IS the accumulation -
+	// m_tmp is already temporally stable by the time it reaches here,
+	// and re-blending it into m_accum's own separate running mean would
+	// double-integrate the same signal through two different, competing
+	// temporal filters - see this project's own SVGF plan for why GPU-
+	// side integration REPLACES this CPU-side one for that mode, rather
+	// than sitting on top of it.
+	const bool showLatest = effectiveShowLatest();
+	// useUpscale was already computed above, before the render call -
+	// see its own comment there for why (must match what was actually
+	// sent to the GPU this frame).
+
+	// Reprojection would be immediately thrown away by the show-latest
+	// branch below (which overwrites m_accum wholesale every frame
+	// regardless), so skip the work entirely in that mode.
+	if (cameraJustMoved) {
+		// Neural reconstruction does its own reprojection GPU-side every
+		// frame regardless (gpu/optix/wavefront_kernels_upscale.cu's own
+		// upscale_infer, via wf_restir_reproject_prev_pixel) - this CPU-
+		// side reprojection exists only for the OLD block-splat path's
+		// own m_accumHi/m_worldPosHi, which m_neuralUpscale bypasses
+		// entirely (see the useUpscale branch below).
+		if (useUpscale && !m_neuralUpscale) {
+			reprojectAccumulationHi();
+		} else if (!useUpscale && !showLatest) {
+			reprojectAccumulation();
+		}
+	}
+
+	if (useUpscale && m_neuralUpscale) {
+		foldNeuralUpscale();
+	} else if (useUpscale) {
+		foldTemporalUpscale();
+	} else {
+		foldAccumulation(showLatest, useAdaptive, batchCount);
+	}
+
+	// .copy() rather than emitting m_displayImage directly: QImage is
+	// implicitly shared, and frameReady() carries this image across a
+	// queued cross-thread signal to the GUI thread - without a detach,
+	// the NEXT loop iteration's in-place scanLine() writes (above,
+	// possibly before the GUI thread has consumed the queued copy)
+	// would race with whatever the GUI thread reads from the "same"
+	// shared buffer. .copy() gives this emit its own buffer up front,
+	// letting m_displayImage keep being mutated in place next iteration
+	// with no such hazard.
+	//
+	// m_sampleCount * m_spp, not m_sampleCount alone: m_sampleCount is a
+	// BATCH count (see its own comment) - each batch already IS an
+	// m_spp-sample average from a single render call, so the status
+	// label needs this multiply to show the true number of samples
+	// traced, not the number of calls made. Scaling by the CURRENT
+	// m_spp rather than tracking a separate running total keeps this a
+	// pure display fix with no new per-pixel state to reproject/cap -
+	// the one imprecision this trades away is retroactive: if the user
+	// changes Samples/Frame mid-session, batches accumulated at the OLD
+	// value get re-reported as if they'd used the new one too. Harmless
+	// for a live status number nobody is auditing frame-by-frame.
+	emit frameReady(m_displayImage.copy(), m_sampleCount * m_spp);
+}
+
+void RealtimePreviewWorker::renderLoop(int epoch) {
+	// epoch != m_epoch means a stop()+start() cycle already happened since
+	// THIS continuation was posted (start() bumps m_epoch) - it belongs to
+	// an old, already-superseded chain and must not run at all, let alone
+	// repost itself, or it would keep running forever alongside the new
+	// chain start() began. See m_epoch's own header comment for the exact
+	// race this closes.
+	if (!m_running || epoch != m_epoch) return;
+
+	// Captured before clearing: renders the NEXT frame with the already-
+	// updated (new) m_camX/etc below, then - once that frame's own world
+	// positions are in - reprojectAccumulation() uses THIS flag to decide
+	// whether to remap the OLD accumulation into the new view first. No
+	// immediate resetAccumulation() here anymore - that used to be this
+	// block's whole job before reprojection replaced it.
+	const bool cameraJustMoved = m_cameraDirty;
+	m_cameraDirty = false;
+
+	// Computed here (before the render call, not after) so the value SENT
+	// to the GPU this frame matches the value the CPU side will actually
+	// act on once the call returns - see useTemporalUpscale()'s own comment.
+	// Sending the raw m_temporalUpscaleEnabled instead (this function used
+	// to) meant the GPU's own checkerboardActive gate
+	// (wavefront_path_tracer.cpp) could see "upscale on" and defensively
+	// disable SVGF's checkerboard optimization even on a frame where the
+	// CPU had already fallen back to ordinary SVGF display because
+	// effectiveShowLatest() was true - a real, confirmed mismatch (this
+	// project's own code review caught it), not just a theoretical one.
+	const bool useUpscale = useTemporalUpscale();
+
+	// Live Preview's adaptive sampling (Stage 2a of this project's own
+	// plan) - computed here, before the render call, from m_pixelVariance's
+	// state as of the END of the PREVIOUS frame, so the mask actually SENT
+	// to the GPU this frame is the exact same one the CPU-side fold-in gate
+	// and the heatmap display step act on once the call returns (same
+	// "compute once, share the decision" reasoning as useUpscale just
+	// above). This means a pixel that would newly converge (or de-converge)
+	// based on THIS frame's own incoming sample doesn't reflect that until
+	// the NEXT frame - the same one-frame lag every other cross-frame Live
+	// Preview mechanism (reprojection, SVGF history) already tolerates.
+	//
+	// has_converged() itself only requires Count()>=2 (Welford's variance is
+	// undefined below that), but a 2-sample variance ESTIMATE is not yet a
+	// trustworthy one - the CPU offline path this feature mirrors (src/
+	// TheRestOfYourLife/camera.h) never trusts its own identical estimator
+	// below min_samples_before_check (up to 32 raw samples) for exactly
+	// this reason. kMinBatchesBeforeConverged is the same floor's spirit
+	// applied to this class's own per-frame-BATCH granularity (coarser than
+	// the CPU path's per-raw-sample one - m_pixelVariance's own header
+	// comment) rather than a literal copy of its formula.
+	const bool useAdaptive = useAdaptiveSampling();
+	applyAdaptiveSamplingMask(useAdaptive, cameraJustMoved);
+
+	// Samples-per-frame scheduling (src/shared/live_spp_scheduler.h): one batch while the camera moves, more once it is still, so a still picture
+	// converges faster. Only on the plain running-mean path on macOS; RT_LIVE_SCHEDULER=0 turns it off (to compare). Every other mode, and Windows
+	// with its OptiX-only denoise/SVGF/upscale/adaptive paths, renders exactly one batch per frame as before.
+	static const bool kSchedulerAvailable = [] {
+#ifdef Q_OS_MACOS
+		const char* off = std::getenv("RT_LIVE_SCHEDULER");
+		return !(off && off[0] == '0');
+#else
+		return false;
+#endif
+	}();
+	const bool scheduleSpp = kSchedulerAvailable && !useUpscale && !useAdaptive && !effectiveShowLatest();
+	if (cameraJustMoved || !scheduleSpp) m_sppScheduler.reset();   // a move is rendered at one batch at once, not at the size the still picture had grown to
+	const int batchCount = scheduleSpp ? m_sppScheduler.batch() : 1;
+
+	if (renderOneFrame(cameraJustMoved, scheduleSpp, useUpscale, useAdaptive, batchCount)) processFrame(cameraJustMoved, useUpscale, useAdaptive, batchCount);
 
 	if (m_running) QMetaObject::invokeMethod(this, [this, epoch]() { renderLoop(epoch); }, Qt::QueuedConnection);
 }
