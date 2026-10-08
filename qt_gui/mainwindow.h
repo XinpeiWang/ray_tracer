@@ -210,6 +210,10 @@ public:
 	explicit MainWindow(QWidget *parent = nullptr, const QString &startupLanguageCode = QString());
 	~MainWindow();
 
+	// The window's own default size and place (about half the screen, centred); also what "Reset Window Layout" returns to.
+	void applyDefaultWindowGeometry();
+	void resetWindowLayout();   // View > Reset Window Layout
+
 	// Automated GUI smoke test, started by main.cpp when RT_GUI_SELFTEST=<mode> is set (see mainwindow_selftest.cpp):
 	// drives the real window, writes a log and a screenshot of THIS window next to RT_GUI_SELFTEST_OUT, then exits the
 	// application with a status code. Modes: "ui" (report the Output Mode items), "livepreview" (start Live Preview, let it
@@ -217,6 +221,8 @@ public:
 	void runSelfTest(const QString &mode, const QString &outPrefix);
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
 	void selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);      // (mainwindow_selftest_builder3d.cpp)
+	void selfTestWindowGeometry(const std::function<void(bool, const QString &)> &check);
+	void selfTestWheelGuard(const std::function<void(bool, const QString &)> &check);
 	void selfTestLog(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);
 	void runInstallPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 	void runBuilder3dSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_builder3d.cpp
@@ -298,6 +304,9 @@ private slots:
 	// Shared by the Diagnostics tab's buttons.
 	void copyDiagToClipboard();
 	void saveDiagReportToFile();
+
+protected:
+	void closeEvent(QCloseEvent *event) override;   // remembers the window's geometry (window_geometry.h)
 
 private:
 	void setupUI();

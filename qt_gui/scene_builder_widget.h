@@ -21,6 +21,7 @@
 #include "../src/shared/scene_props.h"
 
 class QCheckBox;
+class QSplitter;
 class QLineEdit;
 class QComboBox;
 class QFormLayout;
@@ -52,6 +53,7 @@ public:
 	bool dragObjectForTest(int index, const QPointF &deltaPx);
 	// The 3D view, for the self-test: show it (or go back to the 2D views), drag an object on the floor, or along one axis arrow of the selected item.
 	void show3dView(bool on);
+	void resetPaneSizes();   // View > Reset Window Layout
 	bool dragObject3dForTest(int index, const QPointF &deltaPx);
 	QPointF shiftPanBackground3dForTest(int index, const QPointF &deltaPx);
 	bool dragAxis3dForTest(int index, int axis, double pixels);
@@ -199,6 +201,8 @@ private:
 	QPushButton *m_duplicateButton = nullptr;
 	QPushButton *m_addButton = nullptr;
 	QWidget *m_inspectorPanel = nullptr;  // the properties column
+	QSplitter *m_mainSplit = nullptr;     // list | view and preview | properties; its sizes are remembered between runs (window_geometry.h)
+	QSplitter *m_centreSplit = nullptr;   // view above preview
 	QWidget *m_leftPanel = nullptr;  // the list column; widened to fit its buttons when shown
 	QPushButton *m_undoButton = nullptr;
 	QPushButton *m_redoButton = nullptr;

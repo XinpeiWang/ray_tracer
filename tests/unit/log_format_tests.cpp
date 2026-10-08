@@ -7,6 +7,7 @@
 
 #include "../../src/shared/log_format.h"
 #include "../../src/shared/scene_doc_diff.h"
+#include "../../src/shared/window_placement.h"
 
 #include <filesystem>
 #include <fstream>
@@ -116,4 +117,30 @@ TEST(SceneDocDiffTest, ManyChangesAreCutAfterAFew) {
 	b.render.width = 99;
 	const std::string text = describeChange(a, b);
 	EXPECT_NE(text.find("... (+"), std::string::npos) << text;
+}
+
+TEST(WindowPlacementTest, ASavedWindowIsUsableOnlyIfItsTitleBarCanBeReached) {
+	using window_placement::Rect;
+	const std::vector<Rect> one = {{0, 0, 1920, 1080}};
+	EXPECT_TRUE(window_placement::reachable({100, 100, 1000, 800}, one));
+	EXPECT_TRUE(window_placement::reachable({-880, 50, 1000, 800}, one)) << "mostly off to the left, but 120 pixels of title bar show";
+	EXPECT_FALSE(window_placement::reachable({-990, 50, 1000, 800}, one)) << "only 10 pixels of title bar show";
+	EXPECT_FALSE(window_placement::reachable({3000, 100, 1000, 800}, one)) << "on a monitor that is gone";
+	EXPECT_FALSE(window_placement::reachable({100, 2000, 1000, 800}, one)) << "below the screen";
+	EXPECT_FALSE(window_placement::reachable({100, -780, 1000, 800}, one)) << "title bar above the screen, only the bottom shows";
+	EXPECT_FALSE(window_placement::reachable({0, 0, 0, 0}, one));
+	EXPECT_FALSE(window_placement::reachable({100, 100, 1000, 800}, {}));
+	// A second screen to the right makes the same window reachable.
+	const std::vector<Rect> two = {{0, 0, 1920, 1080}, {1920, 0, 2560, 1440}};
+	EXPECT_TRUE(window_placement::reachable({3000, 100, 1000, 800}, two));
+	// A small window narrower than the minimum counts as reachable when all of it shows.
+	EXPECT_TRUE(window_placement::reachable({10, 10, 80, 60}, one));
+}
+
+TEST(WindowPlacementTest, ASizeIsNeverLargerThanTheScreen) {
+	using window_placement::Rect;
+	const Rect clamped = window_placement::clampSize({0, 0, 3000, 2000}, {0, 0, 1920, 1080});
+	EXPECT_EQ(clamped.w, 1920);
+	EXPECT_EQ(clamped.h, 1080);
+	EXPECT_EQ(window_placement::clampSize({0, 0, 800, 600}, {0, 0, 1920, 1080}).w, 800);
 }

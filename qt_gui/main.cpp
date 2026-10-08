@@ -11,6 +11,7 @@
 #include "settings_keys.h"
 #include "app_log.h"
 #include "ui_logger.h"
+#include "wheel_guard.h"
 
 int main(int argc, char *argv[]) {
 	QApplication app(argc, argv);
@@ -40,6 +41,7 @@ int main(int argc, char *argv[]) {
 	// The log file (app_log.h) and the user-operation logger (ui_logger.h): started once the application's name and version are set, before any window exists.
 	AppLog::init();
 	UiLogger::install();
+	WheelGuard::install();
 	{
 		QStringList arguments = QCoreApplication::arguments();
 		if (arguments.size() > 1) AppLog::info(QStringLiteral("session"), QStringLiteral("arguments: %1").arg(arguments.mid(1).join(QLatin1Char(' '))));
