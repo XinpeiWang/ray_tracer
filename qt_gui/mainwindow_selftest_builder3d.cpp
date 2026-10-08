@@ -8,6 +8,9 @@
 #include <QApplication>
 #include <QDir>
 #include <QFile>
+#include <QMouseEvent>
+#include <QSplitter>
+#include <QSplitterHandle>
 #include <QTimer>
 
 #include <cmath>
@@ -27,6 +30,27 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			log(QString("%1: %2").arg(cond ? "ok" : "FAIL", what));
 			ok = ok && cond;
 		};
+		// The divider between the view and the preview can be dragged (it once could not: both panes were at their minimum height).
+		{
+			QSplitter *vertical = nullptr;
+			for (QSplitter *sp : sb->findChildren<QSplitter *>())
+				if (sp->orientation() == Qt::Vertical && sp->count() == 2) vertical = sp;
+			check(vertical != nullptr, "found the splitter between the view and the preview");
+			if (vertical) {
+				const int before = vertical->sizes()[0];
+				QSplitterHandle *h = vertical->handle(1);
+				const QPointF mid(h->width() / 2.0, h->height() / 2.0);
+				auto send = [h](QEvent::Type t, const QPointF &pos, Qt::MouseButton b, Qt::MouseButtons bs) {
+					QMouseEvent e(t, pos, h->mapToGlobal(pos), b, bs, Qt::NoModifier);
+					QApplication::sendEvent(h, &e);
+				};
+				send(QEvent::MouseButtonPress, mid, Qt::LeftButton, Qt::LeftButton);
+				for (int step = 1; step <= 4; ++step) send(QEvent::MouseMove, mid + QPointF(0, -60.0 * step / 4.0), Qt::NoButton, Qt::LeftButton);
+				send(QEvent::MouseButtonRelease, mid + QPointF(0, -60.0), Qt::LeftButton, Qt::NoButton);
+				const int after = vertical->sizes()[0];
+				check(after < before - 20, QString("dragging the divider up made the view shorter (%1 -> %2)").arg(before).arg(after));
+			}
+		}
 		const scene_doc::Float3 ball0 = sb->document().objects[1].position;
 		check(sb->dragObject3dForTest(1, QPointF(70, -25)), "dragging the glass ball in the 3D view moves it");
 		const scene_doc::Float3 ball1 = sb->document().objects[1].position;
