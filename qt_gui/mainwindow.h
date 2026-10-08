@@ -1524,7 +1524,7 @@ private:
 	// placeholder icon.
 	QListWidget *m_sceneGrid = nullptr;
 	QStackedWidget *m_sceneViewStack = nullptr;   // page 0 = m_sceneCombo, page 1 = m_sceneGrid
-	QToolButton *m_sceneViewToggle = nullptr;     // checked = grid page showing
+	QPushButton *m_sceneViewToggle = nullptr;     // checked = grid page showing (a push button, so it has the common control height)
 	QPushButton *m_generateThumbnailsButton = nullptr;
 	// Hidden until the first "Generate Thumbnails" click, then shows live
 	// progress ("Generating 3 of 12: Bouncing Spheres") via its own format
