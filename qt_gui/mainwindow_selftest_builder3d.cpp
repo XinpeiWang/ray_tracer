@@ -254,6 +254,7 @@ void MainWindow::selfTestLog(SceneBuilderWidget *sb, const std::function<void(bo
 		const QString text = AppLog::tail(3000).join('\n');
 		check(!AppLog::filePath().isEmpty() && QFileInfo::exists(AppLog::filePath()), "the log file exists: " + AppLog::filePath());
 		check(text.contains("[session]") || text.contains("session: started"), "the log has the session header");
+		check(text.contains("startup: ") && text.contains("startup: window up "), "the log has the start-up timings and when the window was up");
 		check(text.contains("ui: tab \"") , "the log records the tab change");
 		check(text.contains("ui: Scene Builder > click \"Snap to grid\" -> off") && text.contains("click \"Snap to grid\" -> on"), "the log records a click on a checkbox, with its tab and new state");
 		check(text.contains("builder: edit: ") && text.contains("+1 object (") , "the log records the added object as a readable edit");

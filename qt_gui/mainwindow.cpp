@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "app_log.h"
+#include "startup_profile.h"
 #include "window_geometry.h"
 #include "scene_builder_widget.h"
 #include "icon_tint.h"
@@ -999,10 +1000,8 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// rather than an async one wired up like DiagnosticsRunner.
 	m_metalGpuAvailable = probeMetalGpuAvailable();
 #endif
-	setupUI();
-	applyTheme(m_activeTheme);
-	applyFont(m_startupFontId);
-	restyleThemedWidgets();
+	{ startup_profile::Stage s("setupUI"); setupUI(); }
+	{ startup_profile::Stage s("theme and font"); applyTheme(m_activeTheme); applyFont(m_startupFontId); restyleThemedWidgets(); }
 
 	// Notification-only tray icon: the app has no tray menu and never hides
 	// into the tray, this exists purely so a render finishing while the user
@@ -1125,16 +1124,14 @@ void MainWindow::setupUI() {
 	// padding already pushes that fallback well past this app's normal
 	// window sizes, so it wasn't worth chasing further.
 	m_tabWidget = new ExpandingTabWidget(this);
-	createSettingsTab();
-	createRenderOptionsTab();
-	createSceneBuilderTab();
-	createPreviewTab();
+	{ startup_profile::Stage s("Settings tab (scene list)"); createSettingsTab(); }
+	{ startup_profile::Stage s("Render Options tab"); createRenderOptionsTab(); }
+	{ startup_profile::Stage s("Scene Builder tab"); createSceneBuilderTab(); }
+	{ startup_profile::Stage s("Preview tab"); createPreviewTab(); }
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	initLivePreviewSession();
 #endif
-	createProgressTab();
-	createLogTab();
-	createDiagnosticsTab();
+	{ startup_profile::Stage s("Progress, Log and Diagnostics tabs"); createProgressTab(); createLogTab(); createDiagnosticsTab(); }
 
 	// Keep the status bar's ambient readout honest when the user changes any
 	// of the settings it reports.

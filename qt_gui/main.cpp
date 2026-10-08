@@ -13,9 +13,15 @@
 #include "ui_logger.h"
 #include "wheel_guard.h"
 #include "crash_recovery.h"
+#include "startup_profile.h"
+
+#include <memory>
 
 int main(int argc, char *argv[]) {
+	startup_profile::begin();
+	std::unique_ptr<startup_profile::Stage> qtStartup(new startup_profile::Stage("QApplication"));
 	QApplication app(argc, argv);
+	qtStartup.reset();
 
 	// Self-test mode (RT_GUI_SELFTEST) uses its own settings domain (settings_keys.h); start every run from a clean slate so one run's
 	// changes (it enables depth of field, ...) cannot leak into the next.
@@ -66,6 +72,7 @@ int main(int argc, char *argv[]) {
 	// lazily whenever tr() is called, not just once at installTranslator()
 	// time - and staying installed for the app's whole lifetime is exactly
 	// what a restart-to-apply language choice needs.
+	std::unique_ptr<startup_profile::Stage> translatorsStage(new startup_profile::Stage("translators"));
 	QTranslator translator;
 	// Qt's own strings - the OK/Cancel/Save buttons, QFileDialog, QFontDialog (the
 	// "Choose Font" dialog), the right-click Cut/Copy/Paste menu of every text
@@ -99,10 +106,21 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	translatorsStage.reset();
 	AppLog::info(QStringLiteral("session"), QStringLiteral("language: %1").arg(languageCode));
-	crash_recovery::offerAfterUncleanExit();   // before the window (and the unsaved scene) is loaded
+	{
+		startup_profile::Stage crashQuestion("crash question (the user's time, if it was asked)");
+		crash_recovery::offerAfterUncleanExit();   // before the window (and the unsaved scene) is loaded
+	}
+	std::unique_ptr<startup_profile::Stage> windowStage(new startup_profile::Stage("main window"));
 	MainWindow window(nullptr, languageCode);
-	window.show();
+	windowStage.reset();
+	{
+		startup_profile::Stage show("show");
+		window.show();
+	}
+	// Once the event loop is running the window is up: write the start-up timings to the log.
+	QTimer::singleShot(0, &window, []() { startup_profile::ready("window up"); });
 
 	// Opt-in automated smoke test of the real window (see mainwindow_selftest.cpp); a no-op unless RT_GUI_SELFTEST is set.
 	if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) {
