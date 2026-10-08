@@ -135,14 +135,14 @@ void SceneBuilderWidget::buildUi() {
 	m_titleEdit->setMinimumWidth(150);
 	m_titleEdit->setMaximumWidth(320);
 	for (QPushButton *b : {newB, openB, saveB, saveAsB, listB}) bar->addWidget(b);
-	bar->addSpacing(12);
-	bar->addWidget(m_undoButton);
-	bar->addWidget(m_redoButton);
 	bar->addStretch(1);
 	root->addLayout(bar);
 	// The scene's name and where it is saved get a row of their own: beside the buttons they were squeezed over each other (and the buttons clipped) at an
 	// ordinary window width. The status text may be cut short instead of widening the page; its tooltip has all of it.
 	auto *nameRow = new QHBoxLayout;
+	nameRow->addWidget(m_undoButton);   // Undo and Redo start the second row: with the file buttons a translated label ("Ajouter à la liste des scènes") pushed them out of the row
+	nameRow->addWidget(m_redoButton);
+	nameRow->addSpacing(12);
 	nameRow->addWidget(new QLabel(tr("Name:"), this));
 	nameRow->addWidget(m_titleEdit);
 	m_titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
@@ -321,7 +321,8 @@ void SceneBuilderWidget::buildUi() {
 	split->setStretchFactor(0, 0);
 	split->setStretchFactor(1, 1);
 	split->setStretchFactor(2, 0);
-	split->setSizes({240, 560, 360});
+	split->setSizes({230, 560, 320});
+	centreScroll->setMinimumWidth(340);   // wide enough for the Top / Front / Side / 3D row of buttons
 	m_mainSplit = split;
 	m_centreSplit = centre;
 	// The panes come back as the user left them (not under the self-test, which compares screenshots).
@@ -332,7 +333,7 @@ void SceneBuilderWidget::buildUi() {
 }
 
 void SceneBuilderWidget::resetPaneSizes() {
-	if (m_mainSplit) m_mainSplit->setSizes({240, 560, 360});
+	if (m_mainSplit) m_mainSplit->setSizes({230, 560, 320});
 	if (m_centreSplit) m_centreSplit->setSizes({820, 740});
 	window_geometry::saveSplitter(m_mainSplit, "builder/mainSplit");
 	window_geometry::saveSplitter(m_centreSplit, "builder/centreSplit");

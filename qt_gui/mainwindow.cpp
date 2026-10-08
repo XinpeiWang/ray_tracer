@@ -924,7 +924,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	qApp->installEventFilter(new FormLabelEnabledSync(this));
 
 	setWindowTitle(tr("Ray Tracer - Path Tracing Renderer"));
-	setMinimumSize(600, 500);
+	// Wide enough for the Scene Builder's three panes (list, view, properties) and for the longest translated labels on the Start / Stop / Pause / Abandon
+	// row: below this they clip.
+	setMinimumSize(1000, 520);
 
 	applyDefaultWindowGeometry();
 	// Where the window was last time, if that place is still on a screen (the self-test sizes the window itself).
@@ -1075,6 +1077,21 @@ void MainWindow::resetWindowLayout() {
 	window_geometry::forget();
 	if (m_sceneBuilder) m_sceneBuilder->resetPaneSizes();
 	AppLog::info(QStringLiteral("window"), QStringLiteral("window layout reset to the default"));
+}
+
+void MainWindow::balanceActionButtons() {
+	if (!m_actionButtonLayout) return;
+	int i = 0;
+	for (QPushButton *b : {m_renderButton, m_stopButton, m_pauseButton, m_abandonButton}) {
+		if (!b) return;
+		b->setStyleSheet(QStringLiteral("padding: 8px 8px;"));   // the usual 18 px each side is room a long translated label needs
+		m_actionButtonLayout->setStretch(i++, std::max(1, b->sizeHint().width()));
+	}
+}
+
+void MainWindow::resizeEvent(QResizeEvent *event) {
+	QMainWindow::resizeEvent(event);
+	balanceActionButtons();
 }
 
 void MainWindow::closeEvent(QCloseEvent *event) {
@@ -1313,6 +1330,7 @@ void MainWindow::setupUI() {
 
 	// Button layout
 	QHBoxLayout *buttonLayout = new QHBoxLayout();
+	m_actionButtonLayout = buttonLayout;
 	buttonLayout->addWidget(m_renderButton);
 	buttonLayout->addWidget(m_stopButton);
 	buttonLayout->addWidget(m_pauseButton);

@@ -430,6 +430,9 @@ QString MainWindow::describeRenderJob(const RenderJob &job) {
 void MainWindow::refreshQueuePanel() {
 	if (!m_queueGroup || !m_queueModel) return;
 	m_queueGroup->setTitle(m_queueModel->hasWaiting() ? tr("Render Queue (%1 waiting)").arg(m_queueModel->waitingCount()) : tr("Render Queue"));
+	const bool empty = m_queueModel->rowCount() == 0;
+	if (m_queueView) m_queueView->setVisible(!empty);
+	if (m_queueEmptyLabel) m_queueEmptyLabel->setVisible(empty);
 	updateQueueButtons();
 }
 
@@ -494,4 +497,5 @@ void MainWindow::onClearQueue() {
 
 	m_queueModel->clearWaiting();
 	refreshQueuePanel();
-}
+}
+
