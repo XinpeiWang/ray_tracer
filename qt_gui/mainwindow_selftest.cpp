@@ -37,8 +37,7 @@ void MainWindow::selfTestSceneList(SceneBuilderWidget *sb, const std::function<v
 	QString listError;
 	const QString listed = sb->addToSceneList(&listError);
 	check(!listed.isEmpty() && QFile::exists(listed), "added to the scene list: " + (listed.isEmpty() ? listError : listed));
-	if (QCoreApplication::applicationDirPath().contains(".app/Contents/"))
-		check(!listed.contains(".app/Contents/") && listed.contains("user_scenes"), "from a .app bundle the scene went to the per-user folder, not into the bundle");
+	check(!listed.contains(".app/Contents/") && listed.contains("user_scenes"), "the scene went to the per-user folder (never into the program folder or a .app bundle)");
 	// It must be in the scene list NOW, without a restart: the library lists it, under one id that the renderer this GUI starts also knows
 	// (the id is a persistent number, not a position, so a separate process agrees on it).
 	const int addedNow = SceneMetadataClient::refreshUserScenes();
