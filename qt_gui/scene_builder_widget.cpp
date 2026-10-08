@@ -115,8 +115,8 @@ void SceneBuilderWidget::buildUi() {
 	auto *saveB = button(tr("Save"), tr("Save the scene as a .pbrt file"));
 	auto *saveAsB = button(tr("Save As..."), tr("Save the scene under a new name"));
 	auto *listB = button(tr("Add to scene list"), tr("Save the scene into the scenes folder so it shows up in the Settings tab"));
-	m_undoButton = button(tr("Undo"), tr("Undo the last change (Ctrl+Z)"));
-	m_redoButton = button(tr("Redo"), tr("Redo (Ctrl+Y)"));
+	m_undoButton = button(tr("Undo"), tr("Undo the last change (%1)").arg(shortcutText(QKeySequence::Undo)));
+	m_redoButton = button(tr("Redo"), tr("Redo (%1)").arg(shortcutText(QKeySequence::Redo)));
 	m_titleLabel = new QLabel(this);
 	m_titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
 	// The scene's name: what the scene list shows, and what a copy added to the list is named after. Edited right here (undoable like any change).
@@ -215,9 +215,12 @@ void SceneBuilderWidget::buildUi() {
 		setSelection(m_sel);
 	});
 	// Delete and undo work from the list and the layout view (not inside a text box, where Delete edits text).
-	auto *delList = new QShortcut(QKeySequence::Delete, m_list);
-	delList->setContext(Qt::WidgetShortcut);
-	connect(delList, &QShortcut::activated, this, [this]() { deleteSelected(); });
+	// (Backspace too: a Mac's "delete" key is Backspace, which the standard Delete shortcut does not include there.)
+	for (const QKeySequence &key : {QKeySequence(QKeySequence::Delete), QKeySequence(Qt::Key_Backspace)}) {
+		auto *delList = new QShortcut(key, m_list);
+		delList->setContext(Qt::WidgetShortcut);
+		connect(delList, &QShortcut::activated, this, [this]() { deleteSelected(); });
+	}
 
 	// ---- centre: layout view above the preview
 	auto *centre = new QSplitter(Qt::Vertical, split);

@@ -12,7 +12,7 @@ Build a scene from shapes, materials and lights, move things around, see a pictu
 4. **Add** a shape or a light, pick a colour or a material in the properties, **Preview**.
 5. **Save** writes a `.pbrt` file. **Render picture...** renders at the size and sample count set under *Camera and image* and saves a PNG.
 
-The layout view shows the scene from above (**Top**), the front (**Front**) or the side (**Side**). Drag to move, mouse wheel to zoom, right-drag to pan, **Frame all** to fit everything. Dragging snaps to a 0.25 grid; hold Alt for free movement. The camera has two handles: its position and the point it looks at. Spotlights and the sun have a handle for the point they aim at. Delete removes the selected item, Ctrl+Z / Ctrl+Y undo and redo (also the buttons).
+The layout view shows the scene from above (**Top**), the front (**Front**) or the side (**Side**). Drag to move, mouse wheel to zoom, right-drag (or drag the background) to pan, **Frame all** to fit everything. Dragging snaps to a 0.25 grid; hold Alt (Option on a Mac) for free movement. The camera has two handles: its position and the point it looks at. Spotlights and the sun have a handle for the point they aim at. Delete removes the selected item, Ctrl+Z / Ctrl+Y undo and redo (also the buttons).
 
 An unsaved scene is kept when you close the program and comes back when you reopen it.
 
@@ -20,18 +20,18 @@ An unsaved scene is kept when you close the program and comes back when you reop
 
 Above the preview are four views of the scene: **Top**, **Front** and **Side** (flat views, good for exact placement) and **3D**.
 
-In every view a click selects, and dragging an object moves it; the position is snapped to steps of 0.25 unless *Snap to grid* is off or you hold Alt.
-Each drag is one undo step. In the flat views, the wheel zooms and right-drag pans. In the **3D** view:
+In every view a click selects, and dragging an object moves it; the position is snapped to steps of 0.25 unless *Snap to grid* is off or you hold Alt (Option on a Mac).
+Each drag is one undo step. In the flat views, the wheel zooms and right-drag (or a drag on the background) pans. In the **3D** view:
 
 | Do this | To |
 |---|---|
 | Drag the background | Orbit around the scene |
-| Right- or middle-drag | Pan |
+| Right- or middle-drag, or Shift-drag the background | Pan (the Shift-drag is for a trackpad, where a right-drag is awkward) |
 | Wheel | Zoom |
 | Click an object, light or the camera | Select it (the camera is the little box with its view frame; a spotlight, sun or the camera also has a target you can drag) |
 | **Move** tool (W): drag a selected item | Move it on the floor (Shift-drag: up and down) |
 | **Move**: drag one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
-| **Rotate** tool (E): drag a coloured ring | Turn the object about that world axis (in steps of 5 degrees; Alt for free); the three Rotation numbers are worked out for you |
+| **Rotate** tool (E): drag a coloured ring | Turn the object about that world axis (in steps of 5 degrees; Alt or Option for free); the three Rotation numbers are worked out for you |
 | **Scale** tool (R): drag a square handle | Stretch the object along that one of its own axes (steps of 5 %): a box's size, a cylinder's or cone's height or radius, a quad's width or depth. A sphere, a disk and a mesh scale all round |
 | **Frame all** | Bring everything back into view |
 
@@ -56,6 +56,10 @@ Besides the sphere, box, quad, disk, cylinder, cone and mesh file, the Add menu 
 | Tube (pipe) | outer radius, hole radius, height | a hollow cylinder, open at both ends |
 
 Each one has a picture-friendly set of texture coordinates, so the checker pattern works on them.
+
+## Keyboard
+
+Delete or Backspace removes the selected item (from the list or a view; in a text box they edit the text). Undo and Redo use the platform's usual keys (Ctrl+Z / Ctrl+Y on Windows, Command+Z / Shift+Command+Z on a Mac); the buttons' tooltips show the ones for your keyboard. W, E and R pick the 3D view's Move, Rotate and Scale tools.
 
 ## Props
 
