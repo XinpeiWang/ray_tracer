@@ -46,6 +46,7 @@ SOURCES += \
 	wheel_guard.cpp \
 	mainwindow.cpp \
 	mainwindow_tabs.cpp \
+	mainwindow_tabs_settings_groups.cpp \
 	mainwindow_tabs_render.cpp \
 	mainwindow_tabs_render_groups.cpp \
 	mainwindow_live_preview.cpp \

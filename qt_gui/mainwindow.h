@@ -321,6 +321,18 @@ protected:
 private:
 	void setupUI();
 	void createSettingsTab();
+	// The Settings tab is built one group box at a time (each adds itself to `layout`).
+	void buildSceneGroup(QWidget *basicTab, QVBoxLayout *layout);
+	void buildSceneInfoRows(QWidget *basicTab, QVBoxLayout *sceneGroupLayout);
+	void buildRenderSettingsGroup(QWidget *basicTab, QVBoxLayout *layout);
+	void buildQualityRows(QWidget *basicTab, QFormLayout *renderLayout);
+	void buildVideoGroup(QWidget *basicTab, QVBoxLayout *layout);
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	void buildLiveControlsGroup(QWidget *basicTab, QVBoxLayout *layout);
+#endif
+	void buildAdvancedParamsGroup(QWidget *basicTab, QVBoxLayout *layout);
+	void buildCameraGroup(QWidget *basicTab, QVBoxLayout *layout);
+	void buildOutputGroup(QWidget *basicTab, QVBoxLayout *layout);
 #ifdef Q_OS_MAC
 	// Runs `ray_tracer --diagnose` synchronously (see DiagnosticsRunner's
 	// own applicationDirPath()-based executable path convention,
