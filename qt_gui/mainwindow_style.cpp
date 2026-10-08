@@ -567,6 +567,10 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			background-color: %ACCENT_DIM%;
 			color: %SELECTED_TEXT%;
 		}
+		/* The Scene Builder's list of objects and lights: the same size as the buttons around it, and it follows the Font menu. */
+		QListWidget#sceneBuilderList {
+			font-size: %FS_P1%;
+		}
 		QLabel {
 			color: %TEXT%;
 			font-size: %FS_0%;

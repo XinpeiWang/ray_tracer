@@ -181,6 +181,7 @@ void SceneBuilderWidget::buildUi() {
 	row->addWidget(m_deleteButton);
 	leftLayout->addLayout(row);
 	m_list = new QListWidget(left);
+	m_list->setObjectName("sceneBuilderList");  // sized by the application stylesheet (mainwindow_style.cpp)
 	leftLayout->addWidget(m_list, 1);
 	left->setMinimumWidth(0);  // showEvent() sets the real minimum from the buttons
 	m_leftPanel = left;
