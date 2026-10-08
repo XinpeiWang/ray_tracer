@@ -70,6 +70,9 @@ Document busyDocument() {
 	mesh.meshFile = "C:\\models\\bunny.ply";
 	mesh.meshScale = 2.5;
 	d.objects.push_back(mesh);
+	Object pic = makeObject(ShapeKind::Quad, "Picture");
+	pic.material.imageFile = "C:\\pictures\\my photo.png";
+	d.objects.push_back(pic);
 	Light spot;
 	spot.name = "Spot";
 	spot.kind = LightKind::Spot;
@@ -103,6 +106,7 @@ TEST(SceneDocumentTest, JsonRoundTripIsExact) {
 	EXPECT_EQ(b.objects[5].material.kind, MaterialKind::CoatedDiffuse);
 	EXPECT_TRUE(b.objects[5].twoSided);
 	EXPECT_EQ(b.render.width, 321);
+	EXPECT_EQ(b.objects[8].material.imageFile, "C:\\pictures\\my photo.png");
 	EXPECT_EQ(b.lights.back().imageFile, "sky.exr");
 }
 
@@ -233,7 +237,7 @@ TEST(SceneDocumentValidateTest, ObjectAndLightProblems) {
 	EXPECT_TRUE(mentions(validate(d), Problem::Severity::Error, "Glass ball"));
 	d = makeStarterScene();
 	d.objects.push_back(makeObject(ShapeKind::Mesh, "Bunny"));
-	EXPECT_TRUE(mentions(validate(d), Problem::Severity::Error, "choose a .ply"));
+	EXPECT_TRUE(mentions(validate(d), Problem::Severity::Error, "choose a mesh file"));
 	d = makeStarterScene();
 	d.objects[1].material.roughness = 1.5;
 	EXPECT_TRUE(hasErrors(validate(d)));
@@ -326,6 +330,48 @@ TEST(SceneDocumentPbrtTest, ASceneNamedLikeADirectiveCannotInjectOne) {
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Rendered against a closed form
 // ---------------------------------------------------------------------------------------------------------------------------------
+
+// A picture becomes an imagemap texture bound as the reflectance, replacing the flat colour and the checker.
+TEST(SceneDocumentPbrtTest, APictureIsWrittenAsAnImageTextureForDiffuseAndCoatedPaint) {
+	Document d = makeStarterScene();
+	d.objects.clear();
+	Object a = makeObject(ShapeKind::Quad, "Wall");
+	a.material.imageFile = "C:\\pictures\\my photo.png";
+	a.material.checker = true;
+	d.objects.push_back(a);
+	Object b = makeObject(ShapeKind::Sphere, "Ball");
+	b.material.kind = MaterialKind::CoatedDiffuse;
+	b.material.imageFile = "ball.jpg";
+	d.objects.push_back(b);
+	Object c = makeObject(ShapeKind::Sphere, "Metal");
+	c.material.kind = MaterialKind::Conductor;
+	c.material.imageFile = "ignored.png";
+	d.objects.push_back(c);
+	const std::string text = toPbrt(d);
+	EXPECT_NE(text.find("Texture \"picture-1\" \"spectrum\" \"imagemap\" \"string filename\" [ \"C:/pictures/my photo.png\" ]"), std::string::npos) << text;
+	EXPECT_NE(text.find("Material \"diffuse\" \"texture reflectance\" \"picture-1\""), std::string::npos);
+	EXPECT_NE(text.find("Material \"coateddiffuse\" \"texture reflectance\" \"picture-2\" \"float eta\""), std::string::npos);
+	EXPECT_EQ(text.find("checkerboard"), std::string::npos) << "the picture replaces the checker";
+	EXPECT_EQ(text.find("picture-3"), std::string::npos) << "a conductor has no picture";
+	// The same text, read back, still has the builder data with the picture in it.
+	Document back;
+	std::string err;
+	ASSERT_TRUE(fromPbrt(text, back, err)) << err;
+	EXPECT_EQ(back.objects[1].material.imageFile, "ball.jpg");
+}
+
+TEST(SceneDocumentValidateTest, APictureOnAMaterialThatCannotShowItIsAWarning) {
+	Document d = makeStarterScene();
+	Object o = makeObject(ShapeKind::Sphere, "Metal");
+	o.material.kind = MaterialKind::Conductor;
+	o.material.imageFile = "x.png";
+	d.objects.push_back(o);
+	bool warned = false;
+	for (const Problem& p : validate(d))
+		if (p.message.find("a picture only applies") != std::string::npos) warned = p.severity == Problem::Severity::Warning;
+	EXPECT_TRUE(warned);
+	EXPECT_FALSE(hasErrors(validate(d)));
+}
 
 namespace {
 
@@ -450,6 +496,110 @@ TEST(SceneBuilderRenderTest, TheStarterSceneRendersLitAndFinite) {
 		EXPECT_GT(m, 0.05) << "channel " << c << " is nearly black";
 		EXPECT_LT(m, 3.0) << "channel " << c << " is blown out";
 	}
+}
+
+namespace {
+
+// A 24-bit BMP of w x h pixels; rgb is row-major from the TOP row, 3 bytes per pixel.
+std::string bmpFile(int w, int h, const std::vector<unsigned char>& rgb) {
+	const int rowBytes = (w * 3 + 3) / 4 * 4;
+	const int dataBytes = rowBytes * h;
+	std::string out;
+	auto put32 = [&out](unsigned v) { for (int i = 0; i < 4; ++i) out.push_back(static_cast<char>((v >> (8 * i)) & 0xFF)); };
+	auto put16 = [&out](unsigned v) { for (int i = 0; i < 2; ++i) out.push_back(static_cast<char>((v >> (8 * i)) & 0xFF)); };
+	out += "BM";
+	put32(54 + dataBytes); put32(0); put32(54);
+	put32(40); put32(static_cast<unsigned>(w)); put32(static_cast<unsigned>(h)); put16(1); put16(24); put32(0); put32(dataBytes); put32(2835); put32(2835); put32(0); put32(0);
+	for (int y = h - 1; y >= 0; --y) {  // BMP rows run bottom to top
+		for (int x = 0; x < w; ++x)
+			for (int c = 2; c >= 0; --c) out.push_back(static_cast<char>(rgb[(y * w + x) * 3 + c]));  // stored as B, G, R
+		for (int p = w * 3; p < rowBytes; ++p) out.push_back('\0');
+	}
+	return out;
+}
+
+double srgbToLinear(double v) { return v <= 0.04045 ? v / 12.92 : std::pow((v + 0.055) / 1.055, 2.4); }
+
+// Mean of one channel over the middle of a quarter of the picture: qx, qy in {0, 1} = left/right, top/bottom.
+double quarterMean(const std::vector<float>& rgb, int w, int h, int qx, int qy, int c) {
+	double s = 0;
+	int n = 0;
+	for (int y = qy * h / 2 + h / 8; y < (qy + 1) * h / 2 - h / 8; ++y)
+		for (int x = qx * w / 2 + w / 8; x < (qx + 1) * w / 2 - w / 8; ++x, ++n) s += rgb[3 * (y * w + x) + c];
+	return s / n;
+}
+
+}  // namespace
+
+// A sphere whose picture is one colour reads that colour (decoded from sRGB to linear) under a uniform sky at depth 1.
+TEST(SceneBuilderRenderTest, APicturedSphereReadsTheColourOfItsPicture) {
+	const std::string launcher = findLauncher();
+	if (launcher.empty()) GTEST_SKIP() << "ray_tracer.exe was not found next to the tests";
+	const std::string bmp = "scene_builder_solid_picture.bmp";
+	{
+		std::ofstream out(bmp, std::ios::binary);
+		out << bmpFile(2, 2, {230, 200, 100, 230, 200, 100, 230, 200, 100, 230, 200, 100});
+	}
+	Document d;
+	d.camera.position = {0, 0, 10};
+	d.camera.target = {0, 0, 0};
+	d.camera.fov = 5;
+	Object ball = makeObject(ShapeKind::Sphere, "Ball");
+	ball.position = {0, 0, 0};
+	ball.material.imageFile = std::filesystem::absolute(bmp).string();
+	d.objects.push_back(ball);
+	Light sky;
+	sky.kind = LightKind::Infinite;
+	sky.intensity = 1.0;
+	d.lights.push_back(sky);
+	ASSERT_FALSE(hasErrors(validate(d)));
+	std::vector<float> rgb;
+	int w = 0, h = 0;
+	const bool ok = renderWithLauncher(launcher, toPbrt(d), "picture_sphere", 32, 128, 1, rgb, w, h);
+	std::remove(bmp.c_str());
+	ASSERT_TRUE(ok);
+	const double want[3] = {srgbToLinear(230 / 255.0), srgbToLinear(200 / 255.0), srgbToLinear(100 / 255.0)};
+	for (int c = 0; c < 3; ++c) EXPECT_NEAR(channelMean(rgb, c), want[c], 0.03 * want[c] + 0.004) << "channel " << c;
+}
+
+// A quad stood up as a wall (rotated 90 degrees about X so it faces +Z) and seen from +Z shows its picture the right way up and not mirrored:
+// the picture's top-left pixel is at the top left of the render. The picture is red/green over blue/white.
+TEST(SceneBuilderRenderTest, APicturedQuadShowsItsPictureUprightAndNotMirrored) {
+	const std::string launcher = findLauncher();
+	if (launcher.empty()) GTEST_SKIP() << "ray_tracer.exe was not found next to the tests";
+	const std::string bmp = "scene_builder_quad_picture.bmp";
+	{
+		std::ofstream out(bmp, std::ios::binary);
+		out << bmpFile(2, 2, {230, 20, 20, 20, 230, 20, 20, 20, 230, 230, 230, 230});
+	}
+	Document d;
+	d.camera.position = {0, 0, 5};
+	d.camera.target = {0, 0, 0};
+	d.camera.fov = 30;
+	Object wall = makeObject(ShapeKind::Quad, "Wall");
+	wall.size = {4, 1, 4};
+	wall.rotation = {90, 0, 0};
+	wall.material.imageFile = std::filesystem::absolute(bmp).string();
+	d.objects.push_back(wall);
+	Light sky;
+	sky.kind = LightKind::Infinite;
+	sky.intensity = 1.0;
+	d.lights.push_back(sky);
+	ASSERT_FALSE(hasErrors(validate(d)));
+	std::vector<float> rgb;
+	int w = 0, h = 0;
+	const bool ok = renderWithLauncher(launcher, toPbrt(d), "picture_quad", 32, 64, 1, rgb, w, h);
+	std::remove(bmp.c_str());
+	ASSERT_TRUE(ok);
+	auto dominant = [&](int qx, int qy) {  // 0 red, 1 green, 2 blue, 3 white
+		const double r = quarterMean(rgb, w, h, qx, qy, 0), g = quarterMean(rgb, w, h, qx, qy, 1), b = quarterMean(rgb, w, h, qx, qy, 2);
+		if (r > 0.5 && g > 0.5 && b > 0.5) return 3;
+		return r > g && r > b ? 0 : (g > b ? 1 : 2);
+	};
+	EXPECT_EQ(dominant(0, 0), 0) << "top left should be the red pixel";
+	EXPECT_EQ(dominant(1, 0), 1) << "top right should be the green pixel";
+	EXPECT_EQ(dominant(0, 1), 2) << "bottom left should be the blue pixel";
+	EXPECT_EQ(dominant(1, 1), 3) << "bottom right should be the white pixel";
 }
 
 // The orientation the header promises: a box, sphere, cylinder and cone emit outward, a quad and a disk emit from their +Y side. A camera whose view lies

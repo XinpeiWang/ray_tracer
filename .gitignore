@@ -441,6 +441,8 @@ tests/build_test/dda_mini.cpp
 *.py
 # ...but the scripts directory holds real, maintained tools (render_baseline.py, exr_io.py, compare_images.py, ...)
 !scripts/*.py
+# The optional photo-to-mesh helper the Scene Builder runs (a maintained tool, shipped in the package)
+!tools/photo_to_mesh/*.py
 total.txt
 *.txt
 # Licence texts under licenses/ are real files, not stray logs.

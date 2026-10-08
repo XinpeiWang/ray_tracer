@@ -51,6 +51,7 @@ struct Material {
 	double roughness = 0.0;            // Conductor, Dielectric, CoatedDiffuse: 0 = smooth
 	double ior = 1.5;                  // Dielectric and CoatedDiffuse
 	Rgb transmittance{0.5, 0.5, 0.5};  // DiffuseTransmission (its reflectance is `color`)
+	std::string imageFile;             // Diffuse / CoatedDiffuse: a picture used as the surface colour (replaces `color` and the checker)
 };
 
 enum class ShapeKind { Sphere, Box, Quad, Disk, Cylinder, Cone, Mesh };
@@ -476,6 +477,7 @@ inline std::string toJson(const Document& d) {
 		m.set("checker", Json::boolean(o.material.checker)).set("color2", detail::toJson(o.material.color2));
 		m.set("checkerCount", Json::number(o.material.checkerCount)).set("roughness", Json::number(o.material.roughness));
 		m.set("ior", Json::number(o.material.ior)).set("transmittance", detail::toJson(o.material.transmittance));
+		m.set("imageFile", Json::string(o.material.imageFile));
 		j.set("material", std::move(m));
 		j.set("emissive", Json::boolean(o.emissive)).set("emission", detail::toJson(o.emission));
 		j.set("emissionStrength", Json::number(o.emissionStrength)).set("twoSided", Json::boolean(o.twoSided));
@@ -544,7 +546,7 @@ inline bool fromJson(const std::string& text, Document& out, std::string& err) {
 					     detail::readRgb(*m, "color", o.material.color) && detail::readBool(*m, "checker", o.material.checker) &&
 					     detail::readRgb(*m, "color2", o.material.color2) && detail::readNum(*m, "checkerCount", o.material.checkerCount) &&
 					     detail::readNum(*m, "roughness", o.material.roughness) && detail::readNum(*m, "ior", o.material.ior) &&
-					     detail::readRgb(*m, "transmittance", o.material.transmittance);
+					     detail::readRgb(*m, "transmittance", o.material.transmittance) && detail::readStr(*m, "imageFile", o.material.imageFile);
 				}
 			}
 			if (!ok) break;
@@ -611,11 +613,16 @@ inline std::vector<Problem> validate(const Document& d) {
 			case ShapeKind::Box: if (!(o.size.x > 0.0 && o.size.y > 0.0 && o.size.z > 0.0)) err(who + "every box size must be above zero."); break;
 			case ShapeKind::Quad: if (!(o.size.x > 0.0 && o.size.z > 0.0)) err(who + "the quad's width and depth must be above zero."); break;
 			case ShapeKind::Mesh:
-				if (o.meshFile.empty()) err(who + "choose a .ply mesh file.");
+				if (o.meshFile.empty()) err(who + "choose a mesh file (.ply or .obj).");
 				if (!(o.meshScale > 0.0)) err(who + "the mesh scale must be above zero.");
 				break;
 		}
 		if (o.emissive && o.emissionStrength <= 0.0) warn(who + "it is an area light with no strength, so it gives no light.");
+		if (!o.material.imageFile.empty()) {
+			if (o.material.kind != MaterialKind::Diffuse && o.material.kind != MaterialKind::CoatedDiffuse)
+				warn(who + "a picture only applies to diffuse and glossy paint materials.");
+			else if (o.material.checker) warn(who + "the picture replaces the checker pattern.");
+		}
 		if (o.material.checker && o.material.kind != MaterialKind::Diffuse) warn(who + "the checker pattern only applies to diffuse materials.");
 		if (o.material.checker && o.shape == ShapeKind::Box) warn(who + "the checker pattern is not applied to boxes.");
 		if ((o.material.kind == MaterialKind::Dielectric || o.material.kind == MaterialKind::CoatedDiffuse) && !(o.material.ior >= 1.0 && o.material.ior <= 3.0))
@@ -648,10 +655,14 @@ inline bool hasErrors(const std::vector<Problem>& ps) {
 // ---------------------------------------------------------------------------------------------------------------------------------
 namespace detail {
 
-inline void writeMaterial(std::ostringstream& os, const Material& m, const std::string& ind) {
+// `textureName`, when not empty, is a Texture already declared: it replaces the flat reflectance of a diffuse or coated material.
+inline void writeMaterial(std::ostringstream& os, const Material& m, const std::string& ind, const std::string& textureName = std::string()) {
+	const auto reflectance = [&]() {
+		return textureName.empty() ? "\"rgb reflectance\" [ " + rgb(m.color) + " ]" : "\"texture reflectance\" \"" + textureName + "\"";
+	};
 	switch (m.kind) {
 		case MaterialKind::Diffuse:
-			os << ind << "Material \"diffuse\" \"rgb reflectance\" [ " << rgb(m.color) << " ]\n";
+			os << ind << "Material \"diffuse\" " << reflectance() << "\n";
 			break;
 		case MaterialKind::Conductor:
 			os << ind << "Material \"conductor\" \"rgb reflectance\" [ " << rgb(m.color) << " ] \"float roughness\" [ " << num(m.roughness) << " ]\n";
@@ -662,8 +673,8 @@ inline void writeMaterial(std::ostringstream& os, const Material& m, const std::
 			os << "\n";
 			break;
 		case MaterialKind::CoatedDiffuse:
-			os << ind << "Material \"coateddiffuse\" \"rgb reflectance\" [ " << rgb(m.color) << " ] \"float eta\" [ " << num(m.ior)
-			   << " ] \"float roughness\" [ " << num(m.roughness) << " ]\n";
+			os << ind << "Material \"coateddiffuse\" " << reflectance() << " \"float eta\" [ " << num(m.ior) << " ] \"float roughness\" [ "
+			   << num(m.roughness) << " ]\n";
 			break;
 		case MaterialKind::DiffuseTransmission:
 			os << ind << "Material \"diffusetransmission\" \"rgb reflectance\" [ " << rgb(m.color) << " ] \"rgb transmittance\" [ " << rgb(m.transmittance)
@@ -693,7 +704,9 @@ inline void writeBox(std::ostringstream& os, const Float3& s, const std::string&
 	os << " ]\n";
 }
 
-inline void writeShape(std::ostringstream& os, const Object& o, const std::string& ind) {
+// `pictured`: the surface is coloured by a picture. A quad's texture coordinates then run so the picture is upright and not mirrored when the quad is
+// stood up facing +Z (rotation X = 90) and seen from +Z, i.e. its top is the quad's -Z edge. (Without a picture they keep the checker's orientation.)
+inline void writeShape(std::ostringstream& os, const Object& o, const std::string& ind, bool pictured = false) {
 	switch (o.shape) {
 		case ShapeKind::Sphere:
 			os << ind << "Shape \"sphere\" \"float radius\" [ " << num(o.radius) << " ]\n";
@@ -707,7 +720,7 @@ inline void writeShape(std::ostringstream& os, const Object& o, const std::strin
 			os << ind << "Shape \"trianglemesh\" \"integer indices\" [ 0 2 1 0 3 2 ]\n"
 			   << ind << "  \"point3 P\" [ " << num(-hx) << " 0 " << num(-hz) << "  " << num(hx) << " 0 " << num(-hz) << "  " << num(hx) << " 0 " << num(hz)
 			   << "  " << num(-hx) << " 0 " << num(hz) << " ]\n"
-			   << ind << "  \"point2 uv\" [ 0 0 1 0 1 1 0 1 ]\n";
+			   << ind << "  \"point2 uv\" [ " << (pictured ? "0 1 1 1 1 0 0 0" : "0 0 1 0 1 1 0 1") << " ]\n";
 			break;
 		}
 		case ShapeKind::Disk:
@@ -779,7 +792,12 @@ inline std::string toPbrt(const Document& d) {
 	for (const Object& o : d.objects) {
 		os << "# " << detail::commentText(o.name) << "\n";
 		std::string textureName;
-		if (o.material.checker && o.material.kind == MaterialKind::Diffuse && o.shape != ShapeKind::Box) {
+		const bool pictured = !o.material.imageFile.empty() && (o.material.kind == MaterialKind::Diffuse || o.material.kind == MaterialKind::CoatedDiffuse);
+		if (pictured) {
+			textureName = "picture-" + std::to_string(++textureIndex);
+			os << "Texture \"" << textureName << "\" \"spectrum\" \"imagemap\" \"string filename\" [ " << detail::quoted(detail::pbrtPath(o.material.imageFile))
+			   << " ]\n";
+		} else if (o.material.checker && o.material.kind == MaterialKind::Diffuse && o.shape != ShapeKind::Box) {
 			textureName = "checks-" + std::to_string(++textureIndex);
 			os << "Texture \"" << textureName << "\" \"spectrum\" \"checkerboard\" \"float uscale\" [ " << detail::num(o.material.checkerCount)
 			   << " ] \"float vscale\" [ " << detail::num(o.material.checkerCount) << " ] \"rgb tex1\" [ " << detail::rgb(o.material.color)
@@ -791,14 +809,13 @@ inline std::string toPbrt(const Document& d) {
 		if (o.rotation.z != 0.0) os << ind << "Rotate " << detail::num(o.rotation.z) << " 0 0 1\n";
 		if (o.rotation.y != 0.0) os << ind << "Rotate " << detail::num(o.rotation.y) << " 0 1 0\n";
 		if (o.rotation.x != 0.0) os << ind << "Rotate " << detail::num(o.rotation.x) << " 1 0 0\n";
-		if (!textureName.empty()) os << ind << "Material \"diffuse\" \"texture reflectance\" \"" << textureName << "\"\n";
-		else detail::writeMaterial(os, o.material, ind);
+		detail::writeMaterial(os, o.material, ind, textureName);
 		if (o.emissive) {
 			os << ind << "AreaLightSource \"diffuse\" \"rgb L\" [ " << detail::rgb(detail::scaled(o.emission, o.emissionStrength)) << " ]";
 			if (o.twoSided) os << " \"bool twosided\" true";
 			os << "\n";
 		}
-		detail::writeShape(os, o, ind);
+		detail::writeShape(os, o, ind, pictured);
 		os << "AttributeEnd\n\n";
 	}
 	return os.str();

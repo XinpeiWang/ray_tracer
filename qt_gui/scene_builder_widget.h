@@ -47,6 +47,9 @@ public:
 	bool dragObjectForTest(int index, const QPointF &deltaPx);
 	void addObject(scene_doc::ShapeKind shape);
 	void addLight(scene_doc::LightKind kind);
+	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
+	// Runs the helper on one photo (progress dialog) and adds the mesh. False with `error` set (empty when cancelled) if nothing was added.
+	bool importPhoto(const QString &photo, QString *error);
 	void deleteSelected();
 	bool undo();
 	bool redo();
@@ -113,7 +116,9 @@ private:
 	void addColor(QFormLayout *f, const QString &label, const std::function<scene_doc::Rgb *()> &ref);
 	void addBool(QFormLayout *f, const QString &label, const std::function<bool *()> &ref, bool rebuildAfter = false);
 	void addText(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref);
-	void addFile(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, const QString &filter);
+	// A file row: read-only path, Browse (and Clear, when `clearable`). `alsoApply`, if given, runs inside the same undo step as the choice.
+	void addFile(QFormLayout *f, const QString &label, const std::function<std::string *()> &ref, const QString &filter, bool clearable = false,
+	             const std::function<void(const QString &)> &alsoApply = nullptr);
 	void inspectCamera(QFormLayout *f);
 	void inspectObject(QFormLayout *f, int i);
 	void inspectLight(QFormLayout *f, int i);

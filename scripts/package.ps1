@@ -294,6 +294,24 @@ if (Test-Path $launcherSrc) {
 	Write-Host "  [WARNING] $launcherSrc not found - package will ship without launcher.bat" -ForegroundColor Yellow
 }
 
+# The optional "Object from a photo" helper (Scene Builder, Add menu) is two small text files: the GUI finds the script at
+# <package>\tools\photo_to_mesh\ and tells the user to run <package>\scripts\setup_photo_to_mesh.ps1 once. The model itself
+# (several GB) is never shipped; the setup script downloads it. Lite has no GUI, so it gets neither.
+if ($Tier -ne "Lite") {
+	$photoFiles = @(
+		@{ From = (Join-Path $RepoRoot "tools\photo_to_mesh\photo_to_mesh.py"); To = (Join-Path $OutputDir "tools\photo_to_mesh") },
+		@{ From = (Join-Path $RepoRoot "scripts\setup_photo_to_mesh.ps1"); To = (Join-Path $OutputDir "scripts") })
+	foreach ($f in $photoFiles) {
+		if (Test-Path $f.From) {
+			New-Item -ItemType Directory -Force -Path $f.To | Out-Null
+			Copy-Item $f.From $f.To -Force
+			Write-Host "  OK $(Split-Path $f.From -Leaf) (photo helper)" -ForegroundColor Green
+		} else {
+			Write-Host "  [WARNING] $($f.From) not found - the package's 'Object from a photo' will say the helper is missing" -ForegroundColor Yellow
+		}
+	}
+}
+
 # Visual C++ runtime - the one genuinely external, non-statically-linkable
 # dependency every tier has (the CLI and, for Medium/Full, the GUI are both
 # built with the dynamic CRT). Best-effort: a target machine almost always

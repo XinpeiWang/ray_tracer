@@ -43,6 +43,7 @@ SOURCES += \
 	mainwindow_tabs_render.cpp \
 	mainwindow_tabs_render_live.cpp \
 	mainwindow_selftest.cpp \
+	mainwindow_selftest_photo.cpp \
 	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
@@ -64,6 +65,8 @@ SOURCES += \
 	win_taskbar.cpp \
 	scene_builder_widget.cpp \
 	scene_builder_inspector.cpp \
+	scene_builder_photo.cpp \
+	photo_import.cpp \
 	scene_layout_view.cpp
 
 HEADERS += \
@@ -86,6 +89,7 @@ HEADERS += \
 	win_taskbar.h \
 	scene_builder_widget.h \
 	scene_builder_common.h \
+	photo_import.h \
 	scene_layout_view.h
 
 # scene_metadata.dll/.dylib/.so (loaded dynamically at runtime - see

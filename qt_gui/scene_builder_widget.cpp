@@ -148,6 +148,7 @@ void SceneBuilderWidget::buildUi() {
 	addMenu->addSection(tr("Objects"));
 	for (ShapeKind k : {ShapeKind::Sphere, ShapeKind::Box, ShapeKind::Quad, ShapeKind::Disk, ShapeKind::Cylinder, ShapeKind::Cone, ShapeKind::Mesh})
 		addMenu->addAction(shapeLabel(k), this, [this, k]() { addObject(k); });
+	addMenu->addAction(tr("Object from a photo..."), this, [this]() { addObjectFromPhoto(); });
 	addMenu->addAction(tr("Light panel (emitting quad)"), this, [this]() {
 		edit(QString(), [this]() {
 			scene_doc::Object o = scene_doc::makeAreaLightPanel(QString("Light panel %1").arg(m_doc.objects.size() + 1).toStdString());
@@ -708,7 +709,7 @@ void SceneBuilderWidget::selectObject(int index) {
 void SceneBuilderWidget::addObject(ShapeKind shape) {
 	std::string fileName;
 	if (shape == ShapeKind::Mesh) {
-		const QString f = QFileDialog::getOpenFileName(this, tr("Choose a .ply mesh"), QString(), tr("PLY meshes (*.ply)"));
+		const QString f = QFileDialog::getOpenFileName(this, tr("Choose a mesh"), QString(), tr("Meshes (*.ply *.obj)"));
 		if (f.isEmpty()) return;
 		fileName = f.toStdString();
 	}

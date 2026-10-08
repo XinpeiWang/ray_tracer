@@ -28,11 +28,15 @@ An unsaved scene is kept when you close the program and comes back when you reop
 
 | In the tab | What it is | Settings |
 |---|---|---|
-| Matte (diffuse) | pbrt `diffuse`; optional checker pattern of two colours (every shape but a box; on a disk it makes rings) | colour; checker colour B and how many checks across |
+| Matte (diffuse) | pbrt `diffuse`; optional checker pattern of two colours (every shape but a box; on a disk it makes rings), or a picture | colour or **Picture**; checker colour B and how many checks across |
 | Metal | pbrt `conductor` | colour, roughness (0 is a mirror) |
 | Glass | pbrt `dielectric` | index of refraction (1.5 for glass, 1.33 for water), roughness |
-| Glossy paint (coated) | pbrt `coateddiffuse`: a diffuse colour under a clear coat | paint colour, coat index of refraction, coat roughness |
+| Glossy paint (coated) | pbrt `coateddiffuse`: a diffuse colour (or a picture) under a clear coat | paint colour or **Picture**, coat index of refraction, coat roughness |
 | Translucent | pbrt `diffusetransmission`: paper, leaves, lampshades | what it reflects, what it lets through |
+
+A **Picture** (matte and glossy paint) replaces the colour with an image on any shape; **Clear** goes back to a colour. On a quad it also gives the quad the picture's shape and the picture stands upright when the quad is rotated 90 degrees about X (a wall). On a mesh the mesh's own texture coordinates decide where it goes. See [PHOTO_TO_SCENE.md](PHOTO_TO_SCENE.md).
+
+**Add > Object from a photo...** turns one photo into a textured mesh with an optional helper that runs on your computer (an AI model; it has to be set up once, about 5 GB). The shape is a guess. It, and how to bring in a many-photo scan, are in [PHOTO_TO_SCENE.md](PHOTO_TO_SCENE.md).
 
 ## Lights
 
@@ -73,7 +77,7 @@ The file starts with a few comment lines, one of them a copy of the whole scene 
 
 ## What it does not do (yet)
 
-* Images as textures, bump or normal maps, hair, subsurface, participating media, the principled material and instanced copies: use a hand-written pbrt file for those ([PBRT_SUPPORT.md](PBRT_SUPPORT.md) lists what the renderer accepts).
+* Bump or normal maps, hair, subsurface, participating media, the principled material and instanced copies: use a hand-written pbrt file for those ([PBRT_SUPPORT.md](PBRT_SUPPORT.md) lists what the renderer accepts).
 * A mesh (`.ply`) is shown in the layout view only as a small marker at its position, because the view does not read the file; its scale and rotation apply when it renders.
 * No animation or camera paths.
 * The layout view is two-dimensional. Use the three views together, or type exact numbers in the properties.
