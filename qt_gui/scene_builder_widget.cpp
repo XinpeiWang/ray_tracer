@@ -240,7 +240,7 @@ void SceneBuilderWidget::buildUi() {
 	m_qualityCombo->addItem(tr("Good"), 1);
 	m_qualityCombo->addItem(tr("Best"), 2);
 	m_qualityCombo->setCurrentIndex(0);
-	m_qualityCombo->setToolTip(tr("Draft: 320 pixels wide, 16 samples. Good: 480 wide, 64 samples. Best: 640 wide, 256 samples."));
+	m_qualityCombo->setToolTip(tr("Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples."));
 	m_gpuCheck = new QCheckBox(tr("Use the GPU"), previewBox);
 	m_gpuCheck->setToolTip(tr("Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU."));
 	m_previewButton = new QPushButton(tr("Preview"), previewBox);
@@ -291,10 +291,12 @@ void SceneBuilderWidget::buildUi() {
 	centre->addWidget(previewBox);
 	centre->setStretchFactor(0, 3);
 	centre->setStretchFactor(1, 2);
-	centre->setSizes({500, 280});
-	// The view and the preview keep a usable height: in a window too short for both, the column scrolls instead of squeezing them.
-	layoutBox->setMinimumHeight(520);
-	previewBox->setMinimumHeight(360);
+	centre->setSizes({820, 740});
+	// The column is tall (view + preview) and scrolls when the window is shorter, instead of squeezing them. The splitter's own height is what scrolls, so the
+	// divider can still be dragged to give one of the two more room (each keeps a small minimum; the pair cannot be squeezed below the total).
+	layoutBox->setMinimumHeight(320);
+	previewBox->setMinimumHeight(260);
+	centre->setMinimumHeight(1560);
 
 	split->addWidget(left);
 	auto *centreScroll = new QScrollArea(split);
@@ -865,7 +867,7 @@ void SceneBuilderWidget::setSceneName(const QString &text) {
 	edit(QStringLiteral("title"), [&]() { m_doc.title = name; });
 }
 void SceneBuilderWidget::startPreview(const std::function<void(bool, const QString &)> &done) {
-	static const int widths[3] = {320, 480, 640};
+	static const int widths[3] = {480, 720, 960};
 	static const int spps[3] = {16, 64, 256};
 	const int q = std::clamp(m_qualityCombo->currentData().toInt(), 0, 2);
 	const double aspect = m_doc.render.width > 0 ? double(m_doc.render.height) / m_doc.render.width : 0.75;
