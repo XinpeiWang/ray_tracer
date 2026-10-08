@@ -16,7 +16,8 @@ namespace window_geometry {
 // place can no longer be reached; the caller then uses its default.
 bool restore(QWidget *window);
 void save(const QWidget *window);
-void forget();   // "Reset Window Layout": the next start uses the defaults too
+void forget();
+void forgetSplitters();   // the Scene Builder's pane sizes ("builder/...")   // "Reset Window Layout": the next start uses the defaults too
 
 // A splitter's pane sizes under `key` (e.g. "builder/mainSplit"). restore() ignores a saved state that does not fit the splitter (wrong pane count).
 void restoreSplitter(QSplitter *splitter, const char *key);

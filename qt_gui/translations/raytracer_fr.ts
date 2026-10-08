@@ -5507,6 +5507,45 @@ CPU uniquement. Ne fonctionne qu&apos;avec des lumières ayant une taille ou une
         <source>The photo helper has not been set up on this computer yet.</source>
         <translation>L&apos;assistant photo n&apos;a pas encore été configuré sur cet ordinateur.</translation>
     </message>
+    <message>
+        <location filename="../crash_recovery.cpp" line="28"/>
+        <source>The program did not close properly last time</source>
+        <translation>Le programme ne s&apos;est pas fermé correctement la dernière fois</translation>
+    </message>
+    <message>
+        <location filename="../crash_recovery.cpp" line="29"/>
+        <source>The last session ended unexpectedly: the program crashed or was closed by force. What it was doing is in the log file.</source>
+        <translation>La dernière session s&apos;est terminée de façon inattendue : le programme a planté ou a été fermé de force. Ce qu&apos;il faisait figure dans le fichier journal.</translation>
+    </message>
+    <message>
+        <location filename="../crash_recovery.cpp" line="30"/>
+        <source>An unsaved Scene Builder scene was found. Starting normally brings it back.
+
+If the program keeps stopping at start, choose Start fresh: it resets the window layout and sets that scene aside (it is renamed, not deleted).</source>
+        <translation>Une scène non enregistrée du Constructeur de scènes a été trouvée. Un démarrage normal la restaure.
+
+Si le programme s&apos;arrête sans cesse au démarrage, choisissez Repartir de zéro : cela réinitialise la disposition de la fenêtre et met cette scène de côté (elle est renommée, pas supprimée).</translation>
+    </message>
+    <message>
+        <location filename="../crash_recovery.cpp" line="33"/>
+        <source>If the program keeps stopping at start, choose Start fresh: it resets the window layout.</source>
+        <translation>Si le programme s&apos;arrête sans cesse au démarrage, choisissez Repartir de zéro : cela réinitialise la disposition de la fenêtre.</translation>
+    </message>
+    <message>
+        <location filename="../crash_recovery.cpp" line="34"/>
+        <source>Start normally</source>
+        <translation>Démarrer normalement</translation>
+    </message>
+    <message>
+        <location filename="../crash_recovery.cpp" line="35"/>
+        <source>Start fresh</source>
+        <translation>Repartir de zéro</translation>
+    </message>
+    <message>
+        <location filename="../crash_recovery.cpp" line="36"/>
+        <source>Show Log Folder</source>
+        <translation>Afficher le dossier des journaux</translation>
+    </message>
 </context>
 <context>
     <name>RenderController</name>
@@ -5847,7 +5886,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="434"/>
-        <location filename="../scene_builder_widget.cpp" line="770"/>
+        <location filename="../scene_builder_widget.cpp" line="783"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Maillages (*.ply *.obj)</translation>
     </message>
@@ -5935,117 +5974,117 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Luminosité</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="121"/>
+        <location filename="../scene_builder_widget.cpp" line="122"/>
         <source>New</source>
         <translation>Nouvelle</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="121"/>
+        <location filename="../scene_builder_widget.cpp" line="122"/>
         <source>Start again from the example scene</source>
         <translation>Recommencer à partir de la scène d&apos;exemple</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="122"/>
+        <location filename="../scene_builder_widget.cpp" line="123"/>
         <source>Open...</source>
         <translation>Ouvrir...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="122"/>
+        <location filename="../scene_builder_widget.cpp" line="123"/>
         <source>Open a .pbrt file saved by the Scene Builder</source>
         <translation>Ouvrir un fichier .pbrt enregistré par le Constructeur de scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="123"/>
+        <location filename="../scene_builder_widget.cpp" line="124"/>
         <source>Save</source>
         <translation>Enregistrer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="123"/>
+        <location filename="../scene_builder_widget.cpp" line="124"/>
         <source>Save the scene as a .pbrt file</source>
         <translation>Enregistrer la scène dans un fichier .pbrt</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="124"/>
+        <location filename="../scene_builder_widget.cpp" line="125"/>
         <source>Save As...</source>
         <translation>Enregistrer sous...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="124"/>
+        <location filename="../scene_builder_widget.cpp" line="125"/>
         <source>Save the scene under a new name</source>
         <translation>Enregistrer la scène sous un nouveau nom</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="125"/>
+        <location filename="../scene_builder_widget.cpp" line="126"/>
         <source>Add to scene list</source>
         <translation>Ajouter à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="126"/>
+        <location filename="../scene_builder_widget.cpp" line="127"/>
         <source>Undo</source>
         <translation>Annuler</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="127"/>
+        <location filename="../scene_builder_widget.cpp" line="128"/>
         <source>Redo</source>
         <translation>Rétablir</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="132"/>
+        <location filename="../scene_builder_widget.cpp" line="133"/>
         <source>Scene name</source>
         <translation>Nom de la scène</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="133"/>
+        <location filename="../scene_builder_widget.cpp" line="134"/>
         <source>The name of this scene, shown in the scene list</source>
         <translation>Le nom de cette scène, affiché dans la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="141"/>
+        <location filename="../scene_builder_widget.cpp" line="142"/>
         <source>Name:</source>
         <translation>Nom :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="161"/>
+        <location filename="../scene_builder_widget.cpp" line="162"/>
         <source>Add</source>
         <translation>Ajouter</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="164"/>
+        <location filename="../scene_builder_widget.cpp" line="165"/>
         <source>Objects</source>
         <translation>Objets</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="167"/>
+        <location filename="../scene_builder_widget.cpp" line="168"/>
         <source>Props (several objects at once)</source>
         <translation>Accessoires (plusieurs objets à la fois)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="169"/>
+        <location filename="../scene_builder_widget.cpp" line="170"/>
         <source>More</source>
         <translation>Plus</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="170"/>
+        <location filename="../scene_builder_widget.cpp" line="171"/>
         <source>Object from a photo...</source>
         <translation>Objet à partir d&apos;une photo...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="171"/>
+        <location filename="../scene_builder_widget.cpp" line="172"/>
         <source>Light panel (emitting quad)</source>
         <translation>Panneau lumineux (quadrilatère émissif)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="180"/>
+        <location filename="../scene_builder_widget.cpp" line="181"/>
         <source>Lights</source>
         <translation>Lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="184"/>
+        <location filename="../scene_builder_widget.cpp" line="185"/>
         <source>Duplicate</source>
         <translation>Dupliquer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="185"/>
+        <location filename="../scene_builder_widget.cpp" line="186"/>
         <source>Delete</source>
         <translation>Supprimer</translation>
     </message>
@@ -6100,7 +6139,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Voir la scène sous n&apos;importe quel angle et déplacer les éléments en 3D</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="211"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="213"/>
         <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>Aligner sur la grille</translation>
@@ -6116,140 +6155,140 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Tout cadrer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="245"/>
+        <location filename="../scene_builder_widget.cpp" line="246"/>
         <source>Draft</source>
         <translation>Brouillon</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="246"/>
+        <location filename="../scene_builder_widget.cpp" line="247"/>
         <source>Good</source>
         <translation>Bonne</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="247"/>
+        <location filename="../scene_builder_widget.cpp" line="248"/>
         <source>Best</source>
         <translation>Optimale</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="250"/>
+        <location filename="../scene_builder_widget.cpp" line="251"/>
         <source>Use the GPU</source>
         <translation>Utiliser le GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="251"/>
+        <location filename="../scene_builder_widget.cpp" line="252"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>Effectuer le rendu sur la carte graphique (NVIDIA OptiX sous Windows, Metal sur Mac). Beaucoup plus rapide pour les grandes images ; nécessite un GPU pris en charge.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="252"/>
-        <location filename="../scene_builder_widget.cpp" line="967"/>
+        <location filename="../scene_builder_widget.cpp" line="253"/>
+        <location filename="../scene_builder_widget.cpp" line="980"/>
         <source>Preview</source>
         <translation>Aperçu</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="254"/>
+        <location filename="../scene_builder_widget.cpp" line="255"/>
         <source>Render picture...</source>
         <translation>Rendre l&apos;image...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="256"/>
+        <location filename="../scene_builder_widget.cpp" line="257"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>Effectuer le rendu à la taille d&apos;image et au nombre d&apos;échantillons définis sous Caméra, et enregistrer l&apos;image en PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="258"/>
+        <location filename="../scene_builder_widget.cpp" line="259"/>
         <source>Quality:</source>
         <translation>Qualité :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="269"/>
+        <location filename="../scene_builder_widget.cpp" line="270"/>
         <source>Press Preview to see the scene.</source>
         <translation>Cliquez sur Aperçu pour voir la scène.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="362"/>
+        <location filename="../scene_builder_widget.cpp" line="363"/>
         <source>Cannot open %1.</source>
         <translation>Impossible d&apos;ouvrir %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="417"/>
+        <location filename="../scene_builder_widget.cpp" line="418"/>
         <source>Unsaved changes</source>
         <translation>Modifications non enregistrées</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="417"/>
+        <location filename="../scene_builder_widget.cpp" line="418"/>
         <source>The scene has changes that are not saved. Save them first?</source>
         <translation>La scène contient des modifications non enregistrées. Les enregistrer d&apos;abord ?</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="429"/>
+        <location filename="../scene_builder_widget.cpp" line="430"/>
         <source>Open a Scene Builder scene</source>
         <translation>Ouvrir une scène du Constructeur de scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="430"/>
-        <location filename="../scene_builder_widget.cpp" line="448"/>
+        <location filename="../scene_builder_widget.cpp" line="431"/>
+        <location filename="../scene_builder_widget.cpp" line="449"/>
         <source>pbrt scenes (*.pbrt)</source>
         <translation>Scènes pbrt (*.pbrt)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="433"/>
+        <location filename="../scene_builder_widget.cpp" line="434"/>
         <source>Cannot open the scene</source>
         <translation>Impossible d&apos;ouvrir la scène</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="441"/>
-        <location filename="../scene_builder_widget.cpp" line="451"/>
-        <location filename="../scene_builder_widget.cpp" line="522"/>
+        <location filename="../scene_builder_widget.cpp" line="442"/>
+        <location filename="../scene_builder_widget.cpp" line="452"/>
+        <location filename="../scene_builder_widget.cpp" line="523"/>
         <source>Cannot save</source>
         <translation>Enregistrement impossible</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="441"/>
-        <location filename="../scene_builder_widget.cpp" line="451"/>
-        <location filename="../scene_builder_widget.cpp" line="489"/>
-        <location filename="../scene_builder_widget.cpp" line="922"/>
+        <location filename="../scene_builder_widget.cpp" line="442"/>
+        <location filename="../scene_builder_widget.cpp" line="452"/>
+        <location filename="../scene_builder_widget.cpp" line="490"/>
+        <location filename="../scene_builder_widget.cpp" line="935"/>
         <source>Could not write %1.</source>
         <translation>Impossible d&apos;écrire %1.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="442"/>
-        <location filename="../scene_builder_widget.cpp" line="452"/>
+        <location filename="../scene_builder_widget.cpp" line="443"/>
+        <location filename="../scene_builder_widget.cpp" line="453"/>
         <source>Saved %1</source>
         <translation>%1 enregistré</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="448"/>
+        <location filename="../scene_builder_widget.cpp" line="449"/>
         <source>Save the scene</source>
         <translation>Enregistrer la scène</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="502"/>
+        <location filename="../scene_builder_widget.cpp" line="503"/>
         <source>No scenes folder</source>
         <translation>Pas de dossier de scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="509"/>
+        <location filename="../scene_builder_widget.cpp" line="510"/>
         <source>Add to the scene list</source>
         <translation>Ajouter à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="510"/>
+        <location filename="../scene_builder_widget.cpp" line="511"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>Cette scène figure déjà dans la liste sous le nom « %1 ».</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="511"/>
+        <location filename="../scene_builder_widget.cpp" line="512"/>
         <source>Add as a new scene</source>
         <translation>Ajouter comme nouvelle scène</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="512"/>
+        <location filename="../scene_builder_widget.cpp" line="513"/>
         <source>Update the existing one</source>
         <translation>Mettre à jour la scène existante</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="527"/>
+        <location filename="../scene_builder_widget.cpp" line="528"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -6258,102 +6297,102 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scènes).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="845"/>
+        <location filename="../scene_builder_widget.cpp" line="858"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objets, %4 lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="770"/>
+        <location filename="../scene_builder_widget.cpp" line="783"/>
         <source>Choose a mesh</source>
         <translation>Choisir un maillage</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="472"/>
+        <location filename="../scene_builder_widget.cpp" line="473"/>
         <source>The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.</source>
         <translation>Le dossier des scènes (pbrt_scenes) est introuvable à côté du programme. Utilisez Enregistrer sous pour placer le fichier où vous voulez, et définissez la variable d&apos;environnement RAY_TRACER_PBRT_DIR sur ce dossier pour que le programme le liste.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="125"/>
+        <location filename="../scene_builder_widget.cpp" line="126"/>
         <source>Save the scene into the scenes folder so it shows up in the Settings tab</source>
         <translation>Enregistrer la scène dans le dossier des scènes pour qu&apos;elle apparaisse dans l&apos;onglet Paramètres</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="126"/>
+        <location filename="../scene_builder_widget.cpp" line="127"/>
         <source>Undo the last change (%1)</source>
         <translation>Annuler la dernière modification (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="127"/>
+        <location filename="../scene_builder_widget.cpp" line="128"/>
         <source>Redo (%1)</source>
         <translation>Rétablir (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="249"/>
+        <location filename="../scene_builder_widget.cpp" line="250"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>Brouillon : 480 pixels de large, 16 échantillons. Bonne : 720 de large, 64 échantillons. Optimale : 960 de large, 256 échantillons.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="526"/>
+        <location filename="../scene_builder_widget.cpp" line="527"/>
         <source>Added to the scene list</source>
         <translation>Ajoutée à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="661"/>
+        <location filename="../scene_builder_widget.cpp" line="674"/>
         <source>Camera and image</source>
         <translation>Caméra et image</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="682"/>
+        <location filename="../scene_builder_widget.cpp" line="695"/>
         <source>, light</source>
         <translation>, lumière</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="839"/>
+        <location filename="../scene_builder_widget.cpp" line="852"/>
         <source>not saved yet</source>
         <translation>pas encore enregistrée</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="861"/>
+        <location filename="../scene_builder_widget.cpp" line="874"/>
         <source>No problems found.</source>
         <translation>Aucun problème détecté.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="867"/>
+        <location filename="../scene_builder_widget.cpp" line="880"/>
         <source>Fix this:</source>
         <translation>À corriger :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="867"/>
+        <location filename="../scene_builder_widget.cpp" line="880"/>
         <source>Note:</source>
         <translation>Remarque :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="895"/>
+        <location filename="../scene_builder_widget.cpp" line="908"/>
         <source>Save the rendered picture</source>
         <translation>Enregistrer l&apos;image rendue</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="895"/>
+        <location filename="../scene_builder_widget.cpp" line="908"/>
         <source>PNG images (*.png)</source>
         <translation>Images PNG (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="899"/>
+        <location filename="../scene_builder_widget.cpp" line="912"/>
         <source>The render failed</source>
         <translation>Échec du rendu</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="910"/>
+        <location filename="../scene_builder_widget.cpp" line="923"/>
         <source>A render is already running.</source>
         <translation>Un rendu est déjà en cours.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="912"/>
+        <location filename="../scene_builder_widget.cpp" line="925"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>Corrigez d&apos;abord les problèmes indiqués dans les propriétés.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="913"/>
+        <location filename="../scene_builder_widget.cpp" line="926"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>Le moteur de rendu (%1) est introuvable à côté du programme.</translation>
     </message>
@@ -6424,7 +6463,7 @@ La forme est une estimation : l&apos;arrière est inventé et les détails fins 
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
-        <location filename="../scene_builder_widget.cpp" line="952"/>
+        <location filename="../scene_builder_widget.cpp" line="965"/>
         <source>Cancel</source>
         <translation>Annuler</translation>
     </message>
@@ -6449,44 +6488,44 @@ La forme est une estimation : l&apos;arrière est inventé et les détails fins 
         <translation>%1 a été ajouté à partir de la photo. La forme est une estimation ; vérifiez-la sous tous les angles.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="955"/>
+        <location filename="../scene_builder_widget.cpp" line="968"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>Rendu de %1 x %2, %3 échantillons...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="983"/>
+        <location filename="../scene_builder_widget.cpp" line="996"/>
         <source>The render was cancelled.</source>
         <translation>Le rendu a été annulé.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="983"/>
+        <location filename="../scene_builder_widget.cpp" line="996"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>Le moteur de rendu s&apos;est arrêté de façon inattendue.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="983"/>
+        <location filename="../scene_builder_widget.cpp" line="996"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>Le moteur de rendu n&apos;a produit aucune image (code de sortie %1).
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="984"/>
+        <location filename="../scene_builder_widget.cpp" line="997"/>
         <source>The render failed.</source>
         <translation>Le rendu a échoué.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="990"/>
+        <location filename="../scene_builder_widget.cpp" line="1003"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>Terminé en %1 s (%2 x %3).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="993"/>
+        <location filename="../scene_builder_widget.cpp" line="1006"/>
         <source>Saved %1.</source>
         <translation>%1 enregistré.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="994"/>
+        <location filename="../scene_builder_widget.cpp" line="1007"/>
         <source>Could not save to %1.</source>
         <translation>Impossible d&apos;enregistrer dans %1.</translation>
     </message>

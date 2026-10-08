@@ -12,6 +12,7 @@
 #include "app_log.h"
 #include "ui_logger.h"
 #include "wheel_guard.h"
+#include "crash_recovery.h"
 
 int main(int argc, char *argv[]) {
 	QApplication app(argc, argv);
@@ -99,6 +100,7 @@ int main(int argc, char *argv[]) {
 	}
 
 	AppLog::info(QStringLiteral("session"), QStringLiteral("language: %1").arg(languageCode));
+	crash_recovery::offerAfterUncleanExit();   // before the window (and the unsaved scene) is loaded
 	MainWindow window(nullptr, languageCode);
 	window.show();
 
