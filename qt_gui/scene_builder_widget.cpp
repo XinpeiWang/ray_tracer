@@ -220,67 +220,7 @@ void SceneBuilderWidget::buildUi() {
 	auto *layoutBox = new QWidget(centre);
 	auto *layoutLayout = new QVBoxLayout(layoutBox);
 	layoutLayout->setContentsMargins(0, 0, 0, 0);
-	auto *planeRow = new QHBoxLayout;
-	auto *planeGroup = new QButtonGroup(this);
-	planeGroup->setExclusive(true);
-	const std::pair<QString, SceneLayoutView::Plane> planes[] = {{tr("Top"), SceneLayoutView::Plane::Top}, {tr("Front"), SceneLayoutView::Plane::Front}, {tr("Side"), SceneLayoutView::Plane::Side}};
-	m_view = new SceneLayoutView(layoutBox);
-	for (const auto &pl : planes) {
-		auto *b = new QPushButton(pl.first, layoutBox);
-		b->setCheckable(true);
-		b->setAutoDefault(false);
-		b->setChecked(pl.second == SceneLayoutView::Plane::Top);
-		planeGroup->addButton(b);
-		planeRow->addWidget(b);
-		connect(b, &QPushButton::clicked, this, [this, pl]() { m_view->setPlane(pl.second); });
-	}
-	auto *snap = new QCheckBox(tr("Snap to grid"), layoutBox);
-	snap->setChecked(true);
-	snap->setToolTip(tr("Dragging moves things in steps of 0.25. Hold Alt to drag freely."));
-	connect(snap, &QCheckBox::toggled, this, [this](bool on) { m_view->setSnap(on); });
-	auto *frame = new QPushButton(tr("Frame all"), layoutBox);
-	frame->setAutoDefault(false);
-	connect(frame, &QPushButton::clicked, this, [this]() { m_view->frameAll(); });
-	auto *hint = new QLabel(tr("Wheel: zoom. Right-drag: pan."), layoutBox);
-	planeRow->addSpacing(8);
-	planeRow->addWidget(snap);
-	planeRow->addWidget(frame);
-	planeRow->addStretch(1);
-	layoutLayout->addLayout(planeRow);
-	layoutLayout->addWidget(m_view, 1);
-	hint->setAlignment(Qt::AlignRight);  // on its own line: a translated hint is too long to share the button row
-	layoutLayout->addWidget(hint);
-	m_view->setDocument(&m_doc);
-	connect(m_view, &SceneLayoutView::selectionRequested, this, [this](const BuilderSelection &s) { setSelection(s); });
-	connect(m_view, &SceneLayoutView::dragBegan, this, [this]() {
-		// A drag is one undo step however many mouse events it takes; the first move takes the snapshot.
-		m_lastEditKey.clear();
-		m_editCounter++;
-	});
-	connect(m_view, &SceneLayoutView::positionDragged, this, [this](const BuilderSelection &s, int which, const Float3 &w) {
-		edit(QString("drag#%1").arg(m_editCounter), [&]() {
-			Float3 *target = nullptr;
-			switch (s.kind) {
-				case SelKind::Camera: target = which == 0 ? &m_doc.camera.position : &m_doc.camera.target; break;
-				case SelKind::Object: if (s.index < static_cast<int>(m_doc.objects.size())) target = &m_doc.objects[s.index].position; break;
-				case SelKind::Light:
-					if (s.index < static_cast<int>(m_doc.lights.size())) target = which == 0 ? &m_doc.lights[s.index].position : &m_doc.lights[s.index].target;
-					break;
-				case SelKind::None: break;
-			}
-			if (target) *target = w;
-		});
-		refreshInspectorValues();
-	});
-	auto *undoView = new QShortcut(QKeySequence::Undo, m_view);
-	undoView->setContext(Qt::WidgetShortcut);
-	connect(undoView, &QShortcut::activated, this, [this]() { undo(); });
-	auto *redoView = new QShortcut(QKeySequence::Redo, m_view);
-	redoView->setContext(Qt::WidgetShortcut);
-	connect(redoView, &QShortcut::activated, this, [this]() { redo(); });
-	auto *delView = new QShortcut(QKeySequence::Delete, m_view);
-	delView->setContext(Qt::WidgetShortcut);
-	connect(delView, &QShortcut::activated, this, [this]() { deleteSelected(); });
+	createViews(layoutBox, layoutLayout);  // scene_builder_views.cpp: the Top / Front / Side / 3D views and what they share
 
 	auto *previewBox = new QWidget;
 	auto *previewLayout = new QVBoxLayout(previewBox);
@@ -367,7 +307,7 @@ void SceneBuilderWidget::newScene() {
 	clearAutosave();
 	rebuildList();
 	setSelection(m_sel);
-	m_view->frameAll();
+	frameViews();
 	refreshProblems();
 	updateTitle();
 	updateActions();
@@ -398,7 +338,7 @@ bool SceneBuilderWidget::openFile(const QString &path, QString *error) {
 	clearAutosave();
 	rebuildList();
 	setSelection(m_sel);
-	m_view->frameAll();
+	frameViews();
 	refreshProblems();
 	updateTitle();
 	updateActions();
@@ -600,7 +540,7 @@ void SceneBuilderWidget::documentChanged() {
 	refreshProblems();
 	updateTitle();
 	updateActions();
-	m_view->update();
+	updateViews();
 	scheduleAutosave();
 }
 
@@ -638,7 +578,7 @@ bool SceneBuilderWidget::loadAutosave() {
 	m_dirty = true;
 	rebuildList();
 	setSelection({SelKind::None, 0});
-	m_view->frameAll();
+	frameViews();
 	refreshProblems();
 	updateTitle();
 	updateActions();
@@ -708,7 +648,7 @@ void SceneBuilderWidget::setSelection(const BuilderSelection &s, bool fromList) 
 			}
 		}
 	}
-	m_view->setSelection(s);
+	selectInViews(s);
 	rebuildInspector();
 	updateActions();
 }
@@ -747,7 +687,7 @@ void SceneBuilderWidget::addObject(ShapeKind shape) {
 		Object o = scene_doc::makeObject(shape, name.toStdString());
 		o.meshFile = fileName;
 		// Drop it at the middle of the layout view, keeping the shape's own height above the floor where the view does not show it.
-		const Float3 c = m_view->centerInWorld();
+		const Float3 c = dropPoint();
 		o.position.x = c.x;
 		o.position.z = c.z;
 		if (c.y != 0.0) o.position.y = c.y;
@@ -771,7 +711,7 @@ void SceneBuilderWidget::addLight(LightKind kind) {
 			case LightKind::Distant: l.position = {4.0, 6.0, 3.0}; l.target = {0.0, 0.0, 0.0}; l.color = {1.0, 0.95, 0.85}; l.intensity = 3.0; break;
 			case LightKind::Infinite: l.color = {0.55, 0.70, 1.0}; l.intensity = 0.5; break;
 		}
-		const Float3 c = m_view->centerInWorld();
+		const Float3 c = dropPoint();
 		if (kind == LightKind::Point || kind == LightKind::Spot) { l.position.x = c.x; l.position.z = c.z; }
 		m_doc.lights.push_back(l);
 		m_sel = {SelKind::Light, static_cast<int>(m_doc.lights.size()) - 1};

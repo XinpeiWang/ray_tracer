@@ -16,6 +16,27 @@ The layout view shows the scene from above (**Top**), the front (**Front**) or t
 
 An unsaved scene is kept when you close the program and comes back when you reopen it.
 
+## Looking at and moving things
+
+Above the preview are four views of the scene: **Top**, **Front** and **Side** (flat views, good for exact placement) and **3D**.
+
+In every view a click selects, and dragging an object moves it; the position is snapped to steps of 0.25 unless *Snap to grid* is off or you hold Alt.
+Each drag is one undo step. In the flat views, the wheel zooms and right-drag pans. In the **3D** view:
+
+| Do this | To |
+|---|---|
+| Drag the background | Orbit around the scene |
+| Right- or middle-drag | Pan |
+| Wheel | Zoom |
+| Click an object, light or the camera | Select it (the camera is the little box with its view frame; a spotlight, sun or the camera also has a target you can drag) |
+| Drag a selected item | Move it on the floor |
+| Shift-drag a selected item | Move it up and down |
+| Drag one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
+| **Frame all** | Bring everything back into view |
+
+The 3D view draws flat-shaded shapes with the same size, position and rotation the renderer uses; it shows shape and placement, not materials or lighting (press
+**Preview** for that). A mesh is drawn as a small marker at its position, because the view does not read the file.
+
 ## What the world looks like
 
 * **+Y is up.** Units are whatever you like; the example is a few units across.
@@ -82,7 +103,7 @@ The scene's **name** is the field at the top right of the tab (it is also the *T
 * Bump or normal maps, hair, subsurface, participating media, the principled material and instanced copies: use a hand-written pbrt file for those ([PBRT_SUPPORT.md](PBRT_SUPPORT.md) lists what the renderer accepts).
 * A mesh (`.ply`) is shown in the layout view only as a small marker at its position, because the view does not read the file; its scale and rotation apply when it renders.
 * No animation or camera paths.
-* The layout view is two-dimensional. Use the three views together, or type exact numbers in the properties.
+* The 3D view shows shapes, not materials or lighting, and a mesh only as a marker. Use it with the flat views, or type exact numbers in the properties.
 
 ## How it is checked
 

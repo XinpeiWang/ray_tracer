@@ -25,27 +25,6 @@ namespace {
 
 constexpr double kPi = 3.14159265358979323846;
 
-// Rotates p by the object's three angles, in the order the writer applies them: about X, then Y, then Z.
-Float3 rotateXYZ(Float3 p, const Float3 &deg) {
-	auto rad = [](double d) { return d * kPi / 180.0; };
-	if (deg.x != 0.0) {
-		const double c = std::cos(rad(deg.x)), s = std::sin(rad(deg.x));
-		const double y = p.y * c - p.z * s, z = p.y * s + p.z * c;
-		p.y = y; p.z = z;
-	}
-	if (deg.y != 0.0) {
-		const double c = std::cos(rad(deg.y)), s = std::sin(rad(deg.y));
-		const double x = p.x * c + p.z * s, z = -p.x * s + p.z * c;
-		p.x = x; p.z = z;
-	}
-	if (deg.z != 0.0) {
-		const double c = std::cos(rad(deg.z)), s = std::sin(rad(deg.z));
-		const double x = p.x * c - p.y * s, y = p.x * s + p.y * c;
-		p.x = x; p.y = y;
-	}
-	return p;
-}
-
 // Convex hull of 2D points (monotone chain); returns fewer than 3 points for a degenerate (edge-on) outline.
 QList<QPointF> convexHull(QList<QPointF> pts) {
 	std::sort(pts.begin(), pts.end(), [](const QPointF &a, const QPointF &b) { return a.x() < b.x() || (a.x() == b.x() && a.y() < b.y()); });
@@ -210,16 +189,16 @@ QPointF SceneLayoutView::itemScreenPos(const BuilderSelection &s) const {
 	return p ? toScreen(*p) : QPointF();
 }
 
-const Float3 *SceneLayoutView::handlePosition(const BuilderSelection &s, int which) const {
-	if (!m_doc) return nullptr;
+const Float3 *builderHandle(const Document *doc, const BuilderSelection &s, int which) {
+	if (!doc) return nullptr;
 	switch (s.kind) {
-		case BuilderSelection::Kind::Camera: return which == 0 ? &m_doc->camera.position : &m_doc->camera.target;
+		case BuilderSelection::Kind::Camera: return which == 0 ? &doc->camera.position : &doc->camera.target;
 		case BuilderSelection::Kind::Object:
-			return (which == 0 && s.index >= 0 && s.index < static_cast<int>(m_doc->objects.size())) ? &m_doc->objects[s.index].position : nullptr;
+			return (which == 0 && s.index >= 0 && s.index < static_cast<int>(doc->objects.size())) ? &doc->objects[s.index].position : nullptr;
 		case BuilderSelection::Kind::Light:
-			if (s.index < 0 || s.index >= static_cast<int>(m_doc->lights.size())) return nullptr;
+			if (s.index < 0 || s.index >= static_cast<int>(doc->lights.size())) return nullptr;
 			{
-				const Light &l = m_doc->lights[s.index];
+				const Light &l = doc->lights[s.index];
 				if (l.kind == LightKind::Infinite) return nullptr;
 				if (which == 0) return &l.position;
 				return (l.kind == LightKind::Spot || l.kind == LightKind::Distant) ? &l.target : nullptr;
@@ -227,6 +206,10 @@ const Float3 *SceneLayoutView::handlePosition(const BuilderSelection &s, int whi
 		case BuilderSelection::Kind::None: break;
 	}
 	return nullptr;
+}
+
+const Float3 *SceneLayoutView::handlePosition(const BuilderSelection &s, int which) const {
+	return builderHandle(m_doc, s, which);
 }
 
 SceneLayoutView::Hit SceneLayoutView::hitTest(const QPointF &px) const {

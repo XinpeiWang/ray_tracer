@@ -70,4 +70,27 @@ inline QString materialLabel(MaterialKind k) {
 }
 
 
+
+// Rotates p by the object's three angles, in the order the writer applies them: about X, then Y, then Z.
+inline scene_doc::Float3 rotateXYZ(scene_doc::Float3 p, const scene_doc::Float3 &deg) {
+	constexpr double kPi = 3.14159265358979323846;
+	auto rad = [](double d) { return d * kPi / 180.0; };
+	if (deg.x != 0.0) {
+		const double c = std::cos(rad(deg.x)), s = std::sin(rad(deg.x));
+		const double y = p.y * c - p.z * s, z = p.y * s + p.z * c;
+		p.y = y; p.z = z;
+	}
+	if (deg.y != 0.0) {
+		const double c = std::cos(rad(deg.y)), s = std::sin(rad(deg.y));
+		const double x = p.x * c + p.z * s, z = -p.x * s + p.z * c;
+		p.x = x; p.z = z;
+	}
+	if (deg.z != 0.0) {
+		const double c = std::cos(rad(deg.z)), s = std::sin(rad(deg.z));
+		const double x = p.x * c - p.y * s, y = p.x * s + p.y * c;
+		p.x = x; p.y = y;
+	}
+	return p;
+}
+
 } // namespace scene_builder_ui

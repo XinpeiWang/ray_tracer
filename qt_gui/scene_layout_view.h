@@ -14,6 +14,9 @@ struct BuilderSelection {
 	bool operator==(const BuilderSelection &o) const { return kind == o.kind && index == o.index; }
 };
 
+// The position (which = 0) or target (which = 1) of the selected camera, object or light that can be dragged, or null (shared by the 2D and 3D views).
+const scene_doc::Float3 *builderHandle(const scene_doc::Document *doc, const BuilderSelection &s, int which);
+
 // A 2D orthographic view of the scene (from above, the front or the side) where things are picked and dragged.
 class SceneLayoutView : public QWidget {
 	Q_OBJECT
