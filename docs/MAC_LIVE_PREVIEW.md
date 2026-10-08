@@ -21,6 +21,16 @@ the camera and watch the image sharpen. On Windows it is backed by OptiX; on mac
   ignored. The GUI hides those controls on macOS: the Live Preview Settings group shows only Depth of Field, Aperture/Focus Distance,
   Exposure, Samples/Frame, Max Bounces, Firefly Clamp and Smooth noisy pixels, Auto exposure, and the Live denoiser group is hidden.
 
+## Samples per frame while still
+
+While the camera moves, a frame is one batch of "Samples/Frame" samples, so the picture follows the mouse. After three still frames the scheduler
+(`src/shared/live_spp_scheduler.h`) doubles the batch (2, 4, 8) as long as the next size should still finish within about 100 ms, halves it if a
+frame runs over 160 ms, and drops back to one the moment the camera moves or a setting resets the accumulation. The running mean is weighted by the
+batch, so the picture is the same average, just reached faster: a frame has a fixed cost besides the samples (accumulate, tone map, show), which
+bigger frames pay less often. Measured on an M2 (A1, the GUI's preview size): 1 batch 22.6 ms per frame, 4 batches 72 ms (18 ms per sample), and after
+a 10 s self-test run 246 samples instead of 190 shown (about 25% faster convergence while still; the display refreshes about 13 times a second
+instead of 37 meanwhile). Only on the plain accumulation path on macOS; `RT_LIVE_SCHEDULER=0` turns it off to compare.
+
 ## Performance (M2, measured with `build/metal_live_bench`)
 
 | scene | size | spp/frame | frame time |

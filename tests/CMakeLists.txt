@@ -46,6 +46,7 @@ add_executable(unit_tests
     unit/log_format_tests.cpp
     unit/oidn_runtime_tests.cpp
     unit/job_queue_tests.cpp
+    unit/live_spp_scheduler_tests.cpp
     unit/scene_gizmo_tests.cpp
     unit/snapshot_history_tests.cpp
     unit/light_sampler_resolution_tests.cpp

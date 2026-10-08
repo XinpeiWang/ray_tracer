@@ -234,7 +234,8 @@ void MainWindow::runLivePreviewSelfTest(const std::function<void(const QString &
 	QTimer::singleShot(10000, this, [this, log, shot, before, litPercent]() {
 		const qint64 frames = m_livePreviewFrameCount;
 		const double secs = m_livePreviewSessionTimer.elapsed() / 1000.0;
-		log(QString("after 10 s: frames=%1 (%2 fps)").arg(frames).arg(secs > 0 ? frames / secs : 0.0, 0, 'f', 1));
+		log(QString("after 10 s: frames=%1 (%2 fps), status \"%3\"").arg(frames).arg(secs > 0 ? frames / secs : 0.0, 0, 'f', 1)
+		        .arg(m_livePreviewStatusLabel ? m_livePreviewStatusLabel->text() : QString()));
 		shot("live_10s");
 		const QImage after = grab().toImage();
 		double diff = 0;
