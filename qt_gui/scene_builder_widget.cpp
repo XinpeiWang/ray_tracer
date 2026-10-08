@@ -404,24 +404,13 @@ void SceneBuilderWidget::onSaveAsClicked() {
 	else emit statusMessage(tr("Saved %1").arg(path));
 }
 
-// Where "Add to scene list" saves. The scene list is built from the first existing, non-empty pbrt_scenes folder (the same search order as the renderer's own);
-// a new folder created ahead of an existing one would hide every other scene, so the program's own folder is only used when it is already there - and is
-// writable, and is not inside a macOS .app bundle (writing there breaks the bundle's seal, and from a disk image it is read-only anyway). Otherwise the
-// scene goes to the per-user folder <data>/user_scenes, which scene discovery also scans (pbrt_discover::userSceneDir), so it appears after a restart.
+// Where "Add to scene list" saves: the per-user folder <data>/user_scenes (pbrt_discover::userSceneDir), always. That is the only folder the scene list can grow
+// from while the program runs (refresh_user_scenes() rescans it, and gives each scene a persistent id), it is always writable, and it never writes into the
+// program's own folder (a macOS .app bundle's seal breaks if you do; a disk image is read-only). A scene saved into the program's pbrt_scenes folder would
+// only be listed after a restart, and its id would shift the ids of the scenes found after it. RAY_TRACER_PBRT_DIR still names a folder to use instead.
 QString SceneBuilderWidget::sceneListFolder() {
-	QStringList candidates;
 	const QString env = qEnvironmentVariable("RAY_TRACER_PBRT_DIR");
-	if (!env.isEmpty()) candidates << env;
-	const QString app = QCoreApplication::applicationDirPath();
-	candidates << app + "/pbrt_scenes" << app + "/../pbrt_scenes" << app + "/../../pbrt_scenes";
-	for (const QString &c : candidates) {
-		QDir d(c);
-		if (d.exists() && !d.entryList(QStringList() << "*.pbrt", QDir::Files).isEmpty()) {
-			const QString abs = d.absolutePath();
-			if (!abs.contains(".app/Contents/") && QFileInfo(abs).isWritable()) return abs;
-			break;   // found, but not somewhere to write: use the per-user folder
-		}
-	}
+	if (!env.isEmpty() && QDir(env).exists() && QFileInfo(env).isWritable()) return QDir(env).absolutePath();
 	const QString user = QString::fromStdString(pbrt_asset_check::userSceneDir());
 	if (!user.isEmpty() && QDir().mkpath(user)) return user;
 	return QString();
