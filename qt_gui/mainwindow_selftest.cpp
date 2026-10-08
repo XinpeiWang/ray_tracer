@@ -123,7 +123,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	// RT_GUI_SELFTEST=builder: drives the Scene Builder tab through an edit, undo/redo, a save and re-open, and a real preview render (needs
 	// ray_tracer next to the GUI); saves screenshots <out>_builder_edit.png / _builder_preview.png and exits 0 if every step held.
 	if (mode == "builder") {
-		resize(qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") : 1500, 950);  // (RT_GUI_SELFTEST_WIDTH: a narrower window)
+		resize(qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") : 1500, qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") : 950);  // (..._WIDTH / ..._HEIGHT: a smaller window)
 		if (m_sceneBuilder) m_tabWidget->setCurrentWidget(m_sceneBuilder);  // by widget, so it works in every language
 		SceneBuilderWidget *sb = m_sceneBuilder;
 		bool ok = sb != nullptr;
