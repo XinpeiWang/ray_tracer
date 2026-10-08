@@ -14,6 +14,7 @@
 #include "pbrt_discover.h"
 
 #include <cmath>
+#include <cstdlib>
 #include <cstdio>
 #include <fstream>
 #include <string>
@@ -407,4 +408,51 @@ TEST_F(ScanTree, DiscoveredPathIsUsableToLoadTheFileLater) {
 	ASSERT_EQ(found.size(), 1u);
 	std::ifstream in(found[0].path, std::ios::binary);
 	EXPECT_TRUE(in.good()) << "cannot reopen " << found[0].path;
+}
+
+// ---------------------------------------------------------------------------
+// The per-user scenes folder (<RAY_TRACER_USER_ASSETS>/user_scenes): where the Scene Builder's "Add to scene list" saves when the program sits
+// somewhere it must not write (a macOS .app bundle, a read-only disk image). Discovery lists those scenes after the scanned ones.
+// ---------------------------------------------------------------------------
+
+namespace {
+void setUserAssetsEnv(const char *value) {
+#ifdef _WIN32
+	_putenv_s("RAY_TRACER_USER_ASSETS", value ? value : "");
+#else
+	if (value) setenv("RAY_TRACER_USER_ASSETS", value, 1); else unsetenv("RAY_TRACER_USER_ASSETS");
+#endif
+}
+}  // namespace
+
+TEST_F(ScanTree, UserSceneDirIsEmptyWithoutTheEnvironmentVariable) {
+	const char *old = std::getenv("RAY_TRACER_USER_ASSETS");
+	const std::string saved = old ? old : "";
+	setUserAssetsEnv(nullptr);
+	EXPECT_TRUE(pbrt_discover::userSceneDir().empty());
+	if (old) setUserAssetsEnv(saved.c_str());
+}
+
+TEST_F(ScanTree, ScenesInTheUserFolderAreListedAfterTheScannedOnesAsUserFiles) {
+	const char *old = std::getenv("RAY_TRACER_USER_ASSETS");
+	const std::string saved = old ? old : "";
+	write("user/user_scenes/my-room.pbrt", "Camera \"perspective\"\nFilm \"rgb\"\n");
+	setUserAssetsEnv((root_ + "user").c_str());
+	ASSERT_FALSE(pbrt_discover::userSceneDir().empty());
+	EXPECT_NE(pbrt_discover::userSceneDir().find("user_scenes"), std::string::npos);
+	const std::vector<pbrt_discover::Discovered> found = pbrt_discover::scanDefaultPaths();
+	setUserAssetsEnv(old ? saved.c_str() : nullptr);
+	bool seen = false;
+	for (const pbrt_discover::Discovered &d : found) {
+		if (d.name != "my-room") continue;
+		seen = true;
+		EXPECT_TRUE(d.userFile) << "numbered after every scanned scene, so adding one never shifts a bundled id";
+	}
+	EXPECT_TRUE(seen);
+	// And it comes after every scanned (non-user) file.
+	bool sawUser = false;
+	for (const pbrt_discover::Discovered &d : found) {
+		if (d.userFile) sawUser = true;
+		else EXPECT_FALSE(sawUser) << d.name << " (a scanned scene) is listed after a user one";
+	}
 }

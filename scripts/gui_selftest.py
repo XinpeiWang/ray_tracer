@@ -7,7 +7,7 @@ result. Screenshots are of the app's own window (never the screen) and are writt
   ui           the main window comes up and the Output Mode list is filled (with --live-preview: it contains an ENABLED
                "Live Preview (interactive)" item)
   options      the Options controls respond
-  builder      the Scene Builder tab opens and builds a scene
+  builder      the Scene Builder tab: edits, drag, undo/redo, save and re-open, a CPU preview (and with --live-preview a GPU preview too)
   diagnostics  the Diagnostics report is produced
   livepreview  (--live-preview) selects Live Preview, starts it, lets it render, orbits the camera like a mouse drag, and requires
                frames to flow AND the picture to change
@@ -77,7 +77,7 @@ def needs_rosetta(exe):
     return apple_silicon and "arm64" not in archs
 
 
-def run_mode(exe, mode, wait_s, out, plugins, fake_home):
+def run_mode(exe, mode, wait_s, out, plugins, fake_home, gpu=False):
     prefix = os.path.join(out, mode)
     for ext in (".txt", ".stdout"):
         if os.path.exists(prefix + ext):
@@ -89,6 +89,8 @@ def run_mode(exe, mode, wait_s, out, plugins, fake_home):
         "HOME": fake_home, "CFFIXED_USER_HOME": fake_home, "USERPROFILE": fake_home,
         "APPDATA": os.path.join(fake_home, "AppData", "Roaming"), "LOCALAPPDATA": os.path.join(fake_home, "AppData", "Local"),
     })
+    if gpu:
+        env["RT_GUI_SELFTEST_GPU"] = "1"   # the builder mode also previews through "Use the GPU"
     cmd = (["arch", "-x86_64"] if needs_rosetta(exe) else []) + [exe]
     with open(prefix + ".stdout", "wb") as log:
         # cwd is the root folder on purpose (see the module docstring).
@@ -148,7 +150,7 @@ def main():
     ok = True
     try:
         for mode in modes:
-            passed = run_mode(exe, mode, waits.get(mode, 60), out, plugins, fake_home)
+            passed = run_mode(exe, mode, waits.get(mode, 60), out, plugins, fake_home, gpu=args.live_preview)
             ok = ok and passed
             log = os.path.join(out, mode + ".txt")
             text = open(log, errors="replace").read() if os.path.exists(log) else ""

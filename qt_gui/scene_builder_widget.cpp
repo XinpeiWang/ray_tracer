@@ -2,6 +2,7 @@
 #include "scene_builder_widget.h"
 
 #include "scene_builder_common.h"
+#include "../src/shared/pbrt_asset_check.h"
 
 #include <QApplication>
 #include <QButtonGroup>
@@ -450,8 +451,10 @@ void SceneBuilderWidget::onSaveAsClicked() {
 	else emit statusMessage(tr("Saved %1").arg(path));
 }
 
-// The scene list is built from the first existing, non-empty pbrt_scenes folder (the same search order as the renderer's own); a new folder created
-// ahead of an existing one would hide every other scene, so this only ever uses a folder that is already there.
+// Where "Add to scene list" saves. The scene list is built from the first existing, non-empty pbrt_scenes folder (the same search order as the renderer's own);
+// a new folder created ahead of an existing one would hide every other scene, so the program's own folder is only used when it is already there - and is
+// writable, and is not inside a macOS .app bundle (writing there breaks the bundle's seal, and from a disk image it is read-only anyway). Otherwise the
+// scene goes to the per-user folder <data>/user_scenes, which scene discovery also scans (pbrt_discover::userSceneDir), so it appears after a restart.
 QString SceneBuilderWidget::sceneListFolder() {
 	QStringList candidates;
 	const QString env = qEnvironmentVariable("RAY_TRACER_PBRT_DIR");
@@ -460,29 +463,55 @@ QString SceneBuilderWidget::sceneListFolder() {
 	candidates << app + "/pbrt_scenes" << app + "/../pbrt_scenes" << app + "/../../pbrt_scenes";
 	for (const QString &c : candidates) {
 		QDir d(c);
-		if (d.exists() && !d.entryList(QStringList() << "*.pbrt", QDir::Files).isEmpty()) return d.absolutePath();
+		if (d.exists() && !d.entryList(QStringList() << "*.pbrt", QDir::Files).isEmpty()) {
+			const QString abs = d.absolutePath();
+			if (!abs.contains(".app/Contents/") && QFileInfo(abs).isWritable()) return abs;
+			break;   // found, but not somewhere to write: use the per-user folder
+		}
 	}
+	const QString user = QString::fromStdString(pbrt_asset_check::userSceneDir());
+	if (!user.isEmpty() && QDir().mkpath(user)) return user;
 	return QString();
 }
 
-void SceneBuilderWidget::onSaveToSceneListClicked() {
+QString SceneBuilderWidget::addToSceneList(QString *error) {
 	const QString folder = sceneListFolder();
 	if (folder.isEmpty()) {
-		QMessageBox::information(this, tr("No scenes folder"),
-		                         tr("The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the "
-		                            "environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it."));
-		return;
+		if (error) *error = tr("The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the "
+		                       "environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.");
+		return QString();
 	}
 	QString name = QString::fromStdString(m_doc.title).trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
 	name.remove(QRegularExpression("^-+|-+$"));
 	if (name.isEmpty()) name = "my-scene";
 	const QString path = folder + "/" + name + ".pbrt";
-	if (QFileInfo::exists(path) && QFileInfo(path) != QFileInfo(m_path)) {
-		if (QMessageBox::question(this, tr("Replace the scene?"), tr("%1 already exists. Replace it?").arg(path)) != QMessageBox::Yes) return;
-	}
 	// A copy for the scene list: the document keeps its own file and its unsaved state.
 	if (!writeSceneText(m_doc, path)) {
-		QMessageBox::warning(this, tr("Cannot save"), tr("Could not write %1.").arg(path));
+		if (error) *error = tr("Could not write %1.").arg(path);
+		return QString();
+	}
+	return path;
+}
+
+void SceneBuilderWidget::onSaveToSceneListClicked() {
+	const QString folder = sceneListFolder();
+	if (folder.isEmpty()) {
+		QString why;
+		addToSceneList(&why);
+		QMessageBox::information(this, tr("No scenes folder"), why);
+		return;
+	}
+	QString name = QString::fromStdString(m_doc.title).trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
+	name.remove(QRegularExpression("^-+|-+$"));
+	if (name.isEmpty()) name = "my-scene";
+	const QString existing = folder + "/" + name + ".pbrt";
+	if (QFileInfo::exists(existing) && QFileInfo(existing) != QFileInfo(m_path)) {
+		if (QMessageBox::question(this, tr("Replace the scene?"), tr("%1 already exists. Replace it?").arg(existing)) != QMessageBox::Yes) return;
+	}
+	QString error;
+	const QString path = addToSceneList(&error);
+	if (path.isEmpty()) {
+		QMessageBox::warning(this, tr("Cannot save"), error);
 		return;
 	}
 	QMessageBox::information(this, tr("Added to the scene list"),
@@ -780,6 +809,7 @@ void SceneBuilderWidget::refreshProblems() {
 
 // ---- rendering -------------------------------------------------------------------------------------------------------------------
 
+void SceneBuilderWidget::setUseGpu(bool on) { m_gpuCheck->setChecked(on); }
 void SceneBuilderWidget::startPreview(const std::function<void(bool, const QString &)> &done) {
 	static const int widths[3] = {320, 480, 640};
 	static const int spps[3] = {16, 64, 256};

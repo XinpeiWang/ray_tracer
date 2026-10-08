@@ -4,6 +4,7 @@
 // of its own window (never the screen) and a text log, and exits with 0 on success, 1 on failure, 2 if Live Preview is not
 // available in this build.
 #include "mainwindow.h"
+#include "../src/shared/pbrt_asset_check.h"
 
 #include <QApplication>
 #include <QComboBox>
@@ -106,28 +107,63 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		QString err;
 		sb->newScene();
 		check(sb->openFile(pbrt, &err) && scene_doc::toJson(sb->document()) == before, "re-opened the saved file unchanged " + err);
+		// "Add to scene list": from inside a macOS .app bundle (or any read-only place) it must save to the per-user folder, never into the bundle, and
+		// scene discovery must then list it as a user scene.
+		{
+			QString listError;
+			const QString listed = sb->addToSceneList(&listError);
+			check(!listed.isEmpty() && QFile::exists(listed), "added to the scene list: " + (listed.isEmpty() ? listError : listed));
+			if (QCoreApplication::applicationDirPath().contains(".app/Contents/"))
+				check(!listed.contains(".app/Contents/") && listed.contains("user_scenes"), "from a .app bundle the scene went to the per-user folder, not into the bundle");
+			// (That scene discovery lists a file in that folder is covered by the unit test ScanTree.ScenesInTheUserFolder...)
+			QFile::remove(listed);
+		}
 		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
 		sb->newScene();
 		sb->selectObject(2);
 		QTimer::singleShot(600, this, [this, shot, log, sb, ok]() mutable {
 			shot("builder_edit");
+			// One preview on the CPU, then (RT_GUI_SELFTEST_GPU=1, set by scripts/gui_selftest.py --live-preview on a machine with a GPU)
+			// one through "Use the GPU" - Metal on a Mac - which must also give a lit picture of about the same brightness.
+			const bool alsoGpu = qEnvironmentVariableIsSet("RT_GUI_SELFTEST_GPU");
+			auto meanGrey = [](const QString &path) {
+				const QImage img(path);
+				double sum = 0;
+				for (int y = 0; y < img.height(); ++y)
+					for (int x = 0; x < img.width(); ++x) sum += qGray(img.pixel(x, y));
+				return img.isNull() ? 0.0 : sum / (double(img.width()) * img.height());
+			};
 			log("starting a preview render");
-			sb->startPreview([this, shot, log, sb, ok](bool done, const QString &message) mutable {
+			sb->startPreview([this, shot, log, sb, ok, alsoGpu, meanGrey](bool done, const QString &message) mutable {
 				log(QString("preview: %1 - %2").arg(done ? "ok" : "FAIL", message));
 				bool good = ok && done;
+				double cpuMean = 0.0;
 				if (done) {
-					const QImage img(sb->previewImagePath());
-					double sum = 0;
-					for (int y = 0; y < img.height(); ++y)
-						for (int x = 0; x < img.width(); ++x) sum += qGray(img.pixel(x, y));
-					const double mean = img.isNull() ? 0.0 : sum / (double(img.width()) * img.height());
-					log(QString("preview picture %1 x %2, mean grey %3").arg(img.width()).arg(img.height()).arg(mean));
-					good = good && mean > 10.0 && mean < 245.0;
+					cpuMean = meanGrey(sb->previewImagePath());
+					log(QString("preview picture, mean grey %1").arg(cpuMean));
+					good = good && cpuMean > 10.0 && cpuMean < 245.0;
 				}
-				QTimer::singleShot(300, this, [shot, log, good]() {
-					shot("builder_preview");
-					log(good ? "RESULT: OK" : "RESULT: FAIL");
-					QApplication::exit(good ? 0 : 1);
+				const auto finish = [this, shot, log](bool result) {
+					QTimer::singleShot(300, this, [shot, log, result]() {
+						shot("builder_preview");
+						log(result ? "RESULT: OK" : "RESULT: FAIL");
+						QApplication::exit(result ? 0 : 1);
+					});
+				};
+				if (!alsoGpu || !good) { finish(good); return; }
+				sb->setUseGpu(true);
+				log("starting a preview render on the GPU");
+				sb->startPreview([log, sb, cpuMean, meanGrey, finish](bool gpuDone, const QString &gpuMessage) {
+					log(QString("GPU preview: %1 - %2").arg(gpuDone ? "ok" : "FAIL", gpuMessage));
+					bool gpuGood = gpuDone;
+					if (gpuDone) {
+						const double gpuMean = meanGrey(sb->previewImagePath());
+						log(QString("GPU preview picture, mean grey %1 (CPU %2)").arg(gpuMean).arg(cpuMean));
+						// Different renderers and sample noise, but the same scene: the same order of brightness.
+						gpuGood = gpuMean > 10.0 && gpuMean < 245.0 && std::abs(gpuMean - cpuMean) < 40.0;
+					}
+					sb->setUseGpu(false);
+					finish(gpuGood);
 				});
 			});
 		});

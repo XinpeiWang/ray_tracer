@@ -43,6 +43,13 @@ inline std::string userAssetRoot() {
 #endif
 }
 
+// The per-user folder for scenes (not assets): <RAY_TRACER_USER_ASSETS>/user_scenes, "" when the variable is not set. Where the Scene Builder's "Add to scene
+// list" saves when the program sits somewhere it must not write (a macOS .app bundle, a read-only disk image); scene discovery (pbrt_discover.h) scans it.
+inline std::string userSceneDir() {
+	const std::string root = userAssetRoot();
+	return root.empty() ? std::string() : (std::filesystem::path(root) / "user_scenes").string();
+}
+
 // Where `want` - a path as a scene wrote it, relative to `sceneDir` - would be under the user asset root, or "" if there
 // is no root or the path does not resolve to somewhere inside the application folder (absolute, or climbs out of it).
 inline std::string userAssetPath(const std::filesystem::path &sceneDir, const std::string &want) {

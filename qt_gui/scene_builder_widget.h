@@ -53,10 +53,15 @@ public:
 	// Starts a preview render (no file dialog) and calls `done` when the picture is loaded or it failed.
 	void startPreview(const std::function<void(bool ok, const QString &message)> &done = nullptr);
 	QString previewImagePath() const { return m_previewPng; }
+	// The "Use the GPU" checkbox (OptiX on Windows, Metal on a Mac); the self-test drives it.
+	void setUseGpu(bool on);
 	bool isDirty() const { return m_dirty; }
 	QString problemsText() const;
 	// Where a scene is saved so the scene list finds it (empty if no scene folder exists); see saveToSceneList().
 	static QString sceneListFolder();
+	// Saves a copy of the scene into the scene-list folder (see sceneListFolder()); no dialogs. Returns the path, or "" with `error` set. An existing file
+	// of that name is replaced.
+	QString addToSceneList(QString *error);
 
 signals:
 	void statusMessage(const QString &text);
