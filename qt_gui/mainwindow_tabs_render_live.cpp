@@ -11,6 +11,7 @@
 // one builds (this whole file compiles to nothing without it).
 #include "mainwindow.h"
 #include "settings_keys.h"
+#include "live_ai_denoise.h"
 
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 #include <QVBoxLayout>
@@ -750,6 +751,18 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 		"mid-grey, up to 64x, following the picture smoothly. It never darkens anything - a normally exposed or bright scene looks "
 		"exactly as it does with this off - and it multiplies the Exposure value above, which still works as a manual correction.")),
 		14, 0, 1, 4);
+
+	// Intel Open Image Denoise on the accumulated picture (the same library the finished-render "Denoise" uses, installed from the Diagnostics tab).
+	QCheckBox *aiDenoiseCheck = createLiveToggleCheckbox(tr("AI denoise"), live_ai_denoise::savedEnabled(), [this](bool checked) {
+		live_ai_denoise::saveEnabled(checked);
+		pushLiveSmoothNoiseToSession();   // (pushes this setting too)
+	});
+	liveRenderSettingsGrid->addWidget(checkboxWithInfo(aiDenoiseCheck,
+		tr("Cleans the grain out of the picture with Intel Open Image Denoise while it is still gathering samples - right after a camera move "
+		"it looks calm instead of speckled. The effect fades out as the picture gains samples (gone at 512), so a settled picture is exactly what "
+		"was rendered. Costs about 10 ms per frame. Needs the Open Image Denoise library: install it from the Diagnostics tab (the same one the "
+		"Denoise option for finished renders uses). It replaces Smooth noisy pixels while it is on.")),
+		15, 0, 1, 4);
 #endif
 
 	liveRenderSettingsLayout->addRow(liveRenderSettingsRow);
@@ -762,7 +775,7 @@ void MainWindow::buildLivePreviewSettingsSection(QWidget *optionsTab, QVBoxLayou
 	for (int i = 0; i < liveRenderSettingsGrid->count(); ++i) {
 		int row = 0, col = 0, rowSpan = 0, colSpan = 0;
 		liveRenderSettingsGrid->getItemPosition(i, &row, &col, &rowSpan, &colSpan);
-		if (row != 5 && row != 13 && row != 14 && (row < 8 || row > 10)) {
+		if (row != 5 && row != 13 && row != 14 && row != 15 && (row < 8 || row > 10)) {
 			if (QWidget *w = liveRenderSettingsGrid->itemAt(i)->widget()) w->hide();
 		}
 	}

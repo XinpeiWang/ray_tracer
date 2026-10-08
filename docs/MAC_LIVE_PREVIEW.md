@@ -19,7 +19,7 @@ the camera and watch the image sharpen. On Windows it is backed by OptiX; on mac
   the ray through each pixel's centre and the camera basis, and honours the depth-of-field override. The other OptiX-only flags in the
   signature (AI denoiser, SVGF, ReSTIR, radiance cache, path guiding, temporal/neural upscale, NRC, adaptive sampling) are accepted and
   ignored. The GUI hides those controls on macOS: the Live Preview Settings group shows only Depth of Field, Aperture/Focus Distance,
-  Exposure, Samples/Frame, Max Bounces, Firefly Clamp and Smooth noisy pixels, Auto exposure, and the Live denoiser group is hidden.
+  Exposure, Samples/Frame, Max Bounces, Firefly Clamp, Smooth noisy pixels, Auto exposure and AI denoise, and the OptiX Live denoiser group is hidden.
 
 ## Samples per frame while still
 
@@ -70,6 +70,7 @@ library from a directory without scenes.)
   default Exposure of 1: the log-average luminance of the lit pixels is brought up towards 0.15, by at most 64x, eased in every few frames. It never
   darkens (a normally exposed or bright scene looks exactly as with it off) and multiplies the manual Exposure value. The scene metadata's
   "recommended exposure" cannot do this job - it is 1.0 for every scene that renders dark in Live Preview.
+* "AI denoise" (off by default, Mac only, `RealtimePreviewWorker::aiDenoiseAccum()`): Intel Open Image Denoise on the accumulated picture for the display, fading out between 32 and 512 samples (see [DENOISING.md](DENOISING.md)); about 10 ms per frame at 400x400 (the GUI self-test shows 137 -> 116 frames in 10 s), and the picture right after a camera move goes from speckled to clean. Needs the library installed from the Diagnostics tab. `RT_GUI_SELFTEST_AIDENOISE=1` turns it on in the Live Preview self-test (with `RT_OIDN_DIR` set). It replaces the next item while it is on.
 * "Smooth noisy pixels" (on by default on macOS, `RealtimePreviewWorker::smoothLowSampleAccum()`, backend independent) replaces the
   display of a pixel that has fewer than 96 samples by a weighted mean of its neighbours, weighted by being on the same surface (the
   first-hit world positions), by colour similarity relative to the expected noise, and by the neighbours' own sample counts; the effect
