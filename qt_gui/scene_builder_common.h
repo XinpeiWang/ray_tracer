@@ -10,6 +10,7 @@
 #include <cmath>
 
 #include "../src/shared/scene_document.h"
+#include "../src/shared/scene_props.h"
 
 namespace scene_builder_ui {
 
@@ -46,6 +47,17 @@ inline QString shapeLabel(ShapeKind k) {
 		case ShapeKind::Capsule: return QObject::tr("Capsule");
 		case ShapeKind::Dome: return QObject::tr("Dome (half sphere)");
 		case ShapeKind::Tube: return QObject::tr("Tube (pipe)");
+	}
+	return QString();
+}
+inline QString propLabel(scene_doc::PropKind k) {
+	switch (k) {
+		case scene_doc::PropKind::Table: return QObject::tr("Table");
+		case scene_doc::PropKind::Chair: return QObject::tr("Chair");
+		case scene_doc::PropKind::Tree: return QObject::tr("Tree");
+		case scene_doc::PropKind::Snowman: return QObject::tr("Snowman");
+		case scene_doc::PropKind::Column: return QObject::tr("Column");
+		case scene_doc::PropKind::StreetLamp: return QObject::tr("Street lamp");
 	}
 	return QString();
 }

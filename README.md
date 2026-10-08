@@ -49,7 +49,7 @@ That renders the Cornell box (A1) at 400 px with 128 samples per pixel and depth
 
 ## 🧱 Build your own scene
 
-The GUI has a **Scene Builder** tab: add spheres, boxes, quads, cylinders, cones, pyramids, stairs, ramps, tori, capsules, domes, tubes, meshes and lights, pick materials (matte, metal, glass, glossy paint, translucent) and colours, drag things around in a top, front or side view, press Preview, and save the result as an ordinary `.pbrt` file that the renderer and any pbrt-compatible tool can read. See [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
+The GUI has a **Scene Builder** tab: add spheres, boxes, quads, cylinders, cones, pyramids, stairs, ramps, tori, capsules, domes, tubes, ready-made props (table, chair, tree, snowman, ...), meshes and lights, pick materials (matte, metal, glass, glossy paint, translucent) and colours, drag things around in a top, front or side view, press Preview, and save the result as an ordinary `.pbrt` file that the renderer and any pbrt-compatible tool can read. See [docs/SCENE_BUILDER.md](docs/SCENE_BUILDER.md).
 
 ![The Scene Builder tab](docs/gallery/scene-builder.jpg)
 
