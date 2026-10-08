@@ -29,11 +29,31 @@ around it. The shader source is **compiled at run time** from the `.metal` files
 | `metal_poc_types.metal` | the shader copies of the structs (`Uniforms`, `TriangleMaterial`, lights, media), intersection functions |
 | `metal_poc_sampling.metal`, `metal_poc_layered_bxdf.metal` | sampling, microfacet, environment/portal light, layered BxDF code |
 | `metal_poc_materials_*.metal` | one `shadeXxx()` per material family (specular, diffuse, layered, extra, medium, hair) |
-| `metal_poc_kernel.metal` | `primaryRayKernel` |
+| `metal_poc_kernel_state.metal` | the three bundles `primaryRayKernel` passes around (`KernelRes`, `PathState`, `BounceState`) and the macros that give their members their old names |
+| `metal_poc_kernel_camera.metal`, `_media.metal`, `_surface.metal`, `_bounce.metal` | the kernel's steps: camera ray and fresh path state; bounded and global media; escape, hit resolution, normal perturbation, albedo, emission; scattering by material, glass-medium bookkeeping and `traceBounce()` |
+| `metal_poc_kernel.metal` | `primaryRayKernel` itself: setup, the per-sample loop (path regeneration), accumulation, adaptive sampling |
 | `metal_poc_shader_files.h` | the ordered list of shader files concatenated into one source string |
 | `metal_live_preview.mm/.h` | the persistent per-scene session behind Live Preview (`realtime_renderer.dylib`) |
 | `metal_poc_test_kernels.metal`, `metal_poc_shader_tests*.mm`, `metal_poc_math_tests.cpp`, `metal_poc_validate.cpp`, `metal_poc_crop_check.cpp`, `metal_realtime_dylib_check.cpp` | tests (see below) |
 | `metal_cpu_gpu_parity_check.cpp`, `parity_golden.txt` | the CPU-vs-Metal sweep and its golden snapshot |
+
+## How the kernel is structured
+
+`primaryRayKernel` used to be one 1,631-line function. It is now about 300 lines of setup and the per-sample loop; each bounce is `traceBounce()`,
+which calls, in order: `traverseBoundedMedia`, `scatterInGlobalMedium`, then for a surface hit `resolveHit`, `perturbShadingNormal`, `computeAlbedo`,
+`addHitEmission`, `scatterAtSurface` (the `shadeXxx()` of the material) and `updateMediumStateAfterBounce`; an escaping ray goes to `shadeEscapedRay`.
+A step that can end the path returns `bool` (false = the path ends), the same convention the `shadeXxx()` functions use.
+
+The steps share state through three bundles instead of fifty parameters: `KernelRes` (every texture, buffer, the acceleration structure and function
+table; read-only), `PathState` (what a path carries between bounces) and `BounceState` (what one bounce computes). Each function starts with the alias
+macros of `metal_poc_kernel_state.metal`, which give the members back their old names, so the bodies are the original kernel code unchanged. MSL inlines
+all of it.
+
+The split was checked against the kernel before it: all 12 Metal tests pass (shader tests, the 95-scene CPU/GPU parity sweep with the golden snapshot,
+seed reproducibility), render time is unchanged (A1 4.4 -> 4.1 s, B2 5.4 -> 5.0 s, G1 3.2 -> 3.1 s at 400 px / 256 spp), and the pictures agree with the old
+kernel's: mean absolute difference 0.37/255 over all 95 scenes at 64 spp, and the means of six scenes at 2048 spp agree to 0.005/255. They are **not
+bit-identical**: re-inlining changed float rounding, so a few scenes' paths diverge (E1 differs by 1.4/255 at 64 spp, within its noise). Expect that when
+changing the structure again; compare statistics, not hashes. D8 and D12 are not reproducible even run to run.
 
 ## Data flow of one render
 
