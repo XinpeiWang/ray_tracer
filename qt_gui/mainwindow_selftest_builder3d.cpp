@@ -360,6 +360,23 @@ void MainWindow::selfTestWindowGeometry(const std::function<void(bool, const QSt
 	check(!restored || onScreen, "a window saved on no connected screen does not come back off-screen");
 	window_geometry::forget();
 	check(!window_geometry::restore(this), "after Reset Window Layout nothing is restored");
+	// The render form remembers the scene and the image size: change both, save, change them again, restore.
+	if (m_sceneCombo && m_sceneCombo->count() > 1 && m_widthSpinBox && m_heightSpinBox) {
+		const int sceneIndex = m_sceneCombo->count() - 1;
+		const QString sceneId = m_sceneCombo->itemData(sceneIndex).toString();
+		m_sceneCombo->setCurrentIndex(sceneIndex);
+		m_widthSpinBox->setValue(640);
+		m_heightSpinBox->setValue(360);
+		saveRenderForm();
+		m_sceneCombo->setCurrentIndex(0);
+		m_widthSpinBox->setValue(800);
+		m_heightSpinBox->setValue(800);
+		restoreRenderForm();
+		check(m_sceneCombo->currentData().toString() == sceneId && m_widthSpinBox->value() == 640 && m_heightSpinBox->value() == 360, "the render form brings back the saved scene and image size");
+		m_sceneCombo->setCurrentIndex(0);
+		m_widthSpinBox->setValue(800);
+		m_heightSpinBox->setValue(800);
+	}
 	// Atomic writes: the new text replaces the old in one step and no temporary file is left beside it.
 	{
 		const QString dir = QDir::tempPath() + "/rt_atomic_selftest";

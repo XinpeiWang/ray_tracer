@@ -2,6 +2,7 @@
 #include "app_log.h"
 #include "startup_profile.h"
 #include "window_geometry.h"
+#include "render_form_memory.h"
 #include "scene_builder_widget.h"
 #include "icon_tint.h"
 #include "error_handler.h"
@@ -1048,6 +1049,25 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	// The taskbar button only exists once the window has been realised, so
 	// defer the COM setup to the event loop rather than doing it here.
 	QTimer::singleShot(0, this, []() { win_taskbar::init(); });
+	if (!qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) restoreRenderForm();
+}
+
+// The scene and image size of the last run. The scene is selected the way a click would (so its recommended samples, exposure and camera apply as usual);
+// a scene that no longer exists (a deleted My Scene) is skipped, and so is a size outside the spin boxes' range.
+void MainWindow::restoreRenderForm() {
+	const render_form_memory::Form form = render_form_memory::load();
+	SceneMetadataClient::SceneMetadata meta;
+	if (!form.sceneId.isEmpty() && SceneMetadataClient::sceneMetadata(form.sceneId, meta)) selectSceneById(form.sceneId);
+	if (form.width > 0 && m_widthSpinBox && m_heightSpinBox) {
+		m_widthSpinBox->setValue(form.width);
+		m_heightSpinBox->setValue(form.height);
+	}
+	AppLog::info(QStringLiteral("startup"), QStringLiteral("render form restored: scene \"%1\", %2 x %3").arg(form.sceneId).arg(form.width).arg(form.height));
+}
+
+void MainWindow::saveRenderForm() const {
+	if (!m_sceneCombo || !m_widthSpinBox || !m_heightSpinBox) return;
+	render_form_memory::save({m_sceneCombo->currentData().toString(), m_widthSpinBox->value(), m_heightSpinBox->value()});
 }
 
 void MainWindow::applyDefaultWindowGeometry() {
@@ -1097,6 +1117,7 @@ void MainWindow::resizeEvent(QResizeEvent *event) {
 
 void MainWindow::closeEvent(QCloseEvent *event) {
 	window_geometry::save(this);
+	saveRenderForm();
 	QMainWindow::closeEvent(event);
 }
 
