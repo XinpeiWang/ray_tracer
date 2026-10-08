@@ -295,6 +295,7 @@ endif()
 add_executable(cpu_integrator_tests
     unit/cpu_integrator_agreement_tests.cpp
     unit/scene_builder_tests.cpp
+    unit/scene_sky_tests.cpp
     unit/aov_pass_tests.cpp
     ${CMAKE_SOURCE_DIR}/../cpu_renderer/cpu_interface.cpp
     ${CMAKE_SOURCE_DIR}/../cpu_renderer/cpu_interface_bdpt.cpp

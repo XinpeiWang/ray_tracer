@@ -13,6 +13,7 @@ are the terms you inherit.
 | **Ray Tracing in One Weekend** series (Peter Shirley and others) | The first scenes, camera, vector and material code in `src/TheRestOfYourLife/` (each file's header says so) | CC0 1.0 Universal (public domain) |
 | **NanoVDB** (Contributors to the OpenVDB Project) | `src/external/nanovdb/` | Apache-2.0 (SPDX header in the sources) |
 | **tinyexr** (Syoyo Fujita and contributors; contains code derived from OpenEXR, Industrial Light & Magic) | `src/external/tinyexr.h` and `exr_reader.hh`, `streamreader.hh` | BSD-3-Clause; the licence text is at the top of the header |
+| **Hosek-Wilkie sky model** (Lukas Hosek and Alexander Wilkie; coefficient tables as shipped in Blender's Cycles) | `src/shared/hosek_sky.h` (a re-write of the evaluation code) and `src/external/hosek_sky_data.h` (the tables, copied unchanged) | BSD-3-Clause, full text in [`licenses/BSD-3-Clause-Hosek-Wilkie.txt`](licenses/BSD-3-Clause-Hosek-Wilkie.txt) |
 | **stb_image / stb_image_write** (Sean Barrett and contributors) | `src/external/stb_image.h`, `stb_image_write.h` | Public domain (or MIT, at your choice); see the end of each header |
 | **miniz** (Rich Geldreich and contributors) | `src/external/miniz.c`, `miniz.h` | Public domain ("unlicense" statement at the end of the file) |
 

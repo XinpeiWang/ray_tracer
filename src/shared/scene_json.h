@@ -345,6 +345,10 @@ inline std::string toJson(const Document& d) {
 		j.set("position", detail::toJson(l.position)).set("target", detail::toJson(l.target)).set("color", detail::toJson(l.color));
 		j.set("intensity", Json::number(l.intensity)).set("coneAngle", Json::number(l.coneAngle)).set("coneDelta", Json::number(l.coneDelta));
 		j.set("imageFile", Json::string(l.imageFile));
+		if (l.physicalSky) {   // (older files and ordinary lights do not have these)
+			j.set("physicalSky", Json::boolean(true)).set("sunElevation", Json::number(l.sky.sunElevation)).set("sunAzimuth", Json::number(l.sky.sunAzimuth));
+			j.set("turbidity", Json::number(l.sky.turbidity)).set("groundAlbedo", Json::number(l.sky.groundAlbedo));
+		}
 		lights.push(std::move(j));
 	}
 	root.set("lights", std::move(lights));
@@ -415,7 +419,9 @@ inline bool fromJson(const std::string& text, Document& out, std::string& err) {
 			ok = ok && detail::readStr(j, "name", l.name) && detail::readStr(j, "kind", kind) && lightKindFromString(kind, l.kind) &&
 			     detail::readVec(j, "position", l.position) && detail::readVec(j, "target", l.target) && detail::readRgb(j, "color", l.color) &&
 			     detail::readNum(j, "intensity", l.intensity) && detail::readNum(j, "coneAngle", l.coneAngle) &&
-			     detail::readNum(j, "coneDelta", l.coneDelta) && detail::readStr(j, "imageFile", l.imageFile);
+			     detail::readNum(j, "coneDelta", l.coneDelta) && detail::readStr(j, "imageFile", l.imageFile) && detail::readBool(j, "physicalSky", l.physicalSky) &&
+			     detail::readNum(j, "sunElevation", l.sky.sunElevation) && detail::readNum(j, "sunAzimuth", l.sky.sunAzimuth) &&
+			     detail::readNum(j, "turbidity", l.sky.turbidity) && detail::readNum(j, "groundAlbedo", l.sky.groundAlbedo);
 			if (!ok) break;
 			d.lights.push_back(l);
 		}

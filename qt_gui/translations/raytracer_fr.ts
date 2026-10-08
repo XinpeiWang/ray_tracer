@@ -4061,9 +4061,9 @@ direction). With the CPU renderer it is Intel&apos;s Open Image
 Denoise, on the default path tracer: the first time you tick it
 you are asked to download it (about 57 MB, once).</source>
         <translation>Applique un débruiteur IA au rendu terminé pour atténuer le grain. Avec le
-rendu GPU, c'est le débruiteur OptiX de NVIDIA (les deux modes GPU, guidé par
+rendu GPU, c&apos;est le débruiteur OptiX de NVIDIA (les deux modes GPU, guidé par
 la couleur de base et la direction de surface de chaque pixel). Avec le rendu
-CPU, c'est Open Image Denoise d'Intel, sur le tracé de chemins par défaut :
+CPU, c&apos;est Open Image Denoise d&apos;Intel, sur le tracé de chemins par défaut :
 la première fois que vous le cochez, il vous est proposé de le télécharger
 (environ 57 Mo, une seule fois).</translation>
     </message>
@@ -5972,13 +5972,13 @@ Sortie :
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="485"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="536"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>En attente</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="503"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="554"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 s</translation>
@@ -6178,6 +6178,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="322"/>
+        <location filename="../scene_builder_inspector.cpp" line="520"/>
         <source>Preset</source>
         <translation>Préréglage</translation>
     </message>
@@ -6200,7 +6201,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     <message>
         <location filename="../scene_builder_inspector.cpp" line="356"/>
         <location filename="../scene_builder_inspector.cpp" line="364"/>
-        <location filename="../scene_builder_inspector.cpp" line="498"/>
+        <location filename="../scene_builder_inspector.cpp" line="536"/>
         <source>Colour</source>
         <translation>Couleur</translation>
     </message>
@@ -6354,7 +6355,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="446"/>
-        <location filename="../scene_builder_widget.cpp" line="565"/>
+        <location filename="../scene_builder_widget.cpp" line="592"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Maillages (*.ply *.obj)</translation>
     </message>
@@ -6382,7 +6383,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="457"/>
-        <location filename="../scene_builder_inspector.cpp" line="499"/>
+        <location filename="../scene_builder_inspector.cpp" line="537"/>
         <source>Strength</source>
         <translation>Intensité</translation>
     </message>
@@ -6422,22 +6423,82 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Vers</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="493"/>
+        <location filename="../scene_builder_inspector.cpp" line="494"/>
+        <source>Sun &amp;&amp; sky (a clear sky for a time of day)</source>
+        <translation>Soleil et ciel (un ciel dégagé selon l&apos;heure de la journée)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="510"/>
+        <source>Time of day...</source>
+        <translation>Heure de la journée...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="511"/>
+        <source>Sunrise</source>
+        <translation>Lever du soleil</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="511"/>
+        <source>Morning</source>
+        <translation>Matin</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="511"/>
+        <source>Noon</source>
+        <translation>Midi</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="512"/>
+        <source>Afternoon</source>
+        <translation>Après-midi</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="512"/>
+        <source>Sunset</source>
+        <translation>Coucher du soleil</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="521"/>
+        <source>Sun height</source>
+        <translation>Hauteur du soleil</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="522"/>
+        <source>Sun direction</source>
+        <translation>Direction du soleil</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="523"/>
+        <source>Haze</source>
+        <translation>Brume</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="524"/>
+        <source>Ground brightness</source>
+        <translation>Luminosité du sol</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="525"/>
+        <source>The sky picture and the Sun light are made from these settings; change the sun here rather than moving the Sun light. Direction 0 is towards +X, 90 away from the starting camera, 180 towards -X, 270 behind it. Brightness 1 is a daylight scene.</source>
+        <translation>L&apos;image du ciel et la lumière du Soleil sont générées à partir de ces réglages ; changez le soleil ici plutôt que de déplacer la lumière du Soleil. La direction 0 va vers +X, 90 s&apos;éloigne de la caméra de départ, 180 va vers -X et 270 est derrière elle. Une luminosité de 1 correspond à une scène en plein jour.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="530"/>
         <source>Sky image</source>
         <translation>Image du ciel</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="493"/>
+        <location filename="../scene_builder_inspector.cpp" line="530"/>
         <source>Images (*.exr *.hdr *.png *.jpg *.jpeg)</source>
         <translation>Images (*.exr *.hdr *.png *.jpg *.jpeg)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="494"/>
+        <location filename="../scene_builder_inspector.cpp" line="531"/>
         <source>Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama.</source>
         <translation>Laissez l&apos;image vide pour un ciel de couleur unie. Une image est un panorama équirectangulaire (latitude-longitude).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="499"/>
+        <location filename="../scene_builder_inspector.cpp" line="537"/>
         <source>Brightness</source>
         <translation>Luminosité</translation>
     </message>
@@ -6607,7 +6668,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Voir la scène sous n&apos;importe quel angle et déplacer les éléments en 3D</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="286"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="337"/>
         <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>Aligner sur la grille</translation>
@@ -6707,14 +6768,14 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     <message>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
-        <location filename="../scene_builder_files.cpp" line="246"/>
+        <location filename="../scene_builder_files.cpp" line="255"/>
         <source>Cannot save</source>
         <translation>Enregistrement impossible</translation>
     </message>
     <message>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
-        <location filename="../scene_builder_files.cpp" line="213"/>
+        <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_render.cpp" line="112"/>
         <source>Could not write %1.</source>
         <translation>Impossible d&apos;écrire %1.</translation>
@@ -6731,32 +6792,32 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Enregistrer la scène</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="226"/>
+        <location filename="../scene_builder_files.cpp" line="235"/>
         <source>No scenes folder</source>
         <translation>Pas de dossier de scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="233"/>
+        <location filename="../scene_builder_files.cpp" line="242"/>
         <source>Add to the scene list</source>
         <translation>Ajouter à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="234"/>
+        <location filename="../scene_builder_files.cpp" line="243"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>Cette scène figure déjà dans la liste sous le nom « %1 ».</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="235"/>
+        <location filename="../scene_builder_files.cpp" line="244"/>
         <source>Add as a new scene</source>
         <translation>Ajouter comme nouvelle scène</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="236"/>
+        <location filename="../scene_builder_files.cpp" line="245"/>
         <source>Update the existing one</source>
         <translation>Mettre à jour la scène existante</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="251"/>
+        <location filename="../scene_builder_files.cpp" line="260"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -6765,17 +6826,17 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scènes).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="640"/>
+        <location filename="../scene_builder_widget.cpp" line="667"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objets, %4 lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="565"/>
+        <location filename="../scene_builder_widget.cpp" line="592"/>
         <source>Choose a mesh</source>
         <translation>Choisir un maillage</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="196"/>
+        <location filename="../scene_builder_files.cpp" line="205"/>
         <source>The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.</source>
         <translation>Le dossier des scènes (pbrt_scenes) est introuvable à côté du programme. Utilisez Enregistrer sous pour placer le fichier où vous voulez, et définissez la variable d&apos;environnement RAY_TRACER_PBRT_DIR sur ce dossier pour que le programme le liste.</translation>
     </message>
@@ -6800,37 +6861,37 @@ Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scène
         <translation>Brouillon : 480 pixels de large, 16 échantillons. Bonne : 720 de large, 64 échantillons. Optimale : 960 de large, 256 échantillons.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="250"/>
+        <location filename="../scene_builder_files.cpp" line="259"/>
         <source>Added to the scene list</source>
         <translation>Ajoutée à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="438"/>
+        <location filename="../scene_builder_widget.cpp" line="461"/>
         <source>Camera and image</source>
         <translation>Caméra et image</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="459"/>
+        <location filename="../scene_builder_widget.cpp" line="482"/>
         <source>, light</source>
         <translation>, lumière</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="634"/>
+        <location filename="../scene_builder_widget.cpp" line="661"/>
         <source>not saved yet</source>
         <translation>pas encore enregistrée</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="668"/>
+        <location filename="../scene_builder_widget.cpp" line="695"/>
         <source>No problems found.</source>
         <translation>Aucun problème détecté.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="674"/>
+        <location filename="../scene_builder_widget.cpp" line="701"/>
         <source>Fix this:</source>
         <translation>À corriger :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="674"/>
+        <location filename="../scene_builder_widget.cpp" line="701"/>
         <source>Note:</source>
         <translation>Remarque :</translation>
     </message>
@@ -7220,7 +7281,7 @@ Vérifiez que vous avez l&apos;autorisation d&apos;y écrire et que le disque n&
     <message>
         <location filename="../denoiser_installer.cpp" line="177"/>
         <source>Could not install the denoiser: its files could not be copied.</source>
-        <translation>Impossible d'installer le débruiteur : ses fichiers n'ont pas pu être copiés.</translation>
+        <translation>Impossible d&apos;installer le débruiteur : ses fichiers n&apos;ont pas pu être copiés.</translation>
     </message>
     <message>
         <location filename="../denoiser_installer.cpp" line="185"/>

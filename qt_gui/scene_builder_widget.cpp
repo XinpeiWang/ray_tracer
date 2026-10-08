@@ -355,6 +355,7 @@ void SceneBuilderWidget::edit(const QString &key, const std::function<void()> &m
 		pushUndo();
 	}
 	mutate();
+	if (skySignature() != m_skySignature) syncSunAndSky();
 	m_lastEditKey = key;
 	m_editClock.restart();
 	if (!m_logTimer) {
@@ -415,7 +416,29 @@ bool SceneBuilderWidget::redo() {
 	return true;
 }
 
+std::string SceneBuilderWidget::skySignature() const {
+	for (const Light &l : m_doc.lights)
+		if (l.kind == LightKind::Infinite && l.physicalSky) return scene_doc::sky::skyFileName(l.sky) + "|" + std::to_string(l.intensity);
+	return std::string();
+}
+
+void SceneBuilderWidget::syncSunAndSky() {
+	for (size_t i = 0; i < m_doc.lights.size(); ++i) {
+		if (m_doc.lights[i].kind != LightKind::Infinite || !m_doc.lights[i].physicalSky) continue;
+		const size_t before = m_doc.lights.size();
+		std::string error;
+		if (!scene_doc::sky::applySunAndSky(m_doc.lights, i, skyImageFolder().toStdString(), error)) {
+			AppLog::warn(QStringLiteral("builder"), QStringLiteral("Sun & sky: %1").arg(QString::fromStdString(error)));
+			m_doc.lights[i].physicalSky = false;   // nothing was generated: do not claim a sky that is not there
+		} else if (m_doc.lights.size() != before) {
+			rebuildList();   // a new "Sun" light was added
+		}
+		return;
+	}
+}
+
 void SceneBuilderWidget::documentChanged() {
+	m_skySignature = skySignature();
 	m_dirty = true;
 	refreshListLabels();
 	refreshProblems();
@@ -529,6 +552,10 @@ bool SceneBuilderWidget::dragObjectForTest(int index, const QPointF &deltaPx) {
 
 void SceneBuilderWidget::selectObject(int index) {
 	setSelection({SelKind::Object, index});
+}
+
+void SceneBuilderWidget::selectLight(int index) {
+	setSelection({SelKind::Light, index});
 }
 
 // The prop's objects go in together at the drop point, named alike ("Table top", "Table leg 1", ...; a second table gets "Table top 2"...), and the first
