@@ -44,6 +44,7 @@ add_executable(unit_tests
     unit/scene_view_math_tests.cpp
     unit/mesh_preview_tests.cpp
     unit/log_format_tests.cpp
+    unit/oidn_runtime_tests.cpp
     unit/job_queue_tests.cpp
     unit/scene_gizmo_tests.cpp
     unit/snapshot_history_tests.cpp
@@ -250,7 +251,7 @@ add_executable(unit_tests
     unit/z_sobol_sampler_tests.cpp
 )
 target_include_directories(unit_tests PRIVATE ${COMMON_INCLUDES})
-target_link_libraries(unit_tests PRIVATE GTest::gtest_main)
+target_link_libraries(unit_tests PRIVATE GTest::gtest_main ${CMAKE_DL_LIBS})   # ${CMAKE_DL_LIBS}: oidn_runtime.h loads Open Image Denoise with dlopen
 gtest_discover_tests(unit_tests)
 
 # Precompiled header for the ~150 test translation units: gtest and the standard headers every one of them parses.

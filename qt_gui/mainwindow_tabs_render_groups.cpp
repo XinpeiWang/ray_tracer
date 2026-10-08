@@ -954,7 +954,18 @@ void MainWindow::buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 	denoiserImageVideoLayout->setHorizontalSpacing(10);
 	denoiserImageVideoLayout->setContentsMargins(15, 22, 15, 12);
 
+#ifdef Q_OS_MAC
+	m_denoiseCheck = new QCheckBox(tr("AI denoiser (Open Image Denoise)"), optionsTab);
+#else
 	m_denoiseCheck = new QCheckBox(tr("OptiX AI denoiser (GPU only)"), optionsTab);
+#endif
+#ifdef Q_OS_MAC
+	m_denoiseCheck->setToolTip(
+		tr("Runs Intel's Open Image Denoise on the finished render to smooth\n"
+		"out graininess - a few samples per pixel then look like many.\n"
+		"Works with the GPU (Metal) renderer. The first time you tick it\n"
+		"you are asked to download the denoiser (about 50 MB, once)."));
+#else
 	m_denoiseCheck->setToolTip(
 		tr("Runs an AI denoiser on the finished render to smooth out\n"
 		"graininess, using extra information about each pixel's base\n"
@@ -962,6 +973,7 @@ void MainWindow::buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 		"blur. OptiX GPU only, both GPU modes (recursive and wavefront\n"
 		"each have their own denoiser) - not available under Metal\n"
 		"(macOS GPU rendering)."));
+#endif
 	styleCheckBox(m_denoiseCheck);
 	m_denoiseBlendSpin = new QDoubleSpinBox(optionsTab);
 	m_denoiseBlendSpin->setRange(0.0, 1.0);
@@ -976,6 +988,7 @@ void MainWindow::buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 		"full-strength denoising can smooth away."));
 	styleSpinBox(m_denoiseBlendSpin);
 	connect(m_denoiseCheck, &QCheckBox::toggled, m_denoiseBlendSpin, &QDoubleSpinBox::setEnabled);
+	connect(m_denoiseCheck, &QCheckBox::toggled, this, &MainWindow::onDenoiseToggled);   // a Mac offers to install the denoiser on first use (mainwindow_denoiser.cpp)
 	{
 		QWidget *denoiseRow = new QWidget(optionsTab);
 		QHBoxLayout *denoiseRowLayout = new QHBoxLayout(denoiseRow);
@@ -995,10 +1008,10 @@ void MainWindow::buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 			"default); raising it keeps back some of the original grain, "
 			"useful when full-strength denoising smooths away texture "
 			"you wanted to keep.\n\n"
-			"Grayed out? This needs the OptiX GPU backend (Windows) - "
-			"switch Renderer to GPU on the Settings tab. Both the "
-			"recursive and wavefront GPU modes support it; it has no "
-			"Metal equivalent, so it stays grayed out on macOS.")), denoiseRow);
+			"Grayed out? This needs the GPU renderer - switch Renderer to "
+			"GPU on the Settings tab. On Windows it is NVIDIA's OptiX "
+			"denoiser (both GPU modes); on a Mac it is Intel's Open Image "
+			"Denoise with the Metal renderer.")), denoiseRow);
 	}
 
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW

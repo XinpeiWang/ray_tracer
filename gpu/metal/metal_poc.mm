@@ -76,6 +76,7 @@
 // see that file and metal_poc_host_math.h's own comment for the full
 // "why" (closing a real, previously-undocumented testing gap).
 #include "metal_poc_host_math.h"
+#include "../../src/shared/oidn_runtime.h"
 
 // pbrt_load.h -> pbrt_flatten.h's InfiniteLight image decode path needs
 // tinyexr's real implementation linked in somewhere - cpu_renderer gets
@@ -865,6 +866,19 @@ void MetalPocApp::applyCameraOverride(double cam_x, double cam_y, double cam_z) 
 // (chromatic aberration, then lens vignette, then the selected tonemap
 // operator, then the real sRGB OETF, then bilateral denoise)
 bool MetalPocApp::postProcessAndWrite() {
+    // --denoise: Open Image Denoise on the linear HDR image (before the .exr is written or the PNG is tone-mapped). When it ran, the PNG's own bilateral blur
+    // is skipped: one denoiser, not two.
+    bool oidnDenoised = false;
+    if (denoiseRequested) {
+        std::string oidnError;
+        if (oidn_runtime::denoiseHdr(pixels.data(), (int)width, (int)height, 4, denoiseBlend, oidnError)) {
+            oidnDenoised = true;
+            fprintf(stderr, "Denoised with Open Image Denoise (%s)\n", oidn_runtime::libraryPath().c_str());
+        } else {
+            fprintf(stderr, "Warning: --denoise: %s - rendering without it.\n", oidnError.c_str());
+        }
+    }
+
     // ".exr" output: linear HDR radiance straight from the GPU buffer, no
     // tonemap/vignette/chromatic-aberration/denoise/quantization - the same
     // contract the CPU and OptiX backends' EXR path has (see
@@ -915,7 +929,7 @@ bool MetalPocApp::postProcessAndWrite() {
     // floor's own tile edges, confirming this knob really can wash
     // out real detail if pushed too far, not just theoretically.
     std::vector<uint8_t> denoised(width * height * 3);
-    if (effects.denoise) bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
+    if (effects.denoise && !oidnDenoised) bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
     else denoised = ldr;
 
     // stbi_write_png() returns 0 on failure (unwritable/nonexistent
@@ -1033,6 +1047,9 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // See MetalPocApp::exposureValue's own comment for why this is a
         // direct field poke rather than a new argv[] slot.
         app.exposureValue = (float)options.exposure;
+        app.denoiseRequested = options.denoise;
+        // RenderOptions::denoise_blend is the share of the ORIGINAL image kept (0 = fully denoised, as in OptiX); oidn_runtime's blend is the share denoised.
+        app.denoiseBlend = 1.0f - std::min(1.0f, std::max(0.0f, options.denoise_blend));
         app.adaptiveSamplingRequested = options.adaptive_sampling;
         app.adaptiveThresholdValue = (float)options.adaptive_threshold;
         // Always true here: metal_render_main() only renders pbrt-backed

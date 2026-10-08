@@ -681,7 +681,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="88"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="362"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
         <source>Open Output &amp;Folder</source>
         <translation>出力フォルダーを開く(&amp;F)</translation>
     </message>
@@ -692,7 +692,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="98"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="374"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>既定のビューアーで開く(&amp;V)</translation>
     </message>
@@ -1634,11 +1634,37 @@ Missing now:
         <translation>写真ヘルパーをインストール中</translation>
     </message>
     <message>
+        <location filename="../mainwindow_denoiser.cpp" line="21"/>
+        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <source>Install the denoiser</source>
+        <translation>デノイザーのインストール</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="22"/>
+        <source>The AI denoiser is Intel&apos;s Open Image Denoise (open source, Apache-2.0). It is not part of this app: it is downloaded once (%1) from its own release page on GitHub (github.com/RenderKit/oidn), checked against a known checksum, and kept in your user folder.
+
+Download it now?</source>
+        <translation>AI デノイザーは Intel の Open Image Denoise です (オープンソース、Apache-2.0)。このアプリには含まれておらず、GitHub の公式リリースページ (github.com/RenderKit/oidn) から 1 回だけダウンロードされ (%1)、既知のチェックサムで検証されて、ユーザーフォルダーに保存されます。
+
+今すぐダウンロードしますか?</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="29"/>
         <location filename="../mainwindow_downloads.cpp" line="75"/>
         <location filename="../mainwindow_downloads.cpp" line="162"/>
         <location filename="../mainwindow_photo_install.cpp" line="86"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="30"/>
+        <source>Installing the denoiser</source>
+        <translation>デノイザーをインストールしています</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <source>The denoiser could not be installed: %1</source>
+        <translation>デノイザーをインストールできませんでした: %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="117"/>
@@ -2545,7 +2571,7 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - onl
         <translation>SVGF デノイザー（実験的）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="83"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="84"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
         <translation>⚠ ライブプレビューは GPU のプログレッシブパストレーサーを直接使用します - このタブの設定はライブプレビューには適用されません。ただし、下にある「デノイザー」セクション自体の「ライブプレビュー」サブセクションだけは例外です。</translation>
     </message>
@@ -3273,7 +3299,7 @@ SVGFデノイザー: もう一つの、実験的なノイズ低減フィルタ�
         <translation>ファイアフライクランプ(--maxcomponentvalue)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="957"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="960"/>
         <source>OptiX AI denoiser (GPU only)</source>
         <translation>OptiX AIデノイザー(GPUのみ)</translation>
     </message>
@@ -3407,17 +3433,17 @@ rather than per whole sample). Not implemented under Metal
         <translation>OptiX検証モード(低速・デバッグ専用)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1026"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1039"/>
         <source>Crop Window</source>
         <translation>クロップウィンドウ</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1038"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1051"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>フレームの一部のみをレンダリング(--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="79"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="80"/>
         <source>⚠ Live Preview uses the Metal progressive path tracer directly - none of the settings on this tab apply to it, except the &quot;Live Preview Settings&quot; group below.</source>
         <translation>⚠ ライブプレビューは Metal のプログレッシブパストレーサーを直接使用します。下の「ライブプレビュー設定」グループを除き、このタブの設定は適用されません。</translation>
     </message>
@@ -3719,7 +3745,7 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>GPU レンダリング処理そのものの内部で追加の正確性チェックを有効にし、放っておくと誤った画像を黙って生成したり予測できないクラッシュを起こしたりするような種類のバグを検出します。レンダラー自身の GPU コードを開発する人向けのデバッグ補助であり、通常のレンダリングには役立ちません。性能コストが実際にかかり、正しいレンダリングの見た目は変わりません。OptiX GPU バックエンド（Windows）専用で、Metal には相当する機能がないため、macOS でレンダラーを GPU にしてもグレーアウトのままです。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="959"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="970"/>
         <source>Runs an AI denoiser on the finished render to smooth out
 graininess, using extra information about each pixel&apos;s base
 color and surface direction to do a better job than a plain
@@ -3729,16 +3755,7 @@ each have their own denoiser) - not available under Metal
         <translation>完成したレンダリングに AI デノイザーをかけて粒状感を滑らかにします。単純なぼかしよりうまく処理できるよう、各ピクセルの基本色や表面の向きに関する追加情報を使います。OptiX GPU 専用で、両方の GPU モードに対応します（再帰とウェーブフロントにはそれぞれ専用のデノイザーがあります）。Metal（macOS の GPU レンダリング）では利用できません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="986"/>
-        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
-
-A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
-
-Grayed out? This needs the OptiX GPU backend (Windows) - switch Renderer to GPU on the Settings tab. Both the recursive and wavefront GPU modes support it; it has no Metal equivalent, so it stays grayed out on macOS.</source>
-        <translation>サンプル数が少ないと、レンダリングは本質的にざらついて見えます。そのため通常はサンプル数を増やすほどきれいになります（ただしレンダリングは遅くなります）。デノイザーはそのざらつきを認識して後から消すよう学習した AI モデルで、追加のレイをトレースせずに済みます。細かいディテールをいくらか犠牲にして、きれいに見える画像をより速く得る方法です。右側の数値は、ノイズのある元画像と完全にノイズ除去した結果の混合比です。0 は完全にノイズ除去（デフォルト）で、上げるほど元の粒状感が残ります。フルパワーのノイズ除去で残したいテクスチャまで滑らかになってしまうときに便利です。グレーアウトしている場合は、OptiX GPU バックエンド（Windows）が必要です。設定タブでレンダラーを GPU に切り替えてください。再帰とウェーブフロントの両方の GPU モードが対応しており、Metal には相当する機能がないため macOS ではグレーアウトのままです。</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1040"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1053"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
 only; works on the CPU and both GPU backends (OptiX and
@@ -3746,7 +3763,7 @@ Metal). Pixels outside the rectangle are left black.</source>
         <translation>フレームの一部の矩形だけにレンダリングを制限します。矩形は画像全体に対する 0〜1 の割合で指定します。デフォルトのパストレーサー専用で、CPU と両方の GPU バックエンド（OptiX と Metal）で動作します。矩形の外側のピクセルは黒のままになります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1239"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Default path tracer only. On the GPU (both OptiX and
 Metal) renders are already repeatable by default; the seed picks a
@@ -3894,7 +3911,21 @@ Purely informational: it never changes the rendered image, it just tells you wha
 あくまで情報提供のためのもので、レンダリングされる画像を変えることはありません。レンダラーが実際に何を行ったかを伝えるだけです。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="973"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="958"/>
+        <source>AI denoiser (Open Image Denoise)</source>
+        <translation>AI デノイザー (Open Image Denoise)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="964"/>
+        <source>Runs Intel&apos;s Open Image Denoise on the finished render to smooth
+out graininess - a few samples per pixel then look like many.
+Works with the GPU (Metal) renderer. The first time you tick it
+you are asked to download the denoiser (about 50 MB, once).</source>
+        <translation>完成したレンダリングに Intel の Open Image Denoise を適用してノイズを滑らかにします。ピクセルあたりのサンプル数が少なくても多いように見えます。
+GPU (Metal) レンダラーで使えます。初めてオンにしたときに、デノイザーのダウンロード (約 50 MB、1 回のみ) を求められます。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="985"/>
         <source>Blends between the grainy original and the fully denoised
 result (0.0 = fully denoised, 1.0 = original grainy image).
 Raise this toward 1.0 to keep back more fine texture/grain that
@@ -3902,12 +3933,25 @@ full-strength denoising can smooth away.</source>
         <translation>ノイズが残った元の画像と、完全にデノイズされた結果との間をブレンドします(0.0で完全にデノイズ、1.0で元のノイズが残った画像)。1.0に近づけるほど、フル強度のデノイズでは失われてしまう細かいテクスチャやノイズを多く残せます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1029"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="999"/>
+        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
+
+A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
+
+Grayed out? This needs the GPU renderer - switch Renderer to GPU on the Settings tab. On Windows it is NVIDIA&apos;s OptiX denoiser (both GPU modes); on a Mac it is Intel&apos;s Open Image Denoise with the Metal renderer.</source>
+        <translation>サンプル数が少ないとレンダリングは本質的にざらついて見えるため、サンプル数を増やすほど通常はきれいになります (その分レンダリングは遅くなります)。
+
+デノイザーは、そのざらつきを認識して後から滑らかにするよう訓練された AI モデルで、レイを追加で追跡せずに済みます。細かなディテールをいくらか犠牲にして、きれいに見える画像をより速く得る方法です。右の数値は、ノイズのある元画像と完全にデノイズした結果の混合比で、0 が完全なデノイズ (既定) です。上げると元のざらつきが残り、完全なデノイズで残したいテクスチャが滑らかになりすぎる場合に役立ちます。
+
+グレー表示ですか? GPU レンダラーが必要です。設定タブでレンダラーを GPU に切り替えてください。Windows では NVIDIA の OptiX デノイザー (両方の GPU モード)、Mac では Metal レンダラーと Intel の Open Image Denoise です。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1042"/>
         <source>Render only a rectangular slice of the full frame, given as fractions from 0 to 1 of the image&apos;s width and height - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>画像の幅・高さに対する0から1の割合で指定した、フレーム全体の中の矩形領域だけをレンダリングします。画像全体のコストをかけずに、シーンの特定の部分だけを素早く試しレンダリングしたいときに便利です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1046"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1059"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame&apos;s width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total number of samples cleans up much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -3920,63 +3964,63 @@ Off by default (the full frame). If a loaded .pbrt scene file already requests i
 既定ではオフ(フレーム全体)です。読み込んだ.pbrtシーンファイルがすでに独自のクロップ領域を指定している場合、これをオンにすると下の矩形設定で上書きされます。オフのままにしておくと、シーン自身の指定(あれば)がそのまま使われます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1090"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1103"/>
         <source>Left (X0):</source>
         <translation>左(X0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1091"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1104"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>クロップ矩形の左端で、フレーム全体の幅に対する割合として表されます（0 = 左端、1 = 右端）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1093"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1106"/>
         <source>Top (Y0):</source>
         <translation>上(Y0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1094"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1107"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>クロップ矩形の上端で、フレーム全体の高さに対する割合として表されます（0 = 上端、1 = 下端）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1096"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1109"/>
         <source>Right (X1):</source>
         <translation>右(X1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1097"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1110"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>クロップ矩形の右端で、フレーム全体の幅に対する割合として表されます——何かをレンダリングするには「左（X0）」より大きい必要があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1099"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1112"/>
         <source>Bottom (Y1):</source>
         <translation>下(Y1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1100"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1113"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>クロップ矩形の下端で、フレーム全体の高さに対する割合として表されます——何かをレンダリングするには「上（Y0）」より大きい必要があります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1143"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1156"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="480"/>
         <source>Depth of Field</source>
         <translation>被写界深度</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1146"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1159"/>
         <source>Override the active scene&apos;s own camera lens diameter/focus distance without editing its scene file - only affects scenes loaded from a scene file; built-in demo-gallery scenes keep their own fixed camera.</source>
         <translation>現在使用しているシーン自身のカメラのレンズ径・ピント距離を、シーンファイルを直接編集することなく上書きします。シーンファイルから読み込んだシーンにのみ影響し、内蔵デモギャラリーのシーンは常に自身の固定カメラを使用します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1155"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1168"/>
         <source>Override depth of field (--aperture/--focus-distance)</source>
         <translation>被写界深度を上書き(--aperture/--focus-distance)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1157"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1170"/>
         <source>Sets the camera&apos;s lens diameter and focus distance, overriding
 whatever the scene&apos;s own Camera directive requests. Only affects
 scenes loaded from a scene file - has no effect on the built-in
@@ -3984,7 +4028,7 @@ demo gallery, which keeps its own fixed camera.</source>
         <translation>シーン自身のCameraディレクティブが指定する内容を上書きして、カメラのレンズ径とピント距離を設定します。シーンファイルから読み込んだシーンにのみ影響し、常に固定カメラを使用する内蔵デモギャラリーには影響しません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1163"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1176"/>
         <source>Thin-lens depth-of-field blur is already fully supported for any scene loaded from a scene file - a &quot;lensradius&quot;/&quot;focaldistance&quot; Camera directive in the file is all it takes. This lets you set or change that without hand-editing the file: Aperture is the lens diameter in world units (0 = pinhole-sharp, no blur), and Focus Distance is how far away the plane of sharp focus sits.
 
 Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loaded from a scene file - the built-in demo gallery&apos;s scenes keep their own author-chosen fixed camera regardless of this setting.</source>
@@ -3993,44 +4037,44 @@ Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loa
 既定ではオフ(シーン自身のカメラをそのまま使用)です。シーンファイルから読み込んだシーンにのみ影響し、内蔵デモギャラリーのシーンは、この設定に関わらず作者が選んだ固定カメラをそのまま使用します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1181"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="664"/>
         <source>Aperture:</source>
         <translation>絞り:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1182"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1195"/>
         <source>Lens diameter in world units - larger values blur more. 0 means pinhole-sharp (no blur).</source>
         <translation>ワールド単位でのレンズ径です。値が大きいほどぼけが強くなります。0にするとピンホールのようにくっきりし、ぼけがなくなります。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1193"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1206"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="681"/>
         <source>Focus Distance:</source>
         <translation>ピント距離:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1207"/>
         <source>Distance from the camera to the plane of sharp focus, in world units.</source>
         <translation>カメラからピントが合う面までの距離を、ワールド単位で指定します。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1213"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
         <source>Reproducibility</source>
         <translation>再現性</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1216"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1229"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>乱数シードを固定することで、後の実行でもレンダリングをピクセル単位で正確に再現できるようにします——ランダムなノイズの違いに惑わされずに設定変更を比較したい場合に便利です。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1224"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1237"/>
         <source>Reproducible render (--seed)</source>
         <translation>再現可能なレンダリング(--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1232"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1245"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -4039,47 +4083,47 @@ Off by default (genuinely random every render).</source>
 既定では無効です(毎回本当にランダムなレンダリングになります)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1252"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1265"/>
         <source>Seed:</source>
         <translation>シード:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1253"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1266"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>レンダリングの乱数生成器の種として使用される特定の整数です。上の「再現可能なレンダリング」がチェックされている場合にのみ有効です——同じシーン/設定で同じシードを使えば、常にピクセル単位で同一のノイズが生成されます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="115"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="116"/>
         <source>Render Options</source>
         <translation>レンダリングオプション</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="127"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="128"/>
         <source>Saved, but the scene list could not list it until the program is restarted.</source>
         <translation>保存しましたが、プログラムを再起動するまでシーンリストには表示できません。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="131"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="132"/>
         <source>Added to the scene list as %1 (Settings tab).</source>
         <translation>%1 としてシーンリストに追加しました (設定タブ)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="134"/>
         <source>Scene Builder</source>
         <translation>シーンビルダー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="368"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>アクティブなタブのレンダリング結果が格納されているフォルダをエクスプローラーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="380"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>アクティブなタブのレンダリング結果をシステムのビューアーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="403"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="406"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
     </message>
@@ -4108,6 +4152,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>先にシーンを選択してください</translation>
     </message>
     <message>
+        <location filename="../mainwindow_denoiser.cpp" line="29"/>
         <location filename="../mainwindow_live_preview.cpp" line="262"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
@@ -4134,13 +4179,13 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>[ライブプレビュー] エラー: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="446"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="449"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;なぜこのように見えるのか&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="572"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="575"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
         <location filename="../mainwindow_tabs_settings_groups.cpp" line="277"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
@@ -4148,12 +4193,12 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>一時停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
         <source>Play</source>
         <translation>再生</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="595"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="598"/>
         <source>Video playback error (%1): %2</source>
         <translation>動画再生エラー(%1): %2</translation>
     </message>
@@ -5636,13 +5681,13 @@ Output:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="384"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="387"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>待機中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="402"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="405"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 秒</translation>
@@ -6261,7 +6306,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>シーンを任意の方向から見て、3D で物を動かします</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="256"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="259"/>
         <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>グリッドにスナップ</translation>
@@ -6834,6 +6879,57 @@ Check that you have permission to write there and that the disk is not full.</so
         <location filename="../asset_downloader.cpp" line="157"/>
         <source>Could not move the downloaded file into place at %1.</source>
         <translation>ダウンロードしたファイルを %1 に移動できませんでした。</translation>
+    </message>
+</context>
+<context>
+    <name>denoiser_installer</name>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="76"/>
+        <source>about %1 MB</source>
+        <translation>約 %1 MB</translation>
+    </message>
+</context>
+<context>
+    <name>denoiser_installer::Installer</name>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="86"/>
+        <source>This computer cannot install the denoiser here.</source>
+        <translation>このコンピューターではデノイザーをインストールできません。</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="102"/>
+        <source>Downloading the denoiser...</source>
+        <translation>デノイザーをダウンロードしています...</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="117"/>
+        <source>Unpacking the denoiser...</source>
+        <translation>デノイザーを展開しています...</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="125"/>
+        <source>Could not unpack the download: %1</source>
+        <translation>ダウンロードを展開できませんでした: %1</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="131"/>
+        <source>The download did not contain the denoiser library.</source>
+        <translation>ダウンロードにデノイザーのライブラリが含まれていませんでした。</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="139"/>
+        <source>Could not install the denoiser: %1</source>
+        <translation>デノイザーをインストールできませんでした: %1</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="147"/>
+        <source>The denoiser files are not where they should be after installing.</source>
+        <translation>インストール後、デノイザーのファイルが所定の場所にありません。</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="150"/>
+        <source>The denoiser is installed.</source>
+        <translation>デノイザーをインストールしました。</translation>
     </message>
 </context>
 <context>
