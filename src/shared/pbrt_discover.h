@@ -33,6 +33,7 @@
 #include <vector>
 
 #include "pbrt_flatten.h"
+#include "pbrt_asset_check.h"
 #include "scene_document.h"
 #include "pbrt_scene.h"
 
@@ -410,11 +411,29 @@ inline std::vector<std::string> &extraSceneFiles() {
 	return files;
 }
 
+// Scenes the user keeps outside the application folder: the Scene Builder's "Add to scene list" saves here when the program lives somewhere it must not
+// write (a macOS .app bundle - writing into it breaks its seal - or a read-only disk image). The folder is <RAY_TRACER_USER_ASSETS>/user_scenes (the GUI
+// sets that variable to its per-user data folder); "" when the variable is not set, so command-line runs are unaffected.
+inline std::string userSceneDir() { return pbrt_asset_check::userSceneDir(); }
+
 inline std::vector<Discovered> scanDefaultPaths() {
 	std::vector<Discovered> found;
 	for (const std::string &dir : defaultSearchPaths()) {
 		found = scanDirectory(dir);
 		if (!found.empty()) break;
+	}
+	// Scenes saved in the per-user folder follow the scanned ones, numbered like any file the user named (so adding one never shifts a bundled scene's id).
+	if (const std::string userDir = userSceneDir(); !userDir.empty()) {
+		for (Discovered &d : scanDirectory(userDir)) {
+			bool already = false;
+			for (const Discovered &f : found) {
+				std::error_code ec;
+				if (std::filesystem::equivalent(f.path, d.path, ec) && !ec) { already = true; break; }
+			}
+			if (already) continue;
+			d.userFile = true;
+			found.push_back(std::move(d));
+		}
 	}
 	for (const std::string &path : extraSceneFiles()) {
 		// A file the scan already found (the user named a scene from pbrt_scenes/) keeps its scanned entry.
