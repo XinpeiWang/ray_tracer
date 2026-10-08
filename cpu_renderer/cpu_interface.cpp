@@ -864,7 +864,7 @@ extern "C" int cpu_scene_count() {
 }
 
 extern "C" int cpu_refresh_user_scenes() {
-	return refresh_user_scenes();
+	return refresh_user_scenes(/*prune=*/true);   // the GUI's call: also forget scenes whose file was deleted
 }
 
 extern "C" const char* cpu_scene_id(int index) {

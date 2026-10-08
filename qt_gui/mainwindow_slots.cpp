@@ -1411,6 +1411,7 @@ void MainWindow::onSceneChanged(int index) {
 	// resolves the id via the registry position instead.
 	QString scene_id = m_sceneCombo ? m_sceneCombo->itemData(index).toString()
 									 : SceneMetadataClient::sceneIdAtIndex(index);
+	updateMyScenesButtons(SceneMetadataClient::sceneCategory(scene_id));   // Delete Scene follows the selection (My Scenes only)
 
 	// Keeps m_sceneGrid's highlighted tile in sync with whatever scene just
 	// became current, regardless of which view (combo, grid, search, tab

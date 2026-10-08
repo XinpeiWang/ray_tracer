@@ -9,6 +9,7 @@
 #include "atomic_file.h"
 #include "crash_recovery.h"
 #include "render_queue_model.h"
+#include "scene_metadata_client.h"
 #include "scene_builder_widget.h"
 
 #include <QApplication>
@@ -462,6 +463,12 @@ void MainWindow::runTourSelfTest(const std::function<void(const QString &)> &log
 	const int h = qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") : 800;
 	resize(w, h);
 	if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST_THEME")) switchTheme(qEnvironmentVariable("RT_GUI_SELFTEST_THEME"));   // e.g. solarized-light
+	if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST_MYSCENE") && m_sceneBuilder) {   // show the Settings tab with a scene of the user's own selected
+		QString error;
+		const QString file = m_sceneBuilder->addToSceneList(&error);
+		SceneMetadataClient::refreshUserScenes();
+		selectSceneById(SceneMetadataClient::sceneIdForFile(file));
+	}
 	auto *index = new int(0);
 	auto *step = new QTimer(this);
 	connect(step, &QTimer::timeout, this, [this, step, index, log, shot]() {
@@ -481,4 +488,31 @@ void MainWindow::runTourSelfTest(const std::function<void(const QString &)> &log
 		++*index;
 	});
 	step->start(900);
+}
+
+// Part of the "builder" mode: Delete Scene and Delete All My Scenes (without their questions): the files go, the scenes leave the list at once, the selection
+// moves to a neighbour, and the buttons follow the category.
+void MainWindow::selfTestDeleteScenes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check) {
+	QString error;
+	sb->setSceneName("Delete test A");
+	const QString fileA = sb->addToSceneList(&error);
+	sb->setSceneName("Delete test B");
+	const QString fileB = sb->addToSceneList(&error);
+	SceneMetadataClient::refreshUserScenes();
+	const QString idA = SceneMetadataClient::sceneIdForFile(fileA), idB = SceneMetadataClient::sceneIdForFile(fileB);
+	check(!idA.isEmpty() && !idB.isEmpty() && idA != idB, "two scenes were added to the list: " + idA + ", " + idB);
+	selectSceneById(idA);
+	check(!m_myScenesRow->isHidden() && m_deleteSceneButton->isEnabled() && m_deleteAllScenesButton->isEnabled(), "under My Scenes the delete buttons are shown and enabled");
+	check(deleteUserScenes({idA}, idB) == 1 && !QFile::exists(fileA) && QFile::exists(fileB), "Delete Scene removes that scene's file and no other");
+	check(SceneMetadataClient::sceneCategory(idA).isEmpty() && SceneMetadataClient::sceneCategory(idB) == QString("My Scenes"), "the deleted scene is gone from the list at once, the other stays");
+	check(m_sceneCombo->currentData().toString() == idB, "the selection moved to the neighbouring scene");
+	check(m_sceneCombo->findData(idA) < 0, "and the scene picker no longer offers the deleted one");
+	check(!userSceneFileForId(idA).isEmpty() == false, "its file is no longer found");
+	QStringList mine = myScenesIds();
+	check(deleteUserScenes(mine, QString()) == mine.size() && myScenesIds().isEmpty(), "Delete All My Scenes removes every scene the user made");
+	check(!QFile::exists(fileB), "including the file");
+	bool tabStillThere = false;
+	for (int i = 0; m_sceneCategoryTabs && i < m_sceneCategoryTabs->count(); ++i) tabStillThere = tabStillThere || m_sceneCategoryTabs->tabData(i).toString() == QString("My Scenes");
+	check(!tabStillThere, "the My Scenes tab is gone when none are left");
+	check(!m_sceneCombo->currentData().toString().isEmpty() && m_myScenesRow->isHidden(), "a built-in scene is selected and the delete buttons are hidden");
 }

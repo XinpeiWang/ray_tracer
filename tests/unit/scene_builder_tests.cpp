@@ -854,3 +854,55 @@ TEST(SceneBuilderRegistryTest, ANamedFileThatArrivesAfterTheSceneListIsBuiltIsTo
 	std::remove(fresh.c_str());
 	EXPECT_EQ(cpu_register_scene_file(nullptr, id, sizeof id), 1);
 }
+
+// A scene the user deletes (the GUI's "Delete scene" / "Delete all my scenes") leaves the list on the next refresh, which is also what lists a new one: the
+// list follows the per-user folder in both directions, and a deleted scene's id no longer finds anything.
+TEST(SceneBuilderRegistryTest, ADeletedUserSceneLeavesTheListOnTheNextRefresh) {
+	namespace fs = std::filesystem;
+	const fs::path root = fs::temp_directory_path() / ("rt_user_scenes_test_" + std::to_string(::testing::UnitTest::GetInstance()->random_seed()));
+	fs::remove_all(root);
+	fs::create_directories(root / "user_scenes");
+	const char* old = std::getenv("RAY_TRACER_USER_ASSETS");
+	const std::string oldValue = old ? old : "";
+#ifdef _WIN32
+	_putenv_s("RAY_TRACER_USER_ASSETS", root.string().c_str());
+#else
+	setenv("RAY_TRACER_USER_ASSETS", root.string().c_str(), 1);
+#endif
+	const size_t before = get_scene_registry().size();
+	for (const char* name : {"gone-scene.pbrt", "kept-scene.pbrt"}) {
+		std::ofstream out(root / "user_scenes" / name, std::ios::binary);
+		out << toPbrt(makeStarterScene());
+	}
+	EXPECT_EQ(cpu_refresh_user_scenes(), 2) << "both files are listed";
+	EXPECT_EQ(get_scene_registry().size(), before + 2);
+	std::string goneId, keptId;
+	for (const auto& kv : pbrt_scene_registry::paths()) {
+		const std::string file = fs::path(kv.second).filename().string();
+		if (file == "gone-scene.pbrt") goneId = kv.first;
+		if (file == "kept-scene.pbrt") keptId = kv.first;
+	}
+	ASSERT_FALSE(goneId.empty());
+	ASSERT_FALSE(keptId.empty());
+	ASSERT_NE(find_scene(goneId), nullptr);
+
+	fs::remove(root / "user_scenes" / "gone-scene.pbrt");
+	cpu_refresh_user_scenes();
+	EXPECT_EQ(get_scene_registry().size(), before + 1) << "the deleted scene left the list";
+	EXPECT_EQ(find_scene(goneId), nullptr);
+	EXPECT_EQ(pbrt_scene_registry::paths().count(goneId), 0u);
+	ASSERT_NE(find_scene(keptId), nullptr) << "the other scene is untouched";
+
+	fs::remove(root / "user_scenes" / "kept-scene.pbrt");
+	cpu_refresh_user_scenes();
+	EXPECT_EQ(get_scene_registry().size(), before);
+	EXPECT_EQ(cpu_refresh_user_scenes(), 0) << "a refresh with nothing new or gone changes nothing";
+
+#ifdef _WIN32
+	_putenv_s("RAY_TRACER_USER_ASSETS", oldValue.c_str());
+#else
+	if (old) setenv("RAY_TRACER_USER_ASSETS", oldValue.c_str(), 1);
+	else unsetenv("RAY_TRACER_USER_ASSETS");
+#endif
+	fs::remove_all(root);
+}
