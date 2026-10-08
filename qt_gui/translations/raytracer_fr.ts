@@ -537,7 +537,7 @@
         <translation>Réinitialiser la taille de police du journal</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="210"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="217"/>
         <source>Log font size: %1 pt</source>
         <translation>Taille de police du journal : %1 pt</translation>
     </message>
@@ -590,55 +590,55 @@
         <translation>Ray Tracer - Moteur de rendu par path tracing</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1020"/>
+        <location filename="../mainwindow.cpp" line="1022"/>
         <source>Ray Tracer</source>
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1245"/>
+        <location filename="../mainwindow.cpp" line="1262"/>
         <location filename="../mainwindow_slots.cpp" line="342"/>
         <source>START &amp;RENDER</source>
         <translation>DÉMARRER LE &amp;RENDU</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1255"/>
+        <location filename="../mainwindow.cpp" line="1272"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>Rend la scène sélectionnée avec les paramètres actuels
 (la met en file d&apos;attente si un rendu est déjà en cours)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1266"/>
+        <location filename="../mainwindow.cpp" line="1283"/>
         <source>S&amp;TOP RENDER</source>
         <translation>ARRÊ&amp;TER LE RENDU</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1273"/>
+        <location filename="../mainwindow.cpp" line="1290"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>Arrête le rendu en cours et abandonne son résultat</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1286"/>
+        <location filename="../mainwindow.cpp" line="1303"/>
         <location filename="../mainwindow_queue.cpp" line="347"/>
         <location filename="../mainwindow_slots.cpp" line="120"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>&amp;METTRE LE RENDU EN PAUSE</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1292"/>
+        <location filename="../mainwindow.cpp" line="1309"/>
         <location filename="../mainwindow_actions.cpp" line="80"/>
         <location filename="../mainwindow_slots.cpp" line="122"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>Met en pause le rendu en cours, tel quel - Reprendre continue exactement à partir des mêmes pixels</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1301"/>
+        <location filename="../mainwindow.cpp" line="1318"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
-        <translation>ABANDONNER ET PASSER AU S&amp;UIVANT</translation>
+        <translation>ABANDONNER ET S&amp;UIVANT</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1308"/>
+        <location filename="../mainwindow.cpp" line="1325"/>
         <location filename="../mainwindow_actions.cpp" line="85"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>Abandonne la sortie du rendu en cours et démarre immédiatement le prochain travail en file d&apos;attente</translation>
@@ -714,7 +714,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="113"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="257"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="264"/>
         <source>&amp;Save Log…</source>
         <translation>&amp;Enregistrer le journal…</translation>
     </message>
@@ -725,7 +725,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="124"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="262"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="269"/>
         <source>C&amp;lear Log</source>
         <translation>&amp;Vider le journal</translation>
     </message>
@@ -751,7 +751,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="137"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="271"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="278"/>
         <source>Open the folder holding the program&apos;s log file (send it with a bug report)</source>
         <translation>Ouvre le dossier contenant le fichier journal du programme (à joindre à un rapport de bogue)</translation>
     </message>
@@ -943,7 +943,7 @@
         <translation> · Vidéo (%1f)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_queue.cpp" line="490"/>
+        <location filename="../mainwindow_queue.cpp" line="493"/>
         <source>Clear Render Queue</source>
         <translation>Vider la file d&apos;attente de rendu</translation>
     </message>
@@ -953,7 +953,7 @@
         <translation>%1 — %2×%3 · %4spp · %5%6%7</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_queue.cpp" line="491"/>
+        <location filename="../mainwindow_queue.cpp" line="494"/>
         <source>Remove all %n queued render(s)? This can&apos;t be undone.</source>
         <translation>
             <numerusform>Supprimer le %n rendu en file d&apos;attente&#xa0;? Cette action est irréversible.</numerusform>
@@ -1035,6 +1035,11 @@
         <translation>Échantillonneur de lumière &quot;%1&quot;</translation>
     </message>
     <message>
+        <location filename="../mainwindow_scene_info.cpp" line="227"/>
+        <source>Tip: this scene was set up with %1. Your Render Options use the defaults instead, which is fine for a first render; click Apply to match the scene&apos;s own settings.</source>
+        <translation>Astuce : cette scène a été conçue avec %1. Vos Options de rendu utilisent les valeurs par défaut, ce qui convient pour un premier rendu ; cliquez sur Appliquer pour reprendre les réglages propres à la scène.</translation>
+    </message>
+    <message>
         <location filename="../mainwindow_scene_info.cpp" line="230"/>
         <source>, </source>
         <translation>, </translation>
@@ -1068,11 +1073,6 @@
         <location filename="../mainwindow_render_events.cpp" line="117"/>
         <source>⚙️ Assembling video from frames...</source>
         <translation>⚙️ Assemblage de la vidéo à partir des images...</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_scene_info.cpp" line="227"/>
-        <source>⚠ This scene&apos;s file recommends %1, but the Render Options tab is currently set to the default(s) instead - click Apply, or change it there yourself, to match the scene&apos;s own settings.</source>
-        <translation>⚠ Le fichier de cette scène recommande %1, mais l&apos;onglet Options de rendu utilise actuellement les valeurs par défaut à la place - cliquez sur Appliquer, ou changez-le vous-même là-bas, pour correspondre aux propres paramètres de la scène.</translation>
     </message>
     <message>
         <location filename="../mainwindow_render_events.cpp" line="148"/>
@@ -1756,28 +1756,28 @@ Il s&apos;agit d&apos;un téléchargement volumineux qui peut prendre du temps.<
         <translation>Téléchargement de « %1 » (%2)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="368"/>
-        <location filename="../mainwindow_tabs.cpp" line="372"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="132"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="136"/>
         <source>Scene Metadata Unavailable</source>
         <translation>Métadonnées de scène indisponibles</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="369"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="133"/>
         <source>Could not load scene_metadata.dll, so the scene list is empty. Make sure scene_metadata.dll is present alongside RayTracerGUI.exe.</source>
         <translation>Impossible de charger scene_metadata.dll : la liste des scènes est vide. Assurez-vous que scene_metadata.dll se trouve à côté de RayTracerGUI.exe.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="400"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="164"/>
         <source>Self-Contained</source>
         <translation>Autonome</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="403"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="167"/>
         <source>Requires External Files</source>
         <translation>Nécessite des fichiers externes</translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="323"/>
+        <location filename="../mainwindow_tabs.cpp" line="273"/>
         <source>%n scene(s)</source>
         <translation>
             <numerusform>%n scène</numerusform>
@@ -1785,7 +1785,7 @@ Il s&apos;agit d&apos;un téléchargement volumineux qui peut prendre du temps.<
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="402"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="166"/>
         <source>%n scene(s) - no extra downloads needed</source>
         <translation>
             <numerusform>%n scène - aucun téléchargement supplémentaire nécessaire</numerusform>
@@ -1793,7 +1793,7 @@ Il s&apos;agit d&apos;un téléchargement volumineux qui peut prendre du temps.<
         </translation>
     </message>
     <message numerus="yes">
-        <location filename="../mainwindow_tabs.cpp" line="405"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="169"/>
         <source>%n scene(s) - needs assets not included in a fresh checkout</source>
         <translation>
             <numerusform>%n scène - nécessite des ressources absentes d&apos;une copie fraîche</numerusform>
@@ -1801,102 +1801,102 @@ Il s&apos;agit d&apos;un téléchargement volumineux qui peut prendre du temps.<
         </translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="445"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="209"/>
         <source>Search scenes by name or id...</source>
         <translation>Rechercher des scènes par nom ou id...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="457"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="221"/>
         <source>Grid</source>
         <translation>Grille</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="458"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="222"/>
         <source>Switch between the dropdown list and a thumbnail gallery grid</source>
         <translation>Bascule entre la liste déroulante et une grille de vignettes</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="469"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="233"/>
         <source>Scene:</source>
         <translation>Scène :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="499"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="263"/>
         <source>Generate Thumbnails</source>
         <translation>Générer les vignettes</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="646"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="419"/>
         <source>Rendering Technique:</source>
         <translation>Technique de rendu :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="647"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="420"/>
         <source>Select a scene to see the rendering technique it demonstrates.</source>
         <translation>Sélectionnez une scène pour voir la technique de rendu qu&apos;elle illustre.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="673"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="446"/>
         <source>Apply</source>
         <translation>Appliquer</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="692"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="462"/>
         <source>Render Settings</source>
         <translation>Paramètres de rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="707"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="477"/>
         <source>Render Single Image</source>
         <translation>Rendre une image unique</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="709"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="479"/>
         <source>Generate Video</source>
         <translation>Générer une vidéo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="717"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="487"/>
         <source>Live Preview (interactive)</source>
         <translation>Aperçu en direct (interactif)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="730"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="500"/>
         <source>realtime_renderer.dll wasn&apos;t found next to the application.</source>
         <translation>realtime_renderer.dll est introuvable à côté de l&apos;application.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="738"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="508"/>
         <source>Output Mode:</source>
         <translation>Mode de sortie :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="817"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="587"/>
         <source>GPU (CUDA) - Fast</source>
         <translation>GPU (CUDA) - Rapide</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="847"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="617"/>
         <source>CPU - High Quality</source>
         <translation>CPU - Haute qualité</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="879"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="649"/>
         <source>Renderer:</source>
         <translation>Moteur de rendu :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="898"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="668"/>
         <source>Recursive (Default)</source>
         <translation>Récursif (par défaut)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="904"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="674"/>
         <source>Wavefront (Experimental)</source>
         <translation>Wavefront (expérimental)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="954"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="724"/>
         <source>GPU Backend:</source>
         <translation>Backend GPU :</translation>
     </message>
@@ -1961,59 +1961,59 @@ Il s&apos;agit d&apos;un téléchargement volumineux qui peut prendre du temps.<
         <translation>Intégrateur :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="759"/>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="162"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="529"/>
         <source>⚠ Generate Video cannot be combined with an alternate integrator - switch back to Path Tracer, or to Single Image output.</source>
         <translation>⚠ Le mode Générer une vidéo ne peut pas être combiné avec un intégrateur alternatif - revenez au Traceur de chemins, ou à la sortie Image unique.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="776"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="546"/>
         <source>⚠ Live Preview renders at a fixed, small resolution on the GPU and writes no output file - Resolution, Samples per Pixel, Max Ray Depth, and Output Path don&apos;t apply. Scene and Camera Position do.</source>
         <translation>⚠ L&apos;aperçu en direct effectue le rendu à une résolution fixe et réduite sur le GPU et n&apos;écrit aucun fichier de sortie - Résolution, Échantillons par pixel, Profondeur de rayon max. et Chemin de sortie ne s&apos;appliquent pas. Scène et Position de la caméra s&apos;appliquent.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="974"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="750"/>
         <source>Draft (Very Fast)</source>
         <translation>Brouillon (très rapide)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="975"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="751"/>
         <source>Preview (Fast)</source>
         <translation>Aperçu (rapide)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="976"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="752"/>
         <source>Good (Balanced)</source>
         <translation>Bon (équilibré)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="977"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="753"/>
         <source>High (Slow)</source>
         <translation>Élevé (lent)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="978"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="754"/>
         <source>Ultra (Very Slow)</source>
         <translation>Ultra (très lent)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="979"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="755"/>
         <source>Maximum (Extreme)</source>
         <translation>Maximum (extrême)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="980"/>
-        <location filename="../mainwindow_tabs.cpp" line="1546"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="756"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1328"/>
         <source>Custom</source>
         <translation>Personnalisé</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="341"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="105"/>
         <source>Pick which scene to render. Scenes are grouped by category and searchable; switch to the grid view for thumbnail previews. Selecting a scene here also fills in a suggested camera position and settings hint below, if one exists for it.</source>
         <translation>Choisissez la scène à rendre. Les scènes sont regroupées par catégorie et peuvent être recherchées ; passez à la vue en grille pour voir des vignettes d&apos;aperçu. Sélectionner une scène ici renseigne aussi automatiquement, ci-dessous, une position de caméra suggérée et une indication de réglages, si la scène en propose une.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="366"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="130"/>
         <source>
 
 Reason: %1</source>
@@ -2022,12 +2022,12 @@ Reason: %1</source>
 Raison : %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="373"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="137"/>
         <source>Could not load scene_metadata.dylib/.so, so the scene list is empty. Make sure scene_metadata.dylib/.so is present alongside RayTracerGUI. If it IS present, this is often macOS blocking an unsigned library downloaded from the internet - try running xattr -cr on the .app in Terminal.</source>
         <translation>Impossible de charger scene_metadata.dylib/.so, la liste des scènes est donc vide. Assurez-vous que scene_metadata.dylib/.so se trouve bien à côté de RayTracerGUI. Si c&apos;est le cas, il s&apos;agit souvent de macOS qui bloque une bibliothèque non signée téléchargée depuis Internet - essayez d&apos;exécuter xattr -cr sur le .app dans le Terminal.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="449"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="213"/>
         <source>Narrows the scene list/grid below to scenes whose name, id, or description contains what you type - on top of, not instead of, the availability and category tabs above.
 
 Clear it (the small &quot;x&quot; inside the field) to see every scene in the current category again.</source>
@@ -2036,7 +2036,7 @@ Clear it (the small &quot;x&quot; inside the field) to see every scene in the cu
 Effacez-le (le petit « x » dans le champ) pour revoir toutes les scènes de la catégorie actuelle.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="471"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="235"/>
         <source>Every render starts from a scene - a description of what&apos;s in the virtual world: the shapes and objects, what their surfaces are made of, the lights, and a camera.
 
 This app ships with dozens of built-in scenes, ranging from simple starter setups (a plain box-shaped room) up through scenes with realistic metal and glass, fog and smoke effects, and highly detailed 3D-scanned models - pick one to render, or browse by category using the tabs above.</source>
@@ -2045,17 +2045,17 @@ This app ships with dozens of built-in scenes, ranging from simple starter setup
 Cette application est fournie avec des dizaines de scènes intégrées, allant de configurations simples de départ (une pièce en forme de boîte toute simple) jusqu&apos;à des scènes avec du métal et du verre réalistes, des effets de brouillard et de fumée, et des modèles 3D scannés très détaillés - choisissez-en une à rendre, ou parcourez-les par catégorie avec les onglets ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="675"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="448"/>
         <source>Sets the rendering method options (Sampler, Integrator, Light Sampler - on the Render Options tab) to the values this scene recommends.</source>
         <translation>Règle les options de méthode de rendu (Échantillonneur, Intégrateur, Échantillonneur de lumière - dans l&apos;onglet Options de rendu) sur les valeurs recommandées pour cette scène.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="695"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="465"/>
         <source>Choose Output Mode (Single Image, Video, or Live Preview) and which hardware renders it (GPU or CPU) here, plus a Quality/Resolution preset or your own manual settings further down. Fields that only matter for Video or Live Preview stay visible and editable even while in Image mode, just dimmed with a note - so you can set them up ahead of time before switching modes.</source>
         <translation>Choisissez ici le Mode de sortie (Image unique, Vidéo, ou Aperçu en direct) ainsi que le matériel qui l&apos;exécute (GPU ou CPU), plus un préréglage Qualité/Résolution ou vos propres réglages manuels plus bas. Les champs qui ne concernent que la Vidéo ou l&apos;Aperçu en direct restent visibles et modifiables même en mode Image, simplement grisés avec une note - vous pouvez ainsi les préparer à l&apos;avance avant de changer de mode.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="739"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="509"/>
         <source>Whether this render produces a single still picture, a sequence of pictures stitched into a video, or a live, interactive preview on the GPU.
 
 Single Image renders the scene once, from the camera set on this tab. Generate Video instead moves the camera along a path (Video Generation Settings, further down this tab) and renders one picture per step, then stitches them into an MP4 video - taking roughly Frame Count times as long as a single image. Live Preview instead renders continuously at a fixed, small resolution so you can click-drag/scroll to orbit the camera and watch the image get clearer in real time - it never writes an output file.
@@ -2068,7 +2068,7 @@ Image unique effectue le rendu de la scène une seule fois, depuis la caméra d�
 Générer une vidéo ne peut pas être combiné avec une méthode de rendu alternative (Intégrateur) - voir l&apos;avertissement ci-dessous si cette combinaison est choisie.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="784"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="554"/>
         <source>Single Image renders one picture.
 Generate Video renders a moving camera path frame by frame and assembles an MP4.
 Live Preview renders continuously with a camera you can freely orbit - GPU only.</source>
@@ -2077,17 +2077,17 @@ Générer une vidéo effectue le rendu d&apos;une trajectoire de caméra mobile 
 Aperçu en direct effectue un rendu continu avec une caméra que vous pouvez orbiter librement - GPU uniquement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="828"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="598"/>
         <source>Uses your NVIDIA graphics card&apos;s dedicated ray-tracing hardware to render. Usually dramatically faster than using the CPU, but requires a compatible NVIDIA graphics card, and can&apos;t yet handle every type of material the CPU option supports.</source>
         <translation>Utilise le matériel dédié au lancer de rayons de votre carte graphique NVIDIA pour effectuer le rendu. Généralement beaucoup plus rapide que le CPU, mais nécessite une carte graphique NVIDIA compatible, et ne prend pas encore en charge tous les types de matériaux que l&apos;option CPU gère.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="849"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="619"/>
         <source>The renderer&apos;s complete, most capable rendering method. Runs on any machine and supports every scene and material this app implements, including the handful the GPU option can&apos;t handle yet - at the cost of being much slower.</source>
         <translation>La méthode de rendu la plus complète et la plus aboutie du moteur de rendu. Fonctionne sur n&apos;importe quelle machine et prend en charge toutes les scènes et tous les matériaux que cette application propose, y compris la poignée que l&apos;option GPU ne gère pas encore - au prix d&apos;être beaucoup plus lente.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="863"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="633"/>
         <source>GPU: uses your graphics card&apos;s ray-tracing hardware — typically much faster.
 CPU: the full-featured rendering method — supports every scene and material,
 including the handful the GPU option does not implement.</source>
@@ -2096,62 +2096,62 @@ CPU : la méthode de rendu complète — prend en charge toutes les scènes et t
 y compris la poignée que l&apos;option GPU n&apos;implémente pas.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="516"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="280"/>
         <source>Stop</source>
         <translation>Arrêter</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="338"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="102"/>
         <source>Scene</source>
         <translation>Scène</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="530"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="294"/>
         <source>Delete Scene...</source>
         <translation>Supprimer la scène...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="531"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="295"/>
         <source>Delete All My Scenes...</source>
         <translation>Supprimer toutes mes scènes...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="532"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="296"/>
         <source>Move every scene you made in the Scene Builder to the Trash</source>
         <translation>Déplace dans la corbeille toutes les scènes créées dans le Constructeur de scènes</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="728"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="498"/>
         <source>realtime_renderer.dylib wasn&apos;t found next to the application.</source>
         <translation>realtime_renderer.dylib est introuvable à côté de l&apos;application.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="772"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="542"/>
         <source>⚠ Live Preview renders a small, fast preview on the GPU and writes no output file - Resolution only sets its aspect ratio (so the starting view matches the image render); Samples per Pixel, Max Ray Depth, and Output Path don&apos;t apply. Scene and Camera Position do.</source>
         <translation>⚠ L&apos;aperçu en direct affiche sur le GPU un petit aperçu rapide et n&apos;écrit aucun fichier de sortie : la Résolution ne fixe que son rapport d&apos;aspect (pour que la vue de départ corresponde au rendu de l&apos;image) ; Échantillons par pixel, Profondeur max. des rayons et Chemin de sortie ne s&apos;appliquent pas. La Scène et la Position de la caméra, si.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="815"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="585"/>
         <source>GPU (Metal) - Fast</source>
         <translation>GPU (Metal) - Rapide</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="822"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="592"/>
         <source>Uses your Mac&apos;s GPU (via Metal) to render. Usually dramatically faster than using the CPU, but can&apos;t yet handle every type of scene or material the CPU option supports (see the Ray Tracer Feasibility doc&apos;s own list of what&apos;s not wired up yet).</source>
         <translation>Utilise le GPU de votre Mac (via Metal) pour le rendu. Généralement bien plus rapide que le CPU, mais ne prend pas encore en charge tous les types de scènes ou de matériaux que l&apos;option CPU prend en charge (voir la liste de ce qui n&apos;est pas encore câblé dans le document Ray Tracer Feasibility).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="837"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="607"/>
         <source>Not available right now - no usable Metal GPU was found on this Mac (or this build&apos;s own ray_tracer wasn&apos;t built with Metal support at all).</source>
         <translation>Non disponible pour le moment - aucun GPU Metal utilisable n&apos;a été trouvé sur ce Mac (ou le ray_tracer de cette version n&apos;a pas du tout été compilé avec la prise en charge de Metal).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="842"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="612"/>
         <source>Not available in this build - GPU rendering needs Windows plus a compatible NVIDIA graphics card. This platform&apos;s build has no GPU renderer at all (see launcher/optix_stub.h).</source>
         <translation>Non disponible dans cette version - le rendu GPU nécessite Windows ainsi qu&apos;une carte graphique NVIDIA compatible. La version pour cette plateforme n&apos;a aucun moteur de rendu GPU du tout (voir launcher/optix_stub.h).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="869"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="639"/>
         <source>The full-featured CPU rendering method — supports every scene and material.
 GPU rendering is not available right now (grayed out above) - no usable Metal
 GPU was found on this Mac.</source>
@@ -2160,7 +2160,7 @@ Le rendu GPU n&apos;est pas disponible pour le moment (grisé ci-dessus) - aucun
 utilisable n&apos;a été trouvé sur ce Mac.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="874"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="644"/>
         <source>The full-featured CPU rendering method — supports every scene and material.
 GPU rendering is not available in this build (grayed out above) - it needs
 Windows plus a compatible NVIDIA graphics card.</source>
@@ -2169,7 +2169,7 @@ Le rendu GPU n&apos;est pas disponible dans cette version (grisé ci-dessus) - i
 Windows ainsi qu&apos;une carte graphique NVIDIA compatible.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="880"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="650"/>
         <source>Both options do the exact same calculations and produce the same image - the only difference is speed and which hardware does the work, not the physics.
 
 GPU uses your NVIDIA graphics card&apos;s dedicated ray-tracing hardware to process thousands of light rays at once, so it&apos;s typically far faster. CPU uses your computer&apos;s regular processor instead: much slower, but works on any machine and supports every material this app implements, including a couple the GPU option hasn&apos;t caught up to yet.</source>
@@ -2178,22 +2178,22 @@ GPU uses your NVIDIA graphics card&apos;s dedicated ray-tracing hardware to proc
 GPU utilise le matériel dédié au lancer de rayons de votre carte graphique NVIDIA pour traiter des milliers de rayons lumineux à la fois, ce qui le rend généralement bien plus rapide. CPU utilise à la place le processeur habituel de votre ordinateur : bien plus lent, mais il fonctionne sur n&apos;importe quelle machine et prend en charge tous les matériaux que cette application propose, y compris quelques-uns que l&apos;option GPU n&apos;a pas encore rattrapés.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="900"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="670"/>
         <source>Processes each pixel on its own, following a light ray through all of its bounces before moving to the next pixel. The default GPU rendering method - broadly tested and works with the widest range of scenes and materials.</source>
         <translation>Traite chaque pixel individuellement, en suivant un rayon lumineux à travers tous ses rebonds avant de passer au pixel suivant. La méthode de rendu GPU par défaut - largement testée et compatible avec le plus large éventail de scènes et de matériaux.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="906"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="676"/>
         <source>Groups light rays that are currently doing the same kind of work together and processes each bounce for the whole group at once, instead of pixel by pixel. This can make better use of the graphics card on complex scenes with lots of different materials - but it&apos;s a newer option that&apos;s been tested less than Recursive.</source>
         <translation>Regroupe les rayons lumineux qui effectuent actuellement le même type de travail et traite chaque rebond pour tout le groupe à la fois, plutôt que pixel par pixel. Cela peut mieux exploiter la carte graphique sur des scènes complexes comportant de nombreux matériaux différents - mais c&apos;est une option plus récente, moins testée que Recursive.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="923"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="693"/>
         <source>Not available - the wavefront path tracer is only implemented for the CUDA/OptiX GPU backend (Windows), not Metal.</source>
         <translation>Non disponible - le traceur de chemin wavefront n&apos;est implémenté que pour le moteur GPU CUDA/OptiX (Windows), pas pour Metal.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="930"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="700"/>
         <source>Recursive: the default GPU rendering method — broadly tested, works with the widest range of scenes.
 Wavefront: groups similar rays together for better use of the graphics card on complex scenes,
 but it&apos;s newer and less tested than Recursive.
@@ -2204,14 +2204,14 @@ mais c&apos;est une option plus récente et moins testée que Recursive.
 Ne s&apos;applique que lorsque Moteur de rendu est réglé sur GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="937"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="707"/>
         <source>Not available right now - no usable Metal GPU was found on this Mac,
 so Renderer above can only ever be CPU.</source>
         <translation>Non disponible pour le moment - aucun GPU Metal utilisable n&apos;a été trouvé sur ce Mac,
 le moteur de rendu ci-dessus ne peut donc être que le CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="941"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="711"/>
         <source>Not available in this build - GPU rendering needs Windows plus a
 compatible NVIDIA graphics card. This platform&apos;s build has no GPU
 renderer at all, so Renderer above can only ever be CPU.</source>
@@ -2220,7 +2220,7 @@ carte graphique NVIDIA compatible. La version pour cette plateforme n&apos;a auc
 moteur de rendu GPU du tout, le moteur de rendu ci-dessus ne peut donc être que le CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="955"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="725"/>
         <source>Two different ways of organizing the SAME rendering work on your graphics card - they produce the same image, just computed differently.
 
 Recursive follows each light ray from start to finish, one ray at a time - simple and thoroughly tested. Wavefront instead groups together all the rays currently doing the same kind of work (e.g. &quot;just hit a glass surface&quot;) and processes them as a batch - this can make better use of the graphics card on complex scenes with lots of different materials, at the cost of being a newer, less-tested option.</source>
@@ -2229,7 +2229,7 @@ Recursive follows each light ray from start to finish, one ray at a time - simpl
 Recursive suit chaque rayon lumineux du début à la fin, un rayon à la fois - simple et minutieusement testé. Wavefront regroupe au contraire tous les rayons qui effectuent actuellement le même type de travail (par exemple « vient de toucher une surface en verre ») et les traite par lots - cela peut mieux exploiter la carte graphique sur des scènes complexes comportant de nombreux matériaux différents, au prix d&apos;être une option plus récente et moins testée.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="989"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="765"/>
         <source>Samples per pixel (image cleanliness) / max ray depth (light bounces allowed):
   Draft    25 spp,  depth 10
   Preview  50 spp,  depth 20
@@ -2252,12 +2252,12 @@ Le temps de rendu évolue à peu près proportionnellement au nombre d&apos;éch
 plus d&apos;échantillons prend à peu près deux fois plus de temps.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="999"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="775"/>
         <source>Quality:</source>
         <translation>Qualité :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1000"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="776"/>
         <source>A shortcut that sets both Samples per Pixel and Max Ray Depth together, since they&apos;re the two dials that trade render time for image quality.
 
 Each step up roughly doubles the render time in exchange for a cleaner, less noisy image - Draft is for quickly checking a scene looks right, Ultra/Maximum are for a final image you&apos;d actually want to look at closely.</source>
@@ -2266,87 +2266,87 @@ Each step up roughly doubles the render time in exchange for a cleaner, less noi
 Chaque niveau supérieur double à peu près le temps de rendu en échange d&apos;une image plus propre et moins bruitée - Brouillon sert à vérifier rapidement qu&apos;une scène est correcte, Ultra/Maximum servent à obtenir une image finale que l&apos;on souhaite réellement examiner de près.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1011"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="787"/>
         <source>100 x 100 (Tiny)</source>
         <translation>100 x 100 (minuscule)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1012"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="788"/>
         <source>200 x 200</source>
         <translation>200 x 200</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1013"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="789"/>
         <source>400 x 400</source>
         <translation>400 x 400</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1014"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="790"/>
         <source>512 x 512</source>
         <translation>512 x 512</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1015"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="791"/>
         <source>600 x 600</source>
         <translation>600 x 600</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1016"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="792"/>
         <source>800 x 800</source>
         <translation>800 x 800</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1017"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="793"/>
         <source>1024 x 1024 (1K)</source>
         <translation>1024 x 1024 (1K)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1018"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="794"/>
         <source>1080 x 1080 (Full HD)</source>
         <translation>1080 x 1080 (Full HD)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1019"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="795"/>
         <source>1200 x 1200</source>
         <translation>1200 x 1200</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1020"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="796"/>
         <source>1440 x 1440</source>
         <translation>1440 x 1440</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1021"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="797"/>
         <source>1920 x 1920</source>
         <translation>1920 x 1920</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1022"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="798"/>
         <source>2048 x 2048 (2K)</source>
         <translation>2048 x 2048 (2K)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1023"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="799"/>
         <source>2560 x 2560</source>
         <translation>2560 x 2560</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1024"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="800"/>
         <source>3840 x 3840 (4K)</source>
         <translation>3840 x 3840 (4K)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1025"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="801"/>
         <source>4096 x 4096</source>
         <translation>4096 x 4096</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1028"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="804"/>
         <source>Resolution:</source>
         <translation>Résolution :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1029"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="805"/>
         <source>How many pixels wide and tall the final image is.
 
 Higher resolution means more individual pixels to trace - each one independently sampled - so render time scales up roughly in proportion to the pixel count (double the width AND height and you&apos;re tracing about 4x as many pixels), independent of the Samples per Pixel or Max Ray Depth settings.</source>
@@ -2355,12 +2355,12 @@ Higher resolution means more individual pixels to trace - each one independently
 Une résolution plus élevée signifie plus de pixels individuels à tracer - chacun échantillonné indépendamment - donc le temps de rendu augmente à peu près proportionnellement au nombre de pixels (doublez la largeur ET la hauteur et vous tracez environ 4 fois plus de pixels), indépendamment des réglages Échantillons par pixel ou Profondeur de rayon max.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1067"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="843"/>
         <source>⚠ These settings only take effect when Output Mode above is set to &quot;Generate Video&quot;.</source>
         <translation>⚠ Ces paramètres ne prennent effet que lorsque le Mode de sortie ci-dessus est réglé sur « Générer une vidéo ».</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1083"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="859"/>
         <source>Famous ray-tracing reference scenes and motions, pre-tuned so you don&apos;t
 have to set the scene, camera path, frame count, fps, and speed by hand.
 Selecting one changes the Scene above too. Choosing any of the
@@ -2373,7 +2373,7 @@ n&apos;importe quel autre réglage de cet onglet ne pose pas de problème - ils 
 au préréglage, comme si vous aviez construit vous-même les mêmes réglages.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1092"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="868"/>
         <source>A ready-made bundle of scene + camera path + frame count + fps + speed, tuned so the resulting video actually looks good without hand-picking every setting yourself.
 
 Picking one fills in every field below (and the Scene above) - you can still change anything afterward, it just stops matching the preset once you do.</source>
@@ -2382,17 +2382,17 @@ Picking one fills in every field below (and the Scene above) - you can still cha
 En choisir un remplit tous les champs ci-dessous (ainsi que la Scène ci-dessus) - vous pouvez toujours tout modifier ensuite, cela cesse simplement de correspondre au préréglage dès que vous le faites.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1106"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="882"/>
         <source>Tour (Room walkthrough)</source>
         <translation>Visite (parcours d&apos;une pièce)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1107"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="883"/>
         <source>Showcase (Product reveal)</source>
         <translation>Présentation (révélation produit)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1109"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="885"/>
         <source>How the camera moves over the frame sequence:
   Orbit     — full circle around the scene, always looking at its centre
   Linear    — straight sweep past the scene
@@ -2411,7 +2411,7 @@ Every path starts from the camera position set below.</source>
 Chaque trajectoire part de la position de caméra définie ci-dessous.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1120"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="896"/>
         <source>How the camera moves across the sequence of frames.
 
 Orbit circles fully around the scene, always facing its center - the classic &quot;turntable&quot; shot. Linear sweeps past in a straight line. Figure-8 traces a figure-eight loop, crossing back through the middle. Spiral orbits while steadily moving closer. Tour sways side to side and glides forward while its look-at point drifts too, like an actual visitor walking through and looking around a room. Showcase turns once around the subject with a smooth push-in and a gentle rise-and-fall, like a product advertisement&apos;s hero shot. Every path starts from wherever the camera is positioned further down this tab.</source>
@@ -2420,7 +2420,7 @@ Orbit circles fully around the scene, always facing its center - the classic &qu
 Orbit fait un cercle complet autour de la scène, toujours tournée vers son centre - le classique plan « plateau tournant ». Linear balaye la scène en ligne droite. Figure-8 trace une boucle en forme de huit, repassant par le milieu. Spiral orbite tout en se rapprochant progressivement. Tour se balance d&apos;un côté à l&apos;autre et avance en douceur pendant que son point de visée dérive aussi, comme un vrai visiteur qui marche dans une pièce en regardant autour de lui. Showcase effectue un seul tour autour du sujet avec un rapprochement fluide suivi d&apos;une légère montée puis descente, comme le plan vedette d&apos;une publicité produit. Chaque trajectoire part de l&apos;endroit où la caméra est positionnée plus bas dans cet onglet.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1242"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1018"/>
         <source>Video Duration: %1 seconds (%2)
 
 Camera Path: %3, always completes its full sweep regardless of speed
@@ -2461,7 +2461,7 @@ Une fois toutes les images rendues, la vidéo est automatiquement assemblée pui
 Astuces : utilisez le mode GPU pour un rendu plus rapide. Moins d&apos;échantillons par pixel (10-50) pour des aperçus rapides, davantage (100-500) pour une qualité de production. Le temps de rendu typique est de 1 à 5 minutes sur GPU, 15 à 60 minutes sur CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1293"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1071"/>
         <source>Tune how responsive mouse orbit/zoom and keyboard WASD/Up/Down movement + Left/Right/+/- feel in Live Preview. Only takes effect when Output Mode above is &quot;Live Preview (interactive)&quot;, but stays editable in any mode.
 
 Looking for the image-quality settings (ReSTIR, Exposure, Samples per Frame, Max Bounces, Firefly Clamp)? Those now live on the Render Options tab&apos;s own Live Preview Settings group, next to the Denoiser section.</source>
@@ -2470,7 +2470,7 @@ Looking for the image-quality settings (ReSTIR, Exposure, Samples per Frame, Max
 Vous cherchez les réglages de qualité d&apos;image (ReSTIR, Exposition, Échantillons par image, Rebonds max., Écrêtage des fireflies) ? Ils se trouvent désormais dans le groupe Paramètres de l&apos;aperçu en direct de l&apos;onglet Options de rendu, à côté de la section Débruiteur.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1653"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1437"/>
         <source>Where the rendered file is saved. Video mode appends the correct extension automatically; Live Preview ignores this entirely since it never writes a file.
 
 Type or Browse to a .exr path instead of .png/.ppm to get a high-dynamic-range file that stores the full range of brightness values without compressing them for a normal screen - useful if you plan to edit the image further in other software. If Denoise is also on and GPU Backend is Recursive, two extra helper files (_albedo.exr and _normal.exr, storing surface color and surface direction) are saved alongside it automatically to help with that cleanup (Wavefront doesn&apos;t produce these yet).</source>
@@ -2479,7 +2479,7 @@ Type or Browse to a .exr path instead of .png/.ppm to get a high-dynamic-range f
 Saisissez ou parcourez jusqu&apos;à un chemin .exr au lieu de .png/.ppm pour obtenir un fichier à grande gamme dynamique qui conserve toute la plage de luminosité sans la compresser pour un écran normal - utile si vous comptez retoucher l&apos;image dans un autre logiciel. Si le Débruiteur est également activé et que le Backend GPU est Recursive, deux fichiers d&apos;aide supplémentaires (_albedo.exr et _normal.exr, qui stockent la couleur et l&apos;orientation de la surface) sont enregistrés automatiquement à côté pour faciliter ce nettoyage (Wavefront ne les produit pas encore).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1685"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1469"/>
         <source>Where the rendered image is written. A .png is always saved alongside
 the raw .ppm, and it is the .png the Preview tab displays.
 
@@ -2494,7 +2494,7 @@ l&apos;onglet Aperçu l&apos;ouvre alors dans le visualiseur EXR de votre systè
 l&apos;afficher directement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1705"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1489"/>
         <source>Where the finished image is saved.
 
 A raw .ppm file is always written, and a .png copy is generated alongside it automatically - the Preview tab always shows the .png, since most image viewers (and this app&apos;s own preview) can&apos;t open .ppm directly.
@@ -2507,7 +2507,7 @@ Un fichier .ppm brut est toujours écrit, et une copie .png est générée autom
 Choisir plutôt un chemin .exr évite les deux : un seul fichier est alors écrit, conservant toute la plage de luminosité sans aucun ajustement pour un écran normal - le format attendu par les logiciels professionnels de retouche photo/vidéo, et le seul moyen d&apos;obtenir les données de luminosité brutes de cette application plutôt qu&apos;une image déjà ajustée pour bien s&apos;afficher sur un moniteur standard.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1152"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="928"/>
         <source>How many individual images make up the video - each one is a full, independent render, so this multiplies total render time directly (100 frames takes roughly 100x as long as one image at the same settings).
 
 Paired with Frames Per Second to determine the video&apos;s total length in seconds.</source>
@@ -2516,7 +2516,7 @@ Paired with Frames Per Second to determine the video&apos;s total length in seco
 Combiné avec Images par seconde pour déterminer la durée totale de la vidéo en secondes.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1167"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="943"/>
         <source>How many of the rendered frames play per second of video.
 
 Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - only how fast they play back, and therefore how many seconds long the finished video is (Frame Count divided by FPS).</source>
@@ -2525,12 +2525,12 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - onl
 Ne change pas le nombre d&apos;images rendues (c&apos;est le Nombre d&apos;images qui le détermine) - uniquement la vitesse de lecture, et donc la durée en secondes de la vidéo finale (Nombre d&apos;images divisé par les FPS).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1230"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1006"/>
         <source>%1 frames (base %2 x 1/%3x speed)%4</source>
         <translation>%1 images (base %2 x 1/%3x vitesse)%4</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1698"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1482"/>
         <source>PNG Image (*.png);;PPM Image (*.ppm);;EXR Image, linear HDR (*.exr)</source>
         <translation>Image PNG (*.png);;Image PPM (*.ppm);;Image EXR, HDR linéaire (*.exr)</translation>
     </message>
@@ -2540,22 +2540,22 @@ Ne change pas le nombre d&apos;images rendues (c&apos;est le Nombre d&apos;image
         <translation>Paramètres de l&apos;aperçu en direct</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1332"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1110"/>
         <source>Mouse Sensitivity:</source>
         <translation>Sensibilité de la souris :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1333"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1111"/>
         <source>Scales click-drag-to-orbit and scroll-to-zoom speed in Live Preview. 1x matches the original feel; lower is gentler, higher is more responsive.</source>
         <translation>Ajuste la vitesse d&apos;orbite par glisser-cliquer et de zoom par molette dans l&apos;Aperçu en direct. 1x correspond à la sensation d&apos;origine ; plus bas est plus doux, plus haut est plus réactif.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1350"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1128"/>
         <source>Keyboard Sensitivity:</source>
         <translation>Sensibilité du clavier :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1351"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1129"/>
         <source>Scales WASD/Up/Down movement, Left/Right-arrow orbit, and +/- zoom step size in Live Preview. 1x is a moderate per-press nudge; lower is finer, higher moves further per press.</source>
         <translation>Ajuste le déplacement WASD/Haut/Bas, l&apos;orbite aux flèches Gauche/Droite et le pas de zoom +/- dans l&apos;Aperçu en direct. 1x correspond à un incrément modéré par pression ; plus bas est plus fin, plus haut déplace davantage par pression.</translation>
     </message>
@@ -2675,12 +2675,12 @@ Ne change pas le nombre d&apos;images rendues (c&apos;est le Nombre d&apos;image
         <translation>Écrêtage des fireflies :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1371"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1151"/>
         <source>Manually override resolution, samples per pixel, and max ray depth instead of using the Quality/Resolution presets above. Shared by Image and Video (Video reuses these as its per-frame settings) - Live Preview always uses its own fixed, small resolution instead.</source>
         <translation>Remplace manuellement la résolution, les échantillons par pixel et la profondeur de rayon maximale au lieu d&apos;utiliser les préréglages Qualité/Résolution ci-dessus. Partagé par Image et Vidéo (la Vidéo les réutilise comme réglages par image) - l&apos;Aperçu en direct utilise toujours sa propre résolution fixe et réduite à la place.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1401"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1181"/>
         <source>The image&apos;s pixel width.
 
 Paired with Height to set the resolution manually, overriding whatever the Quality preset above would otherwise use.</source>
@@ -2689,7 +2689,7 @@ Paired with Height to set the resolution manually, overriding whatever the Quali
 Combinée avec Hauteur pour définir la résolution manuellement, en remplaçant ce que le préréglage Qualité ci-dessus utiliserait sinon.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1414"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1194"/>
         <source>The image&apos;s pixel height.
 
 Paired with Width - together they set the resolution manually, overriding the Quality preset above.</source>
@@ -2698,7 +2698,7 @@ Paired with Width - together they set the resolution manually, overriding the Qu
 Combinée avec Largeur - ensemble, elles définissent la résolution manuellement, en remplaçant le préréglage Qualité ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1426"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1206"/>
         <source>How many random light samples are averaged per pixel. This is the main
 quality/time dial: more samples make the image cleaner, but with
 diminishing returns - cutting the noise in half needs roughly 4x as many
@@ -2711,7 +2711,7 @@ d&apos;échantillons, ce qui prend environ 4 fois plus de temps à rendre. Modif
 fait passer Qualité sur Personnalisé.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1448"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1228"/>
         <source>How many times a light ray is allowed to bounce off surfaces before
 the renderer stops following it. Low values darken glass and mirrors,
 which need many bounces to look right; scenes with only plain, matte
@@ -2722,57 +2722,57 @@ qui ont besoin de nombreux rebonds pour paraître corrects ; les scènes ne comp
 surfaces mates ordinaires restent identiques bien en dessous du maximum.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1488"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1270"/>
         <source>Set the camera&apos;s world position directly, or pick a named preset. Used as-is for Image mode, as the starting point Video&apos;s camera path animates from, and as Live Preview&apos;s initial position before you orbit/zoom it interactively.</source>
         <translation>Définit directement la position mondiale de la caméra, ou choisit un préréglage nommé. Utilisée telle quelle en mode Image, comme point de départ à partir duquel s&apos;anime la trajectoire de caméra de la Vidéo, et comme position initiale de l&apos;Aperçu en direct avant que vous ne l&apos;orbitiez/zoomiez interactivement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1650"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1434"/>
         <source>Output</source>
         <translation>Sortie</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1693"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1477"/>
         <source>&amp;Browse…</source>
         <translation>&amp;Parcourir…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1694"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1478"/>
         <source>Choose the output file name and location</source>
         <translation>Choisit le nom et l&apos;emplacement du fichier de sortie</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1696"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1480"/>
         <source>Save Render Output</source>
         <translation>Enregistrer le résultat du rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1739"/>
+        <location filename="../mainwindow_tabs.cpp" line="320"/>
         <source>Settings</source>
         <translation>Paramètres</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1368"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1148"/>
         <source>Advanced Parameters</source>
         <translation>Paramètres avancés</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1400"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1180"/>
         <source>Width:</source>
         <translation>Largeur :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1413"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1193"/>
         <source>Height:</source>
         <translation>Hauteur :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1431"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1211"/>
         <source>Samples per Pixel:</source>
         <translation>Échantillons par pixel :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1432"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1212"/>
         <source>Ray tracing estimates each pixel&apos;s color by firing many random rays and averaging the results, like polling a lot of people and averaging their guesses.
 
 More samples means a more accurate average, which shows up as less speckly &quot;noise&quot; in the image - but each extra sample costs render time. Doubling this value roughly halves the noise, but takes about twice as long to render.</source>
@@ -2781,12 +2781,12 @@ More samples means a more accurate average, which shows up as less speckly &quot
 Plus d&apos;échantillons donne une moyenne plus précise, ce qui se traduit par moins de « bruit » granuleux dans l&apos;image - mais chaque échantillon supplémentaire coûte du temps de rendu. Doubler cette valeur réduit approximativement le bruit de moitié, mais prend environ deux fois plus de temps à rendre.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1452"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1232"/>
         <source>Max Ray Depth:</source>
         <translation>Profondeur max. des rayons :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1453"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1233"/>
         <source>A depth of 1 means a ray only sees what it hits directly, with no bounced light at all - like a scene with no reflections or indirect lighting.
 
 Each extra bounce lets light travel one more surface before giving up, which is what makes glass, mirrors, and soft indirect lighting look correct. Most scenes look &quot;finished&quot; well before the maximum - beyond that, extra depth mostly traces light too dim to matter.</source>
@@ -2795,58 +2795,58 @@ Each extra bounce lets light travel one more surface before giving up, which is 
 Chaque rebond supplémentaire permet à la lumière de parcourir une surface de plus avant d&apos;abandonner, c&apos;est ce qui rend le verre, les miroirs et l&apos;éclairage indirect doux réalistes. La plupart des scènes semblent « terminées » bien avant le maximum - au-delà, la profondeur supplémentaire trace surtout une lumière trop faible pour compter.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1485"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1267"/>
         <source>Camera Position</source>
         <translation>Position de la caméra</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1529"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1311"/>
         <source>Front View (Outside)</source>
         <translation>Vue de face (extérieur)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1532"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1314"/>
         <source>Inside Front</source>
         <translation>Intérieur avant</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1533"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1315"/>
         <source>Inside Back</source>
         <translation>Intérieur arrière</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1534"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1316"/>
         <source>Right Wall (Green)</source>
         <translation>Mur droit (vert)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1535"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1317"/>
         <source>Left Wall (Red)</source>
         <translation>Mur gauche (rouge)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1538"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1320"/>
         <source>Floor Corner</source>
         <translation>Coin du sol</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1539"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1321"/>
         <source>Ceiling Corner</source>
         <translation>Coin du plafond</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1091"/>
-        <location filename="../mainwindow_tabs.cpp" line="1549"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="867"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1331"/>
         <source>Preset:</source>
         <translation>Préréglage :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1290"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1068"/>
         <source>Live Preview Controls</source>
         <translation>Commandes de l&apos;aperçu en direct</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1550"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1332"/>
         <source>A handful of hand-picked camera positions for this scene, framed to show off something specific (e.g. looking in through the front, or from inside a Cornell-box-style enclosure).
 
 Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the camera anywhere you like instead.</source>
@@ -2855,12 +2855,12 @@ Choosing &quot;Custom&quot; unlocks the X/Y/Z fields below so you can fly the ca
 Choisir « Personnalisé » déverrouille les champs X/Y/Z ci-dessous, pour placer la caméra où vous le souhaitez.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1568"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1350"/>
         <source>Camera X:</source>
         <translation>Caméra X :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1569"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1351"/>
         <source>The camera&apos;s position along the world&apos;s X axis (left/right).
 
 Only editable when the preset above is set to Custom - the camera always looks toward the scene&apos;s own fixed look-at point, so moving X/Y/Z changes the viewing angle and distance, not just a straight left-right pan.</source>
@@ -2869,12 +2869,12 @@ Only editable when the preset above is set to Custom - the camera always looks t
 Modifiable uniquement lorsque le préréglage ci-dessus est réglé sur Personnalisé - la caméra regarde toujours vers le point de visée fixe de la scène, donc déplacer X/Y/Z change l&apos;angle de vue et la distance, pas seulement un simple panoramique gauche-droite.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1583"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1365"/>
         <source>Camera Y:</source>
         <translation>Caméra Y :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1584"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1366"/>
         <source>The camera&apos;s position along the world&apos;s Y axis (up/down).
 
 Same Custom-preset-only editing rule as Camera X - the camera keeps looking at the scene&apos;s fixed look-at point as you move it.</source>
@@ -2883,12 +2883,12 @@ Same Custom-preset-only editing rule as Camera X - the camera keeps looking at t
 Même règle de modification réservée au préréglage Personnalisé que pour Caméra X - la caméra continue de regarder le point de visée fixe de la scène pendant que vous la déplacez.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1597"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1379"/>
         <source>Camera Z:</source>
         <translation>Caméra Z :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1598"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1380"/>
         <source>The camera&apos;s position along the world&apos;s Z axis (forward/back, into or out of the scene).
 
 Same Custom-preset-only editing rule as Camera X/Y.</source>
@@ -2897,12 +2897,12 @@ Same Custom-preset-only editing rule as Camera X/Y.</source>
 Même règle de modification réservée au préréglage Personnalisé que pour Caméra X/Y.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1628"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1410"/>
         <source>Distance from Center:</source>
         <translation>Distance au centre :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1629"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1411"/>
         <source>Moves the camera directly toward or away from the scene&apos;s look-at point along whatever direction it&apos;s currently facing, without changing which way it&apos;s pointed.
 
 The quickest way to zoom in or pull back once you&apos;ve already found an angle you like via the X/Y/Z fields or a preset.</source>
@@ -2916,133 +2916,133 @@ Le moyen le plus rapide de zoomer ou de reculer une fois que vous avez déjà tr
         <translation>Le Traceur de chemins par défaut n&apos;a pas d&apos;options spécifiques ici - voir les Options de rendu ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="203"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="204"/>
         <source>Iterations:</source>
         <translation>Itérations :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="213"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="214"/>
         <source>Photons per iteration:</source>
         <translation>Photons par itération :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="231"/>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="268"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="232"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="269"/>
         <source>Max path depth:</source>
         <translation>Profondeur de chemin maximale :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="248"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="249"/>
         <source>Bootstrap samples:</source>
         <translation>Échantillons de démarrage :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="257"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="258"/>
         <source>Mutations:</source>
         <translation>Mutations :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="286"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="287"/>
         <source>Max occlusion distance:</source>
         <translation>Distance d&apos;occlusion maximale :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="292"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="293"/>
         <source>Uniform-hemisphere sampling (instead of cosine)</source>
         <translation>Échantillonnage hémisphérique uniforme (au lieu de cosinus)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="304"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="305"/>
         <source>Illumination scale:</source>
         <translation>Échelle d&apos;illumination :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="322"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="323"/>
         <source>Occlusion color (R, G, B):</source>
         <translation>Couleur d&apos;occlusion (R, G, B) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="336"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="337"/>
         <source>Disable next-event estimation (direct light sampling)</source>
         <translation>Désactiver l&apos;estimation par événement suivant (échantillonnage direct de la lumière)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="344"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="345"/>
         <source>Disable BSDF importance sampling</source>
         <translation>Désactiver l&apos;échantillonnage par importance du BSDF</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="366"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="367"/>
         <source>Sampling &amp;&amp; Spectral</source>
         <translation>Échantillonnage &amp;&amp; spectral</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="384"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="385"/>
         <source>Sobol (default)</source>
         <translation>Sobol (par défaut)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="390"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="391"/>
         <source>Z-Sobol</source>
         <translation>Z-Sobol</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="396"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="397"/>
         <source>Padded Sobol</source>
         <translation>Sobol amorti (Padded Sobol)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="402"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="403"/>
         <source>Stratified</source>
         <translation>Stratifié</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="407"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="408"/>
         <source>PMJ02BN</source>
         <translation>PMJ02BN</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="412"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="413"/>
         <source>Halton</source>
         <translation>Halton</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="417"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="418"/>
         <source>Independent (no stratification)</source>
         <translation>Indépendant (sans stratification)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="537"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="538"/>
         <source>Adaptive sampling (--adaptive)</source>
         <translation>Échantillonnage adaptatif (--adaptive)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="580"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="581"/>
         <source>Time limit (--time-limit)</source>
         <translation>Limite de temps (--time-limit)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="591"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="592"/>
         <source> s</source>
         <translation> s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="852"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="853"/>
         <source>Post-Processing &amp;&amp; Diagnostics</source>
         <translation>Post-traitement et diagnostic</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="937"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="938"/>
         <source>Denoiser</source>
         <translation>Débruiteur</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="940"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="941"/>
         <source>Every render mode&apos;s own denoiser settings, gathered in one place. Image/Video and Live Preview each have independent controls below - only the subsection for the currently selected Output Mode is active.</source>
         <translation>Les réglages de débruiteur propres à chaque mode de rendu, réunis en un seul endroit. Image/Vidéo et Aperçu en direct disposent chacun de commandes indépendantes ci-dessous - seule la sous-section du Mode de sortie actuellement sélectionné est active.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="949"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="950"/>
         <source>Image &amp; Video</source>
         <translation>Image et vidéo</translation>
     </message>
@@ -3275,63 +3275,63 @@ Débruiteur SVGF : un filtre de réduction de bruit alternatif et expérimental.
         <translation>Éclaircit une scène sombre pour qu&apos;elle ne sorte pas presque noire : la luminosité moyenne des pixels éclairés est ramenée vers un gris moyen, jusqu&apos;à 64x, en suivant l&apos;image en douceur. Cela n&apos;assombrit jamais rien : une scène normalement exposée ou lumineuse apparaît exactement comme lorsque l&apos;option est désactivée. Elle se multiplie à la valeur d&apos;Exposition ci-dessus, qui reste utilisable comme correction manuelle.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="455"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="456"/>
         <source>BVH (default)</source>
         <translation>BVH (par défaut)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="462"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="463"/>
         <source>Auto (use scene&apos;s own request)</source>
         <translation>Automatique (utilise la demande propre de la scène)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="469"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="470"/>
         <source>Power</source>
         <translation>Puissance</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="476"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="477"/>
         <source>Uniform</source>
         <translation>Uniforme</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="491"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="492"/>
         <source>Light Sampler:</source>
         <translation>Échantillonneur de lumière :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="640"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="641"/>
         <source>Path regularization (--regularize)</source>
         <translation>Régularisation de chemin (--regularize)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="668"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="669"/>
         <source>Firefly clamp (--maxcomponentvalue)</source>
         <translation>Limitation des pixels aberrants (--maxcomponentvalue)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="956"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="957"/>
         <source>OptiX AI denoiser (GPU only)</source>
         <translation>Débruiteur IA OptiX (GPU uniquement)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="430"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="431"/>
         <source>Sampler:</source>
         <translation>Échantillonneur :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="514"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="515"/>
         <source>Spectral rendering (--spectral)</source>
         <translation>Rendu spectral (--spectral)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="631"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="632"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="583"/>
         <source>Exposure:</source>
         <translation>Exposition :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="632"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="633"/>
         <source>A flat brightness multiplier applied to the whole image, the same knob a camera&apos;s exposure setting is.
 
 1.0 leaves the image unchanged; below 1.0 darkens it, above 1.0 brightens it - useful for a scene that&apos;s rendering correctly but is just too dark or too bright to see clearly, without changing any actual light in the scene.</source>
@@ -3340,7 +3340,7 @@ Débruiteur SVGF : un filtre de réduction de bruit alternatif et expérimental.
 1,0 laisse l&apos;image inchangée ; en dessous de 1,0 elle s&apos;assombrit, au-dessus elle s&apos;éclaircit - utile pour une scène dont le rendu est correct mais qui est simplement trop sombre ou trop claire pour bien voir, sans modifier la lumière réelle de la scène.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="642"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="643"/>
         <source>Slightly softens a rough, reflective, or glassy surface&apos;s
 sharpness after the path&apos;s first non-mirror-like bounce - this
 calms down fireflies (isolated bright speckles) from hard-to-
@@ -3352,7 +3352,7 @@ removes it.</source>
         <translation>Adoucit légèrement la netteté d&apos;une surface rugueuse, réfléchissante ou en verre après le premier rebond qui n&apos;est pas de type miroir ; cela calme les fireflies (points brillants isolés) dues aux chemins lumineux difficiles à tracer, au prix d&apos;un peu de flou supplémentaire. Uniquement avec le traceur de chemins par défaut sur CPU et GPU OptiX ; non implémenté sous Metal (rendu GPU de macOS). Une scène qui le demande déjà elle-même n&apos;est pas affectée : cette case ne fait qu&apos;ajouter la demande, jamais la retirer.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="670"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="671"/>
         <source>Caps any single sample whose brightest color channel exceeds
 the value below, scaling all its channels down together so the
 color/hue stays the same. CPU and both OptiX GPU backends - the
@@ -3363,93 +3363,93 @@ rather than per whole sample). Not implemented under Metal
         <translation>Plafonne tout échantillon dont le canal de couleur le plus lumineux dépasse la valeur ci-dessous, en réduisant tous ses canaux ensemble pour que la couleur et la teinte restent identiques. Fonctionne sur CPU et sur les deux moteurs GPU OptiX : le mode GPU récursif correspond exactement au CPU, tandis que le mode GPU wavefront l&apos;applique de façon légèrement différente (par rebond de lumière plutôt que par échantillon complet). Non implémenté sous Metal (rendu GPU de macOS).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="729"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="730"/>
         <source>Accelerator</source>
         <translation>Accélérateur</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="745"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="746"/>
         <source>Scene&apos;s own choice (default)</source>
         <translation>Choix propre de la scène (par défaut)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="750"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="751"/>
         <source>BVH</source>
         <translation>BVH</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="754"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="755"/>
         <source>Kd-tree</source>
         <translation>Arbre Kd</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="771"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="772"/>
         <source>Accelerator:</source>
         <translation>Accélérateur :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="793"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="794"/>
         <source>SAH (default)</source>
         <translation>SAH (par défaut)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="799"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="800"/>
         <source>Middle</source>
         <translation>Middle</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="804"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="805"/>
         <source>Equal counts</source>
         <translation>Effectifs égaux</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="809"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="810"/>
         <source>HLBVH</source>
         <translation>HLBVH</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="823"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="824"/>
         <source>BVH split method:</source>
         <translation>Méthode de division BVH :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="866"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="867"/>
         <source>ACES (default)</source>
         <translation>ACES (par défaut)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="867"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="868"/>
         <source>Reinhard</source>
         <translation>Reinhard</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="868"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="869"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="70"/>
         <source>None</source>
         <translation>Aucun</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="874"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="875"/>
         <source>Tone mapping:</source>
         <translation>Tone mapping :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="886"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="887"/>
         <source>Print render stats</source>
         <translation>Afficher les statistiques de rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="900"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="901"/>
         <source>OptiX validation mode (slower, debugging only)</source>
         <translation>Mode de validation OptiX (plus lent, débogage uniquement)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1025"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1026"/>
         <source>Crop Window</source>
         <translation>Fenêtre de recadrage</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1037"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1038"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>Ne rendre qu&apos;une partie de l&apos;image (--crop)</translation>
     </message>
@@ -3496,107 +3496,107 @@ SPPM (une technique de photon mapping) gère les effets délicats de verre et de
 Survolez n&apos;importe quel élément de la liste déroulante pour obtenir des détails sur ce mode précis.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="204"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="205"/>
         <source>How many rounds of the SPPM technique to run (each round traces rays from the camera, then traces simulated light particles from the lights). More rounds build up a cleaner result, at a render time cost that grows roughly in proportion.</source>
         <translation>Le nombre de cycles de la technique SPPM à exécuter (chaque cycle trace des rayons depuis la caméra, puis trace des particules de lumière simulées depuis les lumières). Plus de cycles donnent un résultat plus propre, avec un coût en temps de rendu qui augmente à peu près proportionnellement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="214"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="215"/>
         <source>How many simulated light particles (photons) are sent out from the lights during each round. More photons reduce graininess in bounced and focused lighting (like light through glass), at the cost of a slower round.</source>
         <translation>Le nombre de particules de lumière simulées (photons) envoyées depuis les lumières à chaque cycle. Plus de photons réduisent le grain dans l&apos;éclairage rebondi et focalisé (comme la lumière à travers le verre), au prix d&apos;un cycle plus lent.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="232"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="233"/>
         <source>The most bounces allowed on each of the two ray paths - one starting from the camera, one from the light - that this method traces and then joins together.</source>
         <translation>Le nombre maximal de rebonds autorisés sur chacun des deux chemins de rayons - l&apos;un partant de la caméra, l&apos;autre de la lumière - que cette méthode trace puis relie ensemble.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="249"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="250"/>
         <source>How many candidate light paths this method tries out up front, for each bounce depth, before it starts refining from them - more gives it a better-informed starting point.</source>
         <translation>Le nombre de chemins de lumière candidats que cette méthode essaie d&apos;abord, pour chaque profondeur de rebond, avant de commencer à les affiner - plus il y en a, meilleur est le point de départ.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="258"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="259"/>
         <source>The total number of small random tweaks this method tries while refining its light paths, added up across all of its parallel search chains - the main render time/quality knob here, similar to what samples per pixel controls in the default path tracer.</source>
         <translation>Le nombre total de petites modifications aléatoires que cette méthode essaie en affinant ses chemins de lumière, cumulé sur toutes ses chaînes de recherche parallèles - le principal réglage temps de rendu/qualité ici, comparable à ce que contrôlent les échantillons par pixel dans le traceur de chemins par défaut.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="269"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="270"/>
         <source>Same meaning as BDPT&apos;s max path depth above - this method is built directly on top of that same two-sided path-tracing machinery.</source>
         <translation>La même signification que la profondeur de chemin max. de BDPT ci-dessus - cette méthode est construite directement sur ce même mécanisme de path tracing à deux extrémités.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="287"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="288"/>
         <source>How far a test ray is allowed to travel before it&apos;s considered to have found open sky (nothing blocking it). The default (10 billion) is effectively unlimited - lower it if you only want nearby objects to count as blocking.</source>
         <translation>La distance qu&apos;un rayon de test est autorisé à parcourir avant d&apos;être considéré comme ayant atteint le ciel ouvert (rien ne le bloquant). La valeur par défaut (10 milliards) est en pratique illimitée - réduisez-la si vous ne voulez que les objets proches comptent comme des obstacles.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="295"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="296"/>
         <source>By default, test rays are aimed more toward straight-up-from-the-surface directions, matching how a plain matte surface is actually lit in real life. Turning this on spreads the test rays out evenly in every direction instead - a different, unweighted way of measuring the same thing.</source>
         <translation>Par défaut, les rayons de test sont orientés davantage vers les directions perpendiculaires à la surface, ce qui correspond à la façon dont une surface mate ordinaire est réellement éclairée dans la réalité. Activer cette option répartit au contraire les rayons de test uniformément dans toutes les directions - une autre façon, non pondérée, de mesurer la même chose.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="305"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="306"/>
         <source>A flat brightness multiplier applied to the occlusion color below.</source>
         <translation>Un multiplicateur de luminosité uniforme appliqué à la couleur d&apos;occlusion ci-dessous.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="323"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="324"/>
         <source>The color used to visualize how occluded (blocked-off) each point is - since this mode isn&apos;t a real lit render, this is just a display choice, not an actual light color. Default is white (1, 1, 1).</source>
         <translation>La couleur utilisée pour visualiser à quel point chaque point est occlus (bloqué) - puisque ce mode n&apos;est pas un véritable rendu éclairé, il s&apos;agit d&apos;un simple choix d&apos;affichage, pas d&apos;une vraie couleur de lumière. La valeur par défaut est blanc (1, 1, 1).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="339"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="340"/>
         <source>On by default. This aims a ray directly at a light source on every bounce, instead of hoping a random bounce happens to hit one - it sharply cuts down graininess in scenes with small, bright lights. Turning it off falls back to finding lights only by chance, the way a bare-bones path tracer would.</source>
         <translation>Activé par défaut. Cette option vise directement une source lumineuse à chaque rebond, au lieu d&apos;espérer qu&apos;un rebond aléatoire en touche une par hasard - elle réduit nettement le grain dans les scènes comportant de petites lumières intenses. La désactiver revient à ne trouver les lumières que par hasard, comme le ferait un traceur de chemins rudimentaire.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="347"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="348"/>
         <source>On by default. Picks each bounce&apos;s new direction weighted toward the directions the surface&apos;s material actually reflects light in, rather than guessing blindly. Turning it off falls back to picking directions evenly at random, which is less efficient.</source>
         <translation>Activé par défaut. Choisit la nouvelle direction de chaque rebond en la pondérant vers les directions dans lesquelles le matériau de la surface réfléchit réellement la lumière, plutôt qu&apos;en devinant à l&apos;aveugle. La désactiver revient à choisir les directions uniformément au hasard, ce qui est moins efficace.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="369"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="370"/>
         <source>Which random-sampling method is used, whether to simulate light by individual wavelength, whether to stop early on pixels that already look clean, and a time-limit alternative to a fixed sample count. These control HOW samples are gathered, separately from HOW MANY (set on the Settings tab).</source>
         <translation>Quelle méthode d&apos;échantillonnage aléatoire est utilisée, s&apos;il faut simuler la lumière par longueur d&apos;onde individuelle, s&apos;il faut arrêter plus tôt sur les pixels qui paraissent déjà propres, et une limite de temps comme alternative à un nombre fixe d&apos;échantillons. Ces réglages contrôlent COMMENT les échantillons sont prélevés, séparément de COMBIEN (réglé dans l&apos;onglet Paramètres).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="384"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="385"/>
         <source>A well-spread pattern of sample points (mixed up differently in each pixel) that fills in gaps more evenly than pure randomness. The best general-purpose default - it cleans up the image quickly without leaving visible patterns.</source>
         <translation>Un motif de points d&apos;échantillonnage bien réparti (mélangé différemment dans chaque pixel) qui comble les vides plus uniformément que le pur hasard. Le meilleur choix par défaut généraliste - il nettoie l&apos;image rapidement sans laisser de motifs visibles.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="390"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="391"/>
         <source>A variant of the Sobol pattern above, reordered to work better when samples are taken progressively (a few at a time) rather than all at once. Cleans up the image at least as well as plain Sobol, with better behavior when combined with adaptive sampling.</source>
         <translation>Une variante du motif Sobol ci-dessus, réordonnée pour mieux fonctionner lorsque les échantillons sont prélevés progressivement (quelques-uns à la fois) plutôt que tous en même temps. Nettoie l&apos;image au moins aussi bien que Sobol classique, avec un meilleur comportement combiné à l&apos;échantillonnage adaptatif.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="396"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="397"/>
         <source>The Sobol pattern above, extended with extra random dimensions - this avoids repeating patterns showing up when a pixel needs more random choices than plain Sobol comfortably covers (for example, light paths with many bounces).</source>
         <translation>Le motif Sobol ci-dessus, étendu avec des dimensions aléatoires supplémentaires - cela évite l&apos;apparition de motifs répétitifs lorsqu&apos;un pixel a besoin de plus de choix aléatoires que ce que Sobol classique couvre confortablement (par exemple des chemins de lumière à de nombreux rebonds).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="402"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="403"/>
         <source>Splits each pixel into a small grid of sub-cells and takes one sample from each cell. Simple, predictable coverage - less refined than Sobol/Halton above, but useful as a plain reference to compare against.</source>
         <translation>Divise chaque pixel en une petite grille de sous-cellules et prélève un échantillon dans chacune. Couverture simple et prévisible - moins raffinée que Sobol/Halton ci-dessus, mais utile comme référence simple pour comparer.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="407"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="408"/>
         <source>A sampling pattern designed to spread samples especially evenly between neighboring pixels (what&apos;s called &quot;blue-noise&quot; distribution), avoiding clumps of similar samples landing next to each other.</source>
         <translation>Un motif d&apos;échantillonnage conçu pour répartir les échantillons de façon particulièrement uniforme entre pixels voisins (ce qu&apos;on appelle une distribution en « bruit bleu »), évitant que des échantillons similaires ne se retrouvent groupés côte à côte.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="412"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="413"/>
         <source>A classic, well-spread sampling pattern built from a well-established mathematical formula. Well-tested, and avoids the grid-like clustering that plain stratified sampling above can show.</source>
         <translation>Un motif d&apos;échantillonnage classique et bien réparti, construit à partir d&apos;une formule mathématique bien établie. Bien testé, et évite le regroupement en grille que l&apos;échantillonnage stratifié simple ci-dessus peut présenter.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="417"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="418"/>
         <source>Plain, ordinary random numbers, with none of the deliberate even-spacing the other options use. Included so a loaded .pbrt scene file that specifically asks for this can be reproduced faithfully - not a recommended choice otherwise.</source>
         <translation>De simples nombres aléatoires ordinaires, sans la répartition régulière et délibérée qu&apos;utilisent les autres options. Inclus pour qu&apos;un fichier de scène .pbrt chargé qui le demande spécifiquement puisse être reproduit fidèlement - ce n&apos;est pas un choix recommandé autrement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="425"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="426"/>
         <source>Which method generates the random decisions used while
 rendering (all but Independent spread samples out more evenly
 than pure randomness). CPU default path tracer only - no effect
@@ -3608,7 +3608,7 @@ par défaut sur CPU - aucun effet sur GPU ni avec les méthodes de rendu
 alternatives ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="431"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="432"/>
         <source>Rendering needs a lot of random numbers - which direction to bounce a ray, which point on a light to aim at, and so on - and HOW those &quot;random&quot; choices are generated changes how quickly the image builds up into a clean result.
 
 Ordinary random numbers tend to clump together in some spots and leave gaps in others. Most samplers here (Sobol, Halton, etc.) instead use patterns deliberately spread out to cover all the possibilities more evenly, which cleans up the image faster than true randomness would for the same number of samples. Independent is the exception - plain, uncorrelated random numbers, included so a loaded .pbrt scene file that specifically asks for it can be reproduced faithfully, not as a recommended choice.
@@ -3621,27 +3621,27 @@ Des nombres aléatoires ordinaires ont tendance à se regrouper à certains endr
 Grisé ? Cela ne concerne que le traceur de chemins par défaut du moteur de rendu CPU - passez Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="455"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="456"/>
         <source>Organizes the scene&apos;s lights into a quick-lookup index and weighs each one by both its brightness and how close it is to the point being shaded, adjusting per bounce instead of using one fixed weighting for the whole scene. The underlying renderer&apos;s own default - generally converges to a clean image fastest, at a small extra bookkeeping cost.</source>
         <translation>Organise les lumières de la scène en un index de recherche rapide et pondère chacune à la fois selon sa luminosité et sa proximité avec le point ombré, en ajustant à chaque rebond plutôt qu&apos;en utilisant une pondération fixe pour toute la scène. Le réglage par défaut du moteur de rendu sous-jacent - converge généralement le plus vite vers une image propre, au prix d&apos;un petit surcoût de gestion.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="462"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="463"/>
         <source>Uses whatever light-sampling method the loaded scene file itself asks for (falling back to BVH above if it doesn&apos;t ask for anything, or asks for something this app doesn&apos;t support) instead of a fixed choice. Picking this once and leaving it is the one choice here that stays correct as you switch between scenes with different recommendations.</source>
         <translation>Utilise la méthode d&apos;échantillonnage de lumière que le fichier de scène chargé demande lui-même (revenant à BVH ci-dessus s&apos;il ne demande rien, ou demande quelque chose que cette application ne prend pas en charge) plutôt qu&apos;un choix fixe. Le choisir une bonne fois pour toutes est la seule option ici qui reste correcte au fil des changements de scène ayant des recommandations différentes.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="469"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="470"/>
         <source>Picks a light to sample with odds weighted by its overall brightness - brighter lights get picked more often than dim ones. Cleans up the image faster than picking lights with equal odds in scenes with a wide range of light brightness, but it ignores how far away or how blocked-off a light is.</source>
         <translation>Choisit une lumière à échantillonner avec une probabilité pondérée par sa luminosité globale - les lumières plus intenses sont choisies plus souvent que les faibles. Nettoie l&apos;image plus vite qu&apos;un choix à probabilité égale dans les scènes où les lumières ont des intensités très variées, mais ignore la distance ou l&apos;obstruction de chaque lumière.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="476"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="477"/>
         <source>Picks a light completely at random from everything in the scene, with equal odds regardless of brightness or distance. Simple, but cleans up slowly in scenes with many lights of very different brightness - a dim light gets picked just as often as a bright one.</source>
         <translation>Choisit une lumière complètement au hasard parmi tout ce que contient la scène, avec une probabilité égale quelle que soit sa luminosité ou sa distance. Simple, mais nettoie lentement les scènes comportant de nombreuses lumières d&apos;intensités très différentes - une lumière faible est choisie aussi souvent qu&apos;une lumière intense.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="484"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="485"/>
         <source>Which strategy picks the light to aim a ray at directly, each
 time a bounce tries to sample light straight from a source.
 Affects how grainy the image looks along the way and how fast it
@@ -3656,7 +3656,7 @@ converge. Concerne uniquement le traceur de chemins par défaut sur CPU -
 aucun effet sur GPU ni avec les méthodes de rendu alternatives ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="492"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="493"/>
         <source>Every bounce off a matte or semi-glossy surface needs to pick ONE light (out of potentially many in the scene) to aim a ray directly at - which light gets picked, and how fairly, changes how quickly the image cleans up, though never what it eventually looks like.
 
 BVH (the default) organizes the scene&apos;s lights into a quick-lookup index and adjusts its weighting for each point being shaded - both bright AND nearby lights get preferred. Auto instead uses whatever the loaded scene file itself asks for (falling back to BVH if it doesn&apos;t ask for anything). Power picks by brightness alone, ignoring position - simpler, and worse in scenes where lights are at very different distances. Uniform ignores both - every light is equally likely regardless of brightness or distance, included mainly for comparison and debugging.
@@ -3669,7 +3669,7 @@ BVH (par défaut) organise les lumières de la scène en un index de recherche r
 Grisé ? Cela ne concerne que le traceur de chemins par défaut du moteur de rendu CPU - passez Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="516"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="517"/>
         <source>Simulates individual wavelengths of light (like a rainbow)
 instead of simplifying everything to red/green/blue. CPU default
 path tracer only. Only lambertian, metal, dielectric,
@@ -3685,7 +3685,7 @@ que de rendre silencieusement de mauvaises couleurs. Nettement plus lent
 par échantillon.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="524"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="525"/>
         <source>Ordinary rendering tracks light as just three numbers - red, green, blue - the same way a screen displays color.
 
 Real light is actually a continuous spectrum of wavelengths, and a few physical effects (like a prism splitting white light into a rainbow) only happen because different wavelengths bend by different amounts - plain red/green/blue can&apos;t represent that. This option tracks a handful of actual individual wavelengths per ray instead, at the cost of a grainier, slower render.
@@ -3698,7 +3698,7 @@ La lumière réelle est en fait un spectre continu de longueurs d&apos;onde, et 
 Grisé ? Cette option n&apos;existe que sur le traceur de chemins par défaut du moteur de rendu CPU - passez Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="539"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="540"/>
         <source>Stops adding more samples to a pixel once it already looks
 clean, instead of always spending the full Samples budget on
 every pixel - Samples becomes a ceiling, not a fixed amount every
@@ -3710,14 +3710,14 @@ que chaque pixel doit utiliser. Concerne uniquement le traceur de chemins
 par défaut sur CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="551"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="552"/>
         <source>How clean a pixel must look before it&apos;s considered done.
 Lower = cleaner but slower. 0.01 matches Blender Cycles&apos; own default.</source>
         <translation>À quel point un pixel doit paraître propre avant d&apos;être considéré comme terminé.
 Plus bas = plus propre mais plus lent. 0,01 correspond à la valeur par défaut de Blender Cycles.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="562"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="563"/>
         <source>Rendering builds up an image from many random samples, so it looks grainy at first and gradually cleans up - but different pixels clean up at different speeds. A pixel on a bright, evenly-lit wall might look clean after just a few samples, while a dim corner lit only by a small window can take far more before its graininess settles down. Spending the same fixed number of samples on both wastes time on pixels that were already done.
 
 Adaptive sampling keeps track of how grainy each pixel still looks and stops adding samples to it early once that drops below the threshold below, letting Samples act as a ceiling rather than a flat amount every pixel must use - the same idea as Blender Cycles&apos; own adaptive sampling.
@@ -3730,7 +3730,7 @@ L&apos;échantillonnage adaptatif surveille à quel point chaque pixel paraît e
 Grisé ? Cela ne concerne que le traceur de chemins par défaut du moteur de rendu CPU - passez Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="582"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="583"/>
         <source>Stop rendering once this many seconds have passed, instead of
 always running until the whole image is finished. CPU default
 path tracer only.</source>
@@ -3739,14 +3739,14 @@ toujours continuer jusqu&apos;à ce que l&apos;image entière soit terminée. Co
 uniquement le traceur de chemins par défaut sur CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="594"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="595"/>
         <source>How many seconds to render before stopping, regardless of the
 Samples budget above.</source>
         <translation>Le nombre de secondes de rendu avant l&apos;arrêt, quel que soit le
 budget d&apos;Échantillons ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="605"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="606"/>
         <source>Useful for a fixed preview or a shared-computer time budget, instead of guessing a sample count that happens to finish in time - lets Samples above stay a generous ceiling while this decides when to actually stop.
 
 It stops row by row: whichever rows of the image were already being worked on when time runs out still finish normally; any row that was never started is left black instead of skipped over, so you still get a valid (if incomplete) image rather than a broken file.
@@ -3763,7 +3763,7 @@ Vous générez une vidéo ? Il s&apos;agit d&apos;un budget pour TOUTE la vidéo
 Grisé ? Cela ne concerne que le traceur de chemins par défaut du moteur de rendu CPU - passez Moteur de rendu sur CPU dans l&apos;onglet Paramètres pour l&apos;utiliser.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="627"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="628"/>
         <source>A flat brightness multiplier applied before the final
 brightness/contrast adjustment (1.0 = no change). Both CPU and
 GPU default path tracer only.</source>
@@ -3772,7 +3772,7 @@ final de luminosité/contraste (1,0 = aucun changement). Concerne
 uniquement le traceur de chemins par défaut, CPU et GPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="902"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="903"/>
         <source>Turns on extra GPU-side correctness checks, which have a real
 performance cost each time the GPU runs. OptiX GPU only (not
 available under Metal, macOS GPU rendering), meant for
@@ -3780,7 +3780,7 @@ debugging, not routine use.</source>
         <translation>Active des vérifications de justesse supplémentaires côté GPU, qui ont un coût de performance réel à chaque exécution du GPU. GPU OptiX uniquement (indisponible sous Metal, rendu GPU de macOS) ; destiné au débogage, pas à un usage courant.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="908"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="909"/>
         <source>Turns on extra correctness checks inside the GPU rendering process itself, catching certain kinds of bugs that would otherwise silently produce a wrong image or crash unpredictably.
 
 It&apos;s a debugging aid for people working on the renderer&apos;s own GPU code, not something a normal render benefits from - it has a real performance cost and doesn&apos;t change what a correct render looks like.
@@ -3789,7 +3789,7 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>Active des vérifications de justesse supplémentaires dans le processus de rendu GPU lui-même, qui détectent certains types de bogues qui produiraient sinon silencieusement une image fausse ou provoqueraient un plantage imprévisible. C&apos;est une aide au débogage pour les personnes qui travaillent sur le code GPU du moteur de rendu, pas quelque chose dont un rendu normal tire profit : cela a un coût de performance réel et ne change pas l&apos;aspect d&apos;un rendu correct. Spécifique au moteur GPU OptiX (Windows) ; il n&apos;a pas d&apos;équivalent Metal, donc il reste grisé même avec le Moteur de rendu réglé sur GPU sous macOS.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="958"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="959"/>
         <source>Runs an AI denoiser on the finished render to smooth out
 graininess, using extra information about each pixel&apos;s base
 color and surface direction to do a better job than a plain
@@ -3799,7 +3799,7 @@ each have their own denoiser) - not available under Metal
         <translation>Exécute un débruiteur par IA sur le rendu terminé pour atténuer le grain, en s&apos;appuyant sur des informations supplémentaires sur la couleur de base et l&apos;orientation de la surface de chaque pixel pour faire mieux qu&apos;un simple flou. GPU OptiX uniquement, dans les deux modes GPU (le récursif et le wavefront ont chacun leur débruiteur) ; indisponible sous Metal (rendu GPU de macOS).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="985"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="986"/>
         <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
 
 A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
@@ -3808,7 +3808,7 @@ Grayed out? This needs the OptiX GPU backend (Windows) - switch Renderer to GPU 
         <translation>Un rendu est granuleux par nature quand on utilise peu d&apos;échantillons, c&apos;est pourquoi plus d&apos;échantillons donnent généralement une image plus propre (mais aussi un rendu plus lent). Un débruiteur est un modèle d&apos;IA entraîné à reconnaître ce grain et à l&apos;atténuer après coup, sans avoir à tracer de rayons supplémentaires : un moyen d&apos;obtenir plus vite une image d&apos;aspect propre, au prix d&apos;une perte de détails fins. Le nombre à sa droite dose le mélange entre l&apos;original bruité et le résultat entièrement débruité : 0 correspond au débruitage complet (valeur par défaut) ; l&apos;augmenter conserve une partie du grain d&apos;origine, utile quand un débruitage à pleine puissance lisse une texture que vous vouliez garder. Grisé ? Il faut le moteur GPU OptiX (Windows) : réglez le Moteur de rendu sur GPU dans l&apos;onglet Paramètres. Les modes GPU récursif et wavefront le prennent tous deux en charge ; il n&apos;a pas d&apos;équivalent Metal, donc il reste grisé sous macOS.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1039"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1040"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
 only; works on the CPU and both GPU backends (OptiX and
@@ -3816,7 +3816,7 @@ Metal). Pixels outside the rectangle are left black.</source>
         <translation>Limite le rendu à un rectangle de l&apos;image, donné en fractions de l&apos;image entière de 0 à 1. Traceur de chemins par défaut uniquement ; fonctionne sur CPU et sur les deux moteurs GPU (OptiX et Metal). Les pixels en dehors du rectangle restent noirs.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1225"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Default path tracer only. On the GPU (both OptiX and
 Metal) renders are already repeatable by default; the seed picks a
@@ -3824,7 +3824,7 @@ different, but equally repeatable, random sequence.</source>
         <translation>Rend ce rendu reproductible à l&apos;octet près lors d&apos;une nouvelle exécution avec la même graine. Traceur de chemins par défaut uniquement. Sur le GPU (OptiX comme Metal), les rendus sont déjà reproductibles par défaut ; la graine choisit une séquence aléatoire différente, mais tout aussi reproductible.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="652"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="653"/>
         <source>Some light paths are genuinely hard for a path tracer to find cleanly - light that bounces off a rough (but not mirror-perfect) surface, through another rough surface, into a small bright light. Those paths show up as fireflies: single rays that happen to catch a very bright, small light at just the right angle, appearing as an isolated bright speckle that takes a very long time to average away.
 
 This setting deliberately softens a surface&apos;s roughness a little more with each non-mirror-like bounce a light path has already taken - it introduces a small, technically-incorrect bias, but in exchange the fireflies clean up dramatically faster, which usually looks better in the final image.
@@ -3837,7 +3837,7 @@ Ce réglage adoucit délibérément un peu plus la rugosité d&apos;une surface 
 Désactivé par défaut. Si un fichier de scène .pbrt chargé le demande déjà lui-même, il s&apos;applique de toute façon - cette case ne peut qu&apos;ajouter la demande en plus, jamais la retirer.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="701"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="702"/>
         <source>Ray-traced rendering occasionally comes up with a sample that&apos;s technically correct but extremely bright - a ray that happens to catch a small, intense light at just the right angle - and one such sample can dominate a pixel&apos;s average for a long time before enough other samples arrive to balance it out. These show up as fireflies: single bright speckles standing out against the rest of the image.
 
 This clamp caps how bright any single sample&apos;s brightest color channel is allowed to be before it gets averaged in, trading a small, controlled inaccuracy for a much cleaner-looking image at the same sample count - lower values clean up more aggressively but risk visibly dimming genuinely bright small lights, not just stray noise.
@@ -3850,27 +3850,27 @@ Cette limitation plafonne l&apos;intensité que le canal de couleur le plus lumi
 Désactivé par défaut (en pratique illimité). Concerne uniquement le traceur de chemins par défaut sur CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="732"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="733"/>
         <source>A CPU-only setting for the index the renderer builds to quickly skip past objects a ray obviously can&apos;t hit, instead of checking every single object in the scene, plus the strategy used to build that index. Applies to every rendering method, not just the default path tracer - the defaults work well for almost every scene.</source>
         <translation>Un réglage réservé au CPU pour l&apos;index que le moteur de rendu construit afin de rapidement ignorer les objets qu&apos;un rayon ne peut manifestement pas toucher, au lieu de vérifier chaque objet de la scène un par un, ainsi que la stratégie utilisée pour construire cet index. S&apos;applique à toutes les méthodes de rendu, pas seulement au traceur de chemins par défaut - les valeurs par défaut conviennent bien à presque toutes les scènes.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="745"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="746"/>
         <source>Leaves a loaded .pbrt scene file&apos;s own accelerator choice alone (falling back to BVH below if it didn&apos;t name one). Has no effect either way on a scene that isn&apos;t loaded from a .pbrt file.</source>
         <translation>Laisse inchangé le choix d&apos;accélérateur propre au fichier de scène .pbrt chargé (revenant à BVH ci-dessous s&apos;il n&apos;en a nommé aucun). N&apos;a aucun effet, dans un sens ou dans l&apos;autre, sur une scène qui n&apos;est pas chargée depuis un fichier .pbrt.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="750"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="751"/>
         <source>An index built by grouping nearby objects inside a hierarchy of bounding boxes, using the split strategy chosen below - this app&apos;s default index type.</source>
         <translation>Un index construit en regroupant les objets proches dans une hiérarchie de boîtes englobantes, selon la stratégie de division choisie ci-dessous - le type d&apos;index par défaut de cette application.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="754"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="755"/>
         <source>A different indexing structure that divides up space itself into regions, instead of grouping objects into boxes. It has no split-strategy option of its own (the combo below is ignored when this is chosen). Falls back to BVH above on a scene with moving-object motion blur (this app&apos;s version of this index type can&apos;t handle that) - a warning is printed when that happens.</source>
         <translation>Une structure d&apos;index différente qui divise l&apos;espace lui-même en régions, plutôt que de regrouper les objets dans des boîtes. Elle n&apos;a pas sa propre option de stratégie de division (la liste déroulante ci-dessous est ignorée lorsqu&apos;elle est choisie). Revient à BVH ci-dessus sur une scène avec du flou de mouvement d&apos;objets (la version de ce type d&apos;index dans cette application ne peut pas le gérer) - un avertissement s&apos;affiche dans ce cas.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="764"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="765"/>
         <source>Which indexing structure organizes the scene&apos;s geometry for
 fast ray tests. Every choice renders the identical final image -
 this only affects build time and render speed, not quality. CPU
@@ -3886,7 +3886,7 @@ ni sur une scène qui n&apos;a pas été chargée depuis un fichier .pbrt (voir
 le journal).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="772"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="773"/>
         <source>If the renderer had to check every single object in the scene for every ray, even simple scenes would be painfully slow. This index lets a ray quickly skip past objects it obviously can&apos;t hit, and only test the handful of objects actually near where it travels.
 
 BVH (grouping nearby objects into a hierarchy of boxes) and Kd-tree (dividing up space itself) are two different real strategies for organizing the same geometry - both produce the exact same rendered image, just at different build and render speeds depending on the scene&apos;s shape.
@@ -3899,27 +3899,27 @@ BVH (regrouper les objets proches dans une hiérarchie de boîtes) et Kd-tree (d
 Seule une scène chargée depuis un fichier .pbrt a un choix d&apos;accélérateur propre à remplacer - toute autre scène utilise toujours son propre index fixe de type BVH quel que soit ce réglage (un avertissement s&apos;affiche si vous choisissez autre chose malgré tout).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="793"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="794"/>
         <source>Tries out several ways of splitting the index and estimates which one will be fastest to search later, then picks the cheapest. Slower to build than Middle/Equal Counts below, but produces the best-performing index for most scenes - this app&apos;s long-standing default.</source>
         <translation>Essaie plusieurs façons de diviser l&apos;index et estime laquelle sera la plus rapide à parcourir ensuite, puis choisit la moins coûteuse. Plus lente à construire que Middle/Equal Counts ci-dessous, mais produit l&apos;index le plus performant pour la plupart des scènes - la valeur par défaut historique de cette application.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="799"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="800"/>
         <source>Splits each group of objects right down the middle of its longest side. Cheap and fast to build, with no cost estimation at all - but can perform poorly on unevenly-spread-out geometry.</source>
         <translation>Divise chaque groupe d&apos;objets exactement au milieu de son côté le plus long. Peu coûteuse et rapide à construire, sans aucune estimation de coût - mais peut donner de mauvaises performances sur une géométrie répartie de façon inégale.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="804"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="805"/>
         <source>Splits each group so an equal number of objects fall on each side, regardless of how they&apos;re actually spread out in space. Cheap to build, but can produce badly-shaped groups when objects are clustered together.</source>
         <translation>Divise chaque groupe de sorte qu&apos;un nombre égal d&apos;objets se retrouve de chaque côté, indépendamment de leur répartition réelle dans l&apos;espace. Peu coûteuse à construire, mais peut produire des groupes mal formés lorsque les objets sont regroupés entre eux.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="809"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="810"/>
         <source>Builds the index from the bottom up using a fast spatial-sorting trick, making it the fastest of these four strategies to build for very large numbers of triangles - at some cost to how well the finished index performs later, compared to SAH above.</source>
         <translation>Construit l&apos;index de bas en haut à l&apos;aide d&apos;une astuce de tri spatial rapide, ce qui en fait la plus rapide à construire de ces quatre stratégies pour un très grand nombre de triangles - au prix d&apos;une performance un peu moindre de l&apos;index une fois terminé, comparée à SAH ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="817"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="818"/>
         <source>How the BVH index above is built (ignored when Accelerator is
 set to Kd-tree). Every choice renders the identical final image.
 Falls back to SAH above on a scene with moving-object motion blur
@@ -3932,17 +3932,17 @@ d&apos;objets (les autres stratégies de construction ne peuvent pas le gérer)
 - un avertissement s&apos;affiche dans ce cas.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="824"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="825"/>
         <source>Only used when the accelerator above is set to BVH (ignored for Kd-tree, which has no split-strategy option). All four strategies build the same general kind of index in a different way - SAH above spends more time building in exchange for a better-performing index; Middle and Equal Counts are cheap, simple fallbacks; HLBVH trades a little performance for the fastest build on very large scenes.</source>
         <translation>Utilisé uniquement lorsque l&apos;accélérateur ci-dessus est réglé sur BVH (ignoré pour Kd-tree, qui n&apos;a pas d&apos;option de stratégie de division). Les quatre stratégies construisent le même type général d&apos;index, mais différemment - SAH ci-dessus passe plus de temps à construire en échange d&apos;un index plus performant ; Middle et Equal Counts sont des solutions de repli simples et peu coûteuses ; HLBVH sacrifie un peu de performance pour la construction la plus rapide sur les très grandes scènes.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="855"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="856"/>
         <source>How the image&apos;s brightness/contrast is adjusted for display, whether to print render statistics, and a GPU debugging mode - these control how the final image is processed and reported, not what to render. Denoising (cleaning up graininess) has its own dedicated section further down this tab.</source>
         <translation>Comment la luminosité/le contraste de l&apos;image sont ajustés pour l&apos;affichage, s&apos;il faut afficher les statistiques de rendu, et un mode de débogage GPU - ces réglages contrôlent la façon dont l&apos;image finale est traitée et rapportée, pas ce qui est rendu. Le débruitage (le nettoyage du grain) dispose de sa propre section dédiée plus bas dans cet onglet.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="870"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="871"/>
         <source>Which brightness/contrast curve to apply before converting to
 the final display colors. Applies to both CPU and GPU (both GPU
 modes) - no effect under the alternate rendering methods above.</source>
@@ -3952,7 +3952,7 @@ vers les couleurs d&apos;affichage finales. S&apos;applique au CPU comme au GPU
 alternatives ci-dessus.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="875"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="876"/>
         <source>A rendered scene&apos;s true brightness values have no upper limit - a light bulb might be a hundred times brighter than a wall - but a screen can only show a fixed range of brightness. Tone mapping is the curve used to compress that huge range down into something a screen can actually display.
 
 ACES rolls off bright highlights gently, the way film does, giving a soft, filmic look; Reinhard is a simpler, older way of compressing brightness; None just clips anything too bright straight to flat white, which can look harsh.</source>
@@ -3961,7 +3961,7 @@ ACES rolls off bright highlights gently, the way film does, giving a soft, filmi
 ACES adoucit progressivement les hautes lumières, à la façon d&apos;une pellicule argentique, donnant un rendu doux et cinématographique ; Reinhard est une méthode plus simple et plus ancienne de compression de la luminosité ; None se contente d&apos;écrêter tout ce qui est trop lumineux en blanc uni, ce qui peut paraître dur.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="888"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="889"/>
         <source>Print a small end-of-render statistics summary (rays cast,
 bounces, shadow rays, samples/sec) to the Log tab. Purely
 informational - it never changes the rendered image.</source>
@@ -3970,7 +3970,7 @@ rebonds, rayons d&apos;ombre, échantillons/s) dans l&apos;onglet Sortie du jour
 Purement informatif - cela ne change jamais l&apos;image rendue.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="893"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="894"/>
         <source>Prints a short summary after the render finishes - how many rays were cast, how many bounces happened, how many shadow rays were traced (rays checking whether a point can see a light), and samples per second.
 
 Purely informational: it never changes the rendered image, it just tells you what the renderer actually did.</source>
@@ -3979,7 +3979,7 @@ Purely informational: it never changes the rendered image, it just tells you wha
 Purement informatif : cela ne change jamais l&apos;image rendue, cela vous indique simplement ce que le moteur de rendu a réellement fait.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="972"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="973"/>
         <source>Blends between the grainy original and the fully denoised
 result (0.0 = fully denoised, 1.0 = original grainy image).
 Raise this toward 1.0 to keep back more fine texture/grain that
@@ -3990,12 +3990,12 @@ cette valeur de 1,0 pour conserver davantage de texture fine/de grain
 qu&apos;un débruitage à pleine intensité peut lisser à tort.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1028"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1029"/>
         <source>Render only a rectangular slice of the full frame, given as fractions from 0 to 1 of the image&apos;s width and height - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>Effectue le rendu d&apos;une simple tranche rectangulaire de l&apos;image complète, exprimée en fractions de 0 à 1 de la largeur et de la hauteur de l&apos;image - utile pour tester rapidement le rendu d&apos;une zone d&apos;une scène sans payer le coût de l&apos;image entière.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1045"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1046"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame&apos;s width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total number of samples cleans up much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -4008,63 +4008,63 @@ Utile pour itérer plus vite sur une partie problématique d&apos;une scène gra
 Désactivé par défaut (image complète). Si un fichier de scène .pbrt chargé demande déjà sa propre zone de recadrage, cocher cette case la remplace par le rectangle ci-dessous ; la laisser décochée conserve la demande propre à la scène (le cas échéant).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1089"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1090"/>
         <source>Left (X0):</source>
         <translation>Gauche (X0) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1090"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1091"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>Bord gauche du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image (0 = bord gauche, 1 = bord droit).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1092"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1093"/>
         <source>Top (Y0):</source>
         <translation>Haut (Y0) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1093"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1094"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>Bord supérieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image (0 = bord supérieur, 1 = bord inférieur).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1095"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1096"/>
         <source>Right (X1):</source>
         <translation>Droite (X1) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1096"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1097"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>Bord droit du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image - doit être supérieur à Gauche (X0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1098"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1099"/>
         <source>Bottom (Y1):</source>
         <translation>Bas (Y1) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1099"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1100"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>Bord inférieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image - doit être supérieur à Haut (Y0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1142"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1143"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="480"/>
         <source>Depth of Field</source>
         <translation>Profondeur de champ</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1145"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1146"/>
         <source>Override the active scene&apos;s own camera lens diameter/focus distance without editing its scene file - only affects scenes loaded from a scene file; built-in demo-gallery scenes keep their own fixed camera.</source>
         <translation>Remplace le diamètre d&apos;objectif et la distance de mise au point propres à la caméra de la scène active sans modifier son fichier de scène - ne concerne que les scènes chargées depuis un fichier de scène ; les scènes de la galerie de démonstration intégrée conservent leur propre caméra fixe.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1154"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1155"/>
         <source>Override depth of field (--aperture/--focus-distance)</source>
         <translation>Remplacer la profondeur de champ (--aperture/--focus-distance)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1156"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1157"/>
         <source>Sets the camera&apos;s lens diameter and focus distance, overriding
 whatever the scene&apos;s own Camera directive requests. Only affects
 scenes loaded from a scene file - has no effect on the built-in
@@ -4076,7 +4076,7 @@ sans effet sur la galerie de démonstration intégrée, qui conserve sa
 propre caméra fixe.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1162"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1163"/>
         <source>Thin-lens depth-of-field blur is already fully supported for any scene loaded from a scene file - a &quot;lensradius&quot;/&quot;focaldistance&quot; Camera directive in the file is all it takes. This lets you set or change that without hand-editing the file: Aperture is the lens diameter in world units (0 = pinhole-sharp, no blur), and Focus Distance is how far away the plane of sharp focus sits.
 
 Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loaded from a scene file - the built-in demo gallery&apos;s scenes keep their own author-chosen fixed camera regardless of this setting.</source>
@@ -4085,44 +4085,44 @@ Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loa
 Désactivé par défaut (la propre caméra de la scène, inchangée). Ne concerne que les scènes chargées depuis un fichier de scène - les scènes de la galerie de démonstration intégrée conservent leur propre caméra fixe choisie par leur auteur, quel que soit ce réglage.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1180"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1181"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="664"/>
         <source>Aperture:</source>
         <translation>Ouverture :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1181"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1182"/>
         <source>Lens diameter in world units - larger values blur more. 0 means pinhole-sharp (no blur).</source>
         <translation>Diamètre de l&apos;objectif en unités de scène - des valeurs plus grandes floutent davantage. 0 signifie net comme un sténopé (sans flou).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1192"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1193"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="681"/>
         <source>Focus Distance:</source>
         <translation>Distance de mise au point :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1193"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
         <source>Distance from the camera to the plane of sharp focus, in world units.</source>
         <translation>Distance entre la caméra et le plan de netteté parfaite, en unités de scène.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1212"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1213"/>
         <source>Reproducibility</source>
         <translation>Reproductibilité</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1215"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1216"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>Fixe la graine aléatoire afin qu&apos;un rendu puisse être reproduit exactement, pixel par pixel, lors d&apos;une exécution ultérieure - utile pour comparer des changements de réglages sans que des différences de bruit aléatoire ne brouillent la comparaison.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1223"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1224"/>
         <source>Reproducible render (--seed)</source>
         <translation>Rendu reproductible (--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1231"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1232"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -4131,12 +4131,12 @@ Off by default (genuinely random every render).</source>
 Désactivé par défaut (véritablement aléatoire à chaque rendu).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1251"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1252"/>
         <source>Seed:</source>
         <translation>Graine :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1252"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1253"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>L&apos;entier spécifique utilisé pour amorcer le générateur de nombres aléatoires du rendu. Ne prend effet que lorsque Rendu reproductible ci-dessus est coché - la même graine sur la même scène/les mêmes réglages produit toujours un bruit identique pixel par pixel.</translation>
     </message>
@@ -4231,9 +4231,9 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
         <translation>&lt;b&gt;Pourquoi ce rendu a cet aspect&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="513"/>
         <location filename="../mainwindow_tabs_render.cpp" line="572"/>
         <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="277"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
         <source>Pause</source>
@@ -4251,7 +4251,7 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
     </message>
     <message>
         <location filename="../mainwindow_tabs_output.cpp" line="56"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="158"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="165"/>
         <source>Progress</source>
         <translation>Progression</translation>
     </message>
@@ -4267,12 +4267,12 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
         <translation>Affiche ce qui est en cours de rendu en ce moment - de quelle tâche il s&apos;agit, où elle en est (en pourcentage), et combien de temps s&apos;est écoulé et combien il reste. Pause, Arrêter et Abandonner n&apos;affectent que cette tâche.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="136"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="143"/>
         <source>Re&amp;move Selected</source>
         <translation>Suppri&amp;mer la sélection</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="144"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="151"/>
         <source>Clear &amp;Queue</source>
         <translation>Vider la &amp;file</translation>
     </message>
@@ -4282,166 +4282,171 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
         <translation>Tous les rendus de cette session, une ligne chacun : en attente, en cours, et ce qu&apos;il est advenu des terminés. Cliquer sur Rendu alors qu&apos;un rendu est en cours ajoute un travail ici au lieu de l&apos;interrompre ; les travaux en attente démarrent automatiquement, l&apos;un après l&apos;autre, à mesure que chacun se termine. Les travaux en attente peuvent être montés ou descendus, et un travail échoué ou annulé peut être relancé.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="136"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="129"/>
+        <source>Waiting and finished renders are listed here. Start a render, or queue several, and each gets a row.</source>
+        <translation>Les rendus en attente et terminés sont listés ici. Lancez un rendu, ou mettez-en plusieurs en file, et chacun aura une ligne.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_output.cpp" line="143"/>
         <source>Remove the selected job from the list (a running job is stopped with Stop)</source>
         <translation>Retire le travail sélectionné de la liste (un travail en cours s&apos;arrête avec Arrêter)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="137"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="144"/>
         <source>Move &amp;Up</source>
         <translation>Mo&amp;nter</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="137"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="144"/>
         <source>Run the selected waiting job earlier</source>
         <translation>Exécuter plus tôt le travail en attente sélectionné</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="138"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="145"/>
         <source>Move &amp;Down</source>
         <translation>&amp;Descendre</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="138"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="145"/>
         <source>Run the selected waiting job later</source>
         <translation>Exécuter plus tard le travail en attente sélectionné</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="139"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="146"/>
         <source>&amp;Retry</source>
         <translation>&amp;Réessayer</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="139"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="146"/>
         <source>Queue the selected failed or cancelled job again</source>
         <translation>Remettre en file le travail échoué ou annulé sélectionné</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="140"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="147"/>
         <source>Clear &amp;Finished</source>
         <translation>Effacer les &amp;terminés</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="140"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="147"/>
         <source>Forget the jobs that are done, failed or cancelled</source>
         <translation>Oublie les travaux terminés, échoués ou annulés</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="144"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="151"/>
         <source>Remove every waiting job from the render queue</source>
         <translation>Retire tous les travaux en attente de la file de rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="252"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="327"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="259"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="334"/>
         <source>&amp;Copy All</source>
         <translation>&amp;Tout copier</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="268"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="275"/>
         <source>Show Log &amp;Folder</source>
         <translation>Afficher le dossier des &amp;journaux</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="283"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="290"/>
         <source>Log Output</source>
         <translation>Sortie du journal</translation>
     </message>
     <message>
         <location filename="../mainwindow_diagnostics_log.cpp" line="312"/>
-        <location filename="../mainwindow_tabs_output.cpp" line="300"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="307"/>
         <source>Click &quot;Run Diagnostics&quot; to check GPU/CUDA/OptiX availability, CPU/RAM, disk space, and scene asset availability.</source>
         <translation>Cliquez sur « Lancer les diagnostics » pour vérifier la disponibilité du GPU/CUDA/OptiX, le CPU/la RAM, l&apos;espace disque et la disponibilité des ressources de scène.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="315"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="322"/>
         <source>&amp;Run Diagnostics</source>
         <translation>&amp;Lancer les diagnostics</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="321"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="328"/>
         <source>&amp;Install Photo Helper...</source>
         <translation>&amp;Installer l&apos;assistant photo...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="332"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="339"/>
         <source>&amp;Save Report…</source>
         <translation>&amp;Enregistrer le rapport…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_output.cpp" line="344"/>
+        <location filename="../mainwindow_tabs_output.cpp" line="351"/>
         <source>Diagnostics</source>
         <translation>Diagnostics</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1050"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="826"/>
         <source>Video Generation Settings</source>
         <translation>Paramètres de génération vidéo</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1077"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="853"/>
         <source>(custom - choose settings below)</source>
         <translation>(personnalisé - choisissez les paramètres ci-dessous)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1102"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="878"/>
         <source>Orbit (Circular rotation)</source>
         <translation>Orbite (rotation circulaire)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1103"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="879"/>
         <source>Linear (Straight path)</source>
         <translation>Linéaire (trajectoire droite)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1104"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="880"/>
         <source>Figure-8 (Lemniscate)</source>
         <translation>Figure en huit (lemniscate)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1105"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="881"/>
         <source>Spiral (Zoom-in)</source>
         <translation>Spirale (zoom avant)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1119"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="895"/>
         <source>Camera Path:</source>
         <translation>Trajectoire de caméra :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1149"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="925"/>
         <source> frames</source>
         <translation> images</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1151"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="927"/>
         <source>Frame Count:</source>
         <translation>Nombre d&apos;images :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1164"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="940"/>
         <source> fps</source>
         <translation> ips</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1166"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="942"/>
         <source>Frames Per Second:</source>
         <translation>Images par seconde :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1190"/>
-        <location filename="../mainwindow_tabs.cpp" line="1326"/>
-        <location filename="../mainwindow_tabs.cpp" line="1344"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="966"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1104"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1122"/>
         <source>x</source>
         <translation>x</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1192"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="968"/>
         <source>Movement Speed:</source>
         <translation>Vitesse de déplacement :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1193"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="969"/>
         <source>A multiplier on how many frames the camera&apos;s full path is spread across - not a change to the path itself, which always completes the same full sweep.
 
 Speed 0.5x renders twice as many frames to cover the same journey more slowly and smoothly; speed 2x renders half as many frames, covering the same journey faster.</source>
@@ -4450,12 +4455,12 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
 Une vitesse de 0,5x rend deux fois plus d&apos;images pour couvrir le même parcours plus lentement et plus en douceur ; une vitesse de 2x rend moitié moins d&apos;images, couvrant le même parcours plus rapidement.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1229"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1005"/>
         <source>%1 frames</source>
         <translation>%1 images</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs.cpp" line="1232"/>
+        <location filename="../mainwindow_tabs_settings_groups.cpp" line="1008"/>
         <source> - capped at 5000</source>
         <translation> - plafonné à 5000</translation>
     </message>
@@ -6100,7 +6105,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="434"/>
-        <location filename="../scene_builder_widget.cpp" line="543"/>
+        <location filename="../scene_builder_widget.cpp" line="544"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Maillages (*.ply *.obj)</translation>
     </message>
@@ -6511,12 +6516,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scènes).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="618"/>
+        <location filename="../scene_builder_widget.cpp" line="619"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objets, %4 lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="543"/>
+        <location filename="../scene_builder_widget.cpp" line="544"/>
         <source>Choose a mesh</source>
         <translation>Choisir un maillage</translation>
     </message>
@@ -6551,32 +6556,32 @@ Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scène
         <translation>Ajoutée à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="434"/>
+        <location filename="../scene_builder_widget.cpp" line="435"/>
         <source>Camera and image</source>
         <translation>Caméra et image</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="455"/>
+        <location filename="../scene_builder_widget.cpp" line="456"/>
         <source>, light</source>
         <translation>, lumière</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="612"/>
+        <location filename="../scene_builder_widget.cpp" line="613"/>
         <source>not saved yet</source>
         <translation>pas encore enregistrée</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="636"/>
+        <location filename="../scene_builder_widget.cpp" line="637"/>
         <source>No problems found.</source>
         <translation>Aucun problème détecté.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="642"/>
+        <location filename="../scene_builder_widget.cpp" line="643"/>
         <source>Fix this:</source>
         <translation>À corriger :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="642"/>
+        <location filename="../scene_builder_widget.cpp" line="643"/>
         <source>Note:</source>
         <translation>Remarque :</translation>
     </message>
