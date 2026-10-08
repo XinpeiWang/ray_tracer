@@ -158,6 +158,18 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 			}
 			check(sb->document().objects.size() == before + added, QString("added all %1 ready-made shapes").arg(added));
 			check(sb->problemsText().isEmpty(), "the ready-made shapes give no problems or notes");
+			// And every prop (several objects in one step, a second copy named apart).
+			const size_t withShapes = sb->document().objects.size();
+			for (scene_doc::PropKind k : scene_doc::allPropKinds()) sb->addProp(k);
+			size_t propObjects = 0;
+			for (scene_doc::PropKind k : scene_doc::allPropKinds()) propObjects += scene_doc::makeProp(k).size();
+			check(sb->document().objects.size() == withShapes + propObjects, QString("added all %1 props (%2 objects)").arg(scene_doc::allPropKinds().size()).arg(propObjects));
+			sb->addProp(scene_doc::PropKind::Table);
+			check(sb->document().objects.back().name.find("Table leg") != std::string::npos && sb->document().objects.back().name.back() == '2', "a second table is named apart (\"... 2\")");
+			check(sb->problemsText().isEmpty(), "the props give no problems or notes");
+			bool propsUndone = true;
+			for (size_t n = 0; n <= scene_doc::allPropKinds().size(); ++n) propsUndone = sb->undo() && propsUndone;
+			check(propsUndone && sb->document().objects.size() == withShapes, "each prop is one undo step");
 			bool allUndone = true;
 			for (size_t n = 0; n < added; ++n) allUndone = sb->undo() && allUndone;
 			check(allUndone && sb->document().objects.size() == before, "undo removes them one by one");

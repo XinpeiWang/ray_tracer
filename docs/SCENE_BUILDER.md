@@ -57,6 +57,10 @@ Besides the sphere, box, quad, disk, cylinder, cone and mesh file, the Add menu 
 
 Each one has a picture-friendly set of texture coordinates, so the checker pattern works on them.
 
+## Props
+
+The **Props** section of the Add menu puts a few ordinary objects in at once: a **table** (top and four legs), a **chair**, a **tree** (trunk and two cones), a **snowman**, a stone **column** and a **street lamp** (its bulb is an emitting sphere). They stand on the floor with the middle of their footprint where the new item would drop, as one undo step, and the first part is selected. From then on they are plain objects: move, recolour or delete the parts one at a time (nothing is grouped), or Duplicate a part. A second copy of a prop is named apart ("Table top 2").
+
 ## What the world looks like
 
 * **+Y is up.** Units are whatever you like; the example is a few units across.

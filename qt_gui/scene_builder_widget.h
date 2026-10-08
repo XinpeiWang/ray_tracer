@@ -18,6 +18,7 @@
 #include <vector>
 
 #include "../src/shared/scene_document.h"
+#include "../src/shared/scene_props.h"
 
 class QCheckBox;
 class QLineEdit;
@@ -56,6 +57,7 @@ public:
 	bool dragRotate3dForTest(int index, int axis, double degrees);
 	bool dragScale3dForTest(int index, int axis, double ratio);
 	void addObject(scene_doc::ShapeKind shape);
+	void addProp(scene_doc::PropKind kind);   // a few ordinary objects at once (a table, a tree...), one undo step
 	void addLight(scene_doc::LightKind kind);
 	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
 	// Runs the helper on one photo (progress dialog) and adds the mesh. False with `error` set (empty when cancelled) if nothing was added.

@@ -10,6 +10,7 @@
 
 #include "agreement_test_helpers.h"
 #include "../../src/shared/scene_document.h"
+#include "../../src/shared/scene_props.h"
 #include "../../src/shared/pbrt_load.h"
 
 #include <cstdio>
@@ -744,6 +745,40 @@ TEST(SceneDocumentShapesTest, NewShapesRoundTripValidateAndWriteAsPlainPbrt) {
 	EXPECT_TRUE(problem(ShapeKind::Pyramid, [](Object& o) { o.height = 0; }));
 	EXPECT_TRUE(problem(ShapeKind::Dome, [](Object& o) { o.radius = 0; }));
 	EXPECT_FALSE(problem(ShapeKind::Capsule, [](Object& o) { o.height = 0.1; }));   // only a warning
+}
+
+// The props (scene_props.h): ordinary objects that stand on the floor around the origin, validate cleanly, and survive a save and re-open as plain objects.
+TEST(SceneDocumentPropsTest, EveryPropIsAValidSetOfObjectsStandingOnTheFloor) {
+	for (scene_doc::PropKind kind : scene_doc::allPropKinds()) {
+		const std::vector<Object> parts = scene_doc::makeProp(kind);
+		ASSERT_GE(parts.size(), 3u) << toString(kind);
+		Document d = makeStarterScene();
+		const std::size_t first = d.objects.size();
+		double lowest = 1e9;
+		for (const Object& o : parts) {
+			EXPECT_FALSE(o.name.empty()) << toString(kind);
+			d.objects.push_back(o);
+			// The lowest point of each part: its centre minus half its height (a sphere or box by its size, a cone or cylinder by its height).
+			double half = o.radius;
+			if (o.shape == ShapeKind::Box) half = o.size.y / 2;
+			if (o.shape == ShapeKind::Cylinder || o.shape == ShapeKind::Cone) half = o.height / 2;
+			if (o.rotation.x == 0) lowest = std::min(lowest, o.position.y - half);
+		}
+		EXPECT_NEAR(lowest, 0.0, 1e-9) << toString(kind) << " does not stand on the floor";
+		EXPECT_FALSE(hasErrors(validate(d))) << toString(kind);
+		Document back;
+		std::string error;
+		ASSERT_TRUE(fromPbrt(toPbrt(d), back, error)) << error;
+		ASSERT_EQ(back.objects.size(), d.objects.size());
+		for (std::size_t i = first; i < d.objects.size(); ++i) {
+			EXPECT_EQ(back.objects[i].name, d.objects[i].name);
+			EXPECT_EQ(back.objects[i].shape, d.objects[i].shape);
+		}
+	}
+	// The street lamp's bulb is the one part that gives light.
+	int emitters = 0;
+	for (const Object& o : scene_doc::makeProp(scene_doc::PropKind::StreetLamp)) emitters += o.emissive ? 1 : 0;
+	EXPECT_EQ(emitters, 1);
 }
 
 // The orientation the header promises: a box, sphere, cylinder and cone emit outward, a quad and a disk emit from their +Y side. A camera whose view lies

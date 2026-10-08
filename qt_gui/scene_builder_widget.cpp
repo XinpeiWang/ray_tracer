@@ -156,6 +156,9 @@ void SceneBuilderWidget::buildUi() {
 	addMenu->addSection(tr("Objects"));
 	for (ShapeKind k : scene_doc::allShapeKinds())
 		addMenu->addAction(shapeLabel(k), this, [this, k]() { addObject(k); });
+	addMenu->addSection(tr("Props (several objects at once)"));
+	for (scene_doc::PropKind k : scene_doc::allPropKinds()) addMenu->addAction(propLabel(k), this, [this, k]() { addProp(k); });
+	addMenu->addSection(tr("More"));
 	addMenu->addAction(tr("Object from a photo..."), this, [this]() { addObjectFromPhoto(); });
 	addMenu->addAction(tr("Light panel (emitting quad)"), this, [this]() {
 		edit(QString(), [this]() {
@@ -660,6 +663,34 @@ bool SceneBuilderWidget::dragObjectForTest(int index, const QPointF &deltaPx) {
 
 void SceneBuilderWidget::selectObject(int index) {
 	setSelection({SelKind::Object, index});
+}
+
+// The prop's objects go in together at the drop point, named alike ("Table top", "Table leg 1", ...; a second table gets "Table top 2"...), and the first
+// is selected. They are ordinary objects from then on.
+void SceneBuilderWidget::addProp(scene_doc::PropKind kind) {
+	edit(QString(), [&]() {
+		std::vector<Object> parts = scene_doc::makeProp(kind);
+		QStringList names;
+		for (const Object &existing : m_doc.objects) names << QString::fromStdString(existing.name);
+		int copy = 1;   // the first number whose suffix leaves every part's name free
+		for (;; ++copy) {
+			bool free = true;
+			for (const Object &p : parts) free = free && !names.contains(QString::fromStdString(p.name) + (copy > 1 ? QString(" %1").arg(copy) : QString()));
+			if (free) break;
+		}
+		const Float3 c = dropPoint();
+		const int first = static_cast<int>(m_doc.objects.size());
+		for (Object &p : parts) {
+			if (copy > 1) p.name += " " + std::to_string(copy);
+			p.position.x += c.x;
+			p.position.y += c.y;
+			p.position.z += c.z;
+			m_doc.objects.push_back(p);
+		}
+		m_sel = {SelKind::Object, first};
+	});
+	rebuildList();
+	setSelection(m_sel);
 }
 
 void SceneBuilderWidget::addObject(ShapeKind shape) {
