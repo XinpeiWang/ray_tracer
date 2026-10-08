@@ -287,6 +287,18 @@ QList<Scene3DView::Face> Scene3DView::buildFaces(const scene_view::View &) const
 				addFace(lo);
 				break;
 			}
+			case ShapeKind::Pyramid:
+			case ShapeKind::Wedge:
+			case ShapeKind::Stairs:
+			case ShapeKind::Torus:
+			case ShapeKind::Capsule:
+			case ShapeKind::Dome:
+			case ShapeKind::Tube: {
+				const scene_doc::ShapeMesh mesh = scene_doc::generatedMesh(o);
+				auto vertex = [&mesh](int k) { return Float3{mesh.P[k * 3], mesh.P[k * 3 + 1], mesh.P[k * 3 + 2]}; };
+				for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) addFace({vertex(mesh.indices[t]), vertex(mesh.indices[t + 1]), vertex(mesh.indices[t + 2])});
+				break;
+			}
 			case ShapeKind::Mesh: {
 				const double s = o.meshScale;
 				if (const mesh_preview::MeshPreview *m = meshPreview(o.meshFile)) {
@@ -691,7 +703,7 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 }
 
 // The object with `axis` (0 X, 1 Y, 2 Z, in its own frame) stretched by `factor`: a box's size, a cylinder's or cone's height (Y) or radius (X, Z), a quad's
-// width or depth; a sphere, a disk and a mesh scale all round.
+// width or depth, a pyramid's base or height, a wedge's or stairs' size; a sphere, a disk, a dome, a torus and a mesh scale all round.
 Object Scene3DView::scaled(const Object &o, int axis, double factor) const {
 	Object r = o;
 	switch (o.shape) {
@@ -703,7 +715,24 @@ Object Scene3DView::scaled(const Object &o, int axis, double factor) const {
 			if (axis == 1) r.height = o.height * factor;
 			else r.radius = o.radius * factor;
 			break;
-		case ShapeKind::Box: (axis == 0 ? r.size.x : axis == 1 ? r.size.y : r.size.z) = (axis == 0 ? o.size.x : axis == 1 ? o.size.y : o.size.z) * factor; break;
+		case ShapeKind::Box:
+		case ShapeKind::Wedge:
+		case ShapeKind::Stairs: (axis == 0 ? r.size.x : axis == 1 ? r.size.y : r.size.z) = (axis == 0 ? o.size.x : axis == 1 ? o.size.y : o.size.z) * factor; break;
+		case ShapeKind::Pyramid:
+			if (axis == 0) r.size.x = o.size.x * factor;
+			else if (axis == 1) r.height = o.height * factor;
+			else r.size.z = o.size.z * factor;
+			break;
+		case ShapeKind::Dome: r.radius = o.radius * factor; break;
+		case ShapeKind::Torus: r.radius = o.radius * factor; r.radius2 = o.radius2 * factor; break;
+		case ShapeKind::Capsule:
+			if (axis == 1) r.height = o.height * factor;
+			else r.radius = o.radius * factor;
+			break;
+		case ShapeKind::Tube:
+			if (axis == 1) r.height = o.height * factor;
+			else { r.radius = o.radius * factor; r.radius2 = o.radius2 * factor; }   // the hole keeps its proportion
+			break;
 		case ShapeKind::Quad:
 			if (axis == 0) r.size.x = o.size.x * factor;
 			else if (axis == 2) r.size.z = o.size.z * factor;

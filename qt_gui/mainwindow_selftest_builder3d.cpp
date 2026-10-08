@@ -63,6 +63,21 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			const double radius0 = sb->document().objects[2].radius;
 			check(sb->dragScale3dForTest(2, 1, 0.5) && sb->document().objects[2].radius < radius0 * 0.6 && sb->document().objects[2].radius > radius0 * 0.4, "a sphere's handle scales its radius all round");
 			check(sb->undo(), "undo");
+			// A ready-made shape: a torus scales its ring and its tube together, a pyramid's height handle changes only its height.
+			sb->addObject(scene_doc::ShapeKind::Torus);
+			const int torus = static_cast<int>(sb->document().objects.size()) - 1;
+			const scene_doc::Object t0 = sb->document().objects[torus];
+			const bool torusDragged = sb->dragScale3dForTest(torus, 0, 1.5);
+			check(torusDragged && sb->document().objects[torus].radius > t0.radius * 1.2 &&
+			          std::fabs(sb->document().objects[torus].radius2 / t0.radius2 - sb->document().objects[torus].radius / t0.radius) < 1e-9,
+			      "a torus' handle scales its ring and its tube together");
+			sb->addObject(scene_doc::ShapeKind::Pyramid);
+			const int pyr = static_cast<int>(sb->document().objects.size()) - 1;
+			const scene_doc::Object p0 = sb->document().objects[pyr];
+			check(sb->dragScale3dForTest(pyr, 1, 1.5) && sb->document().objects[pyr].height > p0.height * 1.2 && sb->document().objects[pyr].size.x == p0.size.x,
+			      "a pyramid's height handle changes only its height");
+			check(sb->undo() && sb->undo() && sb->undo() && sb->undo(), "undo the scales and the two shapes");
+			check(static_cast<int>(sb->document().objects.size()) == torus, "back to the starter objects");
 		}
 		// A mesh file is drawn at its real size: open a scene whose mesh is a 2 x 4 x 6 box, to be looked at in the screenshot.
 		{
@@ -91,8 +106,20 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			sb->selectObject(static_cast<int>(sb->document().objects.size()) - 1);
 			QFile::remove(scenePath);
 		}
-		QTimer::singleShot(400, this, [this, shot, log, ok]() {
+		QTimer::singleShot(400, this, [this, shot, log, ok, sb]() {
 			shot("builder3d");
+			// RT_GUI_SELFTEST_OPEN=<scene.pbrt>: one more picture, of that builder scene in this view (to look at how a shape or scene draws).
+			const QString open = qEnvironmentVariable("RT_GUI_SELFTEST_OPEN");
+			if (!open.isEmpty()) {
+				QString err;
+				log(sb->openFile(open, &err) ? "opened " + open : "FAIL: could not open " + open + ": " + err);
+				QTimer::singleShot(500, this, [this, shot, log, ok]() {
+					shot("builder3d_open");
+					log(ok ? "RESULT: OK" : "RESULT: FAIL");
+					QApplication::exit(ok ? 0 : 1);
+				});
+				return;
+			}
 			log(ok ? "RESULT: OK" : "RESULT: FAIL");
 			QApplication::exit(ok ? 0 : 1);
 		});

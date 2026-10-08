@@ -154,7 +154,7 @@ void SceneBuilderWidget::buildUi() {
 	addB->setAutoDefault(false);
 	auto *addMenu = new QMenu(addB);
 	addMenu->addSection(tr("Objects"));
-	for (ShapeKind k : {ShapeKind::Sphere, ShapeKind::Box, ShapeKind::Quad, ShapeKind::Disk, ShapeKind::Cylinder, ShapeKind::Cone, ShapeKind::Mesh})
+	for (ShapeKind k : scene_doc::allShapeKinds())
 		addMenu->addAction(shapeLabel(k), this, [this, k]() { addObject(k); });
 	addMenu->addAction(tr("Object from a photo..."), this, [this]() { addObjectFromPhoto(); });
 	addMenu->addAction(tr("Light panel (emitting quad)"), this, [this]() {

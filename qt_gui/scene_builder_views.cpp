@@ -146,6 +146,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 			scene_doc::Object &o = m_doc.objects[s.index];
 			o.rotation = updated.rotation;
 			o.radius = updated.radius;
+			o.radius2 = updated.radius2;
 			o.height = updated.height;
 			o.size = updated.size;
 			o.meshScale = updated.meshScale;
@@ -258,6 +259,6 @@ bool SceneBuilderWidget::dragScale3dForTest(int index, int axis, double ratio) {
 	for (int step = 1; step <= 4; ++step) sendMouse(m_view3d, QEvent::MouseMove, m_view3d->scaleHandlePoint(axis, 1.0 + (ratio - 1.0) * step / 4.0), Qt::NoButton, Qt::LeftButton);
 	sendMouse(m_view3d, QEvent::MouseButtonRelease, m_view3d->scaleHandlePoint(axis, ratio), Qt::LeftButton, Qt::NoButton);
 	const scene_doc::Object& after = m_doc.objects[index];
-	return before.radius != after.radius || before.height != after.height || before.meshScale != after.meshScale || before.size.x != after.size.x ||
+	return before.radius != after.radius || before.radius2 != after.radius2 || before.height != after.height || before.meshScale != after.meshScale || before.size.x != after.size.x ||
 	       before.size.y != after.size.y || before.size.z != after.size.z;
 }

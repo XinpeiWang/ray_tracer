@@ -169,6 +169,17 @@ QList<QPointF> SceneLayoutView::silhouette(const Object &o) const {
 		case ShapeKind::Disk: circle(o.radius, 0.0, 36); break;
 		case ShapeKind::Cylinder: circle(o.radius, -o.height / 2, 28); circle(o.radius, o.height / 2, 28); break;
 		case ShapeKind::Cone: circle(o.radius, -o.height / 2, 28); local.append(Float3{0, o.height / 2, 0}); break;
+		case ShapeKind::Pyramid:
+		case ShapeKind::Wedge:
+		case ShapeKind::Stairs:
+		case ShapeKind::Torus:
+		case ShapeKind::Capsule:
+		case ShapeKind::Dome:
+		case ShapeKind::Tube: {
+			const scene_doc::ShapeMesh mesh = scene_doc::generatedMesh(o);
+			for (std::size_t i = 0; i + 2 < mesh.P.size(); i += 3) local.append(Float3{mesh.P[i], mesh.P[i + 1], mesh.P[i + 2]});
+			break;
+		}
 		case ShapeKind::Mesh: {
 			const double r = 0.4 * o.meshScale;
 			local = {Float3{-r, 0, 0}, Float3{r, 0, 0}, Float3{0, 0, -r}, Float3{0, 0, r}, Float3{0, r, 0}, Float3{0, -r, 0}};

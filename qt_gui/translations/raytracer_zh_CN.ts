@@ -784,10 +784,6 @@
         <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;一款基于物理的路径追踪器，带有并行的 CPU 和 GPU 后端，从 &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; 系列一路发展为 pbrt-v4 风格的功能集。&lt;/p&gt;&lt;p&gt;内置 151 个场景和 58 个测试场景，拥有丰富的 BxDF 库，支持多种光源和相机类型、三角网格与纹理、BVH 加速、体积渲染，并且除标准路径追踪外还提供多种积分器：SPPM 光子映射、双向路径追踪 (BDPT)、Metropolis 光传输，以及若干参考和调试用积分器（RandomWalk、Ambient Occlusion、SimplePath、SimpleVolPath、LightPath）。&lt;/p&gt;&lt;p&gt;此窗口以子进程方式运行 &lt;code&gt;%1&lt;/code&gt;。&lt;/p&gt;</translation>
     </message>
     <message>
-        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;151 built-in scenes plus over 170 bundled pbrt example scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation type="vanished">&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;一款基于物理的路径追踪器，拥有并行的 CPU 和 GPU 后端，从 &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; 系列起步，发展为 pbrt-v4 风格的功能集。&lt;/p&gt;&lt;p&gt;151 个内置场景加 177 个随附的 pbrt 示例场景，丰富的 BxDF 库，多种光源和相机类型，支持三角网格和纹理，BVH 加速，体积渲染，并且除标准路径追踪外还提供多种积分器：SPPM 光子映射、双向路径追踪（BDPT）、Metropolis 光传输，以及若干参考/调试积分器（RandomWalk、Ambient Occlusion、SimplePath、SimpleVolPath、LightPath）。&lt;/p&gt;&lt;p&gt;此窗口以子进程方式驱动 &lt;code&gt;%1&lt;/code&gt;。&lt;/p&gt;</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_actions.cpp" line="235"/>
         <source>GPU (OptiX)</source>
         <translation>GPU（OptiX）</translation>
@@ -974,10 +970,6 @@
         <location filename="../mainwindow_slots.cpp" line="1138"/>
         <source>&lt;b&gt;Description:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;描述：&lt;/b&gt;%1&lt;br&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Performance:&lt;/b&gt; %1&lt;br&gt;</source>
-        <translation type="vanished">&lt;b&gt;性能：&lt;/b&gt;%1&lt;br&gt;</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1147"/>
@@ -1604,72 +1596,10 @@ Missing now:
 %3</translation>
     </message>
     <message>
-        <source>The installer is for Windows. On other systems see docs/PHOTO_TO_SCENE.md.</source>
-        <translation type="vanished">安装程序仅适用于 Windows。其他系统请参阅 docs/PHOTO_TO_SCENE.md。</translation>
-    </message>
-    <message>
-        <source>Install the photo helper?
-
-This downloads about 5 GB and installs it for your user only, in %1:
-  - PyTorch (from download.pytorch.org) and the Python packages the helper needs (from PyPI)
-  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
-  - the background-removal model, about 176 MB (from GitHub)
-
-It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.
-
-Missing now:
-%2</source>
-        <translation type="vanished">要安装照片辅助程序吗？
-
-将下载约 5 GB，并仅为当前用户安装到 %1：
-  - PyTorch（来自 download.pytorch.org）以及辅助程序所需的 Python 包（来自 PyPI）
-  - TripoSR 代码（来自 GitHub）及其模型权重，约 1.7 GB（来自 Hugging Face）
-  - 背景去除模型，约 176 MB（来自 GitHub）
-
-需要 Python 3.10 到 3.12，并且 git 在 PATH 中，耗时数分钟。期间你可以继续使用本程序。
-
-当前缺少：
-%2</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_photo_install.cpp" line="42"/>
         <location filename="../mainwindow_photo_install.cpp" line="63"/>
         <source>Install the photo helper</source>
         <translation>安装照片辅助程序</translation>
-    </message>
-    <message>
-        <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation type="vanished">在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh.ps1)。</translation>
-    </message>
-    <message>
-        <source>Install the photo helper?
-
-This downloads about 5 GB and installs it for your user only, in %1:
-  - PyTorch (from download.pytorch.org) and the Python packages the helper needs (from PyPI)
-  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
-  - the background-removal model, about 176 MB (from GitHub)
-
-It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.
-
-Missing now:
-%2
-
-The script that will run (PowerShell, with the execution policy bypassed):
-%3</source>
-        <translation type="vanished">要安装照片辅助程序吗？
-
-将下载约 5 GB，并仅为当前用户安装到 %1：
-  - PyTorch（来自 download.pytorch.org）以及辅助程序所需的 Python 包（来自 PyPI）
-  - TripoSR 代码（来自 GitHub）及其模型权重，约 1.7 GB（来自 Hugging Face）
-  - 背景去除模型，约 176 MB（来自 GitHub）
-
-需要 Python 3.10 到 3.12，并且 git 在 PATH 中，耗时数分钟。期间你可以继续使用本程序。
-
-当前缺少：
-%2
-
-将运行的脚本（PowerShell，绕过执行策略）：
-%3</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="68"/>
@@ -4724,14 +4654,6 @@ CPU only. Only works with lights that have a physical size or shape.</source>
         <source>Could not start the installer (PowerShell on Windows, bash elsewhere).</source>
         <translation>无法启动安装程序（Windows 上为 PowerShell，其他系统为 bash）。</translation>
     </message>
-    <message>
-        <source>Could not start PowerShell to run the installer.</source>
-        <translation type="vanished">无法启动 PowerShell 来运行安装程序。</translation>
-    </message>
-    <message>
-        <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation type="vanished">在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh.ps1)。</translation>
-    </message>
 </context>
 <context>
     <name>PhotoToMeshJob</name>
@@ -5329,47 +5251,82 @@ CPU only. Only works with lights that have a physical size or shape.</source>
         <translation>网格（.ply 文件）</translation>
     </message>
     <message>
+        <location filename="../scene_builder_common.h" line="42"/>
+        <source>Pyramid</source>
+        <translation>金字塔</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="43"/>
+        <source>Wedge (ramp)</source>
+        <translation>楔形（斜坡）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="44"/>
+        <source>Stairs</source>
+        <translation>楼梯</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="45"/>
+        <source>Torus (ring)</source>
+        <translation>圆环体（环）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="46"/>
+        <source>Capsule</source>
+        <translation>胶囊体</translation>
+    </message>
+    <message>
         <location filename="../scene_builder_common.h" line="47"/>
+        <source>Dome (half sphere)</source>
+        <translation>穹顶（半球）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="48"/>
+        <source>Tube (pipe)</source>
+        <translation>管（管道）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="54"/>
         <source>Point light</source>
         <translation>点光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="48"/>
+        <location filename="../scene_builder_common.h" line="55"/>
         <source>Spotlight</source>
         <translation>聚光灯</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="49"/>
+        <location filename="../scene_builder_common.h" line="56"/>
         <source>Sun (distant light)</source>
         <translation>太阳（远距离光源）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="50"/>
+        <location filename="../scene_builder_common.h" line="57"/>
         <source>Sky (surrounds the scene)</source>
         <translation>天空（环绕场景）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="63"/>
+        <location filename="../scene_builder_common.h" line="70"/>
         <source>Matte (diffuse)</source>
         <translation>哑光（漫反射）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="64"/>
+        <location filename="../scene_builder_common.h" line="71"/>
         <source>Metal</source>
         <translation>金属</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="65"/>
+        <location filename="../scene_builder_common.h" line="72"/>
         <source>Glass</source>
         <translation>玻璃</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="66"/>
+        <location filename="../scene_builder_common.h" line="73"/>
         <source>Glossy paint (coated)</source>
         <translation>光泽漆（带涂层）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="67"/>
+        <location filename="../scene_builder_common.h" line="74"/>
         <source>Translucent (paper, leaves)</source>
         <translation>半透明（纸张、树叶）</translation>
     </message>
@@ -5432,7 +5389,7 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="567"/>
+        <location filename="../scene_3d_view.cpp" line="579"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
@@ -5491,7 +5448,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     <message>
         <location filename="../scene_builder_inspector.cpp" line="283"/>
         <location filename="../scene_builder_inspector.cpp" line="386"/>
-        <location filename="../scene_builder_inspector.cpp" line="444"/>
+        <location filename="../scene_builder_inspector.cpp" line="470"/>
         <source>Position</source>
         <translation>位置</translation>
     </message>
@@ -5563,7 +5520,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="326"/>
-        <location filename="../scene_builder_inspector.cpp" line="442"/>
+        <location filename="../scene_builder_inspector.cpp" line="468"/>
         <source>Type</source>
         <translation>类型</translation>
     </message>
@@ -5580,7 +5537,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     <message>
         <location filename="../scene_builder_inspector.cpp" line="344"/>
         <location filename="../scene_builder_inspector.cpp" line="352"/>
-        <location filename="../scene_builder_inspector.cpp" line="460"/>
+        <location filename="../scene_builder_inspector.cpp" line="486"/>
         <source>Colour</source>
         <translation>颜色</translation>
     </message>
@@ -5642,7 +5599,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="375"/>
-        <location filename="../scene_builder_inspector.cpp" line="432"/>
+        <location filename="../scene_builder_inspector.cpp" line="458"/>
         <source>Name</source>
         <translation>名称</translation>
     </message>
@@ -5659,124 +5616,165 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     <message>
         <location filename="../scene_builder_inspector.cpp" line="393"/>
         <location filename="../scene_builder_inspector.cpp" line="397"/>
+        <location filename="../scene_builder_inspector.cpp" line="401"/>
+        <location filename="../scene_builder_inspector.cpp" line="404"/>
         <source>Radius</source>
         <translation>半径</translation>
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="398"/>
+        <location filename="../scene_builder_inspector.cpp" line="414"/>
+        <location filename="../scene_builder_inspector.cpp" line="419"/>
         <source>Height</source>
         <translation>高度</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="401"/>
+        <location filename="../scene_builder_inspector.cpp" line="405"/>
+        <source>Height (with the rounded ends)</source>
+        <translation>高度（含圆形两端）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="408"/>
+        <source>Ring radius</source>
+        <translation>环半径</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="409"/>
+        <source>Tube radius</source>
+        <translation>管半径</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="412"/>
+        <source>Outer radius</source>
+        <translation>外半径</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="413"/>
+        <source>Hole radius</source>
+        <translation>孔半径</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="417"/>
+        <source>Base width (X)</source>
+        <translation>底面宽度 (X)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="418"/>
+        <source>Base depth (Z)</source>
+        <translation>底面深度 (Z)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="422"/>
+        <location filename="../scene_builder_inspector.cpp" line="427"/>
         <source>Size</source>
         <translation>大小</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="404"/>
+        <location filename="../scene_builder_inspector.cpp" line="423"/>
+        <source>Steps</source>
+        <translation>台阶数</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="430"/>
         <source>Width (X)</source>
         <translation>宽度 (X)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="405"/>
+        <location filename="../scene_builder_inspector.cpp" line="431"/>
         <source>Depth (Z)</source>
         <translation>深度 (Z)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="408"/>
+        <location filename="../scene_builder_inspector.cpp" line="434"/>
         <source>Mesh file</source>
         <translation>网格文件</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="408"/>
+        <location filename="../scene_builder_inspector.cpp" line="434"/>
         <location filename="../scene_builder_widget.cpp" line="679"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>网格 (*.ply *.obj)</translation>
     </message>
     <message>
-        <source>PLY meshes (*.ply)</source>
-        <translation type="vanished">PLY 网格 (*.ply)</translation>
-    </message>
-    <message>
-        <location filename="../scene_builder_inspector.cpp" line="409"/>
+        <location filename="../scene_builder_inspector.cpp" line="435"/>
         <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>缩放</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="415"/>
-        <location filename="../scene_builder_inspector.cpp" line="431"/>
+        <location filename="../scene_builder_inspector.cpp" line="441"/>
+        <location filename="../scene_builder_inspector.cpp" line="457"/>
         <source>Light</source>
         <translation>光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="416"/>
+        <location filename="../scene_builder_inspector.cpp" line="442"/>
         <source>Gives off light</source>
         <translation>发光</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="418"/>
+        <location filename="../scene_builder_inspector.cpp" line="444"/>
         <source>Light colour</source>
         <translation>光源颜色</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="419"/>
-        <location filename="../scene_builder_inspector.cpp" line="461"/>
+        <location filename="../scene_builder_inspector.cpp" line="445"/>
+        <location filename="../scene_builder_inspector.cpp" line="487"/>
         <source>Strength</source>
         <translation>强度</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="420"/>
+        <location filename="../scene_builder_inspector.cpp" line="446"/>
         <source>Both sides</source>
         <translation>双面</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="422"/>
+        <location filename="../scene_builder_inspector.cpp" line="448"/>
         <source>A quad or disk lights the side that faces up. Rotate it 180 degrees about X to make a ceiling light.</source>
         <translation>四边形或圆盘照亮朝上的那一面。绕 X 轴旋转 180 度即可做成顶灯。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="446"/>
+        <location filename="../scene_builder_inspector.cpp" line="472"/>
         <source>Aims at</source>
         <translation>对准</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="447"/>
+        <location filename="../scene_builder_inspector.cpp" line="473"/>
         <source>Cone angle</source>
         <translation>锥角</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="448"/>
+        <location filename="../scene_builder_inspector.cpp" line="474"/>
         <source>Soft edge</source>
         <translation>柔化边缘</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="451"/>
+        <location filename="../scene_builder_inspector.cpp" line="477"/>
         <source>Shines from</source>
         <translation>照射自</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="452"/>
+        <location filename="../scene_builder_inspector.cpp" line="478"/>
         <source>Towards</source>
         <translation>朝向</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_inspector.cpp" line="481"/>
         <source>Sky image</source>
         <translation>天空图像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_inspector.cpp" line="481"/>
         <source>Images (*.exr *.hdr *.png *.jpg *.jpeg)</source>
         <translation>图像 (*.exr *.hdr *.png *.jpg *.jpeg)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="456"/>
+        <location filename="../scene_builder_inspector.cpp" line="482"/>
         <source>Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama.</source>
         <translation>图像留空则使用纯色天空。图像应为等距柱状（经纬度）全景图。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="461"/>
+        <location filename="../scene_builder_inspector.cpp" line="487"/>
         <source>Brightness</source>
         <translation>亮度</translation>
     </message>
@@ -5824,10 +5822,6 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <location filename="../scene_builder_widget.cpp" line="117"/>
         <source>Add to scene list</source>
         <translation>添加到场景列表</translation>
-    </message>
-    <message>
-        <source>Save the scene into the scenes folder so it shows up in the Settings tab (after a restart)</source>
-        <translation type="vanished">将场景保存到场景文件夹，重启后即可出现在“设置”标签页中</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="118"/>
@@ -5898,10 +5892,6 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <location filename="../scene_builder_widget.cpp" line="174"/>
         <source>Delete</source>
         <translation>删除</translation>
-    </message>
-    <message>
-        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation type="vanished">拖动背景：环绕观察。右键拖动：平移。滚轮：缩放。拖动箭头可沿单个轴移动；按住 Shift 拖动物体可将其抬起。</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="35"/>
@@ -6133,14 +6123,6 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>(%1)%2  |  %3 个物体，%4 个光源</translation>
     </message>
     <message>
-        <source>Saved a copy as %1.
-
-It is in the scene list now (Settings tab, Custom Scenes).</source>
-        <translation type="vanished">已将副本保存为 %1。
-
-它现在已在场景列表中（“设置”标签页，自定义场景）。</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_widget.cpp" line="679"/>
         <source>Choose a mesh</source>
         <translation>选择网格</translation>
@@ -6156,25 +6138,9 @@ It is in the scene list now (Settings tab, Custom Scenes).</source>
         <translation>将场景保存到场景文件夹，使其出现在“设置”标签页中</translation>
     </message>
     <message>
-        <source>Replace the scene?</source>
-        <translation type="vanished">要替换场景吗？</translation>
-    </message>
-    <message>
-        <source>%1 already exists. Replace it?</source>
-        <translation type="vanished">%1 已存在。要替换它吗？</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_widget.cpp" line="485"/>
         <source>Added to the scene list</source>
         <translation>已添加到场景列表</translation>
-    </message>
-    <message>
-        <source>Saved a copy as %1.
-
-Restart the program to see it in the scene list (Settings tab, Custom Scenes).</source>
-        <translation type="vanished">已将副本保存为 %1。
-
-重启程序后即可在场景列表中看到它（“设置”标签页，自定义场景）。</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="598"/>
@@ -6187,17 +6153,9 @@ Restart the program to see it in the scene list (Settings tab, Custom Scenes).</
         <translation>，光源</translation>
     </message>
     <message>
-        <source>Choose a .ply mesh</source>
-        <translation type="vanished">选择 .ply 网格</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_widget.cpp" line="748"/>
         <source>not saved yet</source>
         <translation>尚未保存</translation>
-    </message>
-    <message>
-        <source>%1 (%2)%3  |  %4 objects, %5 lights</source>
-        <translation type="vanished">%1 (%2)%3  |  %4 个物体，%5 个光源</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="770"/>
@@ -6248,26 +6206,6 @@ Restart the program to see it in the scene list (Settings tab, Custom Scenes).</
         <location filename="../scene_builder_photo.cpp" line="34"/>
         <source>Photo helper not installed</source>
         <translation>未安装照片辅助程序</translation>
-    </message>
-    <message>
-        <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an NVIDIA graphics card is strongly recommended).
-
-%1
-
-To set it up, run this in PowerShell from the program&apos;s folder:
-
-powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
-
-Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation type="vanished">将照片转换为 3D 物体需要一个可选的辅助程序：一个在你自己的计算机上运行的 AI 模型（安装约需 5 GB，强烈建议使用 NVIDIA 显卡）。
-
-%1
-
-要进行设置，请在程序所在文件夹中用 PowerShell 运行：
-
-powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
-
-然后再次选择此项。指南 (docs/PHOTO_TO_SCENE.md) 说明了它的作用和局限。</translation>
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="35"/>
@@ -6469,32 +6407,32 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 <context>
     <name>SceneLayoutView</name>
     <message>
-        <location filename="../scene_layout_view.cpp" line="286"/>
+        <location filename="../scene_layout_view.cpp" line="297"/>
         <source>Top view: X to the right, Z towards you (down)</source>
         <translation>顶视图：X 向右，Z 朝向你（向下）</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="287"/>
+        <location filename="../scene_layout_view.cpp" line="298"/>
         <source>Front view: X to the right, Y up</source>
         <translation>前视图：X 向右，Y 向上</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="288"/>
+        <location filename="../scene_layout_view.cpp" line="299"/>
         <source>Side view: Z to the left, Y up</source>
         <translation>侧视图：Z 向左，Y 向上</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="291"/>
+        <location filename="../scene_layout_view.cpp" line="302"/>
         <source>Grid: 1 unit</source>
         <translation>网格：1 个单位</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="291"/>
+        <location filename="../scene_layout_view.cpp" line="302"/>
         <source>Grid: %1 units</source>
         <translation>网格：%1 个单位</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="379"/>
+        <location filename="../scene_layout_view.cpp" line="390"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>

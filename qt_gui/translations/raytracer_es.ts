@@ -785,10 +785,6 @@
         <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un path tracer físicamente realista con motores paralelos para CPU y GPU, desarrollado a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta convertirse en un conjunto de funciones al estilo de pbrt-v4.&lt;/p&gt;&lt;p&gt;151 escenas integradas y 58 escenas de prueba, una amplia biblioteca de BxDF, varios tipos de luces y cámaras, compatibilidad con mallas de triángulos y texturas, aceleración BVH, volumetría y una selección de integradores además del path tracing estándar: photon mapping SPPM, path tracing bidireccional (BDPT), Metropolis Light Transport y varios integradores de referencia y depuración (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Esta ventana ejecuta &lt;code&gt;%1&lt;/code&gt; como subproceso.&lt;/p&gt;</translation>
     </message>
     <message>
-        <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;151 built-in scenes plus over 170 bundled pbrt example scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
-        <translation type="vanished">&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;Un trazador de rayos de base física con motores paralelos de CPU y GPU, desarrollado a partir de la serie &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; hasta llegar a un conjunto de funciones al estilo pbrt-v4.&lt;/p&gt;&lt;p&gt;151 escenas integradas más 177 escenas de ejemplo pbrt incluidas, una amplia biblioteca de BxDF, varios tipos de luces y cámaras, compatibilidad con mallas de triángulos y texturas, aceleración BVH, volumetría y una selección de integradores además del trazado de caminos estándar: fotones SPPM, trazado de caminos bidireccional (BDPT), Metropolis Light Transport y varios integradores de referencia/depuración (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;Esta ventana controla &lt;code&gt;%1&lt;/code&gt; como un subproceso.&lt;/p&gt;</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_actions.cpp" line="235"/>
         <source>GPU (OptiX)</source>
         <translation>GPU (OptiX)</translation>
@@ -976,10 +972,6 @@
         <location filename="../mainwindow_slots.cpp" line="1138"/>
         <source>&lt;b&gt;Description:&lt;/b&gt; %1&lt;br&gt;</source>
         <translation>&lt;b&gt;Descripción:&lt;/b&gt; %1&lt;br&gt;</translation>
-    </message>
-    <message>
-        <source>&lt;b&gt;Performance:&lt;/b&gt; %1&lt;br&gt;</source>
-        <translation type="vanished">&lt;b&gt;Rendimiento:&lt;/b&gt; %1&lt;br&gt;</translation>
     </message>
     <message>
         <location filename="../mainwindow_slots.cpp" line="1147"/>
@@ -1616,72 +1608,10 @@ Falta ahora:
 %3</translation>
     </message>
     <message>
-        <source>The installer is for Windows. On other systems see docs/PHOTO_TO_SCENE.md.</source>
-        <translation type="vanished">El instalador es para Windows. En otros sistemas consulta docs/PHOTO_TO_SCENE.md.</translation>
-    </message>
-    <message>
-        <source>Install the photo helper?
-
-This downloads about 5 GB and installs it for your user only, in %1:
-  - PyTorch (from download.pytorch.org) and the Python packages the helper needs (from PyPI)
-  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
-  - the background-removal model, about 176 MB (from GitHub)
-
-It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.
-
-Missing now:
-%2</source>
-        <translation type="vanished">¿Instalar el asistente de fotos?
-
-Se descargan unos 5 GB y se instala solo para tu usuario, en %1:
-  - PyTorch (de download.pytorch.org) y los paquetes de Python que necesita el asistente (de PyPI)
-  - el código de TripoSR (de GitHub) y sus pesos del modelo, unos 1,7 GB (de Hugging Face)
-  - el modelo de eliminación de fondo, unos 176 MB (de GitHub)
-
-Requiere Python 3.10 a 3.12 y git en el PATH, y tarda varios minutos. Puedes seguir usando el programa mientras tanto.
-
-Falta ahora:
-%2</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_photo_install.cpp" line="42"/>
         <location filename="../mainwindow_photo_install.cpp" line="63"/>
         <source>Install the photo helper</source>
         <translation>Instalar el asistente de fotos</translation>
-    </message>
-    <message>
-        <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation type="vanished">No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
-    </message>
-    <message>
-        <source>Install the photo helper?
-
-This downloads about 5 GB and installs it for your user only, in %1:
-  - PyTorch (from download.pytorch.org) and the Python packages the helper needs (from PyPI)
-  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
-  - the background-removal model, about 176 MB (from GitHub)
-
-It needs Python 3.10 to 3.12 and git on your PATH and takes several minutes. You can keep using the program meanwhile.
-
-Missing now:
-%2
-
-The script that will run (PowerShell, with the execution policy bypassed):
-%3</source>
-        <translation type="vanished">¿Instalar el asistente de fotos?
-
-Se descargan unos 5 GB y se instala solo para tu usuario, en %1:
-  - PyTorch (de download.pytorch.org) y los paquetes de Python que necesita el asistente (de PyPI)
-  - el código de TripoSR (de GitHub) y sus pesos del modelo, unos 1,7 GB (de Hugging Face)
-  - el modelo de eliminación de fondo, unos 176 MB (de GitHub)
-
-Requiere Python 3.10 a 3.12 y git en el PATH, y tarda varios minutos. Puedes seguir usando el programa mientras tanto.
-
-Falta ahora:
-%2
-
-El script que se ejecutará (PowerShell, con la directiva de ejecución omitida):
-%3</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="68"/>
@@ -4758,14 +4688,6 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
         <source>Could not start the installer (PowerShell on Windows, bash elsewhere).</source>
         <translation>No se pudo iniciar el instalador (PowerShell en Windows, bash en los demás sistemas).</translation>
     </message>
-    <message>
-        <source>Could not start PowerShell to run the installer.</source>
-        <translation type="vanished">No se pudo iniciar PowerShell para ejecutar el instalador.</translation>
-    </message>
-    <message>
-        <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation type="vanished">No se encontró el script del instalador (scripts/setup_photo_to_mesh.ps1) junto al programa.</translation>
-    </message>
 </context>
 <context>
     <name>PhotoToMeshJob</name>
@@ -5363,47 +5285,82 @@ Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</tr
         <translation>Malla (archivo .ply)</translation>
     </message>
     <message>
+        <location filename="../scene_builder_common.h" line="42"/>
+        <source>Pyramid</source>
+        <translation>Pirámide</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="43"/>
+        <source>Wedge (ramp)</source>
+        <translation>Cuña (rampa)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="44"/>
+        <source>Stairs</source>
+        <translation>Escalera</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="45"/>
+        <source>Torus (ring)</source>
+        <translation>Toro (anillo)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="46"/>
+        <source>Capsule</source>
+        <translation>Cápsula</translation>
+    </message>
+    <message>
         <location filename="../scene_builder_common.h" line="47"/>
+        <source>Dome (half sphere)</source>
+        <translation>Cúpula (media esfera)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="48"/>
+        <source>Tube (pipe)</source>
+        <translation>Tubo (tubería)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="54"/>
         <source>Point light</source>
         <translation>Luz puntual</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="48"/>
+        <location filename="../scene_builder_common.h" line="55"/>
         <source>Spotlight</source>
         <translation>Foco</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="49"/>
+        <location filename="../scene_builder_common.h" line="56"/>
         <source>Sun (distant light)</source>
         <translation>Sol (luz distante)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="50"/>
+        <location filename="../scene_builder_common.h" line="57"/>
         <source>Sky (surrounds the scene)</source>
         <translation>Cielo (rodea la escena)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="63"/>
+        <location filename="../scene_builder_common.h" line="70"/>
         <source>Matte (diffuse)</source>
         <translation>Mate (difuso)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="64"/>
+        <location filename="../scene_builder_common.h" line="71"/>
         <source>Metal</source>
         <translation>Metal</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="65"/>
+        <location filename="../scene_builder_common.h" line="72"/>
         <source>Glass</source>
         <translation>Vidrio</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="66"/>
+        <location filename="../scene_builder_common.h" line="73"/>
         <source>Glossy paint (coated)</source>
         <translation>Pintura brillante (con capa)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="67"/>
+        <location filename="../scene_builder_common.h" line="74"/>
         <source>Translucent (paper, leaves)</source>
         <translation>Translúcido (papel, hojas)</translation>
     </message>
@@ -5466,7 +5423,7 @@ Salida:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="567"/>
+        <location filename="../scene_3d_view.cpp" line="579"/>
         <source>Camera</source>
         <translation>Cámara</translation>
     </message>
@@ -5525,7 +5482,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     <message>
         <location filename="../scene_builder_inspector.cpp" line="283"/>
         <location filename="../scene_builder_inspector.cpp" line="386"/>
-        <location filename="../scene_builder_inspector.cpp" line="444"/>
+        <location filename="../scene_builder_inspector.cpp" line="470"/>
         <source>Position</source>
         <translation>Posición</translation>
     </message>
@@ -5597,7 +5554,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="326"/>
-        <location filename="../scene_builder_inspector.cpp" line="442"/>
+        <location filename="../scene_builder_inspector.cpp" line="468"/>
         <source>Type</source>
         <translation>Tipo</translation>
     </message>
@@ -5614,7 +5571,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     <message>
         <location filename="../scene_builder_inspector.cpp" line="344"/>
         <location filename="../scene_builder_inspector.cpp" line="352"/>
-        <location filename="../scene_builder_inspector.cpp" line="460"/>
+        <location filename="../scene_builder_inspector.cpp" line="486"/>
         <source>Colour</source>
         <translation>Color</translation>
     </message>
@@ -5676,7 +5633,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="375"/>
-        <location filename="../scene_builder_inspector.cpp" line="432"/>
+        <location filename="../scene_builder_inspector.cpp" line="458"/>
         <source>Name</source>
         <translation>Nombre</translation>
     </message>
@@ -5693,124 +5650,165 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     <message>
         <location filename="../scene_builder_inspector.cpp" line="393"/>
         <location filename="../scene_builder_inspector.cpp" line="397"/>
+        <location filename="../scene_builder_inspector.cpp" line="401"/>
+        <location filename="../scene_builder_inspector.cpp" line="404"/>
         <source>Radius</source>
         <translation>Radio</translation>
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="398"/>
+        <location filename="../scene_builder_inspector.cpp" line="414"/>
+        <location filename="../scene_builder_inspector.cpp" line="419"/>
         <source>Height</source>
         <translation>Altura</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="401"/>
+        <location filename="../scene_builder_inspector.cpp" line="405"/>
+        <source>Height (with the rounded ends)</source>
+        <translation>Altura (con los extremos redondeados)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="408"/>
+        <source>Ring radius</source>
+        <translation>Radio del anillo</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="409"/>
+        <source>Tube radius</source>
+        <translation>Radio del tubo</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="412"/>
+        <source>Outer radius</source>
+        <translation>Radio exterior</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="413"/>
+        <source>Hole radius</source>
+        <translation>Radio del agujero</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="417"/>
+        <source>Base width (X)</source>
+        <translation>Ancho de la base (X)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="418"/>
+        <source>Base depth (Z)</source>
+        <translation>Profundidad de la base (Z)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="422"/>
+        <location filename="../scene_builder_inspector.cpp" line="427"/>
         <source>Size</source>
         <translation>Tamaño</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="404"/>
+        <location filename="../scene_builder_inspector.cpp" line="423"/>
+        <source>Steps</source>
+        <translation>Peldaños</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_inspector.cpp" line="430"/>
         <source>Width (X)</source>
         <translation>Ancho (X)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="405"/>
+        <location filename="../scene_builder_inspector.cpp" line="431"/>
         <source>Depth (Z)</source>
         <translation>Profundidad (Z)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="408"/>
+        <location filename="../scene_builder_inspector.cpp" line="434"/>
         <source>Mesh file</source>
         <translation>Archivo de malla</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="408"/>
+        <location filename="../scene_builder_inspector.cpp" line="434"/>
         <location filename="../scene_builder_widget.cpp" line="679"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Mallas (*.ply *.obj)</translation>
     </message>
     <message>
-        <source>PLY meshes (*.ply)</source>
-        <translation type="vanished">Mallas PLY (*.ply)</translation>
-    </message>
-    <message>
-        <location filename="../scene_builder_inspector.cpp" line="409"/>
+        <location filename="../scene_builder_inspector.cpp" line="435"/>
         <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>Escala</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="415"/>
-        <location filename="../scene_builder_inspector.cpp" line="431"/>
+        <location filename="../scene_builder_inspector.cpp" line="441"/>
+        <location filename="../scene_builder_inspector.cpp" line="457"/>
         <source>Light</source>
         <translation>Luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="416"/>
+        <location filename="../scene_builder_inspector.cpp" line="442"/>
         <source>Gives off light</source>
         <translation>Emite luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="418"/>
+        <location filename="../scene_builder_inspector.cpp" line="444"/>
         <source>Light colour</source>
         <translation>Color de la luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="419"/>
-        <location filename="../scene_builder_inspector.cpp" line="461"/>
+        <location filename="../scene_builder_inspector.cpp" line="445"/>
+        <location filename="../scene_builder_inspector.cpp" line="487"/>
         <source>Strength</source>
         <translation>Intensidad</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="420"/>
+        <location filename="../scene_builder_inspector.cpp" line="446"/>
         <source>Both sides</source>
         <translation>Ambas caras</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="422"/>
+        <location filename="../scene_builder_inspector.cpp" line="448"/>
         <source>A quad or disk lights the side that faces up. Rotate it 180 degrees about X to make a ceiling light.</source>
         <translation>Un cuadrilátero o un disco ilumina la cara que mira hacia arriba. Gíralo 180 grados sobre X para hacer una luz de techo.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="446"/>
+        <location filename="../scene_builder_inspector.cpp" line="472"/>
         <source>Aims at</source>
         <translation>Apunta a</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="447"/>
+        <location filename="../scene_builder_inspector.cpp" line="473"/>
         <source>Cone angle</source>
         <translation>Ángulo del cono</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="448"/>
+        <location filename="../scene_builder_inspector.cpp" line="474"/>
         <source>Soft edge</source>
         <translation>Borde suave</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="451"/>
+        <location filename="../scene_builder_inspector.cpp" line="477"/>
         <source>Shines from</source>
         <translation>Brilla desde</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="452"/>
+        <location filename="../scene_builder_inspector.cpp" line="478"/>
         <source>Towards</source>
         <translation>Hacia</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_inspector.cpp" line="481"/>
         <source>Sky image</source>
         <translation>Imagen del cielo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_inspector.cpp" line="481"/>
         <source>Images (*.exr *.hdr *.png *.jpg *.jpeg)</source>
         <translation>Imágenes (*.exr *.hdr *.png *.jpg *.jpeg)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="456"/>
+        <location filename="../scene_builder_inspector.cpp" line="482"/>
         <source>Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama.</source>
         <translation>Deja la imagen vacía para un cielo de color liso. Una imagen es un panorama equirrectangular (latitud-longitud).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_inspector.cpp" line="461"/>
+        <location filename="../scene_builder_inspector.cpp" line="487"/>
         <source>Brightness</source>
         <translation>Brillo</translation>
     </message>
@@ -5858,10 +5856,6 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <location filename="../scene_builder_widget.cpp" line="117"/>
         <source>Add to scene list</source>
         <translation>Añadir a la lista de escenas</translation>
-    </message>
-    <message>
-        <source>Save the scene into the scenes folder so it shows up in the Settings tab (after a restart)</source>
-        <translation type="vanished">Guardar la escena en la carpeta de escenas para que aparezca en la pestaña Configuración (tras reiniciar)</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="118"/>
@@ -5932,10 +5926,6 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <location filename="../scene_builder_widget.cpp" line="174"/>
         <source>Delete</source>
         <translation>Eliminar</translation>
-    </message>
-    <message>
-        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation type="vanished">Arrastra el fondo: orbitar. Arrastre con el botón derecho: desplazar. Rueda: zoom. Arrastra una flecha para mover a lo largo de un eje; arrastra un objeto con Mayús para elevarlo.</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="35"/>
@@ -6167,14 +6157,6 @@ Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</transla
         <translation>(%1)%2  |  %3 objetos, %4 luces</translation>
     </message>
     <message>
-        <source>Saved a copy as %1.
-
-It is in the scene list now (Settings tab, Custom Scenes).</source>
-        <translation type="vanished">Se guardó una copia como %1.
-
-Ya está en la lista de escenas (pestaña Configuración, Escenas personalizadas).</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_widget.cpp" line="679"/>
         <source>Choose a mesh</source>
         <translation>Elegir una malla</translation>
@@ -6190,25 +6172,9 @@ Ya está en la lista de escenas (pestaña Configuración, Escenas personalizadas
         <translation>Guardar la escena en la carpeta de escenas para que aparezca en la pestaña Configuración</translation>
     </message>
     <message>
-        <source>Replace the scene?</source>
-        <translation type="vanished">¿Reemplazar la escena?</translation>
-    </message>
-    <message>
-        <source>%1 already exists. Replace it?</source>
-        <translation type="vanished">%1 ya existe. ¿Reemplazarlo?</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_widget.cpp" line="485"/>
         <source>Added to the scene list</source>
         <translation>Añadida a la lista de escenas</translation>
-    </message>
-    <message>
-        <source>Saved a copy as %1.
-
-Restart the program to see it in the scene list (Settings tab, Custom Scenes).</source>
-        <translation type="vanished">Se guardó una copia como %1.
-
-Reinicia el programa para verla en la lista de escenas (pestaña Configuración, Escenas personalizadas).</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="598"/>
@@ -6221,17 +6187,9 @@ Reinicia el programa para verla en la lista de escenas (pestaña Configuración,
         <translation>, luz</translation>
     </message>
     <message>
-        <source>Choose a .ply mesh</source>
-        <translation type="vanished">Elegir una malla .ply</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_widget.cpp" line="748"/>
         <source>not saved yet</source>
         <translation>sin guardar todavía</translation>
-    </message>
-    <message>
-        <source>%1 (%2)%3  |  %4 objects, %5 lights</source>
-        <translation type="vanished">%1 (%2)%3  |  %4 objetos, %5 luces</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="770"/>
@@ -6282,26 +6240,6 @@ Reinicia el programa para verla en la lista de escenas (pestaña Configuración,
         <location filename="../scene_builder_photo.cpp" line="34"/>
         <source>Photo helper not installed</source>
         <translation>Asistente de fotos no instalado</translation>
-    </message>
-    <message>
-        <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an NVIDIA graphics card is strongly recommended).
-
-%1
-
-To set it up, run this in PowerShell from the program&apos;s folder:
-
-powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
-
-Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation type="vanished">Convertir una foto en un objeto 3D requiere un asistente opcional: un modelo de IA que se ejecuta en tu propio equipo (unos 5 GB de instalación; se recomienda encarecidamente una tarjeta gráfica NVIDIA).
-
-%1
-
-Para configurarlo, ejecuta esto en PowerShell desde la carpeta del programa:
-
-powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
-
-Después vuelve a elegir esta opción. La guía (docs/PHOTO_TO_SCENE.md) explica qué hace y cuáles son sus límites.</translation>
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="35"/>
@@ -6503,32 +6441,32 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
 <context>
     <name>SceneLayoutView</name>
     <message>
-        <location filename="../scene_layout_view.cpp" line="286"/>
+        <location filename="../scene_layout_view.cpp" line="297"/>
         <source>Top view: X to the right, Z towards you (down)</source>
         <translation>Vista superior: X a la derecha, Z hacia ti (abajo)</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="287"/>
+        <location filename="../scene_layout_view.cpp" line="298"/>
         <source>Front view: X to the right, Y up</source>
         <translation>Vista frontal: X a la derecha, Y hacia arriba</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="288"/>
+        <location filename="../scene_layout_view.cpp" line="299"/>
         <source>Side view: Z to the left, Y up</source>
         <translation>Vista lateral: Z a la izquierda, Y hacia arriba</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="291"/>
+        <location filename="../scene_layout_view.cpp" line="302"/>
         <source>Grid: 1 unit</source>
         <translation>Cuadrícula: 1 unidad</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="291"/>
+        <location filename="../scene_layout_view.cpp" line="302"/>
         <source>Grid: %1 units</source>
         <translation>Cuadrícula: %1 unidades</translation>
     </message>
     <message>
-        <location filename="../scene_layout_view.cpp" line="379"/>
+        <location filename="../scene_layout_view.cpp" line="390"/>
         <source>Camera</source>
         <translation>Cámara</translation>
     </message>

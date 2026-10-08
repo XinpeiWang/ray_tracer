@@ -280,8 +280,8 @@ TEST(SceneDocumentPbrtTest, EveryShapeMaterialAndLightLoads) {
 	Document d = makeStarterScene();
 	d.objects.clear();
 	d.lights.clear();
-	for (ShapeKind sh : {ShapeKind::Sphere, ShapeKind::Box, ShapeKind::Quad, ShapeKind::Disk, ShapeKind::Cylinder, ShapeKind::Cone})
-		d.objects.push_back(makeObject(sh, toString(sh)));
+	for (ShapeKind sh : scene_doc::allShapeKinds())
+		if (sh != ShapeKind::Mesh) d.objects.push_back(makeObject(sh, toString(sh)));
 	const MaterialKind kinds[] = {MaterialKind::Diffuse, MaterialKind::Conductor, MaterialKind::Dielectric, MaterialKind::CoatedDiffuse,
 	                              MaterialKind::DiffuseTransmission};
 	for (MaterialKind k : kinds) {
@@ -642,6 +642,110 @@ TEST(SceneBuilderRenderTest, APicturedQuadShowsItsPictureUprightAndNotMirrored) 
 	EXPECT_EQ(dominant(1, 1), 3) << "bottom right should be the white pixel";
 }
 
+// The ready-made shapes that are generated triangle meshes (scene_shapes.h): every triangle faces outward, the normals agree with the winding, the volume
+// is positive and the mesh sits where the document says (centred on the position, sized by its fields).
+TEST(SceneDocumentShapesTest, GeneratedMeshesAreClosedOutwardFacingAndSizedAsAsked) {
+	for (ShapeKind sh : scene_doc::allShapeKinds()) {
+		if (!scene_doc::isGeneratedShape(sh)) continue;
+		const Object o = makeObject(sh, toString(sh));
+		const scene_doc::ShapeMesh m = scene_doc::generatedMesh(o);
+		ASSERT_GT(m.triangleCount(), 0u) << toString(sh);
+		ASSERT_EQ(m.N.size(), m.P.size()) << toString(sh);
+		ASSERT_EQ(m.UV.size() / 2, m.vertexCount()) << toString(sh);
+		double volume = 0, lo[3] = {1e9, 1e9, 1e9}, hi[3] = {-1e9, -1e9, -1e9};
+		for (std::size_t k = 0; k < m.vertexCount(); ++k)
+			for (int a = 0; a < 3; ++a) { lo[a] = std::min(lo[a], m.P[k * 3 + a]); hi[a] = std::max(hi[a], m.P[k * 3 + a]); }
+		for (std::size_t t = 0; t < m.triangleCount(); ++t) {
+			const int i[3] = {m.indices[t * 3], m.indices[t * 3 + 1], m.indices[t * 3 + 2]};
+			for (int v : i) ASSERT_TRUE(v >= 0 && v < static_cast<int>(m.vertexCount())) << toString(sh);
+			double p[3][3], n[3] = {0, 0, 0};
+			for (int v = 0; v < 3; ++v)
+				for (int a = 0; a < 3; ++a) { p[v][a] = m.P[i[v] * 3 + a]; n[a] += m.N[i[v] * 3 + a]; }
+			const double e1[3] = {p[1][0] - p[0][0], p[1][1] - p[0][1], p[1][2] - p[0][2]}, e2[3] = {p[2][0] - p[0][0], p[2][1] - p[0][1], p[2][2] - p[0][2]};
+			const double g[3] = {e1[1] * e2[2] - e1[2] * e2[1], e1[2] * e2[0] - e1[0] * e2[2], e1[0] * e2[1] - e1[1] * e2[0]};
+			EXPECT_GT(g[0] * n[0] + g[1] * n[1] + g[2] * n[2], 0.0) << toString(sh) << " triangle " << t << " faces against its normals";
+			volume += (p[0][0] * (p[1][1] * p[2][2] - p[1][2] * p[2][1]) - p[0][1] * (p[1][0] * p[2][2] - p[1][2] * p[2][0]) +
+			           p[0][2] * (p[1][0] * p[2][1] - p[1][1] * p[2][0])) / 6.0;
+		}
+		EXPECT_GT(volume, 0.01) << toString(sh) << " is not a closed, outward-facing solid";
+		for (int a = 0; a < 3; ++a) EXPECT_NEAR(lo[a], -hi[a], 1e-6 + 0.2 * (hi[a] - lo[a])) << toString(sh) << " is not centred on its position (axis " << a << ")";
+	}
+	// Sizes follow the fields.
+	auto extent = [](const Object& o, int axis) {
+		const scene_doc::ShapeMesh m = scene_doc::generatedMesh(o);
+		double lo = 1e9, hi = -1e9;
+		for (std::size_t k = 0; k < m.vertexCount(); ++k) { lo = std::min(lo, m.P[k * 3 + axis]); hi = std::max(hi, m.P[k * 3 + axis]); }
+		return hi - lo;
+	};
+	Object pyr = makeObject(ShapeKind::Pyramid, "p");
+	pyr.size = {3, 0, 5};
+	pyr.height = 2;
+	EXPECT_NEAR(extent(pyr, 0), 3, 1e-9);
+	EXPECT_NEAR(extent(pyr, 1), 2, 1e-9);
+	EXPECT_NEAR(extent(pyr, 2), 5, 1e-9);
+	Object tor = makeObject(ShapeKind::Torus, "t");
+	tor.radius = 2;
+	tor.radius2 = 0.5;
+	EXPECT_NEAR(extent(tor, 0), 5, 1e-6);
+	EXPECT_NEAR(extent(tor, 1), 1, 1e-6);
+	Object cap = makeObject(ShapeKind::Capsule, "c");
+	cap.radius = 0.5;
+	cap.height = 3;
+	EXPECT_NEAR(extent(cap, 1), 3, 1e-9);
+	EXPECT_NEAR(extent(cap, 0), 1, 1e-6);
+	cap.height = 0.2;   // shorter than its ends need: as tall as they are
+	EXPECT_NEAR(extent(cap, 1), 1, 1e-9);
+	Object stairs = makeObject(ShapeKind::Stairs, "s");
+	stairs.steps = 1;
+	const std::size_t oneStep = scene_doc::generatedMesh(stairs).triangleCount();
+	stairs.steps = 8;
+	EXPECT_GT(scene_doc::generatedMesh(stairs).triangleCount(), oneStep * 4);
+}
+
+TEST(SceneDocumentShapesTest, NewShapesRoundTripValidateAndWriteAsPlainPbrt) {
+	Document d = makeStarterScene();
+	const std::size_t first = d.objects.size();   // the objects added below follow the starter scene's own
+	for (ShapeKind sh : scene_doc::allShapeKinds()) {
+		if (sh == ShapeKind::Mesh) continue;
+		Object o = makeObject(sh, std::string("n-") + toString(sh));
+		o.radius2 = 0.31;
+		o.steps = 7;
+		d.objects.push_back(o);
+	}
+	ASSERT_FALSE(hasErrors(validate(d)));
+	const std::string text = toPbrt(d);
+	EXPECT_NE(text.find("\"normal N\""), std::string::npos);
+	Document back;
+	std::string error;
+	ASSERT_TRUE(fromPbrt(text, back, error)) << error;
+	ASSERT_EQ(back.objects.size(), d.objects.size());
+	for (std::size_t i = first; i < d.objects.size(); ++i) {
+		EXPECT_EQ(back.objects[i].shape, d.objects[i].shape) << i;
+		EXPECT_DOUBLE_EQ(back.objects[i].radius2, 0.31) << i;
+		EXPECT_EQ(back.objects[i].steps, 7) << i;
+	}
+	// A document written before these fields existed keeps their defaults.
+	Document old;
+	ASSERT_TRUE(fromJson("{\"objects\":[{\"name\":\"a\",\"shape\":\"torus\"}]}", old, error)) << error;
+	EXPECT_DOUBLE_EQ(old.objects[0].radius2, 0.25);
+	EXPECT_EQ(old.objects[0].steps, 5);
+
+	// What does not make a solid is refused.
+	auto problem = [](ShapeKind sh, auto mutate) {
+		Document one = makeStarterScene();
+		Object o = makeObject(sh, "x");
+		mutate(o);
+		one.objects.push_back(o);
+		return hasErrors(validate(one));
+	};
+	EXPECT_TRUE(problem(ShapeKind::Torus, [](Object& o) { o.radius2 = o.radius; }));
+	EXPECT_TRUE(problem(ShapeKind::Tube, [](Object& o) { o.radius2 = o.radius + 0.1; }));
+	EXPECT_TRUE(problem(ShapeKind::Stairs, [](Object& o) { o.steps = 0; }));
+	EXPECT_TRUE(problem(ShapeKind::Pyramid, [](Object& o) { o.height = 0; }));
+	EXPECT_TRUE(problem(ShapeKind::Dome, [](Object& o) { o.radius = 0; }));
+	EXPECT_FALSE(problem(ShapeKind::Capsule, [](Object& o) { o.height = 0.1; }));   // only a warning
+}
+
 // The orientation the header promises: a box, sphere, cylinder and cone emit outward, a quad and a disk emit from their +Y side. A camera whose view lies
 // wholly inside the shape sees the emitter's radiance (strength 2) at depth 1, or nothing from behind it.
 TEST(SceneBuilderRenderTest, EmissiveShapesFaceTheWayTheDocumentSays) {
@@ -660,6 +764,8 @@ TEST(SceneBuilderRenderTest, EmissiveShapesFaceTheWayTheDocumentSays) {
 		{ShapeKind::Disk, {0, 10, 0.001}, L},  {ShapeKind::Disk, {0, -10, 0.001}, 0.0},
 		{ShapeKind::Cylinder, {0, 0, 10}, L},  {ShapeKind::Cylinder, {10, 0, 0}, L},
 		{ShapeKind::Cone, {0, 0, 10}, L},
+		{ShapeKind::Pyramid, {0, 0, 10}, L},   {ShapeKind::Wedge, {0, 0, 10}, L},   {ShapeKind::Stairs, {0, 0, 10}, L},  {ShapeKind::Torus, {0, 0, 10}, L},
+		{ShapeKind::Capsule, {0, 0, 10}, L},   {ShapeKind::Dome, {0, 0, 10}, L},    {ShapeKind::Tube, {0, 0, 10}, L},
 	};
 	for (const Case& c : cases) {
 		Document d;
