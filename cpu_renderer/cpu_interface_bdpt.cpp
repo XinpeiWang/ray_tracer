@@ -30,7 +30,10 @@
 #include "../src/TheRestOfYourLife/scene_registry.h"
 #include "../src/TheRestOfYourLife/hittable_list.h"
 #include "../src/TheRestOfYourLife/bdpt_adapter.h"
+#include "../src/TheRestOfYourLife/aov_pass.h"
+#include "../src/shared/exr_writer.h"
 #include "../src/TheRestOfYourLife/error_codes.h"
+#include <algorithm>
 #include <iostream>
 #include <filesystem>
 #include <cstring>
@@ -50,7 +53,7 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
                                              double cam_x, double cam_y, double cam_z,
                                              int force_camera_override,
                                              hittable_list& out_world, camera& out_cam,
-                                             int& out_err) {
+                                             int& out_err, bool quiet_light_warnings = false) {
 	out_err = SUCCESS;
 	const SceneDescriptor* scene_desc = find_scene(scene_id);
 	if (!scene_desc) {
@@ -134,7 +137,7 @@ const SceneDescriptor* build_scene_for_bdpt(const char* scene_id, int width, int
 	// --bdpt/--mlt rather than silently mishandling it.
 	if (scene_desc->build_sky)
 		out_cam.sky = scene_desc->build_sky();
-	if (scene_desc->build_portal) {
+	if (scene_desc->build_portal && !quiet_light_warnings) {   // (the AOV passes involve no lighting at all)
 		std::cerr << "Warning: scene '" << scene_id << "' has a portal (windowed) infinite "
 		             "light, which is not supported under --bdpt/--mlt - it will not contribute "
 		             "any light (rendering black through the window); use the default path "
@@ -679,6 +682,78 @@ extern "C" int cpu_render_main_ao(int width, int height, int spp, double max_dis
 	} catch (...) {
 		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
 		return ERR_UNKNOWN;
+	}
+}
+
+// The passes of a scene (albedo, normal, depth, uv, coverage) as a multi-channel EXR, from first-hit camera rays (see src/TheRestOfYourLife/aov_pass.h).
+extern "C" int cpu_render_main_aovs(int width, int height, int spp, const char* output_path, const char* scene_id, double cam_x, double cam_y, double cam_z,
+                                     int force_camera_override) {
+	try {
+		if (width <= 0 || height <= 0) { std::cerr << ErrorInfo(ERR_INVALID_DIMENSIONS).to_string() << std::endl; return ERR_INVALID_DIMENSIONS; }
+		if (spp <= 0) { std::cerr << ErrorInfo(ERR_INVALID_SAMPLE_COUNT).to_string() << std::endl; return ERR_INVALID_SAMPLE_COUNT; }
+		if (!output_path) { std::cerr << ErrorInfo(ERR_OUTPUT_PATH_INVALID).to_string() << std::endl; return ERR_OUTPUT_PATH_INVALID; }
+
+		hittable_list world;
+		camera cam;
+		int err = SUCCESS;
+		const SceneDescriptor* scene_desc = build_scene_for_bdpt(scene_id, width, height, cam_x, cam_y, cam_z, force_camera_override, world, cam, err, /*quiet_light_warnings=*/true);
+		if (!scene_desc) return err;
+		std::cout << "[cpu_interface_bdpt] Built scene " << scene_id << " (" << scene_desc->name << ") for the AOV passes" << std::endl;
+		cam.initialize();
+
+		std::filesystem::path out_fs_path(output_path);
+		if (!out_fs_path.parent_path().empty() && !std::filesystem::exists(out_fs_path.parent_path()))
+			std::filesystem::create_directories(out_fs_path.parent_path());
+
+		BDPTSceneAdapter adapter(world, cam);
+		std::vector<std::vector<float>> planes;
+		aov_pass::render(adapter, cam.image_width, cam.image_height, spp, planes);
+		std::string exr_error;
+		if (!write_exr_channels(output_path, cam.image_width, cam.image_height, aov_pass::channelNames(), planes, exr_error)) {
+			std::cerr << "[cpu_interface_bdpt] Failed to write the AOV EXR '" << output_path << "': " << exr_error << std::endl;
+			return ERR_FILE_WRITE_FAILED;
+		}
+		std::clog << "[cpu_interface_bdpt] AOV passes written: " << output_path << std::endl;
+		return SUCCESS;
+	} catch (const std::bad_alloc& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_MEMORY_ALLOCATION).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_MEMORY_ALLOCATION;
+	} catch (const std::exception& e) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_CPU_RENDER_FAILED).to_string() << " - " << e.what() << std::endl;
+		return ERR_CPU_RENDER_FAILED;
+	} catch (...) {
+		std::cerr << "[cpu_interface_bdpt] " << ErrorInfo(ERR_UNKNOWN).to_string() << std::endl;
+		return ERR_UNKNOWN;
+	}
+}
+
+// Adds the channels of the EXR `passes_path` (cpu_render_main_aovs) to the EXR `image_path` (R, G, B from a render), writing the result over `image_path`: one
+// multilayer EXR. A channel the image already has (its own "A") is kept. Lives here, with the other tinyexr callers in this library, rather than in the launcher:
+// ray_tracer links two static libraries that each carry a tinyexr implementation, and a direct tinyexr reference from launcher/*.cpp makes both get pulled in
+// (see the comment on metal_cpu_gpu_parity_check in CMakeLists.txt).
+extern "C" int cpu_merge_exr_passes(const char* image_path, const char* passes_path, char* error_out, int error_out_size) {
+	auto fail = [&](const std::string& why) {
+		if (error_out && error_out_size > 0) std::snprintf(error_out, static_cast<size_t>(error_out_size), "%s", why.c_str());
+		return ERR_FILE_WRITE_FAILED;
+	};
+	try {
+		if (!image_path || !passes_path) return fail("no path");
+		std::string error;
+		int bw = 0, bh = 0, pw = 0, ph = 0;
+		std::vector<std::string> names, passNames;
+		std::vector<std::vector<float>> planes, passPlanes;
+		if (!read_exr_channels(image_path, bw, bh, names, planes, error)) return fail(error);
+		if (!read_exr_channels(passes_path, pw, ph, passNames, passPlanes, error)) return fail(error);
+		if (bw != pw || bh != ph) return fail("the image and the passes differ in size");
+		for (size_t i = 0; i < passNames.size(); ++i) {
+			if (std::find(names.begin(), names.end(), passNames[i]) != names.end()) continue;
+			names.push_back(passNames[i]);
+			planes.push_back(std::move(passPlanes[i]));
+		}
+		if (!write_exr_channels(image_path, bw, bh, names, planes, error)) return fail(error);
+		return SUCCESS;
+	} catch (const std::exception& e) {
+		return fail(e.what());
 	}
 }
 

@@ -1069,7 +1069,7 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // default stream's own 1u - every explicit
         // seed selects a stream distinct from a run that never passed one.
         if (options.seed >= 0) app.frameSeedValue = (uint32_t)options.seed + 2u;
-        // --max-component-value: the explicit firefly clamp (1e9 = not requested, so the scene's own Film maxcomponentvalue applies).
+        // --maxcomponentvalue: the explicit firefly clamp (1e9 = not requested, so the scene's own Film maxcomponentvalue applies).
         if (options.max_component_value > 0.0 && options.max_component_value < 1e9) app.maxComponentValueOverride = (float)options.max_component_value;
         // --crop: NDC fractions -> pixel bounds via the SAME shared resolver
         // OptiX uses (src/shared/cameras.h), so rounding/clamping match. All

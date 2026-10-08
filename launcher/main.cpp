@@ -1016,6 +1016,34 @@ static bool report_render_result(int render_result, const char *entry_point, con
 }
 
 // The default mode: one image from the chosen integrator and backend, then the timing, the --stats block and the PNG conversion.
+// --aovs: the passes of the scene (cpu_render_main_aovs) next to the image. For an .exr image they are merged into it (R, G, B from the beauty plus the passes,
+// one multilayer file); otherwise they go to <stem>.aovs.exr. A failure here is a warning: the image itself is already written.
+static void write_aov_passes(const std::string &out_path, int width, int height, int samples, const std::string &scene_id, double cam_x, double cam_y, double cam_z) {
+	namespace fs = std::filesystem;
+	const fs::path image(out_path);
+	const bool merge = is_exr_output_path(out_path);
+	const fs::path passes = merge ? image.parent_path() / (image.stem().string() + ".aov-tmp.exr") : image.parent_path() / (image.stem().string() + ".aovs.exr");
+	std::cout << "\nWriting the render passes (albedo, normal, depth, uv, coverage)..." << std::endl;
+	const int result = cpu_render_main_aovs(width, height, std::min(samples, 16), passes.string().c_str(), scene_id.c_str(), cam_x, cam_y, cam_z, 1);
+	if (result != 0) {
+		std::cerr << "WARNING: the render passes could not be written (error " << result << "); the image itself is unaffected." << std::endl;
+		return;
+	}
+	if (!merge) {
+		std::cout << "  - " << passes.filename().string() << " (EXR - render passes)" << std::endl;
+		return;
+	}
+	char error[512] = {0};
+	if (cpu_merge_exr_passes(out_path.c_str(), passes.string().c_str(), error, static_cast<int>(sizeof error)) != 0) {
+		std::cerr << "WARNING: could not merge the render passes into " << image.filename().string() << ": " << error << "; they are in "
+		          << passes.filename().string() << " instead." << std::endl;
+		return;
+	}
+	std::error_code ec;
+	fs::remove(passes, ec);
+	std::cout << "  - " << image.filename().string() << " now also holds the render passes (multilayer EXR: R G B + albedo, normal, depth, uv, A)" << std::endl;
+}
+
 static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
 	const bool use_gpu = s.use_gpu;
 	const int image_width = s.image_width;
@@ -1404,6 +1432,7 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
         }
     }
 
+    if (render_result == 0 && args.aovs) write_aov_passes(out_path, image_width, image_height, samples_per_pixel, scene_id, cam_x, cam_y, cam_z);
     return render_result;
 }
 

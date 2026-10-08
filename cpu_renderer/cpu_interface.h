@@ -290,6 +290,26 @@ int cpu_render_main_ao(
     int force_camera_override = 0
 );
 
+/// @brief Writes the scene's render passes (AOVs) as a multi-channel EXR: albedo.R/G/B, normal.X/Y/Z (world space, facing the camera), depth.Z (distance to the
+/// first hit), uv.U/V and A (coverage), from first-hit camera rays (src/TheRestOfYourLife/aov_pass.h). Works for any scene whatever backend renders its beauty image.
+/// @param spp  Camera samples per pixel (anti-aliasing of the passes); 8-16 is plenty
+/// @return 0 on success, non-zero error code on failure
+int cpu_render_main_aovs(
+    int width,
+    int height,
+    int spp,
+    const char* output_path,
+    const char* scene_id,
+    double cam_x,
+    double cam_y,
+    double cam_z,
+    int force_camera_override = 0
+);
+
+/// @brief Merges the channels of the EXR `passes_path` (see cpu_render_main_aovs) into the EXR `image_path`, writing the result over it: one multilayer EXR. A channel
+/// the image already has is kept. @return 0 on success; on failure non-zero with a message in `error_out`.
+int cpu_merge_exr_passes(const char* image_path, const char* passes_path, char* error_out, int error_out_size);
+
 /// @brief Render a scene using SimplePathIntegrator -- pbrt-v4's canonical
 /// reference path tracer with optional NEE and optional BSDF importance
 /// sampling. See src/shared/simple_path.h's own file comment. CPU only.

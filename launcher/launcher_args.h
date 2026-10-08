@@ -182,6 +182,9 @@ struct LaunchArgs {
 	// existed. Same "CPU default path tracer only" scope cut as sampler
 	// above - relies on that integrator's own stratified sampling loop.
 	bool adaptive_sampling  = false;
+	// Also write the render's passes (albedo, normal, depth, uv, coverage) - see src/TheRestOfYourLife/aov_pass.h. Into the same file when the output is an .exr
+	// (a multilayer EXR with the beauty's R/G/B), else into <stem>.aovs.exr beside the image. Any backend; single images only.
+	bool aovs = false;
 	// Target relative standard error of a pixel's running luminance mean -
 	// see pixel_convergence::has_converged()'s own comment. Only consulted
 	// when adaptive_sampling is true. 0.01 matches Blender Cycles' own
@@ -479,6 +482,9 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 			consumed_args.insert(i);
 			consumed_args.insert(i + 1);
 			++i;
+		} else if (arg == render_flags::kAovs) {
+			out.aovs = true;
+			consumed_args.insert(i);
 		} else if (arg == render_flags::kAdaptive) {
 			out.adaptive_sampling = true;
 			consumed_args.insert(i);
@@ -885,6 +891,11 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton,\n"
 					  << "               independent.\n"
 					  << "               CPU default path tracer only.\n"
+					  << "  " << render_flags::kAovs << "     : Also write the render passes - albedo.R/G/B, normal.X/Y/Z (world, facing the\n"
+					  << "               camera), depth.Z (distance to the first hit), uv.U/V and A (coverage) -\n"
+					  << "               from first-hit camera rays, for compositing. Into the same file for\n"
+					  << "               an .exr output (a multilayer EXR with the image's R/G/B), else into\n"
+					  << "               <name>.aovs.exr next to the image. Any backend; single images only.\n"
 					  << "  " << render_flags::kAdaptive << " : Stop sampling a pixel once it's converged instead of\n"
 					  << "               always spending the full samples-per-pixel budget on every\n"
 					  << "               pixel - samples_per_pixel becomes a ceiling, not a fixed count.\n"
