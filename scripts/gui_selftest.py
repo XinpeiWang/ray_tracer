@@ -9,6 +9,7 @@ result. Screenshots are of the app's own window (never the screen) and are writt
   options      the Options controls respond
   builder      the Scene Builder tab: edits, drag, undo/redo, save and re-open, a CPU preview (and with --live-preview a GPU preview too)
   diagnostics  the Diagnostics report is produced
+  installphoto the Diagnostics tab's "Install Photo Helper" flow with stand-in installer scripts (not in the default set; no big download)
   livepreview  (--live-preview) selects Live Preview, starts it, lets it render, orbits the camera like a mouse drag, and requires
                frames to flow AND the picture to change
 
@@ -77,6 +78,36 @@ def needs_rosetta(exe):
     return apple_silicon and "arm64" not in archs
 
 
+def installphoto_env(fake_home):
+    """Stand-in installers for the installphoto mode (the real one downloads about 5 GB): one that prints some lines, including a lone-CR progress update,
+    and succeeds, and one that fails with a CRLF error line. The Python the helper would use points at a file that does not exist, so the Diagnostics report
+    lists the helper as missing and the install button has something to do."""
+    if IS_WINDOWS:
+        ok_body = 'Write-Host "Setting up the photo helper (stand-in)"\r\nWrite-Host "Installing the packages..."\r\nexit 0\r\n'
+        fail_body = '[Console]::Out.Write("ERROR: no network (CRLF)`r`n")\r\nexit 1\r\n'
+        ext = ".ps1"
+    else:
+        ok_body = '#!/bin/bash\necho "Setting up the photo helper (stand-in)"\nprintf "progress 10%%\\r"\necho "Installing the packages..."\nexit 0\n'
+        fail_body = '#!/bin/bash\nprintf "ERROR: no network (CRLF)\\r\\n"\nexit 1\n'
+        ext = ".sh"
+    extra = {}
+    if not IS_WINDOWS:
+        pid_file = os.path.join(fake_home, "hang_child.pid")
+        hang_path = os.path.join(fake_home, "stand_in_setup_hang.sh")
+        with open(hang_path, "w", newline="") as f:
+            f.write('#!/bin/bash\nsleep 120 &\necho $! > "%s"\nwait\n' % pid_file)
+        os.chmod(hang_path, 0o755)
+        extra = {"RT_GUI_SELFTEST_SETUP_HANG": hang_path, "RT_GUI_SELFTEST_HANG_PID": pid_file}
+    ok_path = os.path.join(fake_home, "stand_in_setup_ok" + ext)
+    fail_path = os.path.join(fake_home, "stand_in_setup_fail" + ext)
+    for path, body in ((ok_path, ok_body), (fail_path, fail_body)):
+        with open(path, "w", newline="") as f:
+            f.write(body)
+        os.chmod(path, 0o755)
+    return {"RAY_TRACER_PHOTO3D_PYTHON": os.path.join(fake_home, "no-such-python"), "RAY_TRACER_PHOTO3D_SETUP": ok_path,
+            "RT_GUI_SELFTEST_SETUP_FAIL": fail_path, **extra}
+
+
 def run_mode(exe, mode, wait_s, out, plugins, fake_home, gpu=False):
     prefix = os.path.join(out, mode)
     for ext in (".txt", ".stdout"):
@@ -91,6 +122,8 @@ def run_mode(exe, mode, wait_s, out, plugins, fake_home, gpu=False):
     })
     if gpu:
         env["RT_GUI_SELFTEST_GPU"] = "1"   # the builder mode also previews through "Use the GPU"
+    if mode == "installphoto":
+        env.update(installphoto_env(fake_home))
     cmd = (["arch", "-x86_64"] if needs_rosetta(exe) else []) + [exe]
     with open(prefix + ".stdout", "wb") as log:
         # cwd is the root folder on purpose (see the module docstring).

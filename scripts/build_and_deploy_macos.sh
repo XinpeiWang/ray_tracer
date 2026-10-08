@@ -231,6 +231,14 @@ cp "$REPO_ROOT/images/earthmap.jpg" "$APP_BUNDLE/Contents/MacOS/images/earthmap.
 # "Scene is Empty (CPU)" (error 101).
 cp -R "$REPO_ROOT/pbrt_scenes" "$APP_BUNDLE/Contents/MacOS/pbrt_scenes"
 
+# The optional "Object from a photo" helper (docs/PHOTO_TO_SCENE.md): its Python tool and the script that sets up its Python environment (about 5 GB, made on
+# the user's request from the Diagnostics tab). Inside the bundle, beside the executable, so they travel with the app when it is dragged out of the disk image.
+# Copied after macdeployqt (like the Metal shaders above) since they are not Mach-O files.
+mkdir -p "$APP_BUNDLE/Contents/MacOS/tools/photo_to_mesh" "$APP_BUNDLE/Contents/MacOS/scripts"
+cp "$REPO_ROOT/tools/photo_to_mesh/photo_to_mesh.py" "$APP_BUNDLE/Contents/MacOS/tools/photo_to_mesh/photo_to_mesh.py"
+cp "$REPO_ROOT/scripts/setup_photo_to_mesh.sh" "$APP_BUNDLE/Contents/MacOS/scripts/setup_photo_to_mesh.sh"
+chmod +x "$APP_BUNDLE/Contents/MacOS/scripts/setup_photo_to_mesh.sh"
+
 echo
 echo "[5/5] Collecting output..."
 rm -rf "$DEPLOY_DIR"

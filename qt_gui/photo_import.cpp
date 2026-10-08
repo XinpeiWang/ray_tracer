@@ -8,6 +8,12 @@
 #include <QStringList>
 #include <QTimer>
 
+#ifndef Q_OS_WIN
+#include <signal.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
+
 namespace {
 
 // <relative path> in the program's own folder or the one above it (three above for a macOS .app, which keeps its files beside the bundle), else "".
@@ -86,7 +92,11 @@ Setup locate() {
 QString setupScript() {
 	const QString overridePath = qEnvironmentVariable("RAY_TRACER_PHOTO3D_SETUP");
 	if (!overridePath.isEmpty() && qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) return QFileInfo::exists(overridePath) ? overridePath : QString();
+#ifdef Q_OS_WIN
 	return nextToProgram("scripts/setup_photo_to_mesh.ps1");
+#else
+	return nextToProgram("scripts/setup_photo_to_mesh.sh");   // bash; a macOS .app carries it inside (Contents/MacOS/scripts)
+#endif
 }
 
 QStringList missingFacts(const QString &report) {
@@ -113,7 +123,7 @@ void PhotoHelperInstaller::start() {
 	const QString script = photo_import::setupScript();
 	if (script.isEmpty()) {
 		m_done = true;
-		QTimer::singleShot(0, this, [this]() { emit finished(false, tr("The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.")); });
+		QTimer::singleShot(0, this, [this]() { emit finished(false, tr("The installer script (scripts/setup_photo_to_mesh) was not found next to the program.")); });
 		return;
 	}
 	m_process = newProcess(this, false);
@@ -139,9 +149,15 @@ void PhotoHelperInstaller::start() {
 		QProcess *p = m_process;
 		m_process = nullptr;
 		p->deleteLater();
-		emit finished(false, tr("Could not start PowerShell to run the installer."));
+		emit finished(false, tr("Could not start the installer (PowerShell on Windows, bash elsewhere)."));
 	});
+#ifdef Q_OS_WIN
 	m_process->start("powershell.exe", {"-NoProfile", "-ExecutionPolicy", "Bypass", "-File", script});
+#else
+	// Its own process group, so Cancel can stop pip, git and python along with the shell (see killTree()).
+	m_process->setChildProcessModifier([]() { ::setsid(); });
+	m_process->start("/bin/bash", {script});
+#endif
 }
 
 void PhotoHelperInstaller::cancel() {
@@ -154,6 +170,9 @@ void PhotoHelperInstaller::killTree() {
 #ifdef Q_OS_WIN
 	// PowerShell started pip, git and python: stop the whole tree, not just the shell.
 	if (m_process->processId() > 0) QProcess::execute("taskkill", {"/PID", QString::number(m_process->processId()), "/T", "/F"});
+#else
+	// The shell is the leader of its own process group (setsid in start()): signal the whole group, so pip, git and python stop with it.
+	if (m_process->processId() > 0) ::kill(-static_cast<pid_t>(m_process->processId()), SIGTERM);
 #endif
 	m_process->kill();
 }
@@ -210,7 +229,11 @@ void PhotoHelperCheck::start() {
 	m_head += setup.script.isEmpty() ? QStringLiteral("Helper Script: missing (tools/photo_to_mesh/photo_to_mesh.py was not found next to the program)\n")
 	                                 : QStringLiteral("Helper Script: present (%1)\n").arg(QDir::toNativeSeparators(setup.script));
 	if (!QFileInfo::exists(setup.python)) {
+		#ifdef Q_OS_WIN
 		m_head += QStringLiteral("Python Environment: not available (not set up; run scripts\\setup_photo_to_mesh.ps1 once to enable the feature, about 5 GB)\n");
+#else
+		m_head += QStringLiteral("Python Environment: not available (not set up; run scripts/setup_photo_to_mesh.sh once to enable the feature, about 5 GB)\n");
+#endif
 		m_head += QStringLiteral("Expected At: %1\n").arg(QDir::toNativeSeparators(setup.python));
 		finish(QString());
 		return;

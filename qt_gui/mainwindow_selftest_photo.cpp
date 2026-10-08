@@ -3,6 +3,12 @@
 // renders a preview of it. Screenshots <prefix>_photo_edit.png and <prefix>_photo_preview.png; exit 0 if every step held.
 #include "mainwindow.h"
 
+#ifndef Q_OS_WIN
+#include <signal.h>
+#include <sys/types.h>
+#include <unistd.h>
+#endif
+
 #include "photo_import.h"
 #include "scene_builder_widget.h"
 
@@ -79,10 +85,8 @@ void MainWindow::runInstallPhotoSelfTest(const std::function<void(const QString 
 			*stage = 1;
 			const QStringList missing = photo_import::missingFacts(m_lastDiagReport);
 			check(!missing.isEmpty(), "the report lists what the helper is missing (" + missing.join(" | ") + ")");
-#ifdef Q_OS_WIN
 			check(m_installPhotoHelperButton->isEnabled(), "so the install button is enabled");
 			check(m_installPhotoHelperButton->toolTip().contains("Python Environment"), "and its tooltip says what is missing");
-#endif
 			shot("installphoto_report");
 			startPhotoHelperInstall(false, [=](bool done, const QString &message) {
 				check(done, "the stand-in installer succeeded " + message);
@@ -98,9 +102,29 @@ void MainWindow::runInstallPhotoSelfTest(const std::function<void(const QString 
 				check(!done && message.contains("ERROR: no network (CRLF)"), "a failing installer reports failure with the last lines of its output, CRLF or not: " + message.left(120));
 				*stage = 4;
 			});
+		} else if (*stage == 4 && !qEnvironmentVariable("RT_GUI_SELFTEST_SETUP_HANG").isEmpty()) {
+			// Cancel: the stand-in starts a long-running child (its pid is written to a file) and waits; Cancel must stop the child too, not only the shell.
+			*stage = 6;
+			qputenv("RAY_TRACER_PHOTO3D_SETUP", qEnvironmentVariable("RT_GUI_SELFTEST_SETUP_HANG").toLocal8Bit());
+			startPhotoHelperInstall(false, [=](bool done, const QString &message) {
+				check(!done && message.contains("Cancelled"), "Cancel stops the installer: " + message);
+				*stage = 7;
+			});
+			QTimer::singleShot(1500, this, [this]() { if (m_photoInstaller) m_photoInstaller->cancel(); });
+		} else if (*stage == 7) {
+			*stage = 4;   // continue below once the cancelled run is accounted for
+#ifndef Q_OS_WIN
+			QFile pidFile(qEnvironmentVariable("RT_GUI_SELFTEST_HANG_PID"));
+			const qint64 pid = pidFile.open(QIODevice::ReadOnly) ? pidFile.readAll().trimmed().toLongLong() : 0;
+			QTimer::singleShot(600, this, [=]() {
+				check(pid > 0 && ::kill(static_cast<pid_t>(pid), 0) != 0, "the installer's child process (pid " + QString::number(pid) + ") was stopped with it");
+				if (pid > 0 && ::kill(static_cast<pid_t>(pid), 0) == 0) ::kill(static_cast<pid_t>(pid), SIGKILL);
+			});
+#endif
+			qputenv("RT_GUI_SELFTEST_SETUP_HANG", "");
 		} else if (*stage == 4) {
 			poll->stop();
-			QTimer::singleShot(300, this, [=]() {
+			QTimer::singleShot(900, this, [=]() {
 				check(!m_photoInstaller, "nothing is left running");
 				log(*ok ? "RESULT: OK" : "RESULT: FAIL");
 				QApplication::exit(*ok ? 0 : 1);

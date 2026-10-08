@@ -12,13 +12,16 @@ Output, in --out:
 
 While it runs it prints lines "PROGRESS <percent> <message>" so a caller can show a progress bar.
 
-Needs the Python environment made by scripts/setup_photo_to_mesh.ps1 (PyTorch, TripoSR, rembg, xatlas, scikit-image).
+Needs the Python environment made by scripts/setup_photo_to_mesh.ps1 on Windows or scripts/setup_photo_to_mesh.sh on macOS (PyTorch, TripoSR, rembg, xatlas, scikit-image).
 """
 import argparse
 import json
 import os
 import sys
 import time
+
+# On Apple silicon PyTorch runs on the GPU through MPS; an operator MPS lacks then runs on the processor instead of failing. Must be set before torch loads.
+os.environ.setdefault("PYTORCH_ENABLE_MPS_FALLBACK", "1")
 
 
 def progress(percent, message):
@@ -123,7 +126,7 @@ def check_environment(triposr_arg):
         try:
             version = metadata.version(dist)
         except metadata.PackageNotFoundError:
-            fact(name, "missing (not installed; run scripts/setup_photo_to_mesh.ps1)")
+            fact(name, "missing (not installed; run scripts/setup_photo_to_mesh.ps1 or .sh)")
             continue
         if dist == "transformers" and int(version.split(".")[0]) >= 5:
             fact(name, "%s not usable (TripoSR's model needs a version below 5)" % version)
@@ -146,7 +149,7 @@ def check_environment(triposr_arg):
         except Exception as e:  # a broken install can fail in many ways
             fact("PyTorch Import", "not usable (%s)" % str(e).splitlines()[0][:150])
     triposr = find_triposr(triposr_arg)
-    fact("TripoSR Code", "present (%s)" % triposr if triposr else "missing (run scripts/setup_photo_to_mesh.ps1)")
+    fact("TripoSR Code", "present (%s)" % triposr if triposr else "missing (run scripts/setup_photo_to_mesh.ps1 or .sh)")
     try:
         from huggingface_hub import try_to_load_from_cache
         ckpt = try_to_load_from_cache("stabilityai/TripoSR", "model.ckpt")
@@ -199,10 +202,10 @@ def main():
         import xatlas
         from PIL import Image
     except ImportError as e:
-        fail("a Python package is missing (%s). Run scripts/setup_photo_to_mesh.ps1 first." % e)
+        fail("a Python package is missing (%s). Run scripts/setup_photo_to_mesh.ps1 (Windows) or .sh (macOS) first." % e)
     triposr = find_triposr(args.triposr_dir)
     if not triposr:
-        fail("TripoSR was not found. Run scripts/setup_photo_to_mesh.ps1, or pass --triposr-dir.")
+        fail("TripoSR was not found. Run scripts/setup_photo_to_mesh.ps1 (Windows) or .sh (macOS), or pass --triposr-dir.")
     sys.path.insert(0, triposr)
     patch_marching_cubes(np, torch)
     from tsr.system import TSR
@@ -236,12 +239,22 @@ def main():
         arr = arr[:, :, :3] * arr[:, :, 3:4] + (1 - arr[:, :, 3:4]) * 0.5  # grey background, as the model expects
         prepared = Image.fromarray((arr * 255.0).astype(np.uint8))
 
-    progress(35, "Guessing the 3D shape")
-    with torch.no_grad():
-        codes = model([prepared], device=device)
+    def run_model(dev):
+        progress(35, "Guessing the 3D shape")
+        with torch.no_grad():
+            codes = model([prepared], device=dev)
+        progress(60, "Building the mesh")
+        return model.extract_mesh(codes, True, resolution=args.resolution)[0]  # trimesh with vertex colours
 
-    progress(60, "Building the mesh")
-    mesh = model.extract_mesh(codes, True, resolution=args.resolution)[0]  # trimesh with vertex colours
+    try:
+        mesh = run_model(device)
+    except Exception as e:  # Apple's GPU backend (MPS) cannot run every operation this model uses: the processor always can
+        if device != "mps":
+            raise
+        print("NOTE the Apple GPU could not run the model (%s); running on the processor instead, which takes several minutes." % str(e)[:200], flush=True)
+        device = "cpu"
+        model.to(device)
+        mesh = run_model(device)
     verts = np.asarray(mesh.vertices, dtype=np.float64)
     faces = np.asarray(mesh.faces, dtype=np.int64)
     colours = np.asarray(mesh.visual.vertex_colors)[:, :3].astype(np.float32) / 255.0
