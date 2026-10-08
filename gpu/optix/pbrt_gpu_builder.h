@@ -258,20 +258,12 @@ inline CameraMediumGpu cameraMediumGpu(const pbrt_flatten::Medium &m) {
 	return c;
 }
 
-// Fills `out` with the scene's geometry, materials and light list. Returns the
-// counts; `out` is cleared first.
-inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
-	using namespace detail;
+// What the stages below share: the scene being read, the GPU scene being filled, the counts, and the lookups that give a material (or medium) its index in
+// out.materials without making a second copy of it.
+struct BuildCtx {
+	const pbrt_flatten::FlatScene &scene;
+	SceneData &out;
 	BuildStats stats;
-
-	out.spheres.clear();
-	out.quads.clear();
-	out.triangles.clear();
-	out.bilinearPatches.clear();
-	out.materials.clear();
-	out.lightIndices.clear();
-	out.lightKinds.clear();
-	out.punctualLights.clear();
 
 	// One MaterialData per distinct (material, emission) pair, exactly as the
 	// CPU builder caches them - a mesh with a thousand faces sharing one
@@ -294,54 +286,6 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// imageTextureCache above even when the same file is used for both (its
 	// decode must skip the gamma correction imageTextureCache's applies).
 	std::map<std::string, int> alphaMaskTextureCache;
-	// Two lambdas sharing the same `cache`/`out` state: materialIndexDepth is
-	// the real, depth-threaded implementation (needed so MaterialKind::Mix's
-	// own case in makeMaterial() below can recursively resolve its two
-	// sub-materials to REAL out.materials indices - not just a flat colour,
-	// see that case's own comment - while still bounding a cyclic/self-
-	// referential "materials" list a malformed scene could produce, same
-	// kMaxMixDepth guard as resolveMixColor()'s own pre-existing depth cap).
-	// materialIndex is the ordinary 2-arg entry point every non-Mix call
-	// site below already uses, unchanged, always starting at depth 0.
-	// std::function (not an ordinary lambda) because it must be passed BY
-	// REFERENCE into makeMaterial() so Mix can call back into it - an
-	// ordinary `const auto` lambda can't appear in its own not-yet-deduced
-	// type this way.
-	std::function<int(int,int,int)> materialIndexDepth;
-	materialIndexDepth = [&](int mi, int ai, int depth) -> int {
-		const auto key = std::make_pair(mi, ai);
-		const auto it = cache.find(key);
-		if (it != cache.end()) return it->second;
-
-		const pbrt_flatten::Emission *em =
-			(ai >= 0 && static_cast<std::size_t>(ai) < scene.areaLights.size())
-				? &scene.areaLights[static_cast<std::size_t>(ai)]
-				: nullptr;
-		static const pbrt_flatten::Material kDefault{};
-		const pbrt_flatten::Material &m =
-			(mi >= 0 && static_cast<std::size_t>(mi) < scene.materials.size())
-				? scene.materials[static_cast<std::size_t>(mi)]
-				: kDefault;
-
-		// makeMaterial() is evaluated BEFORE `idx` is computed (not the other
-		// way around, despite every other cache-then-push site in this file
-		// looking that way) - a Mix material's own construction recursively
-		// calls back into materialIndexDepth for its two sub-materials,
-		// pushing THEM into out.materials as a side effect DURING this call.
-		// Computing idx = out.materials.size() up front (the naive order)
-		// would capture the size BEFORE those nested pushes, then push this
-		// material at a LATER index once they've already grown the vector -
-		// caching the wrong index for it. Every other material kind has no
-		// such side effect, so this reordering is a no-op for them.
-		MaterialData built = makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, imageTextureCache, alphaMaskTextureCache, scene.materials, materialIndexDepth, depth);
-		const int idx = static_cast<int>(out.materials.size());
-		out.materials.push_back(built);
-		cache.emplace(key, idx);
-		return idx;
-	};
-	const auto materialIndex = [&](int mi, int ai) {
-		return materialIndexDepth(mi, ai, 0);
-	};
 
 	// MediumInterface "insideMedium" "" on a sphere/cylinder. GPU's
 	// MaterialType::Medium takes over the shape's material slot entirely,
@@ -408,7 +352,82 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// tint is what MaterialData::medium_albedo/g/sigma_t (or dielectric_
 	// medium_extra.sigma_t, for the fused case) actually store.
 	std::map<std::pair<int,int>, int> mediumCache;
-	const auto mediumMaterialIndex = [&](int medIdx, int surfaceMaterialIdx = -1) {
+	std::function<int(int,int,int)> materialIndexDepth;   // the real, depth-threaded lookup (Mix materials call back into it)
+	std::function<int(int,int)> materialIndex;            // (material, area light) -> index in out.materials, always starting at depth 0
+	std::function<int(int,int)> mediumMaterialIndexFn;    // (medium, surface material or -1) -> index of its Medium material
+	std::function<bool(int)> isOpaque;                    // whether a surface material never lets a ray into its interior
+
+	BuildCtx(const pbrt_flatten::FlatScene &s, SceneData &o) : scene(s), out(o) {}
+};
+
+	// Shared by clipped spheres (below) and disk/cylinder (further down,
+	// which originally declared these) - a generic "flatten a row-major 4x4
+	// affine to the 3x4 device convention" helper and the degrees->radians
+	// constant every pbrt-v4 shape's own "phimax"-style angle param needs
+	// converted once, host-side, before reaching the GPU.
+inline void flattenTransform(const double xform[16], float out12[12]) {
+		for (int row = 0; row < 3; ++row)
+			for (int col = 0; col < 4; ++col)
+				out12[row * 4 + col] = static_cast<float>(xform[row * 4 + col]);
+}
+inline constexpr double kDiskCylDegToRad = 3.14159265358979323846 / 180.0;
+
+// Material lookup: one MaterialData per distinct (material, emission) pair.
+inline void setupMaterialLookup(BuildCtx &c) {
+	using namespace detail;
+	// Two lambdas sharing the same `cache`/`out` state: materialIndexDepth is
+	// the real, depth-threaded implementation (needed so MaterialKind::Mix's
+	// own case in makeMaterial() below can recursively resolve its two
+	// sub-materials to REAL out.materials indices - not just a flat colour,
+	// see that case's own comment - while still bounding a cyclic/self-
+	// referential "materials" list a malformed scene could produce, same
+	// kMaxMixDepth guard as resolveMixColor()'s own pre-existing depth cap).
+	// materialIndex is the ordinary 2-arg entry point every non-Mix call
+	// site below already uses, unchanged, always starting at depth 0.
+	// std::function (not an ordinary lambda) because it must be passed BY
+	// REFERENCE into makeMaterial() so Mix can call back into it - an
+	// ordinary `const auto` lambda can't appear in its own not-yet-deduced
+	// type this way.
+	c.materialIndexDepth = [&c, &scene = c.scene, &out = c.out, &cache = c.cache, &bssrdfTableCache = c.bssrdfTableCache, &measuredTableCache = c.measuredTableCache, &imageTextureCache = c.imageTextureCache, &alphaMaskTextureCache = c.alphaMaskTextureCache, &materialIndexDepth = c.materialIndexDepth](int mi, int ai, int depth) -> int {
+		const auto key = std::make_pair(mi, ai);
+		const auto it = cache.find(key);
+		if (it != cache.end()) return it->second;
+
+		const pbrt_flatten::Emission *em =
+			(ai >= 0 && static_cast<std::size_t>(ai) < scene.areaLights.size())
+				? &scene.areaLights[static_cast<std::size_t>(ai)]
+				: nullptr;
+		static const pbrt_flatten::Material kDefault{};
+		const pbrt_flatten::Material &m =
+			(mi >= 0 && static_cast<std::size_t>(mi) < scene.materials.size())
+				? scene.materials[static_cast<std::size_t>(mi)]
+				: kDefault;
+
+		// makeMaterial() is evaluated BEFORE `idx` is computed (not the other
+		// way around, despite every other cache-then-push site in this file
+		// looking that way) - a Mix material's own construction recursively
+		// calls back into materialIndexDepth for its two sub-materials,
+		// pushing THEM into out.materials as a side effect DURING this call.
+		// Computing idx = out.materials.size() up front (the naive order)
+		// would capture the size BEFORE those nested pushes, then push this
+		// material at a LATER index once they've already grown the vector -
+		// caching the wrong index for it. Every other material kind has no
+		// such side effect, so this reordering is a no-op for them.
+		MaterialData built = makeMaterial(m, em, out, bssrdfTableCache, measuredTableCache, imageTextureCache, alphaMaskTextureCache, scene.materials, materialIndexDepth, depth);
+		const int idx = static_cast<int>(out.materials.size());
+		out.materials.push_back(built);
+		cache.emplace(key, idx);
+		return idx;
+	};
+	c.materialIndex = [&c](int mi, int ai) {
+		return c.materialIndexDepth(mi, ai, 0);
+	};
+}
+
+// Medium lookup: the Medium material a shape's MediumInterface turns into.
+inline void setupMediumLookup(BuildCtx &c) {
+	using namespace detail;
+	c.mediumMaterialIndexFn = [&c, &scene = c.scene, &out = c.out, &stats = c.stats, &imageTextureCache = c.imageTextureCache, &mediumCache = c.mediumCache](int medIdx, int surfaceMaterialIdx) {
 		const pbrt_flatten::Medium &md = scene.media[static_cast<std::size_t>(medIdx)];
 
 		// Fusion applies to pbrt-v4's "homogeneous" medium type (no fused
@@ -715,7 +734,10 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		mediumCache.emplace(cacheKey, idx);
 		return idx;
 	};
+}
 
+inline void setupOpaqueCheck(BuildCtx &c) {
+	using namespace detail;
 	// Whether a shape's own surface Material is OPAQUE - i.e. never lets a
 	// ray transmit into its interior at all. An explicit ALLOW-list
 	// (Diffuse/Conductor/CoatedDiffuse/CoatedConductor/Subsurface/Measured/
@@ -756,7 +778,7 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// material is wrong in BOTH shape (round vs. the sphere's true profile
 	// is unaffected here, but material response) and transparency, not just
 	// missing a refractive highlight.
-	const auto isOpaqueSurfaceMaterial = [&](int materialIdx) {
+	c.isOpaque = [&scene = c.scene](int materialIdx) {
 		static const pbrt_flatten::Material kDefaultSurface{};
 		const pbrt_flatten::Material &sm =
 			(materialIdx >= 0 && static_cast<std::size_t>(materialIdx) < scene.materials.size())
@@ -774,19 +796,16 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				return false;
 		}
 	};
+}
 
-	// Shared by clipped spheres (below) and disk/cylinder (further down,
-	// which originally declared these) - a generic "flatten a row-major 4x4
-	// affine to the 3x4 device convention" helper and the degrees->radians
-	// constant every pbrt-v4 shape's own "phimax"-style angle param needs
-	// converted once, host-side, before reaching the GPU.
-	const auto flattenTransform = [](const double xform[16], float out12[12]) {
-		for (int row = 0; row < 3; ++row)
-			for (int col = 0; col < 4; ++col)
-				out12[row * 4 + col] = static_cast<float>(xform[row * 4 + col]);
-	};
-	const double kDiskCylDegToRad = 3.14159265358979323846 / 180.0;
-
+inline void addSpheres(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
+	auto &stats = c.stats;
+	const auto &materialIndex = c.materialIndex;
+	const auto mediumMaterialIndex = [&c](int medIdx, int surfaceMaterialIdx = -1) { return c.mediumMaterialIndexFn(medIdx, surfaceMaterialIdx); };
+	const auto &isOpaqueSurfaceMaterial = c.isOpaque;
 	// ---- spheres ---------------------------------------------------------
 	for (const pbrt_flatten::Sphere &s : scene.spheres) {
 		if (s.clipped) {
@@ -899,7 +918,14 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.spheres.push_back(sd);
 	}
 	stats.spheres = out.spheres.size();
+}
 
+inline void addBilinearPatches(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
+	auto &stats = c.stats;
+	const auto &materialIndex = c.materialIndex;
 	// ---- bilinear patches -------------------------------------------------
 	// Shape "bilinearmesh" - unlike triangles, never routed through
 	// pbrt_quadify.h: a bilinear patch is not necessarily planar, so folding
@@ -919,7 +945,14 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.bilinearPatches.push_back(bd);
 	}
 	stats.bilinearPatches = out.bilinearPatches.size();
+}
 
+inline void addCurves(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
+	auto &stats = c.stats;
+	const auto &materialIndex = c.materialIndex;
 	// ---- curves -------------------------------------------------------------
 	// Shape "curve" - neither GPU backend has a native curve-intersection
 	// program (see src/shared/curve_tessellate.h's own comment - pbrt-v4's
@@ -965,7 +998,16 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		}
 		stats.curveSegments += static_cast<std::size_t>(cv.nSegments);
 	}
+}
 
+inline void addDisksAndCylinders(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
+	auto &stats = c.stats;
+	const auto &materialIndex = c.materialIndex;
+	const auto mediumMaterialIndex = [&c](int medIdx, int surfaceMaterialIdx = -1) { return c.mediumMaterialIndexFn(medIdx, surfaceMaterialIdx); };
+	const auto &isOpaqueSurfaceMaterial = c.isOpaque;
 	// ---- disks / cylinders -------------------------------------------------
 	// Shape "disk"/"cylinder" - supported on both the recursive (Phase 4b)
 	// and wavefront (Phase 4c) GPU backends; see optix_types.h's DiskData/
@@ -1082,7 +1124,14 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.cylinders.push_back(cd);
 	}
 	stats.cylinders = out.cylinders.size();
+}
 
+inline void addTrianglesAndQuads(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
+	auto &stats = c.stats;
+	const auto &materialIndex = c.materialIndex;
 	// ---- lights recovered as quads, then everything else as triangles ----
 	const pbrt_quadify::Result merged = pbrt_quadify::quadify(scene.triangles);
 
@@ -1158,7 +1207,14 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// but it no longer means "these will not be sampled". The caller's warning
 	// went away with the gap it described.
 	stats.emissiveTrianglesSampledIndividually = pbrt_quadify::unmergedEmissiveCount(merged);
+}
 
+inline void addInstances(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
+	auto &stats = c.stats;
+	const auto &materialIndex = c.materialIndex;
 	// ---- instanced geometry ----------------------------------------------
 	// Object space, kept apart from the world-space list above. Emissive
 	// shapes are not here: flatten() already baked those per placement into
@@ -1300,7 +1356,13 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 	// See BuildStats::animatedBilinearPatchCount/animatedCurveCount's own comment.
 	stats.animatedBilinearPatchCount = static_cast<int>(scene.animatedBilinearPatches.size());
 	stats.animatedCurveCount = static_cast<int>(scene.animatedCurves.size());
+}
 
+inline void addInfiniteLight(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
+	auto &stats = c.stats;
 	// ---- infinite/sky light, flat-colour GPU approximation ----------------
 	if (scene.infiniteLight.present) {
 		const auto &sky = scene.infiniteLight;
@@ -1454,7 +1516,12 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 				static_cast<float>(sky.L[2] * sky.scale));
 		}
 	}
+}
 
+inline void addPunctualLights(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
 	// ---- punctual (delta) lights -------------------------------------------
 	// LightSource point/spot/distant/goniometric/projection - one
 	// PunctualLightGPU per parsed pbrt_flatten::PunctualLight. Mirrors
@@ -1627,7 +1694,12 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		}
 		out.punctualLights.push_back(light);
 	}
+}
 
+inline void addCameraMedium(BuildCtx &c) {
+	using namespace detail;
+	const auto &scene = c.scene;
+	auto &out = c.out;
 	// The camera medium as a synthetic homogeneous Medium material (index recorded for GpuCameraParams): the
 	// wavefront backend's trace raygen samples the camera-medium free flight and turns a scatter into a hit on this
 	// material so the ordinary medium scatter code shades it. Field layout as the homogeneous Medium built from a
@@ -1649,7 +1721,11 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 			out.materials.push_back(d);
 		}
 	}
+}
 
+inline void sortLights(BuildCtx &c) {
+	using namespace detail;
+	auto &out = c.out;
 	// Sorted by gpu_light_sort_key so a hit emitter finds its light by binary search (gpu_find_light). The loops
 	// above already register lights in this order, so this normally moves nothing.
 	{
@@ -1666,8 +1742,38 @@ inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
 		out.lightIndices = std::move(sortedIdx);
 		out.lightKinds   = std::move(sortedKinds);
 	}
-
-	return stats;
 }
 
-} // namespace pbrt_gpu
+// Fills `out` with the scene's geometry, materials and light list. Returns the
+// counts; `out` is cleared first.
+inline BuildStats build(const pbrt_flatten::FlatScene &scene, SceneData &out) {
+	using namespace detail;
+
+	out.spheres.clear();
+	out.quads.clear();
+	out.triangles.clear();
+	out.bilinearPatches.clear();
+	out.materials.clear();
+	out.lightIndices.clear();
+	out.lightKinds.clear();
+	out.punctualLights.clear();
+
+	BuildCtx c(scene, out);
+	setupMaterialLookup(c);
+	setupMediumLookup(c);
+	setupOpaqueCheck(c);
+	addSpheres(c);
+	addBilinearPatches(c);
+	addCurves(c);
+	addDisksAndCylinders(c);
+	addTrianglesAndQuads(c);
+	addInstances(c);
+	addInfiniteLight(c);
+	addPunctualLights(c);
+	addCameraMedium(c);
+	sortLights(c);
+
+	return c.stats;
+}
+
+} // namespace pbrt_gpu

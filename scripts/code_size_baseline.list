@@ -12,7 +12,7 @@ func gpu/optix/optix_device_helpers.h::shade_material 849
 func gpu/optix/optix_renderer_init.cpp::OptiXRenderer::createProgramGroups 421
 func gpu/optix/optix_renderer_render.cpp::OptiXRenderer::render 398
 func gpu/optix/optix_renderer_scene.cpp::OptiXRenderer::buildScene 1227
-func gpu/optix/pbrt_gpu_builder.h::build 1409
+func gpu/optix/pbrt_gpu_builder.h::setupMediumLookup 310
 func gpu/optix/scene_builder.cpp::build_loaded_pbrt_scene 725
 func gpu/optix/wavefront_path_tracer.cpp::WavefrontPathTracer::render 1054
 func gpu/optix/wavefront_path_tracer_setup.cpp::WavefrontPathTracer::createProgramGroups 301
