@@ -161,6 +161,7 @@ private:
 	QPushButton *m_deleteButton = nullptr;
 	QPushButton *m_duplicateButton = nullptr;
 	QPushButton *m_addButton = nullptr;
+	QWidget *m_inspectorPanel = nullptr;  // the properties column
 	QWidget *m_leftPanel = nullptr;  // the list column; widened to fit its buttons when shown
 	QPushButton *m_undoButton = nullptr;
 	QPushButton *m_redoButton = nullptr;

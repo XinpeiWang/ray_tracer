@@ -329,7 +329,7 @@ void SceneBuilderWidget::buildUi() {
 	m_problemsLabel->setWordWrap(true);
 	m_problemsLabel->setTextFormat(Qt::RichText);
 	rightLayout->addWidget(m_problemsLabel);
-	right->setMinimumWidth(390);
+	m_inspectorPanel = right;  // rebuildInspector() sets its minimum width from the page it shows
 	centre->addWidget(previewBox);
 	centre->setStretchFactor(0, 3);
 	centre->setStretchFactor(1, 2);
