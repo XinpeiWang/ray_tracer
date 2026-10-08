@@ -1,6 +1,5 @@
 # Written by scripts/check_code_size.py --update. Functions over 300 lines and files over 2000 lines that exist today;
 # CI fails when one grows or a new one appears. Lower or delete a line after splitting something. Format: <key> <lines>
-file src/TheRestOfYourLife/camera.h 2646
 func gpu/metal/metal_poc_kernel.metal::primaryRayKernel 1631
 func gpu/metal/metal_poc_materials_specular.metal::shadeConductor 329
 func gpu/metal/metal_poc_pbrt_materials.mm::MetalPocApp::mapPbrtMaterial 315
@@ -19,10 +18,7 @@ func qt_gui/mainwindow_style.cpp::MainWindow::applyTheme 777
 func qt_gui/mainwindow_tabs_render_groups.cpp::MainWindow::buildSamplingGroup 361
 func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildDenoiserLivePreviewSubsection 301
 func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildLivePreviewSettingsSection 433
-func qt_gui/realtime_preview_session.cpp::RealtimePreviewWorker::renderLoop 506
-func src/TheRestOfYourLife/camera.h::ray_color 557
-func src/TheRestOfYourLife/camera.h::ray_color_spectral 395
-func src/TheRestOfYourLife/camera.h::render 556
+func qt_gui/realtime_preview_session.cpp::RealtimePreviewWorker::renderLoop 526
 func src/TheRestOfYourLife/mesh_mtl.h::load_obj_mtl 370
 func src/TheRestOfYourLife/scene_registry.h::wire_pbrt_backed_scene 312
 func src/shared/pbrt_flatten_materials.h::readMaterialBindings 462
