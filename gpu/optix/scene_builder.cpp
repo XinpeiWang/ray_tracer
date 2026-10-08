@@ -612,139 +612,16 @@ namespace {
 // C++ program - not a new or different layout.
 
 
-/// @brief Build a scene and configure the camera
-/// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
-/// @param image_width Output image width in pixels
-/// @param image_height Output image height in pixels
-/// @param scene Output scene data to populate
-/// @param camera_params Output camera parameters array [origin(3), lower_left(3), horizontal(3), vertical(3)]
-/// @return true if scene was built successfully, false for unknown scene_id
-// Builds a scene that came from a .pbrt file on disk. Separate from the
-// switch below because there is nothing to switch on: these scenes are
-// discovered at startup, so the code path is one function rather than one
-// case per scene.
-static bool build_loaded_pbrt_scene(
-	const char* path,
+// Everything a loaded .pbrt scene says about the render besides geometry and camera placement (sky, filter, firefly clamp, crop window, media, textures, lights),
+// copied into `scene` and `out_camera_extra`. A pure split of build_loaded_pbrt_scene(); nothing here changed.
+static void apply_loaded_scene_settings(const char* path,
 	SceneData& scene,
-	float* camera_params,
 	const int image_width,
 	const int image_height,
-	const double cam_x,
-	const double cam_y,
-	const double cam_z,
-	const bool force_camera_override,
-	const bool has_custom_lookat,
-	const double lookat_x,
-	const double lookat_y,
-	const double lookat_z,
 	GpuCameraParams* out_camera_extra,
-	// Depth-of-field override - see build_scene()'s own comment
-	// (scene_builder.h) and RenderOptions::aperture_override's own comment
-	// (render_options.h). This is the ONE function that reads a scene's
-	// own parsed Camera::aperture/focusDistance, so it's the one place the
-	// override needs to plug in.
-	const bool has_dof_override = false,
-	const double aperture_override = 0.0,
-	const double focus_distance_override = 0.0
-) {
-	// pbrt_load::loadFile() does real, scene-size-scaling work - disk I/O,
-	// full text parsing, PLY mesh loading, and infinite-light image decode -
-	// none of which depends on the camera. This function is called on EVERY
-	// Live Preview frame the camera moves (rt_realtime_render_frame()'s own
-	// cache only covers the GPU-side upload a few frames down the call
-	// chain, not this CPU-side parse - see prepareSceneAndCamera()'s own
-	// comment), so re-parsing a large external .pbrt scene from scratch on
-	// every WASD/orbit frame is what made Live Preview unusably slow there -
-	// small/procedural scenes never hit this function at all (they're built
-	// directly in the switch below), which is why the slowdown was specific
-	// to large, file-loaded scenes. Cached by path for the life of the
-	// process - same "no hot-reload, cache lives for the process" precedent
-	// g_uploaded_scene_id's own GPU-side scene cache already sets (editing a
-	// scene's file mid-session already isn't picked up by that cache
-	// either). A FAILED load is deliberately NOT cached, unlike an earlier
-	// version of this cache: a scene file that's mid-save, briefly
-	// malformed, or momentarily locked by another process at the exact
-	// moment Live Preview first requests it would otherwise stay marked
-	// failed for the rest of the process even after the file is fixed on
-	// disk - the same "never cache a failure" choice the since-deleted OBJ
-	// loaders made.
-	// pbrt_gpu::build() below takes its FlatScene by const& and never
-	// mutates it, so the cached entry can be reused directly by every
-	// subsequent call with no copy. The per-warning print happens inside the
-	// builder below (only on an actual, successful parse), not out here -
-	// this function now runs every Live Preview frame the camera moves, so
-	// printing on every cache HIT too would spam stderr continuously for
-	// any scene with warnings, instead of the one-time diagnostic it used
-	// to be back when this function was slow enough that repeat calls were
-	// rare.
-	static SharedLruCache<pbrt_load::LoadResult> s_pbrtLoadCache(2);   // bounded: see SharedLruCache
-	const std::shared_ptr<const pbrt_load::LoadResult> loadedPtr = s_pbrtLoadCache.get_or_build(std::string(path),
-		[&](pbrt_load::LoadResult& out) -> bool {
-			out = pbrt_load::loadFile(path);
-			if (!out.ok) {
-				std::cerr << "[OptiX] " << out.error << "\n";
-				return false;
-			}
-			for (const pbrt_scene::Warning& w : out.scene.warnings)
-				std::cerr << "[OptiX] warning: " << path << ": " << w.message << "\n";
-			return true;
-		});
-	if (!loadedPtr) return false;
-	const pbrt_load::LoadResult& loaded = *loadedPtr;
-
-	// pbrt_gpu::build() itself is the SOLE populator of `scene` in this
-	// function (everything after this call only reads loaded.scene/stats to
-	// fill out_camera_extra, never scene) and is a pure function of
-	// loaded.scene alone - already cached above, and never mutated by
-	// build() (takes it by const&) - so its own output is exactly as
-	// cacheable, and for the identical reason: this function reruns on every
-	// Live Preview frame the camera moves, and build()'s own triangle-
-	// flattening loop (proportional to triangle count, same cost class as
-	// the since-deleted OBJ loaders that used to live in scene_builder.cpp)
-	// was measured to still dominate per-frame cost on a
-	// heavy scene even with pbrt_load::loadFile() itself cached (villa-
-	// daylight: ~1.6s/frame before this cache, a known, previously-flagged
-	// gap - see this cache's own commit message). Cached by the same `path`
-	// key as s_pbrtLoadCache above; a full SceneData copy (not a pointer) on
-	// both store and retrieve, same "bulk-copy beats re-derive" trade this
-	// file's OBJ-loader caches already make.
-	struct PbrtBuiltScene {
-		SceneData sceneData;
-		pbrt_gpu::BuildStats stats;
-	};
-	static SharedLruCache<PbrtBuiltScene> s_pbrtBuiltSceneCache(2);   // bounded: see SharedLruCache
-
-	const std::shared_ptr<const PbrtBuiltScene> built = s_pbrtBuiltSceneCache.get_or_build(std::string(path),
-		[&](PbrtBuiltScene& out) -> bool {
-			out.stats = pbrt_gpu::build(loaded.scene, out.sceneData);
-			return true;
-		});
-	if (!built) return false;
-	if (scene.skipExpensiveGeometryLoad) {
-		// See SceneData::skipExpensiveGeometryLoad's own comment - this pbrt
-		// scene is already GPU-resident, so the full built->sceneData copy
-		// below (proportional to triangle/texture-byte count) is skipped.
-		// lensElements/exitPupilBounds/lightIndices/lightKinds are the
-		// exceptions: small, camera- or light-count-sized tables that code
-		// further down THIS SAME function still reads every call, skip or
-		// not (RealisticCamera setup's numLensElements/numExitPupilBounds,
-		// and the "N sampled lights"/"no samplable lights" diagnostics a few
-		// lines below) - copying just these avoids the two silently
-		// reporting stale/zero counts on every skip-path call.
-		scene.lensElements = built->sceneData.lensElements;
-		scene.exitPupilBounds = built->sceneData.exitPupilBounds;
-		scene.lightIndices = built->sceneData.lightIndices;
-		scene.lightKinds = built->sceneData.lightKinds;
-	} else {
-		scene = built->sceneData;
-	}
-	const pbrt_gpu::BuildStats& stats = built->stats;
-	std::cerr << "[OptiX] Loaded " << path << ": " << stats.triangles
-		  << " triangles, " << stats.spheres << " spheres, "
-		  << stats.quadLights << " quads, "
-		  << stats.disks << " disks, " << stats.cylinders << " cylinders, "
-		  << scene.lightIndices.size() << " sampled lights\n";
-
+	const pbrt_load::LoadResult& loaded,
+	const pbrt_gpu::BuildStats& stats,
+	const SceneData& builtScene) {
 	// Flat-colour GPU approximation of the scene's own LightSource "infinite"
 	// (see GpuCameraParams::backgroundColor's comment and pbrt_gpu_builder.h's
 	// BuildStats::backgroundColor) - same shape as every hand-written HDRI
@@ -919,7 +796,7 @@ static bool build_loaded_pbrt_scene(
 		out_camera_extra->cameraMediumSigmaA = cm.sigmaA;
 		out_camera_extra->cameraMediumSigmaS = cm.sigmaS;
 		out_camera_extra->cameraMediumLeRaw = cm.le;
-		out_camera_extra->cameraMediumMaterialIdx = built->sceneData.cameraMediumMaterialIdx;
+		out_camera_extra->cameraMediumMaterialIdx = builtScene.cameraMediumMaterialIdx;
 	}
 
 	// Shape "cone"/"paraboloid" (pbrt_flatten::Cone/Paraboloid's own comment)
@@ -1050,6 +927,143 @@ static bool build_loaded_pbrt_scene(
 			     "blurred; use --cpu instead if that motion matters for this "
 			     "render.\n";
 	}
+
+}
+
+/// @brief Build a scene and configure the camera
+/// @param scene_id Scene identifier, category letter + number ("A1" = Cornell Box)
+/// @param image_width Output image width in pixels
+/// @param image_height Output image height in pixels
+/// @param scene Output scene data to populate
+/// @param camera_params Output camera parameters array [origin(3), lower_left(3), horizontal(3), vertical(3)]
+/// @return true if scene was built successfully, false for unknown scene_id
+// Builds a scene that came from a .pbrt file on disk. Separate from the
+// switch below because there is nothing to switch on: these scenes are
+// discovered at startup, so the code path is one function rather than one
+// case per scene.
+static bool build_loaded_pbrt_scene(
+	const char* path,
+	SceneData& scene,
+	float* camera_params,
+	const int image_width,
+	const int image_height,
+	const double cam_x,
+	const double cam_y,
+	const double cam_z,
+	const bool force_camera_override,
+	const bool has_custom_lookat,
+	const double lookat_x,
+	const double lookat_y,
+	const double lookat_z,
+	GpuCameraParams* out_camera_extra,
+	// Depth-of-field override - see build_scene()'s own comment
+	// (scene_builder.h) and RenderOptions::aperture_override's own comment
+	// (render_options.h). This is the ONE function that reads a scene's
+	// own parsed Camera::aperture/focusDistance, so it's the one place the
+	// override needs to plug in.
+	const bool has_dof_override = false,
+	const double aperture_override = 0.0,
+	const double focus_distance_override = 0.0
+) {
+	// pbrt_load::loadFile() does real, scene-size-scaling work - disk I/O,
+	// full text parsing, PLY mesh loading, and infinite-light image decode -
+	// none of which depends on the camera. This function is called on EVERY
+	// Live Preview frame the camera moves (rt_realtime_render_frame()'s own
+	// cache only covers the GPU-side upload a few frames down the call
+	// chain, not this CPU-side parse - see prepareSceneAndCamera()'s own
+	// comment), so re-parsing a large external .pbrt scene from scratch on
+	// every WASD/orbit frame is what made Live Preview unusably slow there -
+	// small/procedural scenes never hit this function at all (they're built
+	// directly in the switch below), which is why the slowdown was specific
+	// to large, file-loaded scenes. Cached by path for the life of the
+	// process - same "no hot-reload, cache lives for the process" precedent
+	// g_uploaded_scene_id's own GPU-side scene cache already sets (editing a
+	// scene's file mid-session already isn't picked up by that cache
+	// either). A FAILED load is deliberately NOT cached, unlike an earlier
+	// version of this cache: a scene file that's mid-save, briefly
+	// malformed, or momentarily locked by another process at the exact
+	// moment Live Preview first requests it would otherwise stay marked
+	// failed for the rest of the process even after the file is fixed on
+	// disk - the same "never cache a failure" choice the since-deleted OBJ
+	// loaders made.
+	// pbrt_gpu::build() below takes its FlatScene by const& and never
+	// mutates it, so the cached entry can be reused directly by every
+	// subsequent call with no copy. The per-warning print happens inside the
+	// builder below (only on an actual, successful parse), not out here -
+	// this function now runs every Live Preview frame the camera moves, so
+	// printing on every cache HIT too would spam stderr continuously for
+	// any scene with warnings, instead of the one-time diagnostic it used
+	// to be back when this function was slow enough that repeat calls were
+	// rare.
+	static SharedLruCache<pbrt_load::LoadResult> s_pbrtLoadCache(2);   // bounded: see SharedLruCache
+	const std::shared_ptr<const pbrt_load::LoadResult> loadedPtr = s_pbrtLoadCache.get_or_build(std::string(path),
+		[&](pbrt_load::LoadResult& out) -> bool {
+			out = pbrt_load::loadFile(path);
+			if (!out.ok) {
+				std::cerr << "[OptiX] " << out.error << "\n";
+				return false;
+			}
+			for (const pbrt_scene::Warning& w : out.scene.warnings)
+				std::cerr << "[OptiX] warning: " << path << ": " << w.message << "\n";
+			return true;
+		});
+	if (!loadedPtr) return false;
+	const pbrt_load::LoadResult& loaded = *loadedPtr;
+
+	// pbrt_gpu::build() itself is the SOLE populator of `scene` in this
+	// function (everything after this call only reads loaded.scene/stats to
+	// fill out_camera_extra, never scene) and is a pure function of
+	// loaded.scene alone - already cached above, and never mutated by
+	// build() (takes it by const&) - so its own output is exactly as
+	// cacheable, and for the identical reason: this function reruns on every
+	// Live Preview frame the camera moves, and build()'s own triangle-
+	// flattening loop (proportional to triangle count, same cost class as
+	// the since-deleted OBJ loaders that used to live in scene_builder.cpp)
+	// was measured to still dominate per-frame cost on a
+	// heavy scene even with pbrt_load::loadFile() itself cached (villa-
+	// daylight: ~1.6s/frame before this cache, a known, previously-flagged
+	// gap - see this cache's own commit message). Cached by the same `path`
+	// key as s_pbrtLoadCache above; a full SceneData copy (not a pointer) on
+	// both store and retrieve, same "bulk-copy beats re-derive" trade this
+	// file's OBJ-loader caches already make.
+	struct PbrtBuiltScene {
+		SceneData sceneData;
+		pbrt_gpu::BuildStats stats;
+	};
+	static SharedLruCache<PbrtBuiltScene> s_pbrtBuiltSceneCache(2);   // bounded: see SharedLruCache
+
+	const std::shared_ptr<const PbrtBuiltScene> built = s_pbrtBuiltSceneCache.get_or_build(std::string(path),
+		[&](PbrtBuiltScene& out) -> bool {
+			out.stats = pbrt_gpu::build(loaded.scene, out.sceneData);
+			return true;
+		});
+	if (!built) return false;
+	if (scene.skipExpensiveGeometryLoad) {
+		// See SceneData::skipExpensiveGeometryLoad's own comment - this pbrt
+		// scene is already GPU-resident, so the full built->sceneData copy
+		// below (proportional to triangle/texture-byte count) is skipped.
+		// lensElements/exitPupilBounds/lightIndices/lightKinds are the
+		// exceptions: small, camera- or light-count-sized tables that code
+		// further down THIS SAME function still reads every call, skip or
+		// not (RealisticCamera setup's numLensElements/numExitPupilBounds,
+		// and the "N sampled lights"/"no samplable lights" diagnostics a few
+		// lines below) - copying just these avoids the two silently
+		// reporting stale/zero counts on every skip-path call.
+		scene.lensElements = built->sceneData.lensElements;
+		scene.exitPupilBounds = built->sceneData.exitPupilBounds;
+		scene.lightIndices = built->sceneData.lightIndices;
+		scene.lightKinds = built->sceneData.lightKinds;
+	} else {
+		scene = built->sceneData;
+	}
+	const pbrt_gpu::BuildStats& stats = built->stats;
+	std::cerr << "[OptiX] Loaded " << path << ": " << stats.triangles
+		  << " triangles, " << stats.spheres << " spheres, "
+		  << stats.quadLights << " quads, "
+		  << stats.disks << " disks, " << stats.cylinders << " cylinders, "
+		  << scene.lightIndices.size() << " sampled lights\n";
+
+	apply_loaded_scene_settings(path, scene, image_width, image_height, out_camera_extra, loaded, stats, built->sceneData);
 
 	// The scene's own camera, unless the user moved it.
 	const pbrt_flatten::Camera& c = loaded.scene.camera;
@@ -1433,4 +1447,4 @@ bool build_scene(
 	}
 	return false;
 }
-
+
