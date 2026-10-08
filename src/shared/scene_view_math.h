@@ -166,8 +166,11 @@ inline V3 eulerXYZ(const Mat3& r) {
 inline V3 turnAboutWorldAxis(const V3& currentDeg, const V3& worldAxis, double deg) { return eulerXYZ(axisAngle(worldAxis, deg) * rotationXYZ(currentDeg)); }
 
 // The angle, in degrees and round `axis` from `refDir` (a unit vector in the plane), of the point where the ray meets the plane through `center`
-// with normal `axis`. This is what turning an object by dragging a ring needs. False when the ray runs parallel to the plane or meets it behind the eye.
-inline bool angleAround(const Ray& r, const V3& center, const V3& axis, const V3& refDir, double& deg) {
+// with normal `axis`. This is what turning an object by dragging a ring needs. False when the plane is seen too edge-on to read an angle from (the ray's
+// cosine with `axis` is under `minCos`, about 6 degrees), parallel to it, or the ray meets it behind the eye.
+inline bool angleAround(const Ray& r, const V3& center, const V3& axis, const V3& refDir, double& deg, double minCos = 0.1) {
+	// A ring seen almost edge-on: the ray meets its plane far away at a glancing angle, so the angle swings wildly for a tiny move of the mouse.
+	if (std::abs(dot(r.dir, axis)) < minCos) return false;
 	V3 hit;
 	if (!rayPlane(r, center, axis, hit)) return false;
 	const V3 v = hit - center;

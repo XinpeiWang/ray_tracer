@@ -261,3 +261,19 @@ TEST(SceneViewEulerTest, TurningAboutAWorldAxisTurnsTheObjectAboutThatAxisWhatev
 	expectNear(turnAboutWorldAxis({0, 0, 0}, {0, 1, 0}, 90.0), {0, 90, 0}, 1e-9);
 	expectNear(turnAboutWorldAxis({0, 0, 0}, {0, 1, 0}, 0.0), {0, 0, 0}, 1e-9);
 }
+
+TEST(SceneViewRotateTest, ARingSeenAlmostEdgeOnIsRefusedInsteadOfGivingAWildAngle) {
+	View v = makeView();
+	v.cam.target = {0, 0, 0};
+	v.cam.pitchDeg = 1.0;  // the camera is level with the floor: the floor-plane ring is a sliver
+	const V3 centre{0, 0, 0}, axis{0, 1, 0}, ref{1, 0, 0};
+	double sx, sy;
+	ASSERT_TRUE(v.project(centre + ref * 1.5, sx, sy));
+	double deg = 0;
+	EXPECT_FALSE(angleAround(v.ray(sx, sy), centre, axis, ref, deg)) << "cos with the axis is ~0.02: under the 0.1 default";
+	// the same ring, seen from well above, reads fine; and a stricter limit refuses it too
+	v.cam.pitchDeg = 40.0;
+	ASSERT_TRUE(v.project(centre + ref * 1.5, sx, sy));
+	EXPECT_TRUE(angleAround(v.ray(sx, sy), centre, axis, ref, deg));
+	EXPECT_FALSE(angleAround(v.ray(sx, sy), centre, axis, ref, deg, 0.9));
+}
