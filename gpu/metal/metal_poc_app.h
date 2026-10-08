@@ -994,6 +994,10 @@ struct MetalPocApp {
     // is left in `pixels` (linear RGBA, width*height*4 floats).
     bool liveSession = false;
     std::function<bool(const std::function<void(Uniforms&)>&)> liveRender;
+    // The row-band height the previous live frame ended on. A frame that fits in one band (the usual Live Preview frame, 10-60 ms) then starts as a
+    // single dispatch instead of re-growing from 1/40 of the image every time (about four command buffers and waits per frame, ~1 ms). The sizing
+    // from the measured GPU time still applies, so a heavy frame (many samples per frame) shrinks back to bands short enough for the GPU watchdog.
+    uint32_t liveBandHint = 0;
     bool postProcessAndWrite();  // false if the output file could not be written
 };
 

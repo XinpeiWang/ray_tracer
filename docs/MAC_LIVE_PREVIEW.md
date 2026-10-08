@@ -40,6 +40,15 @@ instead of 37 meanwhile). Only on the plain accumulation path on macOS; `RT_LIVE
 | G1 (69k-triangle mesh) | 480x480 | 2 | ~26 ms (39 fps) |
 | A1 inside the GUI (400x300 preview) | 400x300 | 1 | ~17 ms (58 fps) |
 
+### Where a GUI frame's time goes
+
+The GUI's 23 ms per frame (A1, one batch of one sample) against the benchmark's 12 ms is not a leak: the GUI's preview is 400x400 where the benchmark
+ran 400x300 (a third more pixels: 17.4 ms in the benchmark at 400x400), and the GUI also asks for the first-hit world position of every pixel (an extra
+primary ray per pixel and a second texture read-back, about 4-5 ms) which the temporal reprojection needs. A frame used to be dispatched as about four
+row bands (the sizing that keeps a long single-image render under the GPU watchdog starts at 1/40 of the image each frame), one command buffer and wait
+each; a live session now starts each frame from the band size the previous one ended on, so a normal frame is one dispatch (400x400 at 1 sample:
+17.4 -> 16.3 ms; at 4 samples 62.5 -> 59.8 ms). A frame heavy enough to need bands (256 samples at 400x400, 3.9 s) is still split.
+
 ## Finding the scene files
 
 Live Preview runs inside the GUI process, so unlike a render job (a subprocess the GUI starts with the right working directory) it

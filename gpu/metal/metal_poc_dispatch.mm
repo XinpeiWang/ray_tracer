@@ -1088,6 +1088,7 @@ std::function<bool(const std::function<void(Uniforms&)>&)> MetalPocApp::dsMakeRe
     const uint32_t forcedBands =
         fixedBands ? std::min<uint32_t>((uint32_t)std::max(1, atoi(bandsEnv)), std::max<uint32_t>(1, cropRows)) : 0;
     uint32_t bandHeight = fixedBands ? (cropRows + forcedBands - 1) / forcedBands : std::max<uint32_t>(1, cropRows / 40);
+    if (liveSession && !fixedBands && liveBandHint > bandHeight) bandHeight = std::min(liveBandHint, cropRows);
     Uniforms* uniformsShared = (Uniforms*)uniformBuffer.contents;
     for (uint32_t bandStart = 0; bandStart < cropRows;) {
         const uint32_t thisBandHeight = std::min(bandHeight, cropRows - bandStart);
@@ -1195,6 +1196,7 @@ std::function<bool(const std::function<void(Uniforms&)>&)> MetalPocApp::dsMakeRe
         }
         bandStart += thisBandHeight;
     }
+    if (liveSession && !fixedBands) liveBandHint = bandHeight;
 
     if (censusOn) {
         // Divergence census: per 8x4 tile (the dispatch's SIMD group) and bounce, how many serial passes the megakernel pays
