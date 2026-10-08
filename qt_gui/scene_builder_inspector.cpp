@@ -33,6 +33,7 @@
 #include <QRegularExpression>
 #include <QPushButton>
 #include <QScrollArea>
+#include <QScrollBar>
 #include <QShortcut>
 #include <QSpinBox>
 #include <QSplitter>
@@ -62,6 +63,7 @@ void SceneBuilderWidget::rebuildInspector() {
 	host->setStyleSheet("QAbstractSpinBox { padding: 3px 3px; min-width: 40px; }");
 	auto *form = new QFormLayout(host);
 	form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
+	form->setRowWrapPolicy(QFormLayout::WrapLongRows);  // in a narrow panel a label moves above its field instead of pushing the field off the edge
 	m_loading = true;
 	switch (m_sel.kind) {
 		case SelKind::Camera: inspectCamera(form); break;
@@ -83,6 +85,8 @@ void SceneBuilderWidget::rebuildInspector() {
 	}
 	m_loading = false;
 	m_inspectorScroll->setWidget(host);  // the scroll area deletes the previous page
+	// The panel can be dragged as narrow as this page's widest row (with labels wrapped above their fields) plus the scroll bar, so nothing is cut off.
+	if (m_inspectorPanel) m_inspectorPanel->setMinimumWidth(host->minimumSizeHint().width() + m_inspectorScroll->verticalScrollBar()->sizeHint().width() + 6);
 }
 
 void SceneBuilderWidget::refreshInspectorValues() {
