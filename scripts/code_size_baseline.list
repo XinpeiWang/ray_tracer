@@ -5,7 +5,7 @@ file gpu/optix/optix_renderer_scene.cpp 2149
 file gpu/optix/optix_types.h 2223
 file gpu/optix/wavefront_device_helpers.h 3312
 file gpu/optix/wavefront_path_tracer.cpp 3451
-file qt_gui/mainwindow_slots.cpp 2437
+file qt_gui/mainwindow_slots.cpp 2444
 file qt_gui/mainwindow_tabs_render.cpp 2767
 file src/TheRestOfYourLife/camera.h 2646
 file src/TheRestOfYourLife/pbrt_cpu_builder.h 2202
@@ -25,7 +25,7 @@ func gpu/optix/wavefront_path_tracer.cpp::WavefrontPathTracer::render 1054
 func launcher/launcher_args.h::parse_launch_args 739
 func launcher/main.cpp::render_single_image 390
 func launcher/main.cpp::run_video_render 408
-func qt_gui/mainwindow_selftest.cpp::MainWindow::runSelfTest 458
+func qt_gui/mainwindow_selftest.cpp::MainWindow::runSelfTest 508
 func qt_gui/mainwindow_style.cpp::MainWindow::applyTheme 773
 func qt_gui/mainwindow_tabs.cpp::MainWindow::createSettingsTab 1395
 func qt_gui/mainwindow_tabs_render.cpp::MainWindow::buildSamplingGroup 361
