@@ -22,6 +22,9 @@ One line per entry, so `grep` and `tail` work: `2026-10-07 22:08:58.028 [INFO ] 
 | `builder` | The Scene Builder's work as readable differences: `edit: object 'Ball': position -1.3,1,0.4 -> 1.25,1,-1`, `edit: +5 objects (Table top, ...)`, `undo:`, `redo:`, new, open, save, add to scene list (with the path written). A drag or typing is one entry, written when it pauses. |
 | `builder-render` | The command line of each Scene Builder preview or final render, the scene notes, the result (exit code, time, picture size), and on a failure the last lines of the renderer's output. |
 | `pane` | Every line of the Log Output tab: the render command, the renderer's output (one in 25 of the per-scanline progress lines), downloads, thumbnails, Live Preview settings. |
+| `startup` | Where the start-up time goes: one line per stage (QApplication, translators, building each tab, theme and font, showing the window), indented by nesting, with how long it took and when it ended, then `window up N ms after the program started; slowest stages: ...` (a warning past 3 s). A slow start shows up in any bug report's log. |
+| `queue` | The Progress tab's render queue: each job queued, started, finished (done / failed / cancelled, with the time and reason), moved, removed, cleared. |
+| `window` | The saved window layout restored, refused (its screen is gone) or reset. |
 | `diagnostics` | The Diagnostics report, line by line. |
 | `photo`, `photo-install` | Object from a photo (the photo, the result or error) and the photo helper installer's output. |
 | `qt` and other Qt categories | Qt's own warnings. |

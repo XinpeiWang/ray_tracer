@@ -85,6 +85,7 @@ HEADERS += \
 	window_geometry.h \
 	render_queue_model.h \
 	crash_recovery.h \
+	startup_profile.h \
 	atomic_file.h \
 	ui_logger.h \
 	wheel_guard.h \
