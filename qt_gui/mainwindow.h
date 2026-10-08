@@ -215,6 +215,7 @@ public:
 
 	// The window's own default size and place (about half the screen, centred); also what "Reset Window Layout" returns to.
 	void applyDefaultWindowGeometry();
+	void restoreRenderForm(); void saveRenderForm() const;   // the scene and image size of the last run (render_form_memory.h)
 	// The four render buttons share the row in proportion to their labels instead of equally, so a long translated label ("METTRE LE RENDU EN PAUSE") is not cut
 	// while "STOP" has room to spare.
 	void balanceActionButtons();
