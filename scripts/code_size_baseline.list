@@ -18,10 +18,10 @@ func qt_gui/mainwindow_style.cpp::MainWindow::applyTheme 777
 func qt_gui/mainwindow_tabs_render_groups.cpp::MainWindow::buildSamplingGroup 361
 func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildDenoiserLivePreviewSubsection 301
 func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildLivePreviewSettingsSection 433
-func qt_gui/realtime_preview_session.cpp::RealtimePreviewWorker::renderLoop 506
-func src/TheRestOfYourLife/camera.h::ray_color 557
-func src/TheRestOfYourLife/camera.h::ray_color_spectral 395
-func src/TheRestOfYourLife/camera.h::render 556
+func qt_gui/realtime_preview_session.cpp::RealtimePreviewWorker::renderLoop 526
+func src/TheRestOfYourLife/camera_path.h::camera::ray_color 557
+func src/TheRestOfYourLife/camera_path.h::camera::ray_color_spectral 395
+func src/TheRestOfYourLife/camera_render.h::camera::render 556
 func src/TheRestOfYourLife/mesh_mtl.h::load_obj_mtl 370
 func src/TheRestOfYourLife/scene_registry.h::wire_pbrt_backed_scene 312
 func src/shared/pbrt_flatten_materials.h::readMaterialBindings 462

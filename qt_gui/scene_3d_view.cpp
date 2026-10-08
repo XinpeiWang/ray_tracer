@@ -2,6 +2,7 @@
 #include "scene_3d_view.h"
 
 #include "scene_3d_view_internal.h"
+#include "app_log.h"
 
 #include <QFileInfo>
 #include <QKeyEvent>
@@ -51,12 +52,16 @@ void Scene3DView::setGizmoMode(GizmoMode m) {
 }
 
 void Scene3DView::keyPressEvent(QKeyEvent *e) {
+	GizmoMode wanted = m_gizmo;
+	const char *name = "";
 	switch (e->key()) {
-		case Qt::Key_W: setGizmoMode(GizmoMode::Move); break;
-		case Qt::Key_E: setGizmoMode(GizmoMode::Rotate); break;
-		case Qt::Key_R: setGizmoMode(GizmoMode::Scale); break;
+		case Qt::Key_W: wanted = GizmoMode::Move; name = "Move (W key)"; break;
+		case Qt::Key_E: wanted = GizmoMode::Rotate; name = "Rotate (E key)"; break;
+		case Qt::Key_R: wanted = GizmoMode::Scale; name = "Scale (R key)"; break;
 		default: QWidget::keyPressEvent(e); return;
 	}
+	if (wanted != m_gizmo) AppLog::info(QStringLiteral("builder"), QStringLiteral("3D view: tool %1").arg(QString::fromLatin1(name)));
+	setGizmoMode(wanted);
 	e->accept();
 }
 

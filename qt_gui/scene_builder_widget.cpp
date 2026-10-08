@@ -69,6 +69,8 @@ SceneBuilderWidget::SceneBuilderWidget(QWidget *parent) : QWidget(parent) {
 	m_autosaveTimer->setInterval(1500);
 	connect(m_autosaveTimer, &QTimer::timeout, this, &SceneBuilderWidget::writeAutosave);
 
+	connect(qApp, &QCoreApplication::aboutToQuit, this, &SceneBuilderWidget::flushEditLog);   // also when the program is quit without this widget being destroyed
+
 	buildUi();
 	if (!(m_autosaveEnabled && loadAutosave())) newScene();
 }
@@ -82,6 +84,7 @@ void SceneBuilderWidget::showEvent(QShowEvent *e) {
 }
 
 SceneBuilderWidget::~SceneBuilderWidget() {
+	flushEditLog();   // the last edit is still waiting for its pause
 	if (m_process) {
 		m_process->disconnect(this);
 		m_process->kill();
@@ -469,7 +472,25 @@ void SceneBuilderWidget::onListSelectionChanged() {
 		setSelection({SelKind::None, 0}, true);
 		return;
 	}
-	setSelection({static_cast<SelKind>(it->data(Qt::UserRole).toInt()), it->data(Qt::UserRole + 1).toInt()}, true);
+	const BuilderSelection s{static_cast<SelKind>(it->data(Qt::UserRole).toInt()), it->data(Qt::UserRole + 1).toInt()};
+	logSelection(s, "list");
+	setSelection(s, true);
+}
+
+void SceneBuilderWidget::logSelection(const BuilderSelection &s, const char *where) {
+	if (s == m_sel) return;   // clicking what is already selected is not news
+	QString what;
+	switch (s.kind) {
+		case SelKind::Camera: what = QStringLiteral("camera and image"); break;
+		case SelKind::Object:
+			if (s.index >= 0 && s.index < static_cast<int>(m_doc.objects.size())) what = QStringLiteral("object '%1'").arg(QString::fromStdString(m_doc.objects[s.index].name));
+			break;
+		case SelKind::Light:
+			if (s.index >= 0 && s.index < static_cast<int>(m_doc.lights.size())) what = QStringLiteral("light '%1'").arg(QString::fromStdString(m_doc.lights[s.index].name));
+			break;
+		case SelKind::None: what = QStringLiteral("nothing"); break;
+	}
+	if (!what.isEmpty()) AppLog::info(QStringLiteral("builder"), QStringLiteral("select: %1 (%2)").arg(what, QString::fromLatin1(where)));
 }
 
 void SceneBuilderWidget::setSelection(const BuilderSelection &s, bool fromList) {
@@ -633,6 +654,16 @@ QString SceneBuilderWidget::problemsText() const {
 void SceneBuilderWidget::refreshProblems() {
 	m_problems = scene_doc::validate(m_doc);   // once per change - it looks at the picture, mesh and sky files too
 	const auto &problems = m_problems;
+	{   // each problem is logged once, when it first appears (and again if it goes away and comes back)
+		QStringList now;
+		for (const auto &p : problems) {
+			const QString line = QStringLiteral("%1: %2").arg(p.severity == scene_doc::Problem::Severity::Error ? QStringLiteral("error") : QStringLiteral("note"), QString::fromStdString(p.message));
+			now << line;
+			if (!m_loggedProblems.contains(line))
+				AppLog::write(p.severity == scene_doc::Problem::Severity::Error ? log_format::Level::Warn : log_format::Level::Info, QStringLiteral("builder"), QStringLiteral("scene problem - %1").arg(line));
+		}
+		m_loggedProblems = now;
+	}
 	if (problems.empty()) {
 		m_problemsLabel->setText(tr("No problems found."));
 		return;

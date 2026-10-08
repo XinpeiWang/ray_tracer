@@ -73,6 +73,31 @@ TEST(LogFormatTest, TailGivesTheLastLinesOfAFile) {
 	std::filesystem::remove_all(dir);
 }
 
+TEST(SceneDocDiffTest, NamesTheItemThatWasDeletedOrAdded) {
+	using namespace scene_doc;
+	Document a = makeStarterScene();
+	ASSERT_GE(a.objects.size(), 3u);
+	for (std::size_t i = 0; i < a.objects.size(); ++i) a.objects[i].name = "item" + std::to_string(i);
+	// Deleting one from the middle names it, not the last one in the list.
+	Document b = a;
+	b.objects.erase(b.objects.begin() + 1);
+	const std::string removed = describeChange(a, b);
+	EXPECT_NE(removed.find("-1 object (item1)"), std::string::npos) << removed;
+	EXPECT_EQ(removed.find("item" + std::to_string(a.objects.size() - 1)), std::string::npos) << removed;
+	// The first and the last name themselves too, and an addition at the end is named.
+	b = a;
+	b.objects.erase(b.objects.begin());
+	EXPECT_NE(describeChange(a, b).find("-1 object (item0)"), std::string::npos);
+	b = a;
+	b.objects.pop_back();
+	EXPECT_NE(describeChange(a, b).find("-1 object (item" + std::to_string(a.objects.size() - 1) + ")"), std::string::npos);
+	b = a;
+	Object extra = b.objects[0];
+	extra.name = "extra";
+	b.objects.push_back(extra);
+	EXPECT_NE(describeChange(a, b).find("+1 object (extra)"), std::string::npos);
+}
+
 TEST(SceneDocDiffTest, DescribesWhatAUserChanged) {
 	using namespace scene_doc;
 	Document a = makeStarterScene();

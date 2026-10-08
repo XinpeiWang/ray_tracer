@@ -129,6 +129,7 @@ private:
 	void refreshInspectorValues();
 	void updatePreviewPixmap();
 	void setSelection(const BuilderSelection &s, bool fromList = false);
+	void logSelection(const BuilderSelection &s, const char *where);   // what the user picked, and where (the list, the layout view, the 3D view)
 	void documentChanged();
 	void refreshProblems();
 	void updateTitle();
@@ -171,6 +172,7 @@ private:
 	bool m_dirty = false;
 	bool m_loading = false;          // true while the inspector is being filled, so setting a value does not count as an edit
 	SnapshotHistory m_history;   // undo and redo
+	QStringList m_loggedProblems;   // the problems already written to the log, so each is said once when it appears
 	std::vector<scene_doc::Problem> m_problems;   // validate() of the current document, refreshed by refreshProblems()
 	QString m_lastEditKey;
 	// What changed since the last undo step began, for the log file: one line per step ("object 'Ball': position 0,1,0 -> 2,1,0"), not one per drag movement.

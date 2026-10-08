@@ -1,5 +1,6 @@
 // scene_3d_view_meshes.cpp - the 3D view's mesh-file previews: bounds and a vertex sample read on a worker thread, never while painting (see scene_3d_view.h).
 #include "scene_3d_view_internal.h"
+#include "app_log.h"
 
 #include <QFileInfo>
 #include <QMetaObject>
@@ -55,6 +56,8 @@ void Scene3DView::meshLoaded(const std::string &path, mesh_preview::MeshPreview 
 	if (c.modified != modified || c.size != size) return;  // the file changed again meanwhile: a newer read is on its way
 	c.preview = std::move(preview);
 	c.pending = false;
+	// Said once per file version (a changed file is read again and is news again); the view just shows no outline for it.
+	if (!c.preview.ok) AppLog::warn(QStringLiteral("builder"), QStringLiteral("3D view: cannot show the mesh %1: %2").arg(QString::fromStdString(path), QString::fromStdString(c.preview.error)));
 	c.checkedAt = m_clock.elapsed();
 	++m_meshVersion;
 	if (!m_userView) frameAll();

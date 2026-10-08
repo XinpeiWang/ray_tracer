@@ -91,6 +91,7 @@ void SceneBuilderWidget::onRenderFinalClicked() {
 
 void SceneBuilderWidget::runRender(int width, int height, int samples, bool toFinalFile, const QString &finalPng,
                                    const std::function<void(bool, const QString &)> &done) {
+	flushEditLog();   // the edits that led to this render come before it in the log
 	auto fail = [&](const QString &msg) {
 		AppLog::warn(QStringLiteral("builder-render"), QStringLiteral("not started: %1").arg(msg));
 		m_previewStatus->setText(msg);

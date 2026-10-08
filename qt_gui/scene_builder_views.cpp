@@ -118,7 +118,12 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	m_view3d->setDocument(&m_doc);
 
 	// Both views speak the same way: a click selects, a drag is one undo step, and a drag says where the item now is.
-	const auto onSelection = [this](const BuilderSelection &s) { setSelection(s); };
+	const auto onSelection = [this](const char *where) {
+		return [this, where](const BuilderSelection &s) {
+			logSelection(s, where);
+			setSelection(s);
+		};
+	};
 	const auto onDragBegan = [this]() {
 		// A drag is one undo step however many mouse events it takes; the first move takes the snapshot.
 		m_lastEditKey.clear();
@@ -139,10 +144,10 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		});
 		refreshInspectorValues();
 	};
-	connect(m_view, &SceneLayoutView::selectionRequested, this, onSelection);
+	connect(m_view, &SceneLayoutView::selectionRequested, this, onSelection("layout view"));
 	connect(m_view, &SceneLayoutView::dragBegan, this, onDragBegan);
 	connect(m_view, &SceneLayoutView::positionDragged, this, onDragged);
-	connect(m_view3d, &Scene3DView::selectionRequested, this, onSelection);
+	connect(m_view3d, &Scene3DView::selectionRequested, this, onSelection("3D view"));
 	connect(m_view3d, &Scene3DView::dragBegan, this, onDragBegan);
 	connect(m_view3d, &Scene3DView::positionDragged, this, onDragged);
 	// A turn or a stretch arrives as the whole edited object; the angles and dimensions are taken from it.

@@ -83,7 +83,13 @@ void SceneBuilderWidget::scheduleAutosave() {
 void SceneBuilderWidget::writeAutosave() {
 	if (!m_autosaveEnabled || !m_dirty) return;
 	const std::string text = scene_doc::toPbrt(m_doc);
-	writeFileAtomically(autosavePath(), QByteArray::fromRawData(text.data(), static_cast<qsizetype>(text.size())));
+	QString error;
+	const bool ok = writeFileAtomically(autosavePath(), QByteArray::fromRawData(text.data(), static_cast<qsizetype>(text.size())), &error);
+	// Said once when it starts failing (and once when it works again), not every 1.5 seconds.
+	static bool failing = false;
+	if (!ok && !failing) AppLog::warn(QStringLiteral("builder"), QStringLiteral("could not write the unsaved-scene backup %1: %2").arg(autosavePath(), error));
+	if (ok && failing) AppLog::info(QStringLiteral("builder"), QStringLiteral("the unsaved-scene backup is being written again"));
+	failing = !ok;
 }
 
 void SceneBuilderWidget::clearAutosave() {
@@ -93,10 +99,19 @@ void SceneBuilderWidget::clearAutosave() {
 // A scene that was being edited when the program closed comes back, marked unsaved.
 bool SceneBuilderWidget::loadAutosave() {
 	QFile f(autosavePath());
-	if (!f.exists() || !f.open(QIODevice::ReadOnly)) return false;
+	if (!f.exists()) return false;
+	if (!f.open(QIODevice::ReadOnly)) {
+		AppLog::warn(QStringLiteral("builder"), QStringLiteral("unsaved scene %1 exists but cannot be opened (%2): starting with the starter scene").arg(f.fileName(), f.errorString()));
+		return false;
+	}
 	Document d;
 	std::string err;
-	if (!scene_doc::fromPbrt(f.readAll().toStdString(), d, err)) return false;
+	if (!scene_doc::fromPbrt(f.readAll().toStdString(), d, err)) {
+		AppLog::warn(QStringLiteral("builder"), QStringLiteral("unsaved scene %1 could not be read (%2): starting with the starter scene").arg(f.fileName(), QString::fromStdString(err)));
+		return false;
+	}
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("restored the unsaved scene from %1: \"%2\", %3 objects, %4 lights")
+	                                            .arg(f.fileName(), QString::fromStdString(d.title)).arg(d.objects.size()).arg(d.lights.size()));
 	m_doc = std::move(d);
 	m_path.clear();
 	m_dirty = true;
