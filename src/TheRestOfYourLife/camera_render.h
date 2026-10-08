@@ -540,7 +540,11 @@ inline bool camera::render(const hittable& world, const hittable& lights,
     // --denoise: Open Image Denoise on the linear image. For a PPM the rows are then tone mapped again from the denoised pixels; an EXR is written from them.
     if (denoise) {
         std::string denoise_error;
-        if (oidn_runtime::denoiseHdr(exr_pixels.data(), image_width, image_height, 3, 1.0f - std::min(1.0f, std::max(0.0f, denoise_keep)), denoise_error)) {
+        // --denoise-guides: the first-hit surface colour and normal go in too, so texture and edges the noise has hidden are not smoothed away.
+        std::vector<float> guide_albedo, guide_normal;
+        if (denoise_guides) render_denoise_guides(world, guide_albedo, guide_normal);
+        if (oidn_runtime::denoiseHdr(exr_pixels.data(), image_width, image_height, 3, 1.0f - std::min(1.0f, std::max(0.0f, denoise_keep)), denoise_error,
+                                     denoise_guides ? guide_albedo.data() : nullptr, denoise_guides ? guide_normal.data() : nullptr)) {
             std::clog << "\rDenoised with Open Image Denoise (" << oidn_runtime::libraryPath() << ")\n";
             if (!exr_output) {
                 for (int j = 0; j < image_height; ++j) {
@@ -580,6 +584,74 @@ inline bool camera::render(const hittable& world, const hittable& lights,
 
     std::clog << "\rDone.                 \n";
     return wrote_ok;
+}
+
+inline void camera::render_denoise_guides(const hittable& world, std::vector<float>& albedo, std::vector<float>& normal) const
+{
+    const size_t count = static_cast<size_t>(image_width) * static_cast<size_t>(image_height);
+    albedo.assign(count * 3, 0.0f);
+    normal.assign(count * 3, 0.0f);
+    constexpr int kSamples = 4;
+    std::atomic<int> next_row(0);
+    auto worker = [&]() {
+        for (;;) {
+            const int j = next_row.fetch_add(1);
+            if (j >= image_height) break;
+            if (seed >= 0) reseed_render_rng(seed, static_cast<int64_t>(image_height) + j);   // a stream of its own, so the guides are reproducible too
+            for (int i = 0; i < image_width; ++i) {
+                double a[3] = {0, 0, 0}, n[3] = {0, 0, 0};
+                int hits = 0;
+                for (int s = 0; s < kSamples; ++s) {
+                    const vec3 offset(random_double() - 0.5, random_double() - 0.5, 0);
+                    double camera_weight = 1.0;
+                    ray r = get_ray(i, j, 0, 0, offset, &camera_weight);
+                    // Through mirrors and glass: a mirror shows what is in it, so the guide at that pixel is the first surface that is not perfectly
+                    // specular, tinted by what the specular ones absorbed (as Open Image Denoise's own guidance asks).
+                    color tint(1, 1, 1);
+                    bool counted = false;
+                    for (int hop = 0; hop < 8; ++hop) {
+                        hit_record rec;
+                        if (!world.hit(r, interval(0.001, infinity), rec)) break;
+                        vec3 nrm = unit_vector(rec.normal);
+                        if (dot(nrm, r.direction()) > 0.0) nrm = -nrm;   // facing the ray
+                        scatter_record srec;
+                        const color le = rec.mat ? rec.mat->emitted(r, rec, rec.u, rec.v, rec.p) : color(0, 0, 0);
+                        const bool emits = le.x() > 0.0 || le.y() > 0.0 || le.z() > 0.0;
+                        const bool scattered = !emits && rec.mat && rec.mat->scatter(r, rec, srec, false);
+                        if (scattered && (srec.skip_pdf || srec.is_medium_boundary) && !srec.has_walk) {   // perfectly specular (or an interface): look through it
+                            tint = tint * srec.attenuation;
+                            r = srec.skip_pdf_ray;
+                            continue;
+                        }
+                        ++hits;
+                        counted = true;
+                        n[0] += nrm.x(); n[1] += nrm.y(); n[2] += nrm.z();
+                        if (emits) {   // a light has no reflectance to give; white tells the denoiser it is a flat bright surface
+                            a[0] += 1.0; a[1] += 1.0; a[2] += 1.0;
+                        } else if (scattered) {
+                            a[0] += std::min(1.0, std::max(0.0, tint.x() * srec.attenuation.x()));
+                            a[1] += std::min(1.0, std::max(0.0, tint.y() * srec.attenuation.y()));
+                            a[2] += std::min(1.0, std::max(0.0, tint.z() * srec.attenuation.z()));
+                        }
+                        break;
+                    }
+                    (void)counted;
+                }
+                if (hits == 0) continue;
+                const size_t idx = (static_cast<size_t>(j) * image_width + i) * 3;
+                double len = std::sqrt(n[0] * n[0] + n[1] * n[1] + n[2] * n[2]);
+                if (len < 1e-8) len = 1.0;
+                for (int c = 0; c < 3; ++c) {
+                    albedo[idx + c] = static_cast<float>(a[c] / hits);
+                    normal[idx + c] = static_cast<float>(n[c] / len);   // the average of the hits' normals, renormalised
+                }
+            }
+        }
+    };
+    unsigned int nthreads = std::max(1u, std::thread::hardware_concurrency());
+    std::vector<std::thread> threads;
+    for (unsigned int t = 0; t < nthreads; ++t) threads.emplace_back(worker);
+    for (auto& th : threads) th.join();
 }
 
 inline void camera::initialize()

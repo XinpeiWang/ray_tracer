@@ -1,7 +1,7 @@
 #ifndef DENOISER_INSTALLER_H
 #define DENOISER_INSTALLER_H
 
-// Installs Intel Open Image Denoise (OIDN, Apache-2.0) for the Metal renderer on a Mac, on request. The library is ~50 MB (the network weights), so the app does not
+// Installs Intel Open Image Denoise (OIDN, Apache-2.0) on request: for the Metal renderer on a Mac, and for the CPU renderer on Windows. The library is ~50 MB (the network weights), so the app does not
 // ship it: when a user first ticks the AI denoiser, they are asked, and the release for their Mac's architecture is downloaded from OIDN's own GitHub release page
 // (checked against a SHA-256 pinned here), unpacked, and its lib/ folder kept under <user assets>/denoiser/ - where src/shared/oidn_runtime.h, and so the
 // ray_tracer the GUI starts, finds it. See docs/DENOISING.md.
@@ -18,7 +18,7 @@ namespace denoiser_installer {
 // Where it is installed ("" if the per-user folder is not set); the loadable library is <that>/lib/libOpenImageDenoise.dylib.
 QString installFolder();
 bool isInstalled();
-// The installer exists only for macOS (Windows has the OptiX denoiser).
+// The installer exists for macOS (the Metal renderer) and 64-bit Windows (the CPU renderer; a Windows GPU render uses the OptiX denoiser).
 bool isSupportedHere();
 // "arm64" or "x86_64": the architecture of THIS program, which the library must match to be loaded.
 QString architecture();

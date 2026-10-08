@@ -259,6 +259,7 @@ class camera {
     // or written. Colour only. If the library is missing the render says so and goes on undenoised. denoise_keep is the share of the original image kept
     // (RenderOptions::denoise_blend: 0 = fully denoised).
     bool   denoise = false;
+    bool   denoise_guides = false;   // also pass first-hit surface colour and normal to the denoiser (see render_denoise_guides())
     float  denoise_keep = 0.0f;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
@@ -521,6 +522,10 @@ class camera {
     // RealisticCamera it's cos^4(theta)/(pdf*LensRearZ^2) and MUST be multiplied into
     // the returned radiance, exactly like pbrt-v4's integrators do (L *= cameraRay->weight)
     // - omitting it silently under-exposes every RealisticCamera render.
+    // --denoise's guides: per pixel, the surface colour and the unit normal at the first hit (a few jittered camera rays, hits only), RGB triples, row-major,
+    // as Open Image Denoise's "albedo" and "normal" inputs. A pixel nothing is hit at stays 0. Cheap: no light transport.
+    void render_denoise_guides(const hittable& world, std::vector<float>& albedo, std::vector<float>& normal) const;
+
     ray get_ray(int i, int j, int /*s_i*/, int /*s_j*/, const vec3& offset,
                 double* out_camera_weight = nullptr) const;
 

@@ -32,6 +32,7 @@ namespace render_flags {
 	constexpr const char* kCameraPath    = "--camera-path";
 	constexpr const char* kDenoise       = "--denoise";
 	constexpr const char* kDenoiseBlend  = "--denoise-blend";
+	constexpr const char* kDenoiseGuides = "--denoise-guides";
 	constexpr const char* kStats         = "--stats";
 	constexpr const char* kOptixValidate = "--optix-validate";
 	constexpr const char* kExposure      = "--exposure";

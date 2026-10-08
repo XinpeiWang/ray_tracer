@@ -208,7 +208,10 @@ inline std::string unavailableReason() { return available() ? std::string() : de
 // Denoises the HDR colour image `pixels` in place. `pixels` holds width*height pixels of `pixelStrideFloats` floats each (3 for RGB, 4 for RGBA: only the first three
 // are read and written). `blend` in [0,1] mixes the result with the original (1 = fully denoised, the default). Returns false and says why in `error` when OIDN is
 // missing or fails; `pixels` is then left unchanged.
-inline bool denoiseHdr(float* pixels, int width, int height, int pixelStrideFloats, float blend, std::string& error) {
+// `albedo` and `normal`, when given, are width*height RGB triples (3 floats a pixel, tightly packed): the surface colour and the world-space unit normal at
+// each pixel, which let the denoiser keep texture and edges it would otherwise blur (OIDN's "auxiliary" inputs). Either may be null.
+inline bool denoiseHdr(float* pixels, int width, int height, int pixelStrideFloats, float blend, std::string& error, const float* albedo = nullptr,
+                       const float* normal = nullptr) {
 	using namespace detail;
 	Api& a = api();
 	if (!a.handle) { error = a.error; return false; }
@@ -232,12 +235,21 @@ inline bool denoiseHdr(float* pixels, int width, int height, int pixelStrideFloa
 		return false;
 	}
 	Buffer colorBuf = a.newBuffer(device, bytes), outBuf = a.newBuffer(device, bytes);
+	Buffer albedoBuf = albedo ? a.newBuffer(device, bytes) : nullptr, normalBuf = normal ? a.newBuffer(device, bytes) : nullptr;
 	Filter filter = a.newFilter(device, "RT");
-	bool ok = colorBuf && outBuf && filter;
+	bool ok = colorBuf && outBuf && filter && (!albedo || albedoBuf) && (!normal || normalBuf);
 	if (ok) {
 		a.writeBuffer(colorBuf, 0, bytes, color.data());
 		const size_t pixelStride = 3 * sizeof(float), rowStride = pixelStride * static_cast<size_t>(width);
 		a.setFilterImage(filter, "color", colorBuf, kFormatFloat3, static_cast<size_t>(width), static_cast<size_t>(height), 0, pixelStride, rowStride);
+		if (albedoBuf) {
+			a.writeBuffer(albedoBuf, 0, bytes, albedo);
+			a.setFilterImage(filter, "albedo", albedoBuf, kFormatFloat3, static_cast<size_t>(width), static_cast<size_t>(height), 0, pixelStride, rowStride);
+		}
+		if (normalBuf) {
+			a.writeBuffer(normalBuf, 0, bytes, normal);
+			a.setFilterImage(filter, "normal", normalBuf, kFormatFloat3, static_cast<size_t>(width), static_cast<size_t>(height), 0, pixelStride, rowStride);
+		}
 		a.setFilterImage(filter, "output", outBuf, kFormatFloat3, static_cast<size_t>(width), static_cast<size_t>(height), 0, pixelStride, rowStride);
 		a.setFilterBool(filter, "hdr", true);
 		a.setFilterInt(filter, "quality", kQualityHigh);
@@ -255,6 +267,8 @@ inline bool denoiseHdr(float* pixels, int width, int height, int pixelStrideFloa
 	if (filter) a.releaseFilter(filter);
 	if (colorBuf) a.releaseBuffer(colorBuf);
 	if (outBuf) a.releaseBuffer(outBuf);
+	if (albedoBuf) a.releaseBuffer(albedoBuf);
+	if (normalBuf) a.releaseBuffer(normalBuf);
 	a.releaseDevice(device);
 	if (!ok) return false;
 

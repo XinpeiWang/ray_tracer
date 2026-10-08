@@ -1,4 +1,4 @@
-// The AI denoiser's install-on-first-use (Mac, Metal renderer): ticking "AI denoiser" asks to download Intel Open Image Denoise (~50 MB, once), shows the
+// The AI denoiser's install-on-first-use (the Metal renderer on a Mac, the CPU renderer on Windows or a Mac): ticking "AI denoiser" asks to download Intel Open Image Denoise (~50 MB, once), shows the
 // download and unpacking, and unticks the box again if it was declined, cancelled or failed - so a render never starts with a denoiser that is not there.
 #include "mainwindow.h"
 
@@ -12,6 +12,7 @@
 
 void MainWindow::onDenoiseToggled(bool on) {
 	if (!on || !denoiser_installer::isSupportedHere() || denoiser_installer::isInstalled()) return;
+	if (kGpuOptionAvailable && m_renderModeCombo->currentData().toBool()) return;   // an OptiX render uses NVIDIA's denoiser, which needs no download
 	if (m_denoiserInstaller && m_denoiserInstaller->isRunning()) return;
 	auto untick = [this]() {
 		const QSignalBlocker blocker(m_denoiseCheck);

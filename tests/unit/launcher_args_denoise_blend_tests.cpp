@@ -74,3 +74,13 @@ TEST(LauncherArgsDenoiseBlend, InvalidValueFallsBackToDefaultAndConsumesToken) {
 	EXPECT_EQ(args.max_ray_depth, 2);
 	EXPECT_EQ(args.scene_id, "A1");
 }
+
+TEST(LauncherArgsDenoiseGuides, OffByDefaultAndSetByTheFlag) {
+	LaunchArgs defaults;
+	ASSERT_TRUE(parse({"--denoise"}, defaults));
+	EXPECT_FALSE(defaults.denoise_guides);
+	LaunchArgs args;
+	ASSERT_TRUE(parse({"--denoise", "--denoise-guides"}, args));
+	EXPECT_TRUE(args.denoise);
+	EXPECT_TRUE(args.denoise_guides);
+}

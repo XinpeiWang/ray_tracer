@@ -641,10 +641,10 @@ void MainWindow::selfTestDeleteScenes(SceneBuilderWidget *sb, const std::functio
 }
 
 // RT_GUI_SELFTEST=denoiser (not in the default set: it downloads ~50 MB from GitHub): installs Open Image Denoise through the real installer into a throwaway
-// folder, checks it is found, and denoises a small noisy image through it. Mac only.
+// folder, checks it is found, and denoises a small noisy image through it. macOS and 64-bit Windows.
 void MainWindow::runDenoiserSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &) {
 	auto fail = [log](const QString &what) { log("FAIL: " + what); log("RESULT: FAIL"); QApplication::exit(1); };
-	if (!denoiser_installer::isSupportedHere()) { log("not supported here (macOS only): skipped"); log("RESULT: OK"); QApplication::exit(0); return; }
+	if (!denoiser_installer::isSupportedHere()) { log("not supported here (macOS and 64-bit Windows only): skipped"); log("RESULT: OK"); QApplication::exit(0); return; }
 	if (denoiser_installer::isInstalled()) { fail("the throwaway user folder already has a denoiser: " + denoiser_installer::installFolder()); return; }
 	log("ok: not installed before: " + denoiser_installer::installFolder());
 	auto *installer = new denoiser_installer::Installer(this);

@@ -24,7 +24,9 @@ What it does not do yet: the denoiser sees only the colour image, so very fine t
 
 `ray_tracer --cpu --denoise 800 64 8 cornell-box` denoises the CPU render with Open Image Denoise too, on any platform (the default path tracer only; BDPT, MLT, SPPM and the debug integrators warn and ignore the flag). It works on the linear image before it is tone mapped, so `.exr` output is denoised as well. The same `--denoise-blend` applies.
 
-There is no installer button for it on Windows: unpack an Open Image Denoise 2.x release (the Windows one has `bin/OpenImageDenoise.dll` and the DLLs it needs next to it) anywhere and point `RT_OIDN_DIR` at that folder, or copy the release into `<user assets>/denoiser`. The loader looks in the folder itself, `lib/` and `bin/`. On Windows with a GPU the OptiX denoiser is still what `--gpu --denoise` uses.
+In the GUI, choose the CPU renderer and tick **AI denoiser**: the first time, the app asks to download Open Image Denoise (about 57 MB, from its own release page on GitHub, checked against a pinned checksum) and keeps it in your user folder (`<user assets>/denoiser/bin`). On the command line the loader looks in `$RT_OIDN_DIR` (the unpacked release, or its `bin/` or `lib/`) and then there. On Windows with a GPU the OptiX denoiser is still what `--gpu --denoise` uses.
+
+`--denoise-guides` (CPU only) also gives the denoiser each pixel's first-hit surface colour and normal (seen through mirrors and glass). Measured against a 1024-sample reference at 8 samples per pixel: it cuts the error of textured diffuse scenes (checkers 1.8x, marble 1.2x) and raises it on glossy ones (rough metal 2x worse), because the denoiser then smooths reflections it takes for noise. So it is off by default; try it on a scene of matte, textured surfaces.
 
 ## For developers
 

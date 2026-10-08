@@ -49,6 +49,27 @@ TEST(OidnRuntimeTest, TheLibraryIsLookedForInTheFolderAWindowsReleaseUses) {
 #endif
 }
 
+TEST(OidnRuntimeTest, AlbedoAndNormalGuidesAreAccepted) {
+	if (!oidn_runtime::available()) GTEST_SKIP() << "no Open Image Denoise library (set RT_OIDN_DIR to run this): " << oidn_runtime::unavailableReason();
+	const int w = 48, h = 32;
+	std::vector<float> img(w * h * 3), albedo(w * h * 3, 0.5f), normal(w * h * 3, 0.0f);
+	std::mt19937 rng(11);
+	std::normal_distribution<float> gauss(0.0f, 0.3f);
+	for (size_t i = 0; i < img.size(); ++i) img[i] = std::max(0.0f, 0.5f + gauss(rng));
+	for (size_t i = 0; i < normal.size(); i += 3) normal[i + 2] = 1.0f;   // a flat wall facing the camera
+	const std::vector<float> noisy = img;
+	std::string error;
+	ASSERT_TRUE(oidn_runtime::denoiseHdr(img.data(), w, h, 3, 1.0f, error, albedo.data(), normal.data())) << error;
+	auto spread = [&](const std::vector<float>& v) {
+		double m = 0, s = 0;
+		for (size_t i = 0; i < v.size(); i += 3) m += v[i];
+		m /= v.size() / 3;
+		for (size_t i = 0; i < v.size(); i += 3) s += (v[i] - m) * (v[i] - m);
+		return s / (v.size() / 3);
+	};
+	EXPECT_LT(spread(img), spread(noisy) * 0.2) << "the noise drops with guides too";
+}
+
 TEST(OidnRuntimeTest, BadArgumentsAreRefused) {
 	std::string error;
 	EXPECT_FALSE(oidn_runtime::denoiseHdr(nullptr, 16, 16, 3, 1.0f, error));

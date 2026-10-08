@@ -111,6 +111,9 @@ struct RenderOptions {
 	// src/shared/oidn_runtime.h). No effect under GPU SPPM (launcher/main.cpp warns
 	// on --denoise --sppm --gpu) or the other CPU integrators.
 	bool denoise = false;
+	// CPU only: also hand Open Image Denoise each pixel's first-hit surface colour and normal (camera::render_denoise_guides). Better on textured diffuse scenes,
+	// worse on glossy ones (measured against a high-sample reference), so off by default.
+	bool denoise_guides = false;
 	// OptiX's own blend between the noisy input and the fully denoised
 	// output - 0.0 (default) = 100% denoised (this project's prior,
 	// only-ever behavior), 1.0 = the original noisy image unchanged,

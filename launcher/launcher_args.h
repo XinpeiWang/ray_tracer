@@ -135,6 +135,7 @@ struct LaunchArgs {
 	// ignored under --cpu/--sppm/--bdpt/--mlt like use_wavefront/
 	// optix_validate above.
 	bool denoise            = false;
+	bool denoise_guides     = false;   // --denoise-guides: the CPU denoiser also gets the surface colour and normal (helps textured diffuse scenes, hurts glossy ones)
 	// OptiX's own blend between the noisy input and the fully denoised
 	// output - see gpu/optix/optix_denoiser.h's runDenoiser() for the
 	// value range/rationale. Only consulted when denoise is true; same
@@ -430,6 +431,9 @@ inline FlagResult handle_basic_flag(const std::string& arg, int argc, char** arg
 		consumed_args.insert(i);
 	} else if (arg == render_flags::kDenoise) {
 		out.denoise = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kDenoiseGuides) {
+		out.denoise_guides = true;
 		consumed_args.insert(i);
 	} else if (arg == render_flags::kDenoiseBlend && i + 1 < argc) {
 		parseDoubleFlag(argv, i, consumed_args, out.denoise_blend,
@@ -891,6 +895,9 @@ inline void print_launch_help(const char* program) {
 				  << "               Intel Open Image Denoise instead (colour only), if its library\n"
 				  << "               is installed (docs/DENOISING.md; the GUI offers to download it);\n"
 				  << "               without it the flag warns and the render goes on undenoised.\n"
+				  << "  " << render_flags::kDenoiseGuides << " : With --denoise on the CPU, also give the denoiser each pixel's surface\n"
+				  << "               colour and normal. Keeps texture the noise hid (checkers, marble) but\n"
+				  << "               smooths glossy reflections, so it is off by default.\n"
 				  << "  " << render_flags::kDenoiseBlend << " VALUE: Blend between the noisy input and the fully\n"
 				  << "               denoised output (default 0.0 = 100% denoised, 1.0 = original\n"
 				  << "               noisy image unchanged). Full-strength denoising can over-smooth\n"

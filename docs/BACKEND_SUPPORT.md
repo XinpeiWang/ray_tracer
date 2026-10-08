@@ -34,7 +34,7 @@ This page is the overview. The detail lives in:
 | **Sampling options**: `--sampler`, `--lightsampler`, `--regularize`, `--spectral` | Y | ignored (warned) | partly (always-on spectral pipeline) | ignored (warned) |
 | adaptive sampling | Y | - | Live Preview only | Y (off unless asked) |
 | crop window, `--seed` (reproducible), firefly clamp, exposure, tone map | Y | Y | Y | Y |
-| **Denoising** (`--denoise`) | Intel Open Image Denoise (default path tracer, command line; colour only) | OptiX AI denoiser | OptiX AI denoiser | Intel Open Image Denoise (colour only) |
+| **Denoising** (`--denoise`) | Intel Open Image Denoise (default path tracer; GUI installs it on request; `--denoise-guides` adds surface colour and normal) | OptiX AI denoiser | OptiX AI denoiser | Intel Open Image Denoise (colour only) |
 | **Render passes** (`--aovs`) | Y | Y (made on the CPU scene) | Y (same) | Y (same) |
 | **Live Preview** | - | - | Y (ReSTIR, SVGF, probe cache, NRC, upscaling, ...) | Y (plain frames + a display-only smoothing of new pixels) |
 | **Video** (`--video`) | Y | Y | Y | Y |

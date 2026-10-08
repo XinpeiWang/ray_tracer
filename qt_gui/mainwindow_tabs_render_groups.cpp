@@ -976,7 +976,7 @@ void MainWindow::buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 #ifdef Q_OS_MAC
 	m_denoiseCheck = new QCheckBox(tr("AI denoiser (Open Image Denoise)"), optionsTab);
 #else
-	m_denoiseCheck = new QCheckBox(tr("OptiX AI denoiser (GPU only)"), optionsTab);
+	m_denoiseCheck = new QCheckBox(tr("AI denoiser (OptiX on the GPU, Open Image Denoise on the CPU)"), optionsTab);
 #endif
 #ifdef Q_OS_MAC
 	m_denoiseCheck->setToolTip(
@@ -987,11 +987,11 @@ void MainWindow::buildDenoiserGroup(QWidget *optionsTab, QVBoxLayout *layout) {
 #else
 	m_denoiseCheck->setToolTip(
 		tr("Runs an AI denoiser on the finished render to smooth out\n"
-		"graininess, using extra information about each pixel's base\n"
-		"color and surface direction to do a better job than a plain\n"
-		"blur. OptiX GPU only, both GPU modes (recursive and wavefront\n"
-		"each have their own denoiser) - not available under Metal\n"
-		"(macOS GPU rendering)."));
+		"graininess. With the GPU renderer it is NVIDIA's OptiX denoiser\n"
+		"(both GPU modes, guided by each pixel's base color and surface\n"
+		"direction). With the CPU renderer it is Intel's Open Image\n"
+		"Denoise, on the default path tracer: the first time you tick it\n"
+		"you are asked to download it (about 57 MB, once)."));
 #endif
 	styleCheckBox(m_denoiseCheck);
 	m_denoiseBlendSpin = new QDoubleSpinBox(optionsTab);

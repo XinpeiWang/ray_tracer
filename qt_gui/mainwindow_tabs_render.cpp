@@ -174,9 +174,8 @@ void MainWindow::updateRenderOptionsEnabled() {
 	m_exposureSpin->setEnabled(reads(Option::Exposure));
 	m_tonemapCombo->setEnabled(reads(Option::Tonemap));
 	m_statsCheck->setEnabled(isDefault);
-	// The denoiser: OptiX's on a Windows GPU; Open Image Denoise on a Mac's Metal renderer (installed on request: mainwindow_denoiser.cpp). The command line
-	// also denoises the CPU path tracer with Open Image Denoise, but there is no installer for it here yet, so the control stays off for the CPU.
-	const bool denoiseAvailable = reads(Option::Denoise) && (gpuIsOptix || (gpuIsMetal && denoiser_installer::isSupportedHere()));
+	// The denoiser: OptiX's on a Windows GPU; Open Image Denoise (installed on request: mainwindow_denoiser.cpp) on a Mac's Metal renderer and on the CPU path tracer.
+	const bool denoiseAvailable = reads(Option::Denoise) && (gpuIsOptix || ((gpuIsMetal || !gpuSelected) && denoiser_installer::isSupportedHere()));
 	m_denoiseCheck->setEnabled(denoiseAvailable);
 	m_denoiseBlendSpin->setEnabled(denoiseAvailable && m_denoiseCheck->isChecked());
 	m_optixValidateCheck->setEnabled(reads(Option::OptixValidate));
