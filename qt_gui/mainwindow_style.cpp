@@ -212,9 +212,14 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			border: 1px solid %BORDER_STRONG%;
 			border-radius: %RADIUS%;
 			color: %TEXT%;
-			padding: 8px 18px;
+			/* One height for every control that is clicked or typed into: buttons, drop-downs, line edits and spin boxes are all a 40px box with a 3px margin
+			   above and below, so each takes 46px in a layout (26px of content + 2 x 6px padding + the 1px border, below, for the fields as well). The primary
+			   and danger buttons have a 2px border and so 5px of padding instead, to come out the same. Do not set a height or a vertical padding on a single
+			   control: change it here (the GUI self-test checks it). */
+			padding: 6px 18px;
 			font-size: %FS_P1%;
-			min-height: 34px;
+			min-height: 26px;
+			margin: 3px 0px;
 		}
 		QPushButton:hover {
 			background-color: %SURFACE3%;
@@ -223,6 +228,12 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		}
 		QPushButton:pressed {
 			background-color: %SURFACE1%;
+		}
+		/* A switch that is on (the Top / Front / Side / 3D choice, the Grid toggle): the hover look, held. */
+		QPushButton:checked {
+			background-color: %SURFACE3%;
+			border-color: %ACCENT_2%;
+			color: %ACCENT_2%;
 		}
 		QPushButton:focus {
 			border: 1px solid %ACCENT_2%;
@@ -241,6 +252,8 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			color: %ACCENT_1%;
 			font-weight: bold;
 			font-size: %FS_P2%;
+			padding-top: 5px;
+			padding-bottom: 5px;
 		}
 		QPushButton#primaryAction:hover {
 			background-color: qlineargradient(x1:0, y1:0, x2:0, y2:1,
@@ -289,6 +302,8 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		   :focus rule above. */
 		QPushButton#dangerAction:focus {
 			border: 2px solid %ERROR%;
+			padding-top: 5px;   /* the wider border must not make the button taller */
+			padding-bottom: 5px;
 		}
 		QPushButton#dangerAction:disabled {
 			background-color: %SURFACE1%;
@@ -466,6 +481,9 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 			   space there itself, so the edit field would otherwise run
 			   text underneath the buttons. */
 			padding-right: 30px;
+			/* A spin box's own size hint is taller than a drop-down's (the frame of the field inside it), which made it 5px taller than the other
+			   controls: its content is held to the same 26px. */
+			max-height: 26px;
 		}
 		QSpinBox:hover, QDoubleSpinBox:hover, QComboBox:hover, QLineEdit:hover {
 			background-color: %SURFACE2%;

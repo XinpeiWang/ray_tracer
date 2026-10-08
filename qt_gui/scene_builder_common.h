@@ -17,8 +17,9 @@
 
 namespace scene_builder_ui {
 
-// The toolbar buttons are plain and close together, so a row of them fits (and wraps) in a narrow window: less padding than the application's own button style.
-inline void compactStyle(QWidget *button) { button->setStyleSheet(QStringLiteral("padding: 5px 12px;")); }
+// The toolbar buttons are plain and close together, so a row of them fits (and wraps) in a narrow window: less side padding than the application's own button style.
+// (The vertical padding is the common one, so the height is too: only the width is tighter.)
+inline void compactStyle(QWidget *button) { button->setStyleSheet(QStringLiteral("padding: 6px 12px;")); }
 
 using scene_doc::LightKind;
 using scene_doc::MaterialKind;

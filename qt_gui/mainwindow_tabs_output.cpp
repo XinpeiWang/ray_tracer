@@ -250,7 +250,7 @@ void MainWindow::createLogTab() {
 
 	// Geometry only - see previewBtnStyle's comment.
 	QString logBtnStyle =
-		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }";
+		"QPushButton { min-width: 160px; padding-left: 20px; padding-right: 20px; font-size: 11pt; }";
 
 	// These three share their implementation with the File menu's actions
 	// (see createActions()), so the bodies live in slots rather than lambdas
@@ -317,7 +317,7 @@ void MainWindow::createDiagnosticsTab() {
 
 	// Same geometry-only style as the Log tab's own button bar.
 	QString diagBtnStyle =
-		"QPushButton { min-height: 28px; max-height: 28px; min-width: 160px; padding: 0px 20px; font-size: 11pt; }";
+		"QPushButton { min-width: 160px; padding-left: 20px; padding-right: 20px; font-size: 11pt; }";
 
 	m_runDiagnosticsButton = new QPushButton(tr("&Run Diagnostics"));
 	icon_tint::apply(m_runDiagnosticsButton, ":/icons/gpu.svg", icon_tint::Role::Body, m_activeTheme.textBody);

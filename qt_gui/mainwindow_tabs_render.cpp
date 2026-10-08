@@ -327,7 +327,7 @@ void MainWindow::createPreviewTab() {
 	// sub-tab is currently active, not just the most recent render - see
 	// currentPreviewProperty().
 	QString previewBtnStyle =
-		"QPushButton { min-height: 28px; max-height: 28px; padding: 0px 20px; font-size: 11pt; }";
+		"QPushButton { padding-left: 20px; padding-right: 20px; font-size: 11pt; }";
 
 	QPushButton *openFolderButton = new QPushButton(tr("Open Output &Folder"));
 	icon_tint::apply(openFolderButton, ":/icons/folder.svg", icon_tint::Role::Body, m_activeTheme.textBody);
