@@ -7,7 +7,9 @@
 #include <QMetaObject>
 #include <algorithm>
 #include <array>
+#include <chrono>
 #include <cmath>
+#include <cstdlib>
 #include <mutex>
 #include <thread>
 
@@ -114,6 +116,7 @@ bool RealtimePreviewSession::isAvailable() {
 // ============================================================================
 
 void RealtimePreviewWorker::resetAccumulation() {
+	m_sppScheduler.reset();
 	m_accum.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
 	m_tmp.assign(static_cast<size_t>(m_width) * m_height * 3, 0.0f);
 	// Zeroed (not just resized) for the same reason m_accum/m_tmp are: the
@@ -975,8 +978,24 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		}
 	}
 
+	// Samples-per-frame scheduling (src/shared/live_spp_scheduler.h): one batch while the camera moves, more once it is still, so a still picture
+	// converges faster. Only on the plain running-mean path on macOS; RT_LIVE_SCHEDULER=0 turns it off (to compare). Every other mode, and Windows
+	// with its OptiX-only denoise/SVGF/upscale/adaptive paths, renders exactly one batch per frame as before.
+	static const bool kSchedulerAvailable = [] {
+#ifdef Q_OS_MACOS
+		const char* off = std::getenv("RT_LIVE_SCHEDULER");
+		return !(off && off[0] == '0');
+#else
+		return false;
+#endif
+	}();
+	const bool scheduleSpp = kSchedulerAvailable && !useUpscale && !useAdaptive && !effectiveShowLatest();
+	if (cameraJustMoved || !scheduleSpp) m_sppScheduler.reset();   // a move is rendered at one batch at once, not at the size the still picture had grown to
+	const int batchCount = scheduleSpp ? m_sppScheduler.batch() : 1;
+
 	RenderFrameFn renderFrame = handle().renderFrameFn;
 	bool ok = false;
+	const auto renderStart = std::chrono::steady_clock::now();
 	if (!renderFrame) {
 		emit statusChanged(QString::fromLatin1(kLibraryFileName) + QStringLiteral(" not found or missing its export"));
 		m_running = false;
@@ -999,7 +1018,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 		svgfTuning.atrousRadius = m_svgfAtrousRadius;
 		svgfTuning.minAlbedo = static_cast<float>(m_svgfMinAlbedo);
 		svgfTuning.atrousPasses = m_svgfAtrousPasses;
-		ok = renderFrame(m_sceneId.toUtf8().constData(), m_width, m_height, m_spp, m_maxDepth,
+		ok = renderFrame(m_sceneId.toUtf8().constData(), m_width, m_height, m_spp * batchCount, m_maxDepth,
 						  m_camX, m_camY, m_camZ,
 						  /*has_custom_lookat=*/true, m_lookX, m_lookY, m_lookZ,
 						  m_denoise, m_denoiseBlend,
@@ -1010,6 +1029,9 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						  m_neuralUpscale, (useUpscale && m_neuralUpscale) ? m_neuralUpscaleOut.data() : nullptr,
 						  m_dofEnabled ? m_aperture : -1.0, m_dofEnabled ? m_focusDistance : -1.0,
 						  useAdaptive, useAdaptive ? m_activePixelMask.data() : nullptr);
+		if (scheduleSpp) {
+			m_sppScheduler.frameDone(cameraJustMoved, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - renderStart).count());
+		}
 		if (!ok) {
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
@@ -1285,10 +1307,11 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 						anyPixelUpdated = true;
 						const int n = m_sampleCounts[pixel];
 						const size_t idx = static_cast<size_t>(pixel) * 3;
+						// A frame of `batchCount` batches counts as that many batches of history (1 unless the scheduler grew it).
 						for (int c = 0; c < 3; ++c) {
-							m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) / static_cast<float>(n + 1);
+							m_accum[idx + c] += (m_tmp[idx + c] - m_accum[idx + c]) * static_cast<float>(batchCount) / static_cast<float>(n + batchCount);
 						}
-						if (m_sampleCounts[pixel] < kMaxSampleCount) ++m_sampleCounts[pixel];
+						m_sampleCounts[pixel] = static_cast<uint16_t>(std::min<int>(n + batchCount, kMaxSampleCount));
 						minSampleCount = std::min<int>(minSampleCount, m_sampleCounts[pixel]);
 						if (trackVariance) {
 							const double lum = pixel_convergence::luminance(m_tmp[idx + 0], m_tmp[idx + 1], m_tmp[idx + 2]);

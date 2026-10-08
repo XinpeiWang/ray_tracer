@@ -16,6 +16,7 @@
 // plain `inline` outside nvcc, cpu_gpu.h) - safe to include here even
 // though this file is never compiled by nvcc itself.
 #include "../src/shared/adaptive_sampling.h"
+#include "../src/shared/live_spp_scheduler.h"
 
 // ============================================================================
 // RealtimePreviewSession
@@ -434,6 +435,9 @@ private:
 	// (they're renderFrame()'s own 4th/5th positional args). Defaults match
 	// renderLoop()'s own previous hardcoded locals exactly.
 	int m_spp = 1;
+	// How many batches of m_spp samples a frame renders (see src/shared/live_spp_scheduler.h): one while the camera moves, more once it is still. Used
+	// only on the plain accumulation path on macOS (no SVGF, upscale, adaptive sampling or show-latest denoise); everywhere else a frame is one batch.
+	live_preview::SppScheduler m_sppScheduler;
 	int m_maxDepth = 8;
 	// See setFireflyClamp()'s own comment. Crosses the DLL boundary. Default
 	// matches rt_realtime_render_frame()'s own previous hardcoded literal.
