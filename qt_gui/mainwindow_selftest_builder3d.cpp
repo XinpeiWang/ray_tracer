@@ -9,6 +9,9 @@
 #include "atomic_file.h"
 #include "crash_recovery.h"
 #include "render_queue_model.h"
+#include "denoiser_installer.h"
+#include "../src/shared/oidn_runtime.h"
+#include <random>
 #include "scene_metadata_client.h"
 #include "scene_builder_widget.h"
 
@@ -527,4 +530,39 @@ void MainWindow::selfTestDeleteScenes(SceneBuilderWidget *sb, const std::functio
 		check(tabStillThere, "the My Scenes tab stays while scenes that are not the Scene Builder's are listed");
 		check(!m_sceneCombo->currentData().toString().isEmpty(), "and a scene is selected");
 	}
+}
+
+// RT_GUI_SELFTEST=denoiser (not in the default set: it downloads ~50 MB from GitHub): installs Open Image Denoise through the real installer into a throwaway
+// folder, checks it is found, and denoises a small noisy image through it. Mac only.
+void MainWindow::runDenoiserSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &) {
+	auto fail = [log](const QString &what) { log("FAIL: " + what); log("RESULT: FAIL"); QApplication::exit(1); };
+	if (!denoiser_installer::isSupportedHere()) { log("not supported here (macOS only): skipped"); log("RESULT: OK"); QApplication::exit(0); return; }
+	if (denoiser_installer::isInstalled()) { fail("the throwaway user folder already has a denoiser: " + denoiser_installer::installFolder()); return; }
+	log("ok: not installed before: " + denoiser_installer::installFolder());
+	auto *installer = new denoiser_installer::Installer(this);
+	connect(installer, &denoiser_installer::Installer::progress, this, [log](int percent, const QString &text) {
+		static int last = -10;
+		if (percent >= last + 10 || percent == 100) { last = percent; log(QString("  %1%: %2").arg(percent).arg(text)); }
+	});
+	connect(installer, &denoiser_installer::Installer::finished, this, [log, fail](bool ok, const QString &message) {
+		if (!ok) { fail("install failed: " + message); return; }
+		log("ok: installed: " + message);
+		if (!denoiser_installer::isInstalled()) { fail("isInstalled() is false after installing"); return; }
+		log("ok: isInstalled()");
+		const int w = 64, h = 64;
+		std::vector<float> img(w * h * 4, 1.0f);
+		std::mt19937 rng(3);
+		std::normal_distribution<float> n(0.0f, 0.4f);
+		for (int i = 0; i < w * h; ++i) for (int c = 0; c < 3; ++c) img[i * 4 + c] = std::max(0.0f, 0.5f + n(rng));
+		auto spread = [&](const std::vector<float> &v) { double m = 0, s = 0; for (int i = 0; i < w * h; ++i) m += v[i * 4]; m /= w * h; for (int i = 0; i < w * h; ++i) s += (v[i * 4] - m) * (v[i * 4] - m); return s / (w * h); };
+		const double before = spread(img);
+		std::string error;
+		if (!oidn_runtime::denoiseHdr(img.data(), w, h, 4, 1.0f, error)) { fail("denoise through the installed library failed: " + QString::fromStdString(error)); return; }
+		const double after = spread(img);
+		log(QString("ok: denoised through %1 (noise variance %2 -> %3)").arg(QString::fromStdString(oidn_runtime::libraryPath())).arg(before).arg(after));
+		if (!(after < before * 0.2)) { fail("the noise did not drop enough"); return; }
+		log("RESULT: OK");
+		QApplication::exit(0);
+	});
+	installer->start();
 }

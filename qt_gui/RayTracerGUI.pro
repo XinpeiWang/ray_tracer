@@ -58,6 +58,8 @@ SOURCES += \
 	mainwindow_selftest_photo.cpp \
 	mainwindow_photo_install.cpp \
 	mainwindow_my_scenes.cpp \
+	mainwindow_denoiser.cpp \
+	denoiser_installer.cpp \
 	mainwindow_selftest_builder3d.cpp \
 	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
@@ -101,6 +103,7 @@ SOURCES += \
 HEADERS += \
 	app_log.h \
 	window_geometry.h \
+	denoiser_installer.h \
 	render_queue_model.h \
 	crash_recovery.h \
 	startup_profile.h \

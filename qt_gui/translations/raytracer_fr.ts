@@ -682,7 +682,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="88"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="362"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
         <source>Open Output &amp;Folder</source>
         <translation>Ouvrir le &amp;dossier de sortie</translation>
     </message>
@@ -693,7 +693,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="98"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="374"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Ouvrir dans la &amp;visionneuse par défaut</translation>
     </message>
@@ -1645,11 +1645,37 @@ Ce qui manque actuellement :
         <translation>Installation de l&apos;assistant photo</translation>
     </message>
     <message>
+        <location filename="../mainwindow_denoiser.cpp" line="21"/>
+        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <source>Install the denoiser</source>
+        <translation>Installer le débruiteur</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="22"/>
+        <source>The AI denoiser is Intel&apos;s Open Image Denoise (open source, Apache-2.0). It is not part of this app: it is downloaded once (%1) from its own release page on GitHub (github.com/RenderKit/oidn), checked against a known checksum, and kept in your user folder.
+
+Download it now?</source>
+        <translation>Le débruiteur IA est Open Image Denoise d&apos;Intel (open source, Apache-2.0). Il ne fait pas partie de cette application : il est téléchargé une seule fois (%1) depuis sa propre page de versions sur GitHub (github.com/RenderKit/oidn), vérifié avec une somme de contrôle connue et conservé dans votre dossier utilisateur.
+
+Le télécharger maintenant ?</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="29"/>
         <location filename="../mainwindow_downloads.cpp" line="75"/>
         <location filename="../mainwindow_downloads.cpp" line="162"/>
         <location filename="../mainwindow_photo_install.cpp" line="86"/>
         <source>Cancel</source>
         <translation>Annuler</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="30"/>
+        <source>Installing the denoiser</source>
+        <translation>Installation du débruiteur</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <source>The denoiser could not be installed: %1</source>
+        <translation>Le débruiteur n&apos;a pas pu être installé : %1</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="117"/>
@@ -2575,7 +2601,7 @@ Ne change pas le nombre d&apos;images rendues (c&apos;est le Nombre d&apos;image
         <translation>Débruiteur SVGF (expérimental)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="83"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="84"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
         <translation>⚠ L&apos;aperçu en direct utilise directement le traceur de chemin progressif du GPU - aucun des réglages de cet onglet ne s&apos;y applique, à l&apos;exception de la propre sous-section « Aperçu en direct » de la section Débruiteur, plus bas.</translation>
     </message>
@@ -3310,7 +3336,7 @@ Débruiteur SVGF : un filtre de réduction de bruit alternatif et expérimental.
         <translation>Limitation des pixels aberrants (--maxcomponentvalue)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="957"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="960"/>
         <source>OptiX AI denoiser (GPU only)</source>
         <translation>Débruiteur IA OptiX (GPU uniquement)</translation>
     </message>
@@ -3444,17 +3470,17 @@ rather than per whole sample). Not implemented under Metal
         <translation>Mode de validation OptiX (plus lent, débogage uniquement)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1026"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1039"/>
         <source>Crop Window</source>
         <translation>Fenêtre de recadrage</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1038"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1051"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>Ne rendre qu&apos;une partie de l&apos;image (--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="79"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="80"/>
         <source>⚠ Live Preview uses the Metal progressive path tracer directly - none of the settings on this tab apply to it, except the &quot;Live Preview Settings&quot; group below.</source>
         <translation>⚠ L&apos;aperçu en direct utilise directement le traceur de chemins progressif Metal : aucun des réglages de cet onglet ne s&apos;y applique, sauf le groupe « Paramètres de l&apos;aperçu en direct » ci-dessous.</translation>
     </message>
@@ -3789,7 +3815,7 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>Active des vérifications de justesse supplémentaires dans le processus de rendu GPU lui-même, qui détectent certains types de bogues qui produiraient sinon silencieusement une image fausse ou provoqueraient un plantage imprévisible. C&apos;est une aide au débogage pour les personnes qui travaillent sur le code GPU du moteur de rendu, pas quelque chose dont un rendu normal tire profit : cela a un coût de performance réel et ne change pas l&apos;aspect d&apos;un rendu correct. Spécifique au moteur GPU OptiX (Windows) ; il n&apos;a pas d&apos;équivalent Metal, donc il reste grisé même avec le Moteur de rendu réglé sur GPU sous macOS.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="959"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="970"/>
         <source>Runs an AI denoiser on the finished render to smooth out
 graininess, using extra information about each pixel&apos;s base
 color and surface direction to do a better job than a plain
@@ -3799,16 +3825,7 @@ each have their own denoiser) - not available under Metal
         <translation>Exécute un débruiteur par IA sur le rendu terminé pour atténuer le grain, en s&apos;appuyant sur des informations supplémentaires sur la couleur de base et l&apos;orientation de la surface de chaque pixel pour faire mieux qu&apos;un simple flou. GPU OptiX uniquement, dans les deux modes GPU (le récursif et le wavefront ont chacun leur débruiteur) ; indisponible sous Metal (rendu GPU de macOS).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="986"/>
-        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
-
-A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
-
-Grayed out? This needs the OptiX GPU backend (Windows) - switch Renderer to GPU on the Settings tab. Both the recursive and wavefront GPU modes support it; it has no Metal equivalent, so it stays grayed out on macOS.</source>
-        <translation>Un rendu est granuleux par nature quand on utilise peu d&apos;échantillons, c&apos;est pourquoi plus d&apos;échantillons donnent généralement une image plus propre (mais aussi un rendu plus lent). Un débruiteur est un modèle d&apos;IA entraîné à reconnaître ce grain et à l&apos;atténuer après coup, sans avoir à tracer de rayons supplémentaires : un moyen d&apos;obtenir plus vite une image d&apos;aspect propre, au prix d&apos;une perte de détails fins. Le nombre à sa droite dose le mélange entre l&apos;original bruité et le résultat entièrement débruité : 0 correspond au débruitage complet (valeur par défaut) ; l&apos;augmenter conserve une partie du grain d&apos;origine, utile quand un débruitage à pleine puissance lisse une texture que vous vouliez garder. Grisé ? Il faut le moteur GPU OptiX (Windows) : réglez le Moteur de rendu sur GPU dans l&apos;onglet Paramètres. Les modes GPU récursif et wavefront le prennent tous deux en charge ; il n&apos;a pas d&apos;équivalent Metal, donc il reste grisé sous macOS.</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1040"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1053"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
 only; works on the CPU and both GPU backends (OptiX and
@@ -3816,7 +3833,7 @@ Metal). Pixels outside the rectangle are left black.</source>
         <translation>Limite le rendu à un rectangle de l&apos;image, donné en fractions de l&apos;image entière de 0 à 1. Traceur de chemins par défaut uniquement ; fonctionne sur CPU et sur les deux moteurs GPU (OptiX et Metal). Les pixels en dehors du rectangle restent noirs.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1239"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Default path tracer only. On the GPU (both OptiX and
 Metal) renders are already repeatable by default; the seed picks a
@@ -3979,7 +3996,23 @@ Purely informational: it never changes the rendered image, it just tells you wha
 Purement informatif : cela ne change jamais l&apos;image rendue, cela vous indique simplement ce que le moteur de rendu a réellement fait.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="973"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="958"/>
+        <source>AI denoiser (Open Image Denoise)</source>
+        <translation>Débruiteur IA (Open Image Denoise)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="964"/>
+        <source>Runs Intel&apos;s Open Image Denoise on the finished render to smooth
+out graininess - a few samples per pixel then look like many.
+Works with the GPU (Metal) renderer. The first time you tick it
+you are asked to download the denoiser (about 50 MB, once).</source>
+        <translation>Exécute Open Image Denoise d&apos;Intel sur le rendu terminé pour lisser
+le grain : quelques échantillons par pixel paraissent alors nombreux.
+Fonctionne avec le moteur GPU (Metal). La première fois que vous le
+cochez, on vous demande de télécharger le débruiteur (environ 50 Mo, une seule fois).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="985"/>
         <source>Blends between the grainy original and the fully denoised
 result (0.0 = fully denoised, 1.0 = original grainy image).
 Raise this toward 1.0 to keep back more fine texture/grain that
@@ -3990,12 +4023,25 @@ cette valeur de 1,0 pour conserver davantage de texture fine/de grain
 qu&apos;un débruitage à pleine intensité peut lisser à tort.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1029"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="999"/>
+        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
+
+A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
+
+Grayed out? This needs the GPU renderer - switch Renderer to GPU on the Settings tab. On Windows it is NVIDIA&apos;s OptiX denoiser (both GPU modes); on a Mac it is Intel&apos;s Open Image Denoise with the Metal renderer.</source>
+        <translation>Un rendu est granuleux par nature quand on utilise peu d&apos;échantillons, c&apos;est pourquoi plus d&apos;échantillons donnent en général une image plus propre (mais un rendu plus lent).
+
+Un débruiteur est un modèle d&apos;IA entraîné à reconnaître ce grain et à le lisser après coup, sans tracer de rayons supplémentaires : un moyen d&apos;obtenir plus vite une image d&apos;aspect propre, au prix d&apos;un peu de détail fin. Le nombre à sa droite mélange l&apos;original bruité et le résultat entièrement débruité : 0 correspond au débruitage complet (par défaut) ; l&apos;augmenter conserve une partie du grain d&apos;origine, utile quand le débruitage complet lisse une texture que vous vouliez garder.
+
+Grisé ? Il faut le moteur GPU : réglez Moteur de rendu sur GPU dans l&apos;onglet Paramètres. Sous Windows c&apos;est le débruiteur OptiX de NVIDIA (les deux modes GPU) ; sur Mac c&apos;est Open Image Denoise d&apos;Intel avec le moteur Metal.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1042"/>
         <source>Render only a rectangular slice of the full frame, given as fractions from 0 to 1 of the image&apos;s width and height - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>Effectue le rendu d&apos;une simple tranche rectangulaire de l&apos;image complète, exprimée en fractions de 0 à 1 de la largeur et de la hauteur de l&apos;image - utile pour tester rapidement le rendu d&apos;une zone d&apos;une scène sans payer le coût de l&apos;image entière.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1046"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1059"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame&apos;s width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total number of samples cleans up much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -4008,63 +4054,63 @@ Utile pour itérer plus vite sur une partie problématique d&apos;une scène gra
 Désactivé par défaut (image complète). Si un fichier de scène .pbrt chargé demande déjà sa propre zone de recadrage, cocher cette case la remplace par le rectangle ci-dessous ; la laisser décochée conserve la demande propre à la scène (le cas échéant).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1090"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1103"/>
         <source>Left (X0):</source>
         <translation>Gauche (X0) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1091"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1104"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>Bord gauche du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image (0 = bord gauche, 1 = bord droit).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1093"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1106"/>
         <source>Top (Y0):</source>
         <translation>Haut (Y0) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1094"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1107"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>Bord supérieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image (0 = bord supérieur, 1 = bord inférieur).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1096"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1109"/>
         <source>Right (X1):</source>
         <translation>Droite (X1) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1097"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1110"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>Bord droit du rectangle de recadrage, exprimé en fraction de la largeur totale de l&apos;image - doit être supérieur à Gauche (X0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1099"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1112"/>
         <source>Bottom (Y1):</source>
         <translation>Bas (Y1) :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1100"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1113"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>Bord inférieur du rectangle de recadrage, exprimé en fraction de la hauteur totale de l&apos;image - doit être supérieur à Haut (Y0) pour rendre quoi que ce soit.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1143"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1156"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="480"/>
         <source>Depth of Field</source>
         <translation>Profondeur de champ</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1146"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1159"/>
         <source>Override the active scene&apos;s own camera lens diameter/focus distance without editing its scene file - only affects scenes loaded from a scene file; built-in demo-gallery scenes keep their own fixed camera.</source>
         <translation>Remplace le diamètre d&apos;objectif et la distance de mise au point propres à la caméra de la scène active sans modifier son fichier de scène - ne concerne que les scènes chargées depuis un fichier de scène ; les scènes de la galerie de démonstration intégrée conservent leur propre caméra fixe.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1155"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1168"/>
         <source>Override depth of field (--aperture/--focus-distance)</source>
         <translation>Remplacer la profondeur de champ (--aperture/--focus-distance)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1157"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1170"/>
         <source>Sets the camera&apos;s lens diameter and focus distance, overriding
 whatever the scene&apos;s own Camera directive requests. Only affects
 scenes loaded from a scene file - has no effect on the built-in
@@ -4076,7 +4122,7 @@ sans effet sur la galerie de démonstration intégrée, qui conserve sa
 propre caméra fixe.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1163"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1176"/>
         <source>Thin-lens depth-of-field blur is already fully supported for any scene loaded from a scene file - a &quot;lensradius&quot;/&quot;focaldistance&quot; Camera directive in the file is all it takes. This lets you set or change that without hand-editing the file: Aperture is the lens diameter in world units (0 = pinhole-sharp, no blur), and Focus Distance is how far away the plane of sharp focus sits.
 
 Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loaded from a scene file - the built-in demo gallery&apos;s scenes keep their own author-chosen fixed camera regardless of this setting.</source>
@@ -4085,44 +4131,44 @@ Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loa
 Désactivé par défaut (la propre caméra de la scène, inchangée). Ne concerne que les scènes chargées depuis un fichier de scène - les scènes de la galerie de démonstration intégrée conservent leur propre caméra fixe choisie par leur auteur, quel que soit ce réglage.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1181"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="664"/>
         <source>Aperture:</source>
         <translation>Ouverture :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1182"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1195"/>
         <source>Lens diameter in world units - larger values blur more. 0 means pinhole-sharp (no blur).</source>
         <translation>Diamètre de l&apos;objectif en unités de scène - des valeurs plus grandes floutent davantage. 0 signifie net comme un sténopé (sans flou).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1193"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1206"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="681"/>
         <source>Focus Distance:</source>
         <translation>Distance de mise au point :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1207"/>
         <source>Distance from the camera to the plane of sharp focus, in world units.</source>
         <translation>Distance entre la caméra et le plan de netteté parfaite, en unités de scène.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1213"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
         <source>Reproducibility</source>
         <translation>Reproductibilité</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1216"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1229"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>Fixe la graine aléatoire afin qu&apos;un rendu puisse être reproduit exactement, pixel par pixel, lors d&apos;une exécution ultérieure - utile pour comparer des changements de réglages sans que des différences de bruit aléatoire ne brouillent la comparaison.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1224"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1237"/>
         <source>Reproducible render (--seed)</source>
         <translation>Rendu reproductible (--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1232"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1245"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -4131,47 +4177,47 @@ Off by default (genuinely random every render).</source>
 Désactivé par défaut (véritablement aléatoire à chaque rendu).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1252"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1265"/>
         <source>Seed:</source>
         <translation>Graine :</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1253"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1266"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>L&apos;entier spécifique utilisé pour amorcer le générateur de nombres aléatoires du rendu. Ne prend effet que lorsque Rendu reproductible ci-dessus est coché - la même graine sur la même scène/les mêmes réglages produit toujours un bruit identique pixel par pixel.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="115"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="116"/>
         <source>Render Options</source>
         <translation>Options de rendu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="127"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="128"/>
         <source>Saved, but the scene list could not list it until the program is restarted.</source>
         <translation>Enregistré, mais la liste des scènes ne pourra l&apos;afficher qu&apos;après un redémarrage du programme.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="131"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="132"/>
         <source>Added to the scene list as %1 (Settings tab).</source>
         <translation>Ajoutée à la liste des scènes sous le nom %1 (onglet Paramètres).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="134"/>
         <source>Scene Builder</source>
         <translation>Constructeur de scènes</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="368"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>Afficher dans l&apos;Explorateur le dossier contenant le rendu de l&apos;onglet actif</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="380"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>Ouvrir le rendu de l&apos;onglet actif dans la visionneuse du système</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="403"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="406"/>
         <source>Preview</source>
         <translation>Aperçu</translation>
     </message>
@@ -4200,6 +4246,7 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
         <translation>Sélectionnez d&apos;abord une scène</translation>
     </message>
     <message>
+        <location filename="../mainwindow_denoiser.cpp" line="29"/>
         <location filename="../mainwindow_live_preview.cpp" line="262"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
@@ -4226,13 +4273,13 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
         <translation>[Aperçu en direct] ERREUR : %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="446"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="449"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Pourquoi ce rendu a cet aspect&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="572"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="575"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
         <location filename="../mainwindow_tabs_settings_groups.cpp" line="277"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
@@ -4240,12 +4287,12 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
         <translation>Pause</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
         <source>Play</source>
         <translation>Lecture</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="595"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="598"/>
         <source>Video playback error (%1): %2</source>
         <translation>Erreur de lecture vidéo (%1) : %2</translation>
     </message>
@@ -5733,13 +5780,13 @@ Sortie :
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="384"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="387"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>En attente</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="402"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="405"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 s</translation>
@@ -6358,7 +6405,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Voir la scène sous n&apos;importe quel angle et déplacer les éléments en 3D</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="256"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="259"/>
         <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>Aligner sur la grille</translation>
@@ -6931,6 +6978,57 @@ Vérifiez que vous avez l&apos;autorisation d&apos;y écrire et que le disque n&
         <location filename="../asset_downloader.cpp" line="157"/>
         <source>Could not move the downloaded file into place at %1.</source>
         <translation>Impossible de placer le fichier téléchargé dans %1.</translation>
+    </message>
+</context>
+<context>
+    <name>denoiser_installer</name>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="76"/>
+        <source>about %1 MB</source>
+        <translation>environ %1 Mo</translation>
+    </message>
+</context>
+<context>
+    <name>denoiser_installer::Installer</name>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="86"/>
+        <source>This computer cannot install the denoiser here.</source>
+        <translation>Cet ordinateur ne peut pas installer le débruiteur ici.</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="102"/>
+        <source>Downloading the denoiser...</source>
+        <translation>Téléchargement du débruiteur...</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="117"/>
+        <source>Unpacking the denoiser...</source>
+        <translation>Décompression du débruiteur...</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="125"/>
+        <source>Could not unpack the download: %1</source>
+        <translation>Impossible de décompresser le téléchargement : %1</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="131"/>
+        <source>The download did not contain the denoiser library.</source>
+        <translation>Le téléchargement ne contenait pas la bibliothèque du débruiteur.</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="139"/>
+        <source>Could not install the denoiser: %1</source>
+        <translation>Impossible d&apos;installer le débruiteur : %1</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="147"/>
+        <source>The denoiser files are not where they should be after installing.</source>
+        <translation>Après l&apos;installation, les fichiers du débruiteur ne sont pas là où ils devraient être.</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="150"/>
+        <source>The denoiser is installed.</source>
+        <translation>Le débruiteur est installé.</translation>
     </message>
 </context>
 <context>

@@ -5,6 +5,7 @@
 // own header comment) and its scene-list helpers; see
 // mainwindow_tabs_output.cpp for the Progress/Log/Diagnostics tabs.
 #include "mainwindow.h"
+#include "denoiser_installer.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"
 #include "settings_keys.h"
@@ -182,8 +183,10 @@ void MainWindow::updateRenderOptionsEnabled() {
 	// metal_interface.h's own list of fields it reads) - gated on
 	// gpuIsOptix, not the broader gpuSelected, so this stays correctly
 	// disabled when the selected GPU is actually Metal.
-	m_denoiseCheck->setEnabled(isDefault && gpuIsOptix);
-	m_denoiseBlendSpin->setEnabled(isDefault && gpuIsOptix && m_denoiseCheck->isChecked());
+	// A Mac's Metal renderer denoises with Intel's Open Image Denoise (installed on request: mainwindow_denoiser.cpp).
+	const bool denoiseAvailable = gpuIsOptix || (gpuIsMetal && denoiser_installer::isSupportedHere());
+	m_denoiseCheck->setEnabled(isDefault && denoiseAvailable);
+	m_denoiseBlendSpin->setEnabled(isDefault && denoiseAvailable && m_denoiseCheck->isChecked());
 	// OptiX-specific by definition (the checkbox's own label says so) -
 	// meaningless, and previously left clickable, under Metal.
 	m_optixValidateCheck->setEnabled(isDefault && gpuIsOptix);
@@ -194,8 +197,8 @@ void MainWindow::updateRenderOptionsEnabled() {
 	// unconditional. (seed and crop are NOT in this list - Metal reads both
 	// now, see gpu/metal/metal_interface.h, so they stay enabled below.)
 	m_regularizeCheck->setEnabled(isDefault && !gpuIsMetal);
-	m_maxComponentValueCheck->setEnabled(isDefault && !gpuIsMetal);
-	m_maxComponentValueSpin->setEnabled(isDefault && !gpuIsMetal && m_maxComponentValueCheck->isChecked());
+	m_maxComponentValueCheck->setEnabled(isDefault);   // Metal reads it too now (the explicit firefly clamp replaces the scene's own)
+	m_maxComponentValueSpin->setEnabled(isDefault && m_maxComponentValueCheck->isChecked());
 	m_cropCheck->setEnabled(isDefault);
 	const bool cropSpinsEnabled = isDefault && m_cropCheck->isChecked();
 	m_cropX0Spin->setEnabled(cropSpinsEnabled);
@@ -663,4 +666,6 @@ void MainWindow::addVideoPreviewTab(const QString &title, const QString &tooltip
 
 	player->setSource(QUrl::fromLocalFile(videoPath));
 	player->play();
-}
+}
+
+
