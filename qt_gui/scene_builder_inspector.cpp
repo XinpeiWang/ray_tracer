@@ -308,6 +308,18 @@ void SceneBuilderWidget::inspectCamera(QFormLayout *f) {
 
 void SceneBuilderWidget::inspectMaterial(QFormLayout *f, int i) {
 	addHeading(f, tr("Material"));
+	// A ready-made material (gold, frosted glass, red plastic...) sets the type and its values in one go; they can be tuned afterwards.
+	auto *preset = new QComboBox;
+	preset->addItem(tr("Choose a ready-made material..."), QString());
+	for (const scene_doc::MaterialPreset &p : scene_doc::materialPresets())
+		preset->addItem(QStringLiteral("%1: %2").arg(presetGroupLabel(p.group), presetLabel(p.name)), QString::fromLatin1(p.id));
+	connect(preset, QOverload<int>::of(&QComboBox::activated), this, [this, i, preset](int idx) {
+		const QString id = preset->itemData(idx).toString();
+		if (m_loading || id.isEmpty() || i >= static_cast<int>(m_doc.objects.size())) return;
+		edit(QString(), [&]() { scene_doc::applyMaterialPreset(m_doc.objects[i].material, id.toStdString()); });
+		QTimer::singleShot(0, this, [this]() { rebuildInspector(); });
+	});
+	f->addRow(tr("Preset"), preset);
 	auto *kind = new QComboBox;
 	for (MaterialKind k : {MaterialKind::Diffuse, MaterialKind::Conductor, MaterialKind::Dielectric, MaterialKind::CoatedDiffuse, MaterialKind::DiffuseTransmission})
 		kind->addItem(materialLabel(k), static_cast<int>(k));

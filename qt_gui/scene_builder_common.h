@@ -2,6 +2,7 @@
 // scene_builder_common.h - colour conversion and display names shared by the Scene Builder's layout view, property panel and widget.
 
 #include <QColor>
+#include <QCoreApplication>
 #include <QKeySequence>
 #include <QObject>
 #include <QString>
@@ -91,6 +92,22 @@ inline QString uniqueName(const QString &base, const QStringList &taken) {
 	QString name = base;
 	for (int n = 2; taken.contains(name); ++n) name = QString("%1 %2").arg(base).arg(n);
 	return name;
+}
+
+// The names of the ready-made materials (src/shared/scene_materials.h), translated: the table there is Qt-free, so the strings are declared for translation
+// here and looked up by their English name.
+inline QString presetLabel(const char *name) { return QCoreApplication::translate("MaterialPreset", name); }
+inline QString presetGroupLabel(const char *group) { return QCoreApplication::translate("MaterialPresetGroup", group); }
+[[maybe_unused]] inline void presetNamesForTranslation() {
+	QT_TRANSLATE_NOOP("MaterialPreset", "Chalk"); QT_TRANSLATE_NOOP("MaterialPreset", "Black rubber"); QT_TRANSLATE_NOOP("MaterialPreset", "Terracotta");
+	QT_TRANSLATE_NOOP("MaterialPreset", "Concrete"); QT_TRANSLATE_NOOP("MaterialPreset", "Red plastic"); QT_TRANSLATE_NOOP("MaterialPreset", "Blue plastic");
+	QT_TRANSLATE_NOOP("MaterialPreset", "White ceramic"); QT_TRANSLATE_NOOP("MaterialPreset", "Car paint"); QT_TRANSLATE_NOOP("MaterialPreset", "Gold");
+	QT_TRANSLATE_NOOP("MaterialPreset", "Copper"); QT_TRANSLATE_NOOP("MaterialPreset", "Silver"); QT_TRANSLATE_NOOP("MaterialPreset", "Aluminium");
+	QT_TRANSLATE_NOOP("MaterialPreset", "Chrome"); QT_TRANSLATE_NOOP("MaterialPreset", "Brushed steel"); QT_TRANSLATE_NOOP("MaterialPreset", "Clear glass");
+	QT_TRANSLATE_NOOP("MaterialPreset", "Frosted glass"); QT_TRANSLATE_NOOP("MaterialPreset", "Water"); QT_TRANSLATE_NOOP("MaterialPreset", "Diamond");
+	QT_TRANSLATE_NOOP("MaterialPreset", "Wax"); QT_TRANSLATE_NOOP("MaterialPreset", "Leaf"); QT_TRANSLATE_NOOP("MaterialPreset", "Paper");
+	QT_TRANSLATE_NOOP("MaterialPresetGroup", "Matte"); QT_TRANSLATE_NOOP("MaterialPresetGroup", "Plastic"); QT_TRANSLATE_NOOP("MaterialPresetGroup", "Metal");
+	QT_TRANSLATE_NOOP("MaterialPresetGroup", "Glass"); QT_TRANSLATE_NOOP("MaterialPresetGroup", "Translucent");
 }
 
 inline QString materialLabel(MaterialKind k) {
