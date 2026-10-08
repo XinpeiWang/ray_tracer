@@ -49,6 +49,7 @@
 #include <functional>
 
 #include "asset_downloader.h"
+#include "denoiser_installer.h"
 #include "scene_packs.h"
 #include "camera_math.h"
 #include "render_output_parser.h"
@@ -242,12 +243,10 @@ public:
 #endif
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
 	void selfTestShapes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);      // (mainwindow_selftest_builder3d.cpp)
-	void runTourSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
+	void runDenoiserSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot); void runTourSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
 	void runQueueSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);   // mainwindow_selftest_builder3d.cpp
-	void selfTestRenderQueue(const std::function<void(bool, const QString &)> &check);
-	void selfTestCrashRecovery(const std::function<void(bool, const QString &)> &check);
-	void selfTestWindowGeometry(const std::function<void(bool, const QString &)> &check);
-	void selfTestWheelGuard(const std::function<void(bool, const QString &)> &check);
+	void selfTestRenderQueue(const std::function<void(bool, const QString &)> &check); void selfTestCrashRecovery(const std::function<void(bool, const QString &)> &check);
+	void selfTestWindowGeometry(const std::function<void(bool, const QString &)> &check); void selfTestWheelGuard(const std::function<void(bool, const QString &)> &check);
 	void selfTestLog(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);
 	void runInstallPhotoSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_photo.cpp
 	void runBuilder3dSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);  // mainwindow_selftest_builder3d.cpp
@@ -1621,6 +1620,7 @@ private:
 	// so both views always agree on what's currently filtered in.
 	void populateSceneViews(const QString &category);
 	// Delete the scenes the user made (mainwindow_my_scenes.cpp): the Settings tab shows these buttons under the My Scenes category.
+	denoiser_installer::Installer *m_denoiserInstaller = nullptr;
 	QWidget *m_myScenesRow = nullptr;
 	QPushButton *m_deleteSceneButton = nullptr;
 	QPushButton *m_deleteAllScenesButton = nullptr;
@@ -1630,6 +1630,7 @@ private:
 	void afterUserScenesRemoved(const QStringList &removedIds, const QString &nextHintId);
 	int deleteUserScenes(const QStringList &ids, const QString &nextHintId, QStringList *failedIds = nullptr);   // no questions asked; the handlers ask first
 	void selfTestDeleteScenes(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // mainwindow_selftest_builder3d.cpp
+	void onDenoiseToggled(bool on);   // mainwindow_denoiser.cpp: on a Mac, offers to download the denoiser the first time
 	void onDeleteSceneClicked();
 	void onDeleteAllMyScenesClicked();
 

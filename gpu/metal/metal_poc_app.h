@@ -94,6 +94,10 @@ struct MetalPocApp {
     // applyCameraOverride() call already uses. 1.0 (default) is a no-op,
     // unaffected for every scene/caller that never touches this field.
     float exposureValue = 1.0f;
+    // RenderOptions::denoise / denoise_blend: run Intel Open Image Denoise (src/shared/oidn_runtime.h, loaded at run time) on the linear image before it is
+    // tone-mapped and written. A missing library is a warning, never a failure.
+    bool denoiseRequested = false;
+    float denoiseBlend = 1.0f;   // the share of the denoised image in the result (1 = fully denoised)
     // RenderOptions::adaptive_sampling / adaptive_threshold, poked by metal_render_main() like exposureValue. Off by default, as on the CPU:
     // the kernel's early stop freezes a pixel whose first samples are all (near) black, which is a large bias for light that is found only
     // rarely (caustics, light seen through glass - a rough-glass-fog sphere under a small lamp read ~10x too dark and kept black dots at any

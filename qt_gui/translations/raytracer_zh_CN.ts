@@ -681,7 +681,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="88"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="362"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
         <source>Open Output &amp;Folder</source>
         <translation>打开输出文件夹(&amp;F)</translation>
     </message>
@@ -692,7 +692,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="98"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="374"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>用默认查看器打开(&amp;V)</translation>
     </message>
@@ -1633,11 +1633,37 @@ Missing now:
         <translation>正在安装照片辅助程序</translation>
     </message>
     <message>
+        <location filename="../mainwindow_denoiser.cpp" line="21"/>
+        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <source>Install the denoiser</source>
+        <translation>安装降噪器</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="22"/>
+        <source>The AI denoiser is Intel&apos;s Open Image Denoise (open source, Apache-2.0). It is not part of this app: it is downloaded once (%1) from its own release page on GitHub (github.com/RenderKit/oidn), checked against a known checksum, and kept in your user folder.
+
+Download it now?</source>
+        <translation>AI 降噪器是 Intel 的 Open Image Denoise（开源，Apache-2.0）。它不是本应用的一部分：只会从其 GitHub 官方发布页面（github.com/RenderKit/oidn）下载一次（%1），用已知校验和验证，并保存在你的用户文件夹中。
+
+现在下载吗？</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="29"/>
         <location filename="../mainwindow_downloads.cpp" line="75"/>
         <location filename="../mainwindow_downloads.cpp" line="162"/>
         <location filename="../mainwindow_photo_install.cpp" line="86"/>
         <source>Cancel</source>
         <translation>取消</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="30"/>
+        <source>Installing the denoiser</source>
+        <translation>正在安装降噪器</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_denoiser.cpp" line="51"/>
+        <source>The denoiser could not be installed: %1</source>
+        <translation>无法安装降噪器：%1</translation>
     </message>
     <message>
         <location filename="../mainwindow_photo_install.cpp" line="117"/>
@@ -2547,7 +2573,7 @@ Doesn&apos;t change how many frames get rendered (that&apos;s Frame Count) - onl
         <translation>SVGF 降噪器（实验性）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="83"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="84"/>
         <source>⚠ Live Preview uses the GPU progressive path tracer directly - none of the settings on this tab apply to it, except the Denoiser section&apos;s own &quot;Live Preview&quot; subsection below.</source>
         <translation>⚠ 实时预览直接使用 GPU 渐进式路径追踪器——此标签页上的设置均不适用于它，唯独“降噪器”分区自己的“实时预览”子分区（在下方）除外。</translation>
     </message>
@@ -3279,7 +3305,7 @@ SVGF Denoiser: an alternative, experimental noise-reduction filter. Instead of b
         <translation>萤火虫噪点截断(--maxcomponentvalue)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="957"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="960"/>
         <source>OptiX AI denoiser (GPU only)</source>
         <translation>OptiX AI 降噪器(仅限 GPU)</translation>
     </message>
@@ -3413,17 +3439,17 @@ rather than per whole sample). Not implemented under Metal
         <translation>OptiX 验证模式(速度较慢,仅供调试)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1026"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1039"/>
         <source>Crop Window</source>
         <translation>裁剪窗口</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1038"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1051"/>
         <source>Render only part of the frame (--crop)</source>
         <translation>仅渲染画面的一部分(--crop)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="79"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="80"/>
         <source>⚠ Live Preview uses the Metal progressive path tracer directly - none of the settings on this tab apply to it, except the &quot;Live Preview Settings&quot; group below.</source>
         <translation>⚠ 实时预览直接使用 Metal 渐进式路径追踪器：除下方的“实时预览设置”组外，此选项卡上的设置都不适用于它。</translation>
     </message>
@@ -3725,7 +3751,7 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>在 GPU 渲染过程内部启用额外的正确性检查，用来发现某些类型的错误，否则这些错误会悄悄生成错误的图像或导致不可预测的崩溃。这是为开发渲染器 GPU 代码的人准备的调试辅助功能，对正常渲染没有好处：它有实际的性能开销，也不会改变正确渲染的外观。它专用于 OptiX GPU 后端（Windows）；Metal 没有对应功能，因此即使在 macOS 上把渲染器设为 GPU，它也保持灰色。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="959"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="970"/>
         <source>Runs an AI denoiser on the finished render to smooth out
 graininess, using extra information about each pixel&apos;s base
 color and surface direction to do a better job than a plain
@@ -3735,16 +3761,7 @@ each have their own denoiser) - not available under Metal
         <translation>对完成的渲染运行 AI 降噪器以平滑颗粒感，它会利用每个像素的基础颜色和表面朝向等额外信息，效果比简单模糊更好。仅限 OptiX GPU，两种 GPU 模式都支持（递归和波前各有自己的降噪器）；Metal（macOS GPU 渲染）下不可用。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="986"/>
-        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
-
-A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
-
-Grayed out? This needs the OptiX GPU backend (Windows) - switch Renderer to GPU on the Settings tab. Both the recursive and wavefront GPU modes support it; it has no Metal equivalent, so it stays grayed out on macOS.</source>
-        <translation>采样很少时，渲染天然带有颗粒感，所以采样越多通常画面越干净（但渲染也更慢）。降噪器是一个经过训练的 AI 模型，能识别这种颗粒感并在事后将其抹平，无需追踪额外的光线：这是更快得到看起来干净的图像的办法，代价是损失一些细节。右侧的数字用于在带噪原图与完全降噪的结果之间混合：0 为完全降噪（默认值）；调高会保留一部分原始颗粒，适合全力降噪把你想保留的纹理也抹平的情况。显示为灰色？它需要 OptiX GPU 后端（Windows）：请在设置选项卡中把渲染器切换为 GPU。递归和波前两种 GPU 模式都支持；Metal 没有对应功能，因此在 macOS 上保持灰色。</translation>
-    </message>
-    <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1040"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1053"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
 only; works on the CPU and both GPU backends (OptiX and
@@ -3752,7 +3769,7 @@ Metal). Pixels outside the rectangle are left black.</source>
         <translation>把渲染限制在画面的一个矩形区域内，以占整幅图像 0 到 1 的比例给出。仅限默认路径追踪器；在 CPU 和两种 GPU 后端（OptiX 和 Metal）上均可使用。矩形之外的像素保持为黑色。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1239"/>
         <source>Makes this render reproduce byte-for-byte on a rerun with the
 same seed. Default path tracer only. On the GPU (both OptiX and
 Metal) renders are already repeatable by default; the seed picks a
@@ -3900,7 +3917,21 @@ Purely informational: it never changes the rendered image, it just tells you wha
 纯粹是提供信息：它不会改变渲染出的图像，只是告诉你渲染器实际做了些什么。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="973"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="958"/>
+        <source>AI denoiser (Open Image Denoise)</source>
+        <translation>AI 降噪器 (Open Image Denoise)</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="964"/>
+        <source>Runs Intel&apos;s Open Image Denoise on the finished render to smooth
+out graininess - a few samples per pixel then look like many.
+Works with the GPU (Metal) renderer. The first time you tick it
+you are asked to download the denoiser (about 50 MB, once).</source>
+        <translation>对完成的渲染运行 Intel 的 Open Image Denoise 来平滑噪点，每像素少量采样也能看起来像大量采样。
+适用于 GPU (Metal) 渲染器。首次勾选时会提示下载降噪器（约 50 MB，仅一次）。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="985"/>
         <source>Blends between the grainy original and the fully denoised
 result (0.0 = fully denoised, 1.0 = original grainy image).
 Raise this toward 1.0 to keep back more fine texture/grain that
@@ -3908,12 +3939,25 @@ full-strength denoising can smooth away.</source>
         <translation>在带噪点的原始图像和完全降噪的结果之间混合（0.0 = 完全降噪，1.0 = 原始带噪点图像）。把数值调高、靠近 1.0，可以保留更多完整强度降噪会抹掉的细节纹理/颗粒感。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1029"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="999"/>
+        <source>Rendering is grainy by nature when only a few samples are used, which is why more samples usually means a cleaner picture (but also a slower render).
+
+A denoiser is an AI model trained to recognize that graininess and smooth it away after the fact, without needing to trace additional rays - a way to get a clean-looking image faster, at some cost in fine detail. The number to its right blends between the noisy original and the fully denoised result - 0 is fully denoised (the default); raising it keeps back some of the original grain, useful when full-strength denoising smooths away texture you wanted to keep.
+
+Grayed out? This needs the GPU renderer - switch Renderer to GPU on the Settings tab. On Windows it is NVIDIA&apos;s OptiX denoiser (both GPU modes); on a Mac it is Intel&apos;s Open Image Denoise with the Metal renderer.</source>
+        <translation>采样数很少时，渲染天然会有噪点，所以更多采样通常意味着更干净的画面（但渲染更慢）。
+
+降噪器是经过训练的 AI 模型，能识别这些噪点并在事后将其平滑掉，无需追踪更多光线——以损失一些细节为代价，更快得到看起来干净的图像。右侧的数字用于在带噪原图和完全降噪的结果之间混合：0 为完全降噪（默认）；调高会保留一部分原始噪点，适合完全降噪会抹掉你想保留的纹理时使用。
+
+是灰色的？需要 GPU 渲染器：请在“设置”选项卡中将渲染器切换为 GPU。Windows 上是 NVIDIA 的 OptiX 降噪器（两种 GPU 模式）；Mac 上是搭配 Metal 渲染器的 Intel Open Image Denoise。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1042"/>
         <source>Render only a rectangular slice of the full frame, given as fractions from 0 to 1 of the image&apos;s width and height - useful for quickly test-rendering one area of a scene without paying for the whole image.</source>
         <translation>只渲染整个画面中的一个矩形区域，该区域用图像宽高的 0 到 1 之间的比例来表示——适合在不用渲染整幅图像的情况下，快速测试场景中的某一部分。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1046"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1059"/>
         <source>Renders only a rectangular slice of the full frame - everything outside it is left black - instead of the whole image. The rectangle is given as four fractions of the full frame&apos;s width/height, from 0 (left/top edge) to 1 (right/bottom edge), so it stays the same shape regardless of resolution.
 
 Useful for iterating faster on one troublesome part of a large, slow scene - the same total number of samples cleans up much faster when it only has to cover a corner of the frame instead of the whole thing.
@@ -3926,63 +3970,63 @@ Off by default (the full frame). If a loaded .pbrt scene file already requests i
 默认关闭（渲染整幅画面）。如果加载的 .pbrt 场景文件本身已经请求了自己的裁剪区域，勾选此项会用下方的矩形将其覆盖；不勾选则保留场景自身的请求（如果有的话）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1090"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1103"/>
         <source>Left (X0):</source>
         <translation>左(X0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1091"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1104"/>
         <source>Left edge of the crop rectangle, as a fraction of the full frame width (0 = left edge, 1 = right edge).</source>
         <translation>裁剪矩形的左边缘，以完整帧宽度的比例表示（0 = 左边缘，1 = 右边缘）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1093"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1106"/>
         <source>Top (Y0):</source>
         <translation>上(Y0):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1094"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1107"/>
         <source>Top edge of the crop rectangle, as a fraction of the full frame height (0 = top edge, 1 = bottom edge).</source>
         <translation>裁剪矩形的上边缘，以完整帧高度的比例表示（0 = 上边缘，1 = 下边缘）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1096"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1109"/>
         <source>Right (X1):</source>
         <translation>右(X1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1097"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1110"/>
         <source>Right edge of the crop rectangle, as a fraction of the full frame width - must be greater than Left (X0) to render anything.</source>
         <translation>裁剪矩形的右边缘，以完整帧宽度的比例表示——必须大于“左（X0）”才能渲染出任何内容。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1099"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1112"/>
         <source>Bottom (Y1):</source>
         <translation>下(Y1):</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1100"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1113"/>
         <source>Bottom edge of the crop rectangle, as a fraction of the full frame height - must be greater than Top (Y0) to render anything.</source>
         <translation>裁剪矩形的下边缘，以完整帧高度的比例表示——必须大于“上（Y0）”才能渲染出任何内容。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1143"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1156"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="480"/>
         <source>Depth of Field</source>
         <translation>景深</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1146"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1159"/>
         <source>Override the active scene&apos;s own camera lens diameter/focus distance without editing its scene file - only affects scenes loaded from a scene file; built-in demo-gallery scenes keep their own fixed camera.</source>
         <translation>在不编辑场景文件的情况下，覆盖当前场景自身相机的镜头直径/对焦距离——只对从场景文件加载的场景有效；内置演示场景库中的场景仍会保留各自固定的相机设置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1155"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1168"/>
         <source>Override depth of field (--aperture/--focus-distance)</source>
         <translation>覆盖景深设置（--aperture/--focus-distance）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1157"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1170"/>
         <source>Sets the camera&apos;s lens diameter and focus distance, overriding
 whatever the scene&apos;s own Camera directive requests. Only affects
 scenes loaded from a scene file - has no effect on the built-in
@@ -3990,7 +4034,7 @@ demo gallery, which keeps its own fixed camera.</source>
         <translation>设置相机的镜头直径和对焦距离，覆盖场景自身 Camera 指令所请求的数值。只对从场景文件加载的场景有效——对内置演示场景库没有影响，那些场景会保留各自固定的相机设置。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1163"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1176"/>
         <source>Thin-lens depth-of-field blur is already fully supported for any scene loaded from a scene file - a &quot;lensradius&quot;/&quot;focaldistance&quot; Camera directive in the file is all it takes. This lets you set or change that without hand-editing the file: Aperture is the lens diameter in world units (0 = pinhole-sharp, no blur), and Focus Distance is how far away the plane of sharp focus sits.
 
 Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loaded from a scene file - the built-in demo gallery&apos;s scenes keep their own author-chosen fixed camera regardless of this setting.</source>
@@ -3999,44 +4043,44 @@ Off by default (the scene&apos;s own camera, unchanged). Only affects scenes loa
 默认关闭（保持场景自身相机不变）。只对从场景文件加载的场景有效——内置演示场景库中的场景无论此设置如何，都会保留作者选定的固定相机。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1181"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="664"/>
         <source>Aperture:</source>
         <translation>光圈：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1182"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1195"/>
         <source>Lens diameter in world units - larger values blur more. 0 means pinhole-sharp (no blur).</source>
         <translation>以场景单位表示的镜头直径——数值越大，虚化效果越强。0 表示针孔般的清晰（没有虚化）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1193"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1206"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="681"/>
         <source>Focus Distance:</source>
         <translation>对焦距离：</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1194"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1207"/>
         <source>Distance from the camera to the plane of sharp focus, in world units.</source>
         <translation>相机到清晰对焦平面的距离（以场景单位表示）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1213"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1226"/>
         <source>Reproducibility</source>
         <translation>可复现性</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1216"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1229"/>
         <source>Fix the random seed so a render can be reproduced exactly, pixel-for-pixel, on a later run - useful for comparing settings changes without random noise differences confusing the comparison.</source>
         <translation>固定随机种子，以便渲染可以在之后的运行中精确、逐像素地复现——适合在比较设置变化时使用，不会被随机噪点差异干扰对比。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1224"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1237"/>
         <source>Reproducible render (--seed)</source>
         <translation>可复现渲染(--seed)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1232"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1245"/>
         <source>Renders normally use a different random sequence every time, so two runs of the same scene never match pixel-for-pixel even with identical settings. Checking this fixes the random seed, so the same seed value always reproduces the exact same image - useful for comparing before/after a scene edit, or for isolating whether a visual difference came from a code change or just random noise.
 
 Off by default (genuinely random every render).</source>
@@ -4045,47 +4089,47 @@ Off by default (genuinely random every render).</source>
 默认关闭(每次渲染都是真正随机的)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1252"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1265"/>
         <source>Seed:</source>
         <translation>种子:</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render_groups.cpp" line="1253"/>
+        <location filename="../mainwindow_tabs_render_groups.cpp" line="1266"/>
         <source>The specific integer used to seed the render&apos;s random number generator. Only takes effect when Reproducible Render above is checked - the same seed on the same scene/settings always produces pixel-identical noise.</source>
         <translation>用于播种渲染随机数生成器的具体整数。仅当上方勾选了“可复现渲染”时才生效——相同的种子在相同的场景/设置下，总会产生像素完全相同的噪点。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="115"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="116"/>
         <source>Render Options</source>
         <translation>渲染选项</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="127"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="128"/>
         <source>Saved, but the scene list could not list it until the program is restarted.</source>
         <translation>已保存，但在重启程序之前场景列表无法列出它。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="131"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="132"/>
         <source>Added to the scene list as %1 (Settings tab).</source>
         <translation>已作为 %1 添加到场景列表（“设置”标签页）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="133"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="134"/>
         <source>Scene Builder</source>
         <translation>场景构建器</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="365"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="368"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>在资源管理器中显示当前标签页渲染结果所在的文件夹</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="377"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="380"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>使用系统查看器打开当前标签页的渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="403"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="406"/>
         <source>Preview</source>
         <translation>预览</translation>
     </message>
@@ -4114,6 +4158,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>请先选择一个场景</translation>
     </message>
     <message>
+        <location filename="../mainwindow_denoiser.cpp" line="29"/>
         <location filename="../mainwindow_live_preview.cpp" line="262"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
@@ -4140,13 +4185,13 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>[实时预览] 错误：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="446"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="449"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;为什么看起来是这样&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="572"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="575"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
         <location filename="../mainwindow_tabs_settings_groups.cpp" line="277"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
@@ -4154,12 +4199,12 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>暂停</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="585"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="588"/>
         <source>Play</source>
         <translation>播放</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="595"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="598"/>
         <source>Video playback error (%1): %2</source>
         <translation>视频播放错误 (%1):%2</translation>
     </message>
@@ -5642,13 +5687,13 @@ Output:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="384"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="387"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>等待中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="402"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="405"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 秒</translation>
@@ -6267,7 +6312,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>从任意角度查看场景，并在 3D 中移动物体</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="256"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="259"/>
         <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Snap to grid</source>
         <translation>吸附到网格</translation>
@@ -6840,6 +6885,57 @@ Check that you have permission to write there and that the disk is not full.</so
         <location filename="../asset_downloader.cpp" line="157"/>
         <source>Could not move the downloaded file into place at %1.</source>
         <translation>无法将已下载的文件移动到 %1。</translation>
+    </message>
+</context>
+<context>
+    <name>denoiser_installer</name>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="76"/>
+        <source>about %1 MB</source>
+        <translation>约 %1 MB</translation>
+    </message>
+</context>
+<context>
+    <name>denoiser_installer::Installer</name>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="86"/>
+        <source>This computer cannot install the denoiser here.</source>
+        <translation>此电脑无法在此安装降噪器。</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="102"/>
+        <source>Downloading the denoiser...</source>
+        <translation>正在下载降噪器...</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="117"/>
+        <source>Unpacking the denoiser...</source>
+        <translation>正在解压降噪器...</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="125"/>
+        <source>Could not unpack the download: %1</source>
+        <translation>无法解压下载内容：%1</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="131"/>
+        <source>The download did not contain the denoiser library.</source>
+        <translation>下载内容中不包含降噪器库。</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="139"/>
+        <source>Could not install the denoiser: %1</source>
+        <translation>无法安装降噪器：%1</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="147"/>
+        <source>The denoiser files are not where they should be after installing.</source>
+        <translation>安装后降噪器文件不在应有的位置。</translation>
+    </message>
+    <message>
+        <location filename="../denoiser_installer.cpp" line="150"/>
+        <source>The denoiser is installed.</source>
+        <translation>降噪器已安装。</translation>
     </message>
 </context>
 <context>
