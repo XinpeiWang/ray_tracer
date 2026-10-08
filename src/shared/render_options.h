@@ -106,10 +106,10 @@ struct RenderOptions {
 	// to "aces". Both backends, default path tracer only.
 	const char* tonemap = nullptr;
 	// Run an AI denoiser on the finished render: the OptiX one on the Windows GPU
-	// backends (recursive and wavefront), Intel Open Image Denoise on Metal (when
-	// its library is installed, src/shared/oidn_runtime.h). No effect
-	// under GPU SPPM (launcher/main.cpp warns on --denoise --sppm --gpu)
-	// or any CPU-only integrator.
+	// backends (recursive and wavefront), Intel Open Image Denoise on Metal and on
+	// the CPU's default path tracer (when its library is installed,
+	// src/shared/oidn_runtime.h). No effect under GPU SPPM (launcher/main.cpp warns
+	// on --denoise --sppm --gpu) or the other CPU integrators.
 	bool denoise = false;
 	// OptiX's own blend between the noisy input and the fully denoised
 	// output - 0.0 (default) = 100% denoised (this project's prior,

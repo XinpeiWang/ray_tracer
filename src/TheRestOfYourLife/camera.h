@@ -38,6 +38,7 @@
 #include "../shared/surface_interaction.h"  // compute_differentials() for texture-filtering footprint
 #include "../shared/exr_writer.h"
 #include "../shared/render_stats.h"
+#include "../shared/oidn_runtime.h"   // --denoise on the CPU
 #include "../shared/spectral_math.h"  // SampledSpectrum/SampledWavelengths, RGBAlbedoSpectrum/
                                        // RGBIlluminantSpectrum (via cie_data.h -> spectrum_types.h),
                                        // SampledSpectrumToXYZ/XYZToLinearRGB - see ray_color_spectral()
@@ -254,6 +255,11 @@ class camera {
     // output path ends in ".exr"; false (PPM) is the pre-existing default
     // and behavior for every other extension is unchanged.
     bool   exr_output = false;
+    // --denoise on the CPU: Open Image Denoise (src/shared/oidn_runtime.h, loaded at run time) runs on the finished linear image before it is tone mapped
+    // or written. Colour only. If the library is missing the render says so and goes on undenoised. denoise_keep is the share of the original image kept
+    // (RenderOptions::denoise_blend: 0 = fully denoised).
+    bool   denoise = false;
+    float  denoise_keep = 0.0f;
     color  background;               // Scene background color (used when sky==nullptr)
     shared_ptr<sky_light> sky;               // HDR env map (pbrt-v4 ImageInfiniteLight); nullptr = flat background
     // pbrt-v4 windowed/portal infinite light ("point3 portal[4]") - visible

@@ -25,6 +25,30 @@ TEST(OidnRuntimeTest, AMissingLibraryIsReportedNotFatal) {
 	EXPECT_FALSE(oidn_runtime::unavailableReason().empty());
 }
 
+TEST(OidnRuntimeTest, TheLibraryIsLookedForInTheFolderAWindowsReleaseUses) {
+	// RT_OIDN_DIR may name the unpacked release itself: the DLL is in bin/ there, the dylib/so in lib/.
+#ifdef _WIN32
+	_putenv_s("RT_OIDN_DIR", "C:/oidn-test");
+#else
+	setenv("RT_OIDN_DIR", "/oidn-test", 1);
+#endif
+	const std::vector<std::string> c = oidn_runtime::detail::candidates();
+	auto has = [&](const std::string& tail) {
+		for (const std::string& p : c)
+			if (p.size() >= tail.size() && p.compare(p.size() - tail.size(), tail.size(), tail) == 0 && p.find("oidn-test") != std::string::npos) return true;
+		return false;
+	};
+	const std::string name = oidn_runtime::detail::libraryName();
+	EXPECT_TRUE(has("oidn-test/" + name));
+	EXPECT_TRUE(has("oidn-test/lib/" + name));
+	EXPECT_TRUE(has("oidn-test/bin/" + name));
+#ifdef _WIN32
+	_putenv_s("RT_OIDN_DIR", "");
+#else
+	unsetenv("RT_OIDN_DIR");
+#endif
+}
+
 TEST(OidnRuntimeTest, BadArgumentsAreRefused) {
 	std::string error;
 	EXPECT_FALSE(oidn_runtime::denoiseHdr(nullptr, 16, 16, 3, 1.0f, error));

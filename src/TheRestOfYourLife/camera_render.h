@@ -93,8 +93,10 @@ inline bool camera::render(const hittable& world, const hittable& lights,
     // exr_output is false (stays empty; every worker's write is guarded
     // on the same flag). Interleaved RGB, row-major, matching
     // write_exr_image()/SaveEXR's own expected layout exactly.
+    // Also kept for --denoise, which needs the whole linear image before anything is tone mapped.
+    const bool keep_linear = exr_output || denoise;
     std::vector<float> exr_pixels(
-        exr_output ? static_cast<size_t>(image_width) * image_height * 3 : 0);
+        keep_linear ? static_cast<size_t>(image_width) * image_height * 3 : 0);
     std::atomic<int> next_j(image_height - 1);
     std::atomic<int> completed_lines(0);
     std::mutex log_mutex;
@@ -468,14 +470,13 @@ inline bool camera::render(const hittable& world, const hittable& lights,
                                          static_cast<double>(out_b));
                 }
                 pixel_color = pixel_color * exposure;
-                if (exr_output) {
+                if (keep_linear) {
                     const size_t idx = (static_cast<size_t>(j) * image_width + i) * 3;
                     exr_pixels[idx + 0] = static_cast<float>(pixel_color.x());
                     exr_pixels[idx + 1] = static_cast<float>(pixel_color.y());
                     exr_pixels[idx + 2] = static_cast<float>(pixel_color.z());
-                } else {
-                    write_color(ss, pixel_color, tone_map);
                 }
+                if (!exr_output) write_color(ss, pixel_color, tone_map);
             }
 
             // --time-limit: the per-pixel loop above only stopped
@@ -534,6 +535,26 @@ inline bool camera::render(const hittable& world, const hittable& lights,
         // "Scanlines remaining: 0" - printed here instead, unconditionally,
         // once every row (real or backfilled) is genuinely accounted for.
         std::clog << "\rScanlines remaining: 0 " << std::flush;
+    }
+
+    // --denoise: Open Image Denoise on the linear image. For a PPM the rows are then tone mapped again from the denoised pixels; an EXR is written from them.
+    if (denoise) {
+        std::string denoise_error;
+        if (oidn_runtime::denoiseHdr(exr_pixels.data(), image_width, image_height, 3, 1.0f - std::min(1.0f, std::max(0.0f, denoise_keep)), denoise_error)) {
+            std::clog << "\rDenoised with Open Image Denoise (" << oidn_runtime::libraryPath() << ")\n";
+            if (!exr_output) {
+                for (int j = 0; j < image_height; ++j) {
+                    std::ostringstream row;
+                    for (int i = 0; i < image_width; ++i) {
+                        const size_t idx = (static_cast<size_t>(j) * image_width + i) * 3;
+                        write_color(row, color(exr_pixels[idx], exr_pixels[idx + 1], exr_pixels[idx + 2]), tone_map);
+                    }
+                    scanlines[j] = row.str();
+                }
+            }
+        } else {
+            std::cerr << "Warning: --denoise: " << denoise_error << " - rendering without it.\n";
+        }
     }
 
     bool wrote_ok = true;

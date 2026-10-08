@@ -492,6 +492,12 @@ static int check_render_mode_options(const LaunchArgs &args, const RenderSetup &
         std::cerr << "Warning: --denoise has no effect under --sppm --gpu "
                      "(GPU SPPM does not support the OptiX AI denoiser) - ignoring.\n";
     }
+    // On the CPU only the default path tracer denoises (Open Image Denoise, if its library is installed - docs/DENOISING.md).
+    if (args.denoise && !use_gpu && (use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
+        std::cerr << "Warning: --denoise has no effect under --bdpt/--mlt/--sppm/"
+                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
+                     "(only the default path tracer denoises) - ignoring.\n";
+    }
     // --denoise-blend only means anything alongside an actual --denoise
     // pass - same "flag has no effect without its own gate" shape as
     // --maxcomponentvalue's checkbox/spinbox pairing (GUI) has, just for

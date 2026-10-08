@@ -18,7 +18,15 @@
 #include <string>
 #include <vector>
 
-#if !defined(_WIN32)
+#if defined(_WIN32)
+#ifndef NOMINMAX
+#define NOMINMAX
+#endif
+#ifndef WIN32_LEAN_AND_MEAN
+#define WIN32_LEAN_AND_MEAN
+#endif
+#include <windows.h>
+#else
 #include <dlfcn.h>
 #endif
 
@@ -96,6 +104,7 @@ inline std::vector<std::string> candidates() {
 		if (dir.empty()) return;
 		out.push_back(dir + "/" + name);
 		out.push_back(dir + "/lib/" + name);
+		out.push_back(dir + "/bin/" + name);   // a Windows release keeps its DLLs in bin/
 	};
 	addDir(envValue("RT_OIDN_DIR"));
 	if (const std::string u = envValue("RAY_TRACER_USER_ASSETS"); !u.empty()) addDir(u + "/denoiser");
@@ -104,19 +113,49 @@ inline std::vector<std::string> candidates() {
 	return out;
 }
 
+// Loading a shared library and looking up its entry points: dlopen/dlsym on macOS and Linux, LoadLibrary/GetProcAddress on Windows (where the library's own
+// folder is searched for the files it needs, tbb.dll among them).
+inline void* openLibrary(const std::string& path, std::string& why) {
+#if defined(_WIN32)
+	std::string native = path;
+	for (char& c : native)
+		if (c == '/') c = '\\';
+	void* h = reinterpret_cast<void*>(LoadLibraryExA(native.c_str(), nullptr, LOAD_WITH_ALTERED_SEARCH_PATH));
+	if (!h) why = "Windows error " + std::to_string(GetLastError());
+	return h;
+#else
+	void* h = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+	if (!h) {
+		const char* e = dlerror();
+		why = e ? e : "unknown error";
+	}
+	return h;
+#endif
+}
+inline void* librarySymbol(void* handle, const char* name) {
+#if defined(_WIN32)
+	return reinterpret_cast<void*>(GetProcAddress(reinterpret_cast<HMODULE>(handle), name));
+#else
+	return dlsym(handle, name);
+#endif
+}
+inline void closeLibrary(void* handle) {
+#if defined(_WIN32)
+	FreeLibrary(reinterpret_cast<HMODULE>(handle));
+#else
+	dlclose(handle);
+#endif
+}
+
 inline Api& api() {
 	static Api a = []() {
 		Api x;
-#if defined(_WIN32)
-		x.error = "the denoiser is not wired up on Windows (the OptiX denoiser is used there)";
-		return x;
-#else
 		for (const std::string& path : candidates()) {
 			if (!fileExists(path)) continue;
-			x.handle = dlopen(path.c_str(), RTLD_NOW | RTLD_LOCAL);
+			std::string why;
+			x.handle = openLibrary(path, why);
 			if (!x.handle) {
-				const char* why = dlerror();
-				x.error = std::string("could not load ") + path + ": " + (why ? why : "unknown error");
+				x.error = std::string("could not load ") + path + ": " + why;
 				continue;
 			}
 			x.path = path;
@@ -126,7 +165,7 @@ inline Api& api() {
 			if (x.error.empty()) x.error = std::string("Open Image Denoise (") + libraryName() + ") was not found; install it from the Diagnostics tab or set RT_OIDN_DIR";
 			return x;
 		}
-		auto sym = [&](const char* n) { return dlsym(x.handle, n); };
+		auto sym = [&](const char* n) { return librarySymbol(x.handle, n); };
 #define RT_OIDN_BIND(field, name) *reinterpret_cast<void**>(&x.field) = sym(name)
 		RT_OIDN_BIND(newDevice, "oidnNewDevice");
 		RT_OIDN_BIND(commitDevice, "oidnCommitDevice");
@@ -147,11 +186,10 @@ inline Api& api() {
 		if (!x.newDevice || !x.commitDevice || !x.getDeviceError || !x.releaseDevice || !x.newBuffer || !x.writeBuffer || !x.readBuffer || !x.releaseBuffer ||
 		    !x.newFilter || !x.setFilterImage || !x.setFilterBool || !x.setFilterInt || !x.commitFilter || !x.executeFilter || !x.releaseFilter) {
 			x.error = std::string(x.path) + " is not an Open Image Denoise 2.x library (an entry point is missing)";
-			dlclose(x.handle);
+			closeLibrary(x.handle);
 			x.handle = nullptr;
 		}
 		return x;
-#endif
 	}();
 	return a;
 }
