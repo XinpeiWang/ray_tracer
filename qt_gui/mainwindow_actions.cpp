@@ -3,6 +3,7 @@
 
 #include <QApplication>
 #include <QDesktopServices>
+#include "app_log.h"
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -130,6 +131,16 @@ void MainWindow::createActions() {
 	m_actAbout->setStatusTip(tr("Version and project information"));
 	connect(m_actAbout, &QAction::triggered, this, &MainWindow::showAboutDialog);
 
+	// The program's own log file (app_log.h): what it did, in order, kept after it closes - what to send with a bug report.
+	QAction *actShowLogs = new QAction(tr("Show &Log Folder"), this);
+	actShowLogs->setStatusTip(tr("Open the folder holding the program's log file (send it with a bug report)"));
+	connect(actShowLogs, &QAction::triggered, this, []() {
+		const QString folder = AppLog::folderPath();
+		if (folder.isEmpty()) return;
+		QDesktopServices::openUrl(QUrl::fromLocalFile(folder));
+	});
+	m_actShowLogs = actShowLogs;
+
 	m_actAboutQt = new QAction(tr("About &Qt"), this);
 	connect(m_actAboutQt, &QAction::triggered, qApp, &QApplication::aboutQt);
 
@@ -198,6 +209,7 @@ void MainWindow::createMenus() {
 
 	QMenu *helpMenu = menuBar()->addMenu(tr("&Help"));
 	helpMenu->addAction(m_actAbout);
+	helpMenu->addAction(m_actShowLogs);
 	helpMenu->addAction(m_actAboutQt);
 }
 

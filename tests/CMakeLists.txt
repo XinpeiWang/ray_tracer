@@ -43,6 +43,7 @@ add_executable(unit_tests
     unit/photo_helper_report_tests.cpp
     unit/scene_view_math_tests.cpp
     unit/mesh_preview_tests.cpp
+    unit/log_format_tests.cpp
     unit/light_sampler_resolution_tests.cpp
     unit/mtl_material_tests.cpp
     unit/obj_negative_indices_tests.cpp

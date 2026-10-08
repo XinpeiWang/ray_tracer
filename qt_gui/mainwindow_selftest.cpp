@@ -4,9 +4,11 @@
 // of its own window (never the screen) and a text log, and exits with 0 on success, 1 on failure, 2 if Live Preview is not
 // available in this build.
 #include "mainwindow.h"
+#include "app_log.h"
 #include "../src/shared/pbrt_asset_check.h"
 
 #include <QApplication>
+#include <QCheckBox>
 #include <QComboBox>
 #include <QFile>
 #include <QFileInfo>
@@ -147,35 +149,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		check(std::fabs(ball1.x * 4 - std::round(ball1.x * 4)) < 1e-9, "the new position is on the grid");
 		check(sb->undo() && sb->document().objects[1].position.x == ball0.x && sb->document().objects[1].position.z == ball0.z, "one undo puts it back");
 		check(sb->redo(), "redo moves it again");
-		// Every ready-made shape can be added (and drawn in the layout and 3D views), leaves the scene without problems, and is one undo step each.
-		{
-			const size_t before = sb->document().objects.size();
-			size_t added = 0;
-			for (scene_doc::ShapeKind k : scene_doc::allShapeKinds()) {
-				if (k == scene_doc::ShapeKind::Mesh) continue;   // needs a file
-				sb->addObject(k);
-				++added;
-			}
-			check(sb->document().objects.size() == before + added, QString("added all %1 ready-made shapes").arg(added));
-			check(sb->problemsText().isEmpty(), "the ready-made shapes give no problems or notes");
-			// And every prop (several objects in one step, a second copy named apart).
-			const size_t withShapes = sb->document().objects.size();
-			for (scene_doc::PropKind k : scene_doc::allPropKinds()) sb->addProp(k);
-			size_t propObjects = 0;
-			for (scene_doc::PropKind k : scene_doc::allPropKinds()) propObjects += scene_doc::makeProp(k).size();
-			check(sb->document().objects.size() == withShapes + propObjects, QString("added all %1 props (%2 objects)").arg(scene_doc::allPropKinds().size()).arg(propObjects));
-			sb->addProp(scene_doc::PropKind::Table);
-			check(sb->document().objects.back().name.find("Table leg") != std::string::npos && sb->document().objects.back().name.back() == '2', "a second table is named apart (\"... 2\")");
-			check(sb->problemsText().isEmpty(), "the props give no problems or notes");
-			bool propsUndone = true;
-			for (size_t n = 0; n <= scene_doc::allPropKinds().size(); ++n) propsUndone = sb->undo() && propsUndone;
-			check(propsUndone && sb->document().objects.size() == withShapes, "each prop is one undo step");
-			bool allUndone = true;
-			for (size_t n = 0; n < added; ++n) allUndone = sb->undo() && allUndone;
-			check(allUndone && sb->document().objects.size() == before, "undo removes them one by one");
-			for (size_t n = 0; n < added; ++n) sb->redo();
-			for (size_t n = 0; n < added; ++n) sb->undo();
-		}
+		selfTestShapes(sb, check);
 		sb->selectObject(1);
 		check(sb->problemsText().isEmpty(), "the scene has no problems or notes");
 		const QString pbrt = outPrefix + "_builder.pbrt";
@@ -185,6 +159,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		sb->newScene();
 		check(sb->openFile(pbrt, &err) && scene_doc::toJson(sb->document()) == before, "re-opened the saved file unchanged " + err);
 		selfTestSceneList(sb, check);
+		selfTestLog(sb, check);
 		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
 		sb->newScene();
 		sb->selectObject(2);

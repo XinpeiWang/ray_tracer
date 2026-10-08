@@ -9,6 +9,8 @@
 #include <QSettings>
 #include <QStandardPaths>
 #include "settings_keys.h"
+#include "app_log.h"
+#include "ui_logger.h"
 
 int main(int argc, char *argv[]) {
 	QApplication app(argc, argv);
@@ -34,6 +36,14 @@ int main(int argc, char *argv[]) {
 	app.setApplicationName("Ray Tracer");
 	app.setApplicationVersion("2.0");
 	app.setOrganizationName("Ray Tracer Project");
+
+	// The log file (app_log.h) and the user-operation logger (ui_logger.h): started once the application's name and version are set, before any window exists.
+	AppLog::init();
+	UiLogger::install();
+	{
+		QStringList arguments = QCoreApplication::arguments();
+		if (arguments.size() > 1) AppLog::info(QStringLiteral("session"), QStringLiteral("arguments: %1").arg(arguments.mid(1).join(QLatin1Char(' '))));
+	}
 
 	// Where files the GUI downloads at run time are kept, and where the renderer looks for them after the folder next to
 	// the application (see pbrt_asset_check.h). Per-user, so it works when the app itself is read-only (a mounted disk
@@ -86,6 +96,7 @@ int main(int argc, char *argv[]) {
 		}
 	}
 
+	AppLog::info(QStringLiteral("session"), QStringLiteral("language: %1").arg(languageCode));
 	MainWindow window(nullptr, languageCode);
 	window.show();
 

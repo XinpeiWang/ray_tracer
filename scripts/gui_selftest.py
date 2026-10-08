@@ -119,6 +119,9 @@ def run_mode(exe, mode, wait_s, out, plugins, fake_home, gpu=False):
         "RT_GUI_SELFTEST": mode, "RT_GUI_SELFTEST_OUT": prefix,
         "HOME": fake_home, "CFFIXED_USER_HOME": fake_home, "USERPROFILE": fake_home,
         "APPDATA": os.path.join(fake_home, "AppData", "Roaming"), "LOCALAPPDATA": os.path.join(fake_home, "AppData", "Local"),
+        # Qt's per-user folders ignore HOME on a Mac (they come from the system), so say where the program's own per-user folders are: otherwise the
+        # builder mode's "Add to scene list" put test scenes into the real user's My Scenes.
+        "RAY_TRACER_USER_ASSETS": os.path.join(fake_home, "user_assets"),
     })
     if gpu:
         env["RT_GUI_SELFTEST_GPU"] = "1"   # the builder mode also previews through "Use the GPU"

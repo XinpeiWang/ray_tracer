@@ -160,6 +160,11 @@ private:
 	bool m_loading = false;          // true while the inspector is being filled, so setting a value does not count as an edit
 	QStringList m_undo, m_redo;
 	QString m_lastEditKey;
+	// What changed since the last undo step began, for the log file: one line per step ("object 'Ball': position 0,1,0 -> 2,1,0"), not one per drag movement.
+	scene_doc::Document m_logBase;
+	bool m_logPending = false;
+	QTimer *m_logTimer = nullptr;
+	void flushEditLog();
 	QElapsedTimer m_editClock;
 	int m_editCounter = 0;
 	bool m_autosaveEnabled = true;
