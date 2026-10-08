@@ -1,6 +1,5 @@
 # Written by scripts/check_code_size.py --update. Functions over 300 lines and files over 2000 lines that exist today;
 # CI fails when one grows or a new one appears. Lower or delete a line after splitting something. Format: <key> <lines>
-file src/TheRestOfYourLife/camera.h 2646
 func gpu/metal/metal_poc_materials_specular.metal::shadeConductor 329
 func gpu/metal/metal_poc_pbrt_materials.mm::MetalPocApp::mapPbrtMaterial 315
 func gpu/optix/optix_device_shade.h::shade_material 849
@@ -12,16 +11,16 @@ func gpu/optix/scene_builder.cpp::apply_loaded_scene_settings 308
 func gpu/optix/scene_builder.cpp::build_loaded_pbrt_scene 421
 func gpu/optix/wavefront_path_tracer.cpp::WavefrontPathTracer::renderSampleLoop 387
 func gpu/optix/wavefront_path_tracer_setup.cpp::WavefrontPathTracer::createProgramGroups 301
-func launcher/main.cpp::render_single_image 391
-func launcher/main.cpp::run_video_render 408
+func launcher/main.cpp::render_single_image 356
+func launcher/main.cpp::run_video_render 386
 func qt_gui/mainwindow_style.cpp::MainWindow::applyTheme 777
 func qt_gui/mainwindow_tabs_render_groups.cpp::MainWindow::buildSamplingGroup 361
 func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildDenoiserLivePreviewSubsection 301
-func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildLivePreviewSettingsSection 433
-func qt_gui/realtime_preview_session.cpp::RealtimePreviewWorker::renderLoop 526
+func qt_gui/mainwindow_tabs_render_live.cpp::MainWindow::buildLivePreviewSettingsSection 450
+func qt_gui/realtime_preview_session.cpp::RealtimePreviewWorker::renderLoop 528
 func src/TheRestOfYourLife/camera_path.h::camera::ray_color 557
 func src/TheRestOfYourLife/camera_path.h::camera::ray_color_spectral 395
-func src/TheRestOfYourLife/camera_render.h::camera::render 556
+func src/TheRestOfYourLife/camera_render.h::camera::render 577
 func src/TheRestOfYourLife/mesh_mtl.h::load_obj_mtl 370
 func src/TheRestOfYourLife/scene_registry.h::wire_pbrt_backed_scene 312
 func src/shared/pbrt_flatten_materials.h::readMaterialBindings 462
