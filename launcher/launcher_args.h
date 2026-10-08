@@ -397,6 +397,703 @@ struct LaunchArgs {
 	bool   gpu_flag_explicit = false;
 };
 
+// What a group of flag handlers made of one argument.
+enum class FlagResult { NotMine, Handled, Error };
+
+// Backend, output, diagnose, denoise and stats flags: returns whether it handled `arg` (advancing `i` past a value it consumed).
+inline FlagResult handle_basic_flag(const std::string& arg, int argc, char** argv, int& i, std::set<int>& consumed_args, LaunchArgs& out) {
+	if (arg == render_flags::kCpu || arg == "-cpu") {
+		out.force_cpu = true;
+		out.use_gpu   = false;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kGpu || arg == "-gpu") {
+		out.use_gpu   = true;
+		out.force_cpu = false;
+		out.gpu_flag_explicit = true;
+		consumed_args.insert(i);
+	} else if ((arg == render_flags::kOutput || arg == "-o") && i + 1 < argc) {
+		out.custom_output_path = argv[i + 1];
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else if (arg == render_flags::kDiagnose) {
+		out.diagnose = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kWavefront) {
+		out.use_wavefront = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kOptixValidate) {
+		out.optix_validate = true;
+		consumed_args.insert(i);
+	} else if (arg == "--isolate-pbrt-lighting") {
+		out.isolate_pbrt_lighting = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kDenoise) {
+		out.denoise = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kDenoiseBlend && i + 1 < argc) {
+		parseDoubleFlag(argv, i, consumed_args, out.denoise_blend,
+						"Invalid --denoise-blend value, using default (0.0)\n", true, 0.0,
+						[](double v) {
+							if (v < 0.0 || v > 1.0) {
+								std::cerr << "Warning: --denoise-blend " << v
+										  << " is outside [0,1] (0 = fully denoised, 1 = original noisy "
+											 "image) - using default (0.0)\n";
+								return 0.0;
+							}
+							return v;
+						});
+	} else if (arg == render_flags::kStats) {
+		out.stats = true;
+		consumed_args.insert(i);
+	} else {
+		return FlagResult::NotMine;
+	}
+	return FlagResult::Handled;
+}
+
+// Sampling, exposure, accelerator, crop, seed, tone map and other quality flags: returns whether it handled `arg` (advancing `i` past a value it consumed).
+inline FlagResult handle_quality_flag(const std::string& arg, int argc, char** argv, int& i, std::set<int>& consumed_args, LaunchArgs& out) {
+	if (arg == render_flags::kExposure && i + 1 < argc) {
+		// exposure <= 0 is a valid double but not a valid exposure -
+		// linear_to_srgb clamps non-positive input to 0, so this would
+		// otherwise silently render solid black with nothing telling
+		// the user their value was nonsensical.
+		parseDoubleFlag(argv, i, consumed_args, out.exposure,
+						"Invalid --exposure value, using default\n", false, 0.0,
+						[](double v) {
+							if (v <= 0.0) {
+								std::cerr << "Warning: --exposure " << v
+										  << " is <= 0, image will render solid black\n";
+							}
+							return v;
+						});
+	} else if (arg == render_flags::kSampler && i + 1 < argc) {
+		static const std::set<std::string> kValidSamplers = {
+			"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton", "independent"};
+		parseEnumFlag(argv[i + 1], kValidSamplers, out.sampler, "--sampler",
+					  "using default (sobol). Valid: sobol, zsobol, paddedsobol, stratified, "
+					  "pmj02bn, halton, independent");
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else if (arg == render_flags::kAovs) {
+		out.aovs = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kAdaptive) {
+		out.adaptive_sampling = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kAdaptiveThreshold && i + 1 < argc) {
+		// On a parse failure, still reset to the default the error
+		// message claims (a prior --adaptive-threshold's value must not
+		// survive this one failing to parse) - resetOnFailure=true.
+		parseDoubleFlag(argv, i, consumed_args, out.adaptive_threshold,
+						"Invalid --adaptive-threshold value, using default (0.01)\n", true, 0.01,
+						[](double v) {
+							if (v <= 0.0) {
+								std::cerr << "Warning: --adaptive-threshold " << v
+										  << " is <= 0, every pixel would need a perfectly zero-variance "
+											 "estimate to ever stop early - using default (0.01)\n";
+								return 0.01;
+							}
+							return v;
+						});
+	} else if (arg == render_flags::kTimeLimit && i + 1 < argc) {
+		parseDoubleFlag(argv, i, consumed_args, out.time_limit_seconds,
+						"Invalid --time-limit value, disabling the time limit\n", true, 0.0,
+						[](double v) {
+							if (v <= 0.0) {
+								std::cerr << "Warning: --time-limit " << v
+										  << " is <= 0, disabling the time limit (renders until every "
+											 "scanline is done)\n";
+								return 0.0;
+							}
+							return v;
+						});
+	} else if (arg == "--lightsampler" && i + 1 < argc) {
+		// "auto" isn't a real light-sampler implementation - it means
+		// "use whatever the scene's own Integrator \"string lightsampler\"
+		// parameter requested" (falling back to bvh if it made no
+		// request), resolved per-scene in cpu_render_main() once the
+		// scene's own recommendation is known. See that resolution's own
+		// comment for why this is opt-in rather than the default: an
+		// explicit --lightsampler (or none at all) still always wins,
+		// matching maxdepth/samplerType's own "CLI decides, scene's
+		// request is only advisory" precedent - "auto" is what lets a
+		// CLI user opt into the scene's request instead, the same
+		// convenience the GUI's "Apply recommended settings" button
+		// already gives GUI users.
+		static const std::set<std::string> kValidLightSamplers = {"uniform", "power", "bvh", "auto"};
+		parseEnumFlag(argv[i + 1], kValidLightSamplers, out.lightsampler, "--lightsampler",
+					  "using default (bvh). Valid: uniform, power, bvh, auto");
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else if (arg == render_flags::kAccelerator && i + 1 < argc) {
+		static const std::set<std::string> kValidAccelerators = {"bvh", "kdtree"};
+		parseEnumFlag(argv[i + 1], kValidAccelerators, out.accelerator, "--accelerator",
+					  "leaving the scene's own Accelerator directive (or its bvh default) "
+					  "untouched. Valid: bvh, kdtree");
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else if (arg == render_flags::kSplitMethod && i + 1 < argc) {
+		static const std::set<std::string> kValidSplitMethods = {"sah", "middle", "equal", "hlbvh"};
+		parseEnumFlag(argv[i + 1], kValidSplitMethods, out.splitmethod, "--splitmethod",
+					  "leaving the scene's own splitmethod (or its sah default) untouched. "
+					  "Valid: sah, middle, equal, hlbvh");
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else if (arg == render_flags::kRegularize) {
+		out.regularize = true;
+		consumed_args.insert(i);
+	} else if (arg == render_flags::kMaxComponentValue && i + 1 < argc) {
+		parseDoubleFlag(argv, i, consumed_args, out.max_component_value,
+						"Invalid --maxcomponentvalue value, using default\n", false, 0.0,
+						[](double v) {
+							if (v <= 0.0) {
+								std::cerr << "Warning: --maxcomponentvalue " << v
+										  << " is <= 0, every sample will clamp to black\n";
+							}
+							return v;
+						});
+	} else if (arg == render_flags::kAperture && i + 1 < argc) {
+		parseDoubleFlag(argv, i, consumed_args, out.aperture_override,
+						"Invalid --aperture value, ignoring\n", false, -1.0,
+						[](double v) {
+							if (v < 0.0) {
+								std::cerr << "Warning: --aperture " << v
+										  << " is negative (a lens diameter can't be), ignoring\n";
+								return -1.0;
+							}
+							return v;
+						});
+	} else if (arg == render_flags::kFocusDistance && i + 1 < argc) {
+		parseDoubleFlag(argv, i, consumed_args, out.focus_distance_override,
+						"Invalid --focus-distance value, ignoring\n", false, -1.0,
+						[](double v) {
+							if (v <= 0.0) {
+								std::cerr << "Warning: --focus-distance " << v
+										  << " is <= 0, ignoring\n";
+								return -1.0;
+							}
+							return v;
+						});
+	} else if (arg == render_flags::kCrop && i + 4 < argc) {
+		try {
+			const double x0 = std::stod(argv[i + 1]);
+			const double y0 = std::stod(argv[i + 2]);
+			const double x1 = std::stod(argv[i + 3]);
+			const double y1 = std::stod(argv[i + 4]);
+			if (x0 < 0.0 || y0 < 0.0 || x1 > 1.0 || y1 > 1.0 || x0 >= x1 || y0 >= y1) {
+				std::cerr << "Invalid --crop " << x0 << " " << y0 << " " << x1 << " " << y1
+						  << " (need 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1), using full frame\n";
+			} else {
+				out.crop_x0 = x0;
+				out.crop_y0 = y0;
+				out.crop_x1 = x1;
+				out.crop_y1 = y1;
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			consumed_args.insert(i + 2);
+			consumed_args.insert(i + 3);
+			consumed_args.insert(i + 4);
+			i += 4;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --crop value, using full frame\n";
+		}
+	} else if (arg == render_flags::kSeed && i + 1 < argc) {
+		try {
+			out.seed = std::stoll(argv[i + 1]);
+			// Upper bound matches every actual consumer of this value:
+			// GpuCameraParams::userSeed (gpu/optix/optix_types.h) is a
+			// 32-bit int, and camera_t's alternate-sampler seeding
+			// (camera.h's alt_sampler_seed) also narrows to int - a
+			// seed above INT32_MAX would otherwise silently wrap to a
+			// negative value there, which then reads as "no seed
+			// requested" and gets silently dropped instead of used
+			// (the bug this bound exists to prevent). The GUI's own
+			// spinbox (mainwindow_tabs_render.cpp) already caps input
+			// at this same 2147483647, so this just brings the raw CLI
+			// path in line with it.
+			if (out.seed < 0 || out.seed > 2147483647LL) {
+				std::cerr << "Invalid --seed " << out.seed << " (must be in [0, 2147483647]), ignoring\n";
+				out.seed = -1;
+			}
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --seed value, ignoring\n";
+		}
+	} else if (arg == render_flags::kTonemap && i + 1 < argc) {
+		std::string name = argv[i + 1];
+		std::transform(name.begin(), name.end(), name.begin(),
+						[](unsigned char c) { return std::tolower(c); });
+		static const std::set<std::string> kValidTonemaps = {"aces", "reinhard", "none"};
+		if (kValidTonemaps.count(name)) {
+			out.tonemap = name;
+		} else {
+			std::cerr << "Invalid --tonemap \"" << argv[i + 1] << "\", using default (aces). "
+						 "Valid: aces, reinhard, none\n";
+		}
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else if (arg == render_flags::kSpectral) {
+		out.spectral = true;
+		consumed_args.insert(i);
+	} else {
+		return FlagResult::NotMine;
+	}
+	return FlagResult::Handled;
+}
+
+// The integrator choices and their options (--sppm, --bdpt, --mlt, --ao, ...): returns whether it handled `arg` (advancing `i` past a value it consumed).
+inline FlagResult handle_integrator_flag(const std::string& arg, int argc, char** argv, int& i, std::set<int>& consumed_args, LaunchArgs& out) {
+	if (arg == "--sppm") {
+		out.use_sppm = true;
+		consumed_args.insert(i);
+	} else if (arg == "--sppm-iterations" && i + 1 < argc) {
+		try {
+			out.sppm_iterations = std::stoi(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --sppm-iterations value, using default\n";
+		}
+	} else if (arg == "--sppm-photons" && i + 1 < argc) {
+		try {
+			out.sppm_photons = std::stoi(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --sppm-photons value, using default\n";
+		}
+	} else if (arg == "--bdpt") {
+		out.use_bdpt = true;
+		consumed_args.insert(i);
+	} else if (arg == "--bdpt-max-depth" && i + 1 < argc) {
+		try {
+			out.bdpt_max_depth = std::stoi(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --bdpt-max-depth value, using default\n";
+		}
+	} else if (arg == "--mlt") {
+		out.use_mlt = true;
+		consumed_args.insert(i);
+	} else if (arg == "--mlt-bootstrap" && i + 1 < argc) {
+		try {
+			out.mlt_bootstrap = std::stoi(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --mlt-bootstrap value, using default\n";
+		}
+	} else if (arg == "--mlt-mutations" && i + 1 < argc) {
+		try {
+			out.mlt_mutations = std::stoll(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --mlt-mutations value, using default\n";
+		}
+	} else if (arg == "--mlt-max-depth" && i + 1 < argc) {
+		try {
+			out.mlt_max_depth = std::stoi(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --mlt-max-depth value, using default\n";
+		}
+	} else if (arg == "--randomwalk") {
+		out.use_randomwalk = true;
+		consumed_args.insert(i);
+	} else if (arg == "--ao") {
+		out.use_ao = true;
+		consumed_args.insert(i);
+	} else if (arg == "--ao-max-dist" && i + 1 < argc) {
+		try {
+			out.ao_max_dist = std::stod(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --ao-max-dist value, using default\n";
+		}
+	} else if (arg == "--ao-uniform") {
+		out.ao_cosine = false;
+		consumed_args.insert(i);
+	} else if (arg == "--ao-illum-scale" && i + 1 < argc) {
+		try {
+			out.ao_illum_scale = std::stod(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --ao-illum-scale value, using default\n";
+		}
+	} else if (arg == "--ao-illum-rgb" && i + 3 < argc) {
+		try {
+			out.ao_illum_r = std::stod(argv[i + 1]);
+			out.ao_illum_g = std::stod(argv[i + 2]);
+			out.ao_illum_b = std::stod(argv[i + 3]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			consumed_args.insert(i + 2);
+			consumed_args.insert(i + 3);
+			i += 3;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --ao-illum-rgb value, using default\n";
+		}
+	} else if (arg == "--simplepath") {
+		out.use_simplepath = true;
+		consumed_args.insert(i);
+	} else if (arg == "--simplepath-no-lights") {
+		out.simplepath_sample_lights = false;
+		consumed_args.insert(i);
+	} else if (arg == "--simplepath-no-bsdf") {
+		out.simplepath_sample_bsdf = false;
+		consumed_args.insert(i);
+	} else if (arg == "--simplevolpath") {
+		out.use_simplevolpath = true;
+		consumed_args.insert(i);
+	} else if (arg == "--lightpath") {
+		out.use_lightpath = true;
+		consumed_args.insert(i);
+	} else {
+		return FlagResult::NotMine;
+	}
+	return FlagResult::Handled;
+}
+
+// Image height and the video flags: returns whether it handled `arg` (advancing `i` past a value it consumed).
+inline FlagResult handle_image_and_video_flag(const std::string& arg, int argc, char** argv, int& i, std::set<int>& consumed_args, LaunchArgs& out, int& explicit_height) {
+	if (arg == "--height" && i + 1 < argc) {
+		try {
+			const int h = std::stoi(argv[i + 1]);
+			if (h > 0) explicit_height = h;
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid --height, using the width\n";
+		}
+	} else if (arg == render_flags::kVideo) {
+		out.video_mode = true;
+		consumed_args.insert(i);
+	} else if ((arg == render_flags::kFrames || arg == "-f") && i + 1 < argc) {
+		try {
+			out.video_frames = std::stoi(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid frame count, using default\n";
+		}
+	} else if (arg == render_flags::kFps && i + 1 < argc) {
+		try {
+			out.video_fps = std::stoi(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid FPS, using default\n";
+		}
+	} else if (arg == render_flags::kSpeed && i + 1 < argc) {
+		try {
+			out.video_speed = std::stod(argv[i + 1]);
+			consumed_args.insert(i);
+			consumed_args.insert(i + 1);
+			++i;
+		} catch (const std::exception&) {
+			std::cerr << "Invalid speed, using default\n";
+		}
+	} else if ((arg == render_flags::kCameraPath || arg == "-p") && i + 1 < argc) {
+		// camera_path.h's own path_type dispatch silently falls back to
+		// "orbit" for anything it doesn't recognize (with no warning of
+		// its own - and it runs once per rendered frame, so warning
+		// there would spam rather than inform); validating once here,
+		// the same way --sampler/--accelerator/--splitmethod already
+		// do, catches a typo'd/stale preset id at parse time instead.
+		static const std::set<std::string> kValidCameraPaths = {
+			"orbit", "linear", "figure8", "spiral", "tour", "showcase"};
+		parseEnumFlag(argv[i + 1], kValidCameraPaths, out.camera_path, "--camera-path",
+					  "using default (orbit). Valid: orbit, linear, figure8, spiral, tour, showcase");
+		out.camera_path_explicit = true;
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else if (arg == "--video-preset" && i + 1 < argc) {
+		// Sets video_mode plus all five video_preset::VideoPreset fields
+		// in one shot - see src/shared/video_preset.h's own comment for
+		// why this lives there rather than being duplicated per-CLI/GUI.
+		// Applied immediately, same as every other flag here, so a flag
+		// placed AFTER --video-preset on the command line overrides just
+		// that one field - e.g. `--video-preset cornell-orbit --fps 60`
+		// keeps the preset's scene/path/frames/speed but renders at 60fps.
+		if (const video_preset::VideoPreset* preset = video_preset::find(argv[i + 1])) {
+			out.video_mode = true;
+			out.scene_id = preset->scene_id;
+			out.camera_path = preset->camera_path;
+			out.camera_path_explicit = true;
+			out.video_frames = preset->frames;
+			out.video_fps = preset->fps;
+			out.video_speed = preset->speed;
+		} else {
+			std::cerr << "Invalid --video-preset \"" << argv[i + 1] << "\" - valid presets:\n";
+			for (const video_preset::VideoPreset& p : video_preset::kAll)
+				std::cerr << "  " << p.id << " / " << p.key << " - " << p.name << "\n";
+			return FlagResult::Error;
+		}
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
+	} else {
+		return FlagResult::NotMine;
+	}
+	return FlagResult::Handled;
+}
+
+// The --help text.
+inline void print_launch_help(const char* program) {
+		std::cout << "Usage: " << program
+				  << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n"
+				  << "  " << render_flags::kCpu << "      : Force CPU rendering\n"
+				  << "  " << render_flags::kGpu << "      : Force GPU rendering (default)\n"
+				  << "  " << render_flags::kDiagnose << " : Print a system-compatibility report (OS/CPU/RAM, GPU/CUDA/\n"
+				  << "               OptiX, disk space, scene asset availability) instead of\n"
+				  << "               rendering, and exit. Combine with --output PATH to also write\n"
+				  << "               the report to a file.\n"
+				  << "  " << render_flags::kWavefront << ": Use the wavefront (queue-based) GPU path tracer instead of\n"
+				  << "               the default recursive one. GPU-only, ignored under --cpu/--sppm.\n"
+				  << "  " << render_flags::kOptixValidate << ": Enable OptiX validation mode (extra device-side checks,\n"
+				  << "               real per-launch cost - for debugging, not routine use).\n"
+				  << "               GPU-only, ignored under --cpu/--sppm.\n"
+				  << "  --isolate-pbrt-lighting: Skip the hardcoded demo room's own lights when\n"
+				  << "               rendering a loaded pbrt scene - for isolating that scene's\n"
+				  << "               OWN lighting. Metal now always does this for a pbrt scene, so\n"
+				  << "               this flag is accepted but no longer has any effect.\n"
+				  << "  " << render_flags::kDenoise << "  : Run the OptiX AI denoiser on the finished render, guided by\n"
+				  << "               albedo + normal AOV buffers. GPU-only, both backends\n"
+				  << "               (recursive and wavefront each have their own denoiser);\n"
+				  << "               ignored under --cpu/--sppm. On a Mac the Metal renderer uses\n"
+				  << "               Intel Open Image Denoise instead (colour only), if its library\n"
+				  << "               is installed (docs/DENOISING.md; the GUI offers to download it);\n"
+				  << "               without it the flag warns and the render goes on undenoised.\n"
+				  << "  " << render_flags::kDenoiseBlend << " VALUE: Blend between the noisy input and the fully\n"
+				  << "               denoised output (default 0.0 = 100% denoised, 1.0 = original\n"
+				  << "               noisy image unchanged). Full-strength denoising can over-smooth\n"
+				  << "               fine texture/grain; lower this to preserve more of it. Blends in\n"
+				  << "               the linear, pre-tonemap HDR color, not the final tonemapped\n"
+				  << "               image. Only consulted when " << render_flags::kDenoise << " is passed. Same scope as " << render_flags::kDenoise << " above.\n"
+				  << "  " << render_flags::kStats << "    : Print a small end-of-render stats block (rays cast, bounces,\n"
+				  << "               shadow rays, samples/sec) after the normal RENDER TIME output.\n"
+				  << "               Observation-only - never changes the rendered image.\n"
+				  << "  " << render_flags::kExposure << " VALUE: Flat multiplier on linear color before tone-mapping\n"
+				  << "               (default 1.0 = no-op). CPU and GPU default path tracer only.\n"
+				  << "               E.g. 0.5 = darker, 2.0 = brighter. No effect under\n"
+				  << "               --bdpt/--mlt/--sppm (warns).\n"
+				  << "  " << render_flags::kSampler << " NAME: Which ported pbrt-v4 sampler drives random decisions\n"
+				  << "               (default sobol, this project's pre-existing behavior).\n"
+				  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton,\n"
+				  << "               independent.\n"
+				  << "               CPU default path tracer only.\n"
+				  << "  " << render_flags::kAovs << "     : Also write the render passes - albedo.R/G/B, normal.X/Y/Z (world, facing the\n"
+				  << "               camera), depth.Z (distance to the first hit), uv.U/V and A (coverage) -\n"
+				  << "               from first-hit camera rays, for compositing. Into the same file for\n"
+				  << "               an .exr output (a multilayer EXR with the image's R/G/B), else into\n"
+				  << "               <name>.aovs.exr next to the image. Any backend; single images only.\n"
+				  << "  " << render_flags::kAdaptive << " : Stop sampling a pixel once it's converged instead of\n"
+				  << "               always spending the full samples-per-pixel budget on every\n"
+				  << "               pixel - samples_per_pixel becomes a ceiling, not a fixed count.\n"
+				  << "               Off by default. CPU default path tracer only.\n"
+				  << "  " << render_flags::kAdaptiveThreshold << " VALUE: Target relative noise level for\n"
+				  << "               " << render_flags::kAdaptive << " to consider a pixel converged (default 0.01,\n"
+				  << "               matching Blender Cycles' own default). Lower = cleaner but\n"
+				  << "               slower; only consulted when " << render_flags::kAdaptive << " is passed.\n"
+				  << "  " << render_flags::kTimeLimit << " SECONDS: Stop rendering once this many seconds have\n"
+				  << "               elapsed, instead of always running until every scanline is\n"
+				  << "               done - useful for previews or a fixed render-farm time budget.\n"
+				  << "               Scanline-granular: whatever rows were already in flight at the\n"
+				  << "               deadline finish normally; any never-started row is written\n"
+				  << "               black rather than left out. Under --video, this is a budget for\n"
+				  << "               the WHOLE video, not each frame - later frames get whatever's\n"
+				  << "               left of it, and rendering stops (skipping any remaining frames)\n"
+				  << "               once it runs out. Off by default (no limit). CPU default path\n"
+				  << "               tracer only.\n"
+				  << "  --lightsampler NAME: pbrt-v4 Integrator \"string lightsampler\" - which light\n"
+				  << "               sampler picks the next-event-estimation light to sample\n"
+				  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"
+				  << "               power, bvh, auto. Affects convergence/variance, not the\n"
+				  << "               converged image. \"auto\" uses whatever the loaded scene's own\n"
+				  << "               Integrator \"string lightsampler\" parameter requested (bvh if\n"
+				  << "               it made no request) instead of a fixed default. CPU default\n"
+				  << "               path tracer only.\n"
+				  << "  " << render_flags::kAccelerator << " NAME: Overrides a loaded .pbrt scene's own Accelerator\n"
+				  << "               directive (default: leave the scene's own choice, or bvh if it\n"
+				  << "               named none). One of bvh, kdtree. All choices render the same\n"
+				  << "               converged image - a build-strategy/perf knob, not a quality one.\n"
+				  << "               No effect on a native (non-.pbrt) scene, which has no Accelerator\n"
+				  << "               directive to override (warns). CPU only.\n"
+				  << "  " << render_flags::kSplitMethod << " NAME: Overrides a loaded .pbrt scene's own Accelerator\n"
+				  << "               \"string splitmethod\" (default: leave the scene's own choice, or\n"
+				  << "               sah if it named none). One of sah, middle, equal, hlbvh. Only\n"
+				  << "               consulted when the resolved accelerator is bvh. Same scope/effect\n"
+				  << "               shape as --accelerator above.\n"
+				  << "  " << render_flags::kRegularize << " : pbrt-v4 Integrator \"bool regularize\" - widens a rough BSDF's\n"
+				  << "               GGX alpha after the path's first non-specular bounce, taming\n"
+				  << "               fireflies from hard caustic paths at the cost of some blur.\n"
+				  << "               A loaded .pbrt scene requesting this itself already gets it\n"
+				  << "               regardless of this flag - this only ever forces it ON, never\n"
+				  << "               off. Default path tracer only, both backends.\n"
+				  << "  " << render_flags::kMaxComponentValue << " VALUE: pbrt-v4 Film \"maxcomponentvalue\" - clamps any\n"
+				  << "               pixel sample whose brightest channel exceeds VALUE, scaling\n"
+				  << "               all channels down to preserve hue (default effectively\n"
+				  << "               unbounded). Only overrides a loaded scene's own request when\n"
+				  << "               explicitly passed. CPU and both GPU backends -\n"
+				  << "               recursive matches CPU exactly, wavefront approximates it\n"
+				  << "               per-contribution rather than per-sample-total.\n"
+				  << "  " << render_flags::kCrop << " X0 Y0 X1 Y1: pbrt-v4 Film \"cropwindow\" - renders only the\n"
+				  << "               rectangle from (X0,Y0) to (X1,Y1), each a fraction of the full\n"
+				  << "               frame in [0,1] (e.g. \"0 0 0.5 0.5\" is the top-left quadrant).\n"
+				  << "               Pixels outside the rectangle write black rather than shrinking\n"
+				  << "               the output file. Only overrides a loaded scene's own\n"
+				  << "               cropwindow/pixelbounds when explicitly passed. Default path\n"
+				  << "               tracer only, both backends.\n"
+				  << "  " << render_flags::kSeed << " N: makes the render reproducible - the same scene, same\n"
+				  << "               settings, and same seed always produce the same pixels. Without\n"
+				  << "               this, CPU renders draw fresh randomness every run (never\n"
+				  << "               reproducible); GPU renders already default to a fixed internal\n"
+				  << "               seed, so this just lets you choose a different one. N must be in\n"
+				  << "               [0, 2147483647]. Default path tracer only, both backends; has no\n"
+				  << "               effect under --bdpt/--mlt/--sppm/--randomwalk/--ao/--simplepath/\n"
+				  << "               --simplevolpath/--lightpath. --video reseeds each frame from N so\n"
+				  << "               the whole video reproduces while frames still get distinct noise.\n"
+				  << "  " << render_flags::kSpectral << " : Real hero-wavelength spectral rendering instead of flat RGB.\n"
+				  << "               CPU default path tracer only. Only lambertian, metal,\n"
+				  << "               dielectric, rough_dielectric, conductor, and diffuse_light\n"
+				  << "               materials are supported - scenes using anything else fail\n"
+				  << "               loudly at load time rather than silently rendering wrong\n"
+				  << "               colors. Noticeably slower per-sample than the default RGB\n"
+				  << "               path (spectral upsampling table lookups every bounce).\n"
+				  << "  " << render_flags::kTonemap << " MODE: Which tone-mapping operator to apply before the sRGB\n"
+				  << "               OETF (default aces, this project's pre-existing behavior).\n"
+				  << "               One of aces, reinhard, none. Applies to both CPU and GPU\n"
+				  << "               (recursive and wavefront). No effect under\n"
+				  << "               --bdpt/--mlt/--sppm (warns).\n"
+				  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
+				  << "               the path tracer (incompatible with --video). Best for hard\n"
+				  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"
+				  << "               (Cornell Rough Glass); other scenes are unverified and only\n"
+				  << "               support lambertian + delta-BSDF materials. GPU (--sppm --gpu):\n"
+				  << "               capability-checked per scene -- Lambertian/DiffuseLight,\n"
+				  << "               RoughDielectric, Metal, Dielectric, Conductor, RoughMetal,\n"
+				  << "               DiffuseTransmission, and Mix are supported (area lights only);\n"
+				  << "               any scene using another material falls back to an error, use\n"
+				  << "               CPU SPPM (--sppm without --gpu) instead.\n"
+				  << "  --sppm-iterations N: SPPM iteration count (default " << kDefaultSppmIterations << ")\n"
+				  << "  --sppm-photons N   : Photons shot per SPPM iteration (default " << kDefaultSppmPhotons << ")\n"
+				  << "  --bdpt     : Render with Bidirectional Path Tracing instead of the path\n"
+				  << "               tracer (incompatible with --video, --sppm, --mlt). CPU only -\n"
+				  << "               no GPU/OptiX implementation exists; --gpu is ignored (with a\n"
+				  << "               warning) if combined with --bdpt. Samples area, point, spot,\n"
+				  << "               distant, and sky/infinite lights from one unified distribution\n"
+				  << "               (goniometric/projection lights not yet included). Verified\n"
+				  << "               end-to-end on scene A1 (Cornell Box) plus punctual/sky-only\n"
+				  << "               scenes (C1-C4); other scenes are unverified.\n"
+				  << "  --bdpt-max-depth N : Maximum BDPT path depth (default " << kDefaultBdptMaxDepth << ")\n"
+				  << "  --mlt      : Render with Metropolis Light Transport instead of the path\n"
+				  << "               tracer (incompatible with --video, --sppm, --bdpt). CPU only -\n"
+				  << "               no GPU/OptiX implementation exists; --gpu is ignored (with a\n"
+				  << "               warning) if combined with --mlt. Same light coverage and\n"
+				  << "               verification scope as --bdpt (MLT is built directly on BDPT's\n"
+				  << "               subpath machinery).\n"
+				  << "  --mlt-bootstrap N  : MLT bootstrap samples per depth (default " << kDefaultMltBootstrap << ")\n"
+				  << "  --mlt-mutations N  : Total Metropolis mutations, all chains combined\n"
+				  << "                       (default " << kDefaultMltMutations << ")\n"
+				  << "  --mlt-max-depth N  : Maximum BDPT path depth per MLT sample (default " << kDefaultMltMaxDepth << ")\n"
+				  << "  --randomwalk : Render with RandomWalkIntegrator (pbrt-v4's unbiased\n"
+				  << "               reference path tracer - uniform-sphere sampling, no NEE/MIS).\n"
+				  << "               CPU only, incompatible with --video/--sppm/--bdpt/--mlt.\n"
+				  << "  --ao       : Render with AOIntegrator (ambient occlusion only - no\n"
+				  << "               indirect lighting or material color, a visualization/debug\n"
+				  << "               mode, not a lit render). CPU only, same incompatibilities as\n"
+				  << "               --randomwalk.\n"
+				  << "  --ao-max-dist N    : Occlusion test distance (default " << kDefaultAoMaxDist << " = unbounded)\n"
+				  << "  --ao-uniform       : Uniform-hemisphere sampling instead of the default\n"
+				  << "                       cosine-hemisphere sampling\n"
+				  << "  --ao-illum-scale N : Flat multiplier on the occlusion color (default " << kDefaultAoIllumScale << ")\n"
+				  << "  --ao-illum-rgb R G B : Occlusion color (default 1 1 1 = white)\n"
+				  << "  --simplepath : Render with SimplePathIntegrator (pbrt-v4's canonical\n"
+				  << "               reference path tracer, optional NEE + optional BSDF\n"
+				  << "               importance sampling - both on by default). CPU only, same\n"
+				  << "               incompatibilities as --randomwalk. NEE (when enabled) samples\n"
+				  << "               the same unified area/point/spot/distant/sky distribution as\n"
+				  << "               --bdpt/--mlt.\n"
+				  << "  --simplepath-no-lights : Disable NEE (direct light sampling)\n"
+				  << "  --simplepath-no-bsdf   : Disable BSDF importance sampling (falls back to\n"
+				  << "                           uniform hemisphere)\n"
+				  << "  --simplevolpath : Render with SimpleVolPathIntegrator (pbrt-v4's simplest\n"
+				  << "               volumetric path tracer - pure delta tracking, no NEE/MIS/\n"
+				  << "               surface BSDFs). CPU only, same incompatibilities as\n"
+				  << "               --randomwalk. Reachable but medium-FREE in this integration\n"
+				  << "               (see cpu_interface.h's cpu_render_main_simplevolpath() doc\n"
+				  << "               comment) - renders mostly black on ordinary solid-geometry\n"
+				  << "               scenes except where camera rays land directly on a light,\n"
+				  << "               matching pbrt-v4's own upstream behavior on medium-free scenes.\n"
+				  << "  --lightpath : Render with LightPathIntegrator (a pure light tracer - every\n"
+				  << "               sample starts at a light and splats camera-connection\n"
+				  << "               contributions into the film, the opposite direction of every\n"
+				  << "               other integrator here). CPU only, same incompatibilities as\n"
+				  << "               --randomwalk. Area lights only - its own light-emission sample\n"
+				  << "               was not extended alongside --bdpt/--mlt/--simplepath's NEE.\n"
+				  << "  " << render_flags::kOutput << ",-o: Output file path (default: ./output/image.ppm). A \".exr\"\n"
+				  << "               extension switches to linear HDR EXR output instead of\n"
+				  << "               tonemapped PPM/PNG (both backends); combine with --denoise\n"
+				  << "               to also write \"<name>_albedo.exr\"/\"<name>_normal.exr\" AOVs\n"
+				  << "               (GPU recursive backend only). AOV export reuses the AI\n"
+				  << "               denoiser's own guide-layer buffers, so there is currently no\n"
+				  << "               way to get AOVs alongside a clean, non-AI-denoised beauty EXR -\n"
+				  << "               requesting AOVs always denoises the beauty pass too.\n"
+				  << "  " << render_flags::kVideo << "    : Enable video generation mode\n"
+				  << "  " << render_flags::kFrames << ",-f: Number of frames for video (default: 120)\n"
+				  << "  " << render_flags::kFps << "      : Frames per second for video (default: 30)\n"
+				  << "  " << render_flags::kSpeed << "    : Camera movement speed multiplier for video (default: 1.0)\n"
+				  << "  " << render_flags::kCameraPath << ",-p: Camera animation path "
+			  << "(orbit|linear|figure8|spiral|tour|showcase) - "
+			  << "defaults to the selected scene's own curated recommendation if omitted\n"
+				  << "  --video-preset ID: Sets --video plus scene_id/camera-path/frames/fps/speed\n"
+				  << "               together from one of src/shared/video_preset.h's named bundles.\n"
+				  << "               Accepts either short id or descriptive key:\n"
+				  << "               V1/cornell-orbit, V2/teapot-spin, V3/one-weekend-flyby,\n"
+				  << "               V4/next-week-finale, V5/glass-dragon-caustics,\n"
+				  << "               V6/sponza-flythrough. Any of those five flags placed AFTER\n"
+				  << "               --video-preset on the command line overrides just that one field.\n"
+				  << "  --help,-h  : Show this help message\n"
+				  << "  width      : Image width (default " << kDefaultWidth << ", square unless --height is given)\n"
+				  << "  --height N : Image height, for a non-square image (default: the width)\n"
+				  << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n"
+				  << "  max_depth  : Max ray depth (default " << kDefaultMaxDepth << ")\n"
+				  << "  scene_id   : Scene selector: a scene name (e.g. \"cornell-box\") or an id, category letter +\n"
+				  << "               number (e.g. \"A1\"=Cornell Box; names are stable, ids can shift),\n"
+				  << "               default " << kDefaultSceneId << " - see src/TheRestOfYourLife/scene_registry.h),\n"
+				  << "               or the path of a .pbrt file (e.g. one saved by the GUI's Scene Builder)\n"
+				  << "  cam_x/y/z  : Camera position - if omitted, uses the selected scene's own\n"
+				  << "               recommended camera (see src/TheRestOfYourLife/scene_registry.h),\n"
+				  << "               not a single fixed default across every scene\n";
+}
+
 // Parse command-line arguments into a LaunchArgs struct.
 // Returns false if the caller should exit immediately - either because
 // --help was printed (a benign, deliberate exit: *help_requested, when
@@ -415,665 +1112,16 @@ inline bool parse_launch_args(int argc, char** argv, LaunchArgs& out,
 	for (int i = 1; i < argc; ++i) {
 		const std::string arg = argv[i];
 
-		if (arg == render_flags::kCpu || arg == "-cpu") {
-			out.force_cpu = true;
-			out.use_gpu   = false;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kGpu || arg == "-gpu") {
-			out.use_gpu   = true;
-			out.force_cpu = false;
-			out.gpu_flag_explicit = true;
-			consumed_args.insert(i);
-		} else if ((arg == render_flags::kOutput || arg == "-o") && i + 1 < argc) {
-			out.custom_output_path = argv[i + 1];
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == render_flags::kDiagnose) {
-			out.diagnose = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kWavefront) {
-			out.use_wavefront = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kOptixValidate) {
-			out.optix_validate = true;
-			consumed_args.insert(i);
-		} else if (arg == "--isolate-pbrt-lighting") {
-			out.isolate_pbrt_lighting = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kDenoise) {
-			out.denoise = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kDenoiseBlend && i + 1 < argc) {
-			parseDoubleFlag(argv, i, consumed_args, out.denoise_blend,
-							"Invalid --denoise-blend value, using default (0.0)\n", true, 0.0,
-							[](double v) {
-								if (v < 0.0 || v > 1.0) {
-									std::cerr << "Warning: --denoise-blend " << v
-											  << " is outside [0,1] (0 = fully denoised, 1 = original noisy "
-												 "image) - using default (0.0)\n";
-									return 0.0;
-								}
-								return v;
-							});
-		} else if (arg == render_flags::kStats) {
-			out.stats = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kExposure && i + 1 < argc) {
-			// exposure <= 0 is a valid double but not a valid exposure -
-			// linear_to_srgb clamps non-positive input to 0, so this would
-			// otherwise silently render solid black with nothing telling
-			// the user their value was nonsensical.
-			parseDoubleFlag(argv, i, consumed_args, out.exposure,
-							"Invalid --exposure value, using default\n", false, 0.0,
-							[](double v) {
-								if (v <= 0.0) {
-									std::cerr << "Warning: --exposure " << v
-											  << " is <= 0, image will render solid black\n";
-								}
-								return v;
-							});
-		} else if (arg == render_flags::kSampler && i + 1 < argc) {
-			static const std::set<std::string> kValidSamplers = {
-				"sobol", "zsobol", "paddedsobol", "stratified", "pmj02bn", "halton", "independent"};
-			parseEnumFlag(argv[i + 1], kValidSamplers, out.sampler, "--sampler",
-						  "using default (sobol). Valid: sobol, zsobol, paddedsobol, stratified, "
-						  "pmj02bn, halton, independent");
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == render_flags::kAovs) {
-			out.aovs = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kAdaptive) {
-			out.adaptive_sampling = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kAdaptiveThreshold && i + 1 < argc) {
-			// On a parse failure, still reset to the default the error
-			// message claims (a prior --adaptive-threshold's value must not
-			// survive this one failing to parse) - resetOnFailure=true.
-			parseDoubleFlag(argv, i, consumed_args, out.adaptive_threshold,
-							"Invalid --adaptive-threshold value, using default (0.01)\n", true, 0.01,
-							[](double v) {
-								if (v <= 0.0) {
-									std::cerr << "Warning: --adaptive-threshold " << v
-											  << " is <= 0, every pixel would need a perfectly zero-variance "
-												 "estimate to ever stop early - using default (0.01)\n";
-									return 0.01;
-								}
-								return v;
-							});
-		} else if (arg == render_flags::kTimeLimit && i + 1 < argc) {
-			parseDoubleFlag(argv, i, consumed_args, out.time_limit_seconds,
-							"Invalid --time-limit value, disabling the time limit\n", true, 0.0,
-							[](double v) {
-								if (v <= 0.0) {
-									std::cerr << "Warning: --time-limit " << v
-											  << " is <= 0, disabling the time limit (renders until every "
-												 "scanline is done)\n";
-									return 0.0;
-								}
-								return v;
-							});
-		} else if (arg == "--lightsampler" && i + 1 < argc) {
-			// "auto" isn't a real light-sampler implementation - it means
-			// "use whatever the scene's own Integrator \"string lightsampler\"
-			// parameter requested" (falling back to bvh if it made no
-			// request), resolved per-scene in cpu_render_main() once the
-			// scene's own recommendation is known. See that resolution's own
-			// comment for why this is opt-in rather than the default: an
-			// explicit --lightsampler (or none at all) still always wins,
-			// matching maxdepth/samplerType's own "CLI decides, scene's
-			// request is only advisory" precedent - "auto" is what lets a
-			// CLI user opt into the scene's request instead, the same
-			// convenience the GUI's "Apply recommended settings" button
-			// already gives GUI users.
-			static const std::set<std::string> kValidLightSamplers = {"uniform", "power", "bvh", "auto"};
-			parseEnumFlag(argv[i + 1], kValidLightSamplers, out.lightsampler, "--lightsampler",
-						  "using default (bvh). Valid: uniform, power, bvh, auto");
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == render_flags::kAccelerator && i + 1 < argc) {
-			static const std::set<std::string> kValidAccelerators = {"bvh", "kdtree"};
-			parseEnumFlag(argv[i + 1], kValidAccelerators, out.accelerator, "--accelerator",
-						  "leaving the scene's own Accelerator directive (or its bvh default) "
-						  "untouched. Valid: bvh, kdtree");
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == render_flags::kSplitMethod && i + 1 < argc) {
-			static const std::set<std::string> kValidSplitMethods = {"sah", "middle", "equal", "hlbvh"};
-			parseEnumFlag(argv[i + 1], kValidSplitMethods, out.splitmethod, "--splitmethod",
-						  "leaving the scene's own splitmethod (or its sah default) untouched. "
-						  "Valid: sah, middle, equal, hlbvh");
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == render_flags::kRegularize) {
-			out.regularize = true;
-			consumed_args.insert(i);
-		} else if (arg == render_flags::kMaxComponentValue && i + 1 < argc) {
-			parseDoubleFlag(argv, i, consumed_args, out.max_component_value,
-							"Invalid --maxcomponentvalue value, using default\n", false, 0.0,
-							[](double v) {
-								if (v <= 0.0) {
-									std::cerr << "Warning: --maxcomponentvalue " << v
-											  << " is <= 0, every sample will clamp to black\n";
-								}
-								return v;
-							});
-		} else if (arg == render_flags::kAperture && i + 1 < argc) {
-			parseDoubleFlag(argv, i, consumed_args, out.aperture_override,
-							"Invalid --aperture value, ignoring\n", false, -1.0,
-							[](double v) {
-								if (v < 0.0) {
-									std::cerr << "Warning: --aperture " << v
-											  << " is negative (a lens diameter can't be), ignoring\n";
-									return -1.0;
-								}
-								return v;
-							});
-		} else if (arg == render_flags::kFocusDistance && i + 1 < argc) {
-			parseDoubleFlag(argv, i, consumed_args, out.focus_distance_override,
-							"Invalid --focus-distance value, ignoring\n", false, -1.0,
-							[](double v) {
-								if (v <= 0.0) {
-									std::cerr << "Warning: --focus-distance " << v
-											  << " is <= 0, ignoring\n";
-									return -1.0;
-								}
-								return v;
-							});
-		} else if (arg == render_flags::kCrop && i + 4 < argc) {
-			try {
-				const double x0 = std::stod(argv[i + 1]);
-				const double y0 = std::stod(argv[i + 2]);
-				const double x1 = std::stod(argv[i + 3]);
-				const double y1 = std::stod(argv[i + 4]);
-				if (x0 < 0.0 || y0 < 0.0 || x1 > 1.0 || y1 > 1.0 || x0 >= x1 || y0 >= y1) {
-					std::cerr << "Invalid --crop " << x0 << " " << y0 << " " << x1 << " " << y1
-							  << " (need 0 <= x0 < x1 <= 1 and 0 <= y0 < y1 <= 1), using full frame\n";
-				} else {
-					out.crop_x0 = x0;
-					out.crop_y0 = y0;
-					out.crop_x1 = x1;
-					out.crop_y1 = y1;
-				}
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				consumed_args.insert(i + 2);
-				consumed_args.insert(i + 3);
-				consumed_args.insert(i + 4);
-				i += 4;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --crop value, using full frame\n";
-			}
-		} else if (arg == render_flags::kSeed && i + 1 < argc) {
-			try {
-				out.seed = std::stoll(argv[i + 1]);
-				// Upper bound matches every actual consumer of this value:
-				// GpuCameraParams::userSeed (gpu/optix/optix_types.h) is a
-				// 32-bit int, and camera_t's alternate-sampler seeding
-				// (camera.h's alt_sampler_seed) also narrows to int - a
-				// seed above INT32_MAX would otherwise silently wrap to a
-				// negative value there, which then reads as "no seed
-				// requested" and gets silently dropped instead of used
-				// (the bug this bound exists to prevent). The GUI's own
-				// spinbox (mainwindow_tabs_render.cpp) already caps input
-				// at this same 2147483647, so this just brings the raw CLI
-				// path in line with it.
-				if (out.seed < 0 || out.seed > 2147483647LL) {
-					std::cerr << "Invalid --seed " << out.seed << " (must be in [0, 2147483647]), ignoring\n";
-					out.seed = -1;
-				}
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --seed value, ignoring\n";
-			}
-		} else if (arg == render_flags::kTonemap && i + 1 < argc) {
-			std::string name = argv[i + 1];
-			std::transform(name.begin(), name.end(), name.begin(),
-							[](unsigned char c) { return std::tolower(c); });
-			static const std::set<std::string> kValidTonemaps = {"aces", "reinhard", "none"};
-			if (kValidTonemaps.count(name)) {
-				out.tonemap = name;
-			} else {
-				std::cerr << "Invalid --tonemap \"" << argv[i + 1] << "\", using default (aces). "
-							 "Valid: aces, reinhard, none\n";
-			}
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == render_flags::kSpectral) {
-			out.spectral = true;
-			consumed_args.insert(i);
-		} else if (arg == "--sppm") {
-			out.use_sppm = true;
-			consumed_args.insert(i);
-		} else if (arg == "--sppm-iterations" && i + 1 < argc) {
-			try {
-				out.sppm_iterations = std::stoi(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --sppm-iterations value, using default\n";
-			}
-		} else if (arg == "--sppm-photons" && i + 1 < argc) {
-			try {
-				out.sppm_photons = std::stoi(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --sppm-photons value, using default\n";
-			}
-		} else if (arg == "--bdpt") {
-			out.use_bdpt = true;
-			consumed_args.insert(i);
-		} else if (arg == "--bdpt-max-depth" && i + 1 < argc) {
-			try {
-				out.bdpt_max_depth = std::stoi(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --bdpt-max-depth value, using default\n";
-			}
-		} else if (arg == "--mlt") {
-			out.use_mlt = true;
-			consumed_args.insert(i);
-		} else if (arg == "--mlt-bootstrap" && i + 1 < argc) {
-			try {
-				out.mlt_bootstrap = std::stoi(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --mlt-bootstrap value, using default\n";
-			}
-		} else if (arg == "--mlt-mutations" && i + 1 < argc) {
-			try {
-				out.mlt_mutations = std::stoll(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --mlt-mutations value, using default\n";
-			}
-		} else if (arg == "--mlt-max-depth" && i + 1 < argc) {
-			try {
-				out.mlt_max_depth = std::stoi(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --mlt-max-depth value, using default\n";
-			}
-		} else if (arg == "--randomwalk") {
-			out.use_randomwalk = true;
-			consumed_args.insert(i);
-		} else if (arg == "--ao") {
-			out.use_ao = true;
-			consumed_args.insert(i);
-		} else if (arg == "--ao-max-dist" && i + 1 < argc) {
-			try {
-				out.ao_max_dist = std::stod(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --ao-max-dist value, using default\n";
-			}
-		} else if (arg == "--ao-uniform") {
-			out.ao_cosine = false;
-			consumed_args.insert(i);
-		} else if (arg == "--ao-illum-scale" && i + 1 < argc) {
-			try {
-				out.ao_illum_scale = std::stod(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --ao-illum-scale value, using default\n";
-			}
-		} else if (arg == "--ao-illum-rgb" && i + 3 < argc) {
-			try {
-				out.ao_illum_r = std::stod(argv[i + 1]);
-				out.ao_illum_g = std::stod(argv[i + 2]);
-				out.ao_illum_b = std::stod(argv[i + 3]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				consumed_args.insert(i + 2);
-				consumed_args.insert(i + 3);
-				i += 3;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --ao-illum-rgb value, using default\n";
-			}
-		} else if (arg == "--simplepath") {
-			out.use_simplepath = true;
-			consumed_args.insert(i);
-		} else if (arg == "--simplepath-no-lights") {
-			out.simplepath_sample_lights = false;
-			consumed_args.insert(i);
-		} else if (arg == "--simplepath-no-bsdf") {
-			out.simplepath_sample_bsdf = false;
-			consumed_args.insert(i);
-		} else if (arg == "--simplevolpath") {
-			out.use_simplevolpath = true;
-			consumed_args.insert(i);
-		} else if (arg == "--lightpath") {
-			out.use_lightpath = true;
-			consumed_args.insert(i);
-		} else if (arg == "--height" && i + 1 < argc) {
-			try {
-				const int h = std::stoi(argv[i + 1]);
-				if (h > 0) explicit_height = h;
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid --height, using the width\n";
-			}
-		} else if (arg == render_flags::kVideo) {
-			out.video_mode = true;
-			consumed_args.insert(i);
-		} else if ((arg == render_flags::kFrames || arg == "-f") && i + 1 < argc) {
-			try {
-				out.video_frames = std::stoi(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid frame count, using default\n";
-			}
-		} else if (arg == render_flags::kFps && i + 1 < argc) {
-			try {
-				out.video_fps = std::stoi(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid FPS, using default\n";
-			}
-		} else if (arg == render_flags::kSpeed && i + 1 < argc) {
-			try {
-				out.video_speed = std::stod(argv[i + 1]);
-				consumed_args.insert(i);
-				consumed_args.insert(i + 1);
-				++i;
-			} catch (const std::exception&) {
-				std::cerr << "Invalid speed, using default\n";
-			}
-		} else if ((arg == render_flags::kCameraPath || arg == "-p") && i + 1 < argc) {
-			// camera_path.h's own path_type dispatch silently falls back to
-			// "orbit" for anything it doesn't recognize (with no warning of
-			// its own - and it runs once per rendered frame, so warning
-			// there would spam rather than inform); validating once here,
-			// the same way --sampler/--accelerator/--splitmethod already
-			// do, catches a typo'd/stale preset id at parse time instead.
-			static const std::set<std::string> kValidCameraPaths = {
-				"orbit", "linear", "figure8", "spiral", "tour", "showcase"};
-			parseEnumFlag(argv[i + 1], kValidCameraPaths, out.camera_path, "--camera-path",
-						  "using default (orbit). Valid: orbit, linear, figure8, spiral, tour, showcase");
-			out.camera_path_explicit = true;
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == "--video-preset" && i + 1 < argc) {
-			// Sets video_mode plus all five video_preset::VideoPreset fields
-			// in one shot - see src/shared/video_preset.h's own comment for
-			// why this lives there rather than being duplicated per-CLI/GUI.
-			// Applied immediately, same as every other flag here, so a flag
-			// placed AFTER --video-preset on the command line overrides just
-			// that one field - e.g. `--video-preset cornell-orbit --fps 60`
-			// keeps the preset's scene/path/frames/speed but renders at 60fps.
-			if (const video_preset::VideoPreset* preset = video_preset::find(argv[i + 1])) {
-				out.video_mode = true;
-				out.scene_id = preset->scene_id;
-				out.camera_path = preset->camera_path;
-				out.camera_path_explicit = true;
-				out.video_frames = preset->frames;
-				out.video_fps = preset->fps;
-				out.video_speed = preset->speed;
-			} else {
-				std::cerr << "Invalid --video-preset \"" << argv[i + 1] << "\" - valid presets:\n";
-				for (const video_preset::VideoPreset& p : video_preset::kAll)
-					std::cerr << "  " << p.id << " / " << p.key << " - " << p.name << "\n";
-				return false;
-			}
-			consumed_args.insert(i);
-			consumed_args.insert(i + 1);
-			++i;
-		} else if (arg == "--help" || arg == "-h") {
-			std::cout << "Usage: " << argv[0]
-					  << " [--cpu|--gpu] [--output PATH] [width] [spp] [max_depth] [scene_id] [cam_x] [cam_y] [cam_z]\n"
-					  << "  " << render_flags::kCpu << "      : Force CPU rendering\n"
-					  << "  " << render_flags::kGpu << "      : Force GPU rendering (default)\n"
-					  << "  " << render_flags::kDiagnose << " : Print a system-compatibility report (OS/CPU/RAM, GPU/CUDA/\n"
-					  << "               OptiX, disk space, scene asset availability) instead of\n"
-					  << "               rendering, and exit. Combine with --output PATH to also write\n"
-					  << "               the report to a file.\n"
-					  << "  " << render_flags::kWavefront << ": Use the wavefront (queue-based) GPU path tracer instead of\n"
-					  << "               the default recursive one. GPU-only, ignored under --cpu/--sppm.\n"
-					  << "  " << render_flags::kOptixValidate << ": Enable OptiX validation mode (extra device-side checks,\n"
-					  << "               real per-launch cost - for debugging, not routine use).\n"
-					  << "               GPU-only, ignored under --cpu/--sppm.\n"
-					  << "  --isolate-pbrt-lighting: Skip the hardcoded demo room's own lights when\n"
-					  << "               rendering a loaded pbrt scene - for isolating that scene's\n"
-					  << "               OWN lighting. Metal now always does this for a pbrt scene, so\n"
-					  << "               this flag is accepted but no longer has any effect.\n"
-					  << "  " << render_flags::kDenoise << "  : Run the OptiX AI denoiser on the finished render, guided by\n"
-					  << "               albedo + normal AOV buffers. GPU-only, both backends\n"
-					  << "               (recursive and wavefront each have their own denoiser);\n"
-					  << "               ignored under --cpu/--sppm. On a Mac the Metal renderer uses\n"
-					  << "               Intel Open Image Denoise instead (colour only), if its library\n"
-					  << "               is installed (docs/DENOISING.md; the GUI offers to download it);\n"
-					  << "               without it the flag warns and the render goes on undenoised.\n"
-					  << "  " << render_flags::kDenoiseBlend << " VALUE: Blend between the noisy input and the fully\n"
-					  << "               denoised output (default 0.0 = 100% denoised, 1.0 = original\n"
-					  << "               noisy image unchanged). Full-strength denoising can over-smooth\n"
-					  << "               fine texture/grain; lower this to preserve more of it. Blends in\n"
-					  << "               the linear, pre-tonemap HDR color, not the final tonemapped\n"
-					  << "               image. Only consulted when " << render_flags::kDenoise << " is passed. Same scope as " << render_flags::kDenoise << " above.\n"
-					  << "  " << render_flags::kStats << "    : Print a small end-of-render stats block (rays cast, bounces,\n"
-					  << "               shadow rays, samples/sec) after the normal RENDER TIME output.\n"
-					  << "               Observation-only - never changes the rendered image.\n"
-					  << "  " << render_flags::kExposure << " VALUE: Flat multiplier on linear color before tone-mapping\n"
-					  << "               (default 1.0 = no-op). CPU and GPU default path tracer only.\n"
-					  << "               E.g. 0.5 = darker, 2.0 = brighter. No effect under\n"
-					  << "               --bdpt/--mlt/--sppm (warns).\n"
-					  << "  " << render_flags::kSampler << " NAME: Which ported pbrt-v4 sampler drives random decisions\n"
-					  << "               (default sobol, this project's pre-existing behavior).\n"
-					  << "               One of sobol, zsobol, paddedsobol, stratified, pmj02bn, halton,\n"
-					  << "               independent.\n"
-					  << "               CPU default path tracer only.\n"
-					  << "  " << render_flags::kAovs << "     : Also write the render passes - albedo.R/G/B, normal.X/Y/Z (world, facing the\n"
-					  << "               camera), depth.Z (distance to the first hit), uv.U/V and A (coverage) -\n"
-					  << "               from first-hit camera rays, for compositing. Into the same file for\n"
-					  << "               an .exr output (a multilayer EXR with the image's R/G/B), else into\n"
-					  << "               <name>.aovs.exr next to the image. Any backend; single images only.\n"
-					  << "  " << render_flags::kAdaptive << " : Stop sampling a pixel once it's converged instead of\n"
-					  << "               always spending the full samples-per-pixel budget on every\n"
-					  << "               pixel - samples_per_pixel becomes a ceiling, not a fixed count.\n"
-					  << "               Off by default. CPU default path tracer only.\n"
-					  << "  " << render_flags::kAdaptiveThreshold << " VALUE: Target relative noise level for\n"
-					  << "               " << render_flags::kAdaptive << " to consider a pixel converged (default 0.01,\n"
-					  << "               matching Blender Cycles' own default). Lower = cleaner but\n"
-					  << "               slower; only consulted when " << render_flags::kAdaptive << " is passed.\n"
-					  << "  " << render_flags::kTimeLimit << " SECONDS: Stop rendering once this many seconds have\n"
-					  << "               elapsed, instead of always running until every scanline is\n"
-					  << "               done - useful for previews or a fixed render-farm time budget.\n"
-					  << "               Scanline-granular: whatever rows were already in flight at the\n"
-					  << "               deadline finish normally; any never-started row is written\n"
-					  << "               black rather than left out. Under --video, this is a budget for\n"
-					  << "               the WHOLE video, not each frame - later frames get whatever's\n"
-					  << "               left of it, and rendering stops (skipping any remaining frames)\n"
-					  << "               once it runs out. Off by default (no limit). CPU default path\n"
-					  << "               tracer only.\n"
-					  << "  --lightsampler NAME: pbrt-v4 Integrator \"string lightsampler\" - which light\n"
-					  << "               sampler picks the next-event-estimation light to sample\n"
-					  << "               (default bvh, pbrt-v4's own real default). One of uniform,\n"
-					  << "               power, bvh, auto. Affects convergence/variance, not the\n"
-					  << "               converged image. \"auto\" uses whatever the loaded scene's own\n"
-					  << "               Integrator \"string lightsampler\" parameter requested (bvh if\n"
-					  << "               it made no request) instead of a fixed default. CPU default\n"
-					  << "               path tracer only.\n"
-					  << "  " << render_flags::kAccelerator << " NAME: Overrides a loaded .pbrt scene's own Accelerator\n"
-					  << "               directive (default: leave the scene's own choice, or bvh if it\n"
-					  << "               named none). One of bvh, kdtree. All choices render the same\n"
-					  << "               converged image - a build-strategy/perf knob, not a quality one.\n"
-					  << "               No effect on a native (non-.pbrt) scene, which has no Accelerator\n"
-					  << "               directive to override (warns). CPU only.\n"
-					  << "  " << render_flags::kSplitMethod << " NAME: Overrides a loaded .pbrt scene's own Accelerator\n"
-					  << "               \"string splitmethod\" (default: leave the scene's own choice, or\n"
-					  << "               sah if it named none). One of sah, middle, equal, hlbvh. Only\n"
-					  << "               consulted when the resolved accelerator is bvh. Same scope/effect\n"
-					  << "               shape as --accelerator above.\n"
-					  << "  " << render_flags::kRegularize << " : pbrt-v4 Integrator \"bool regularize\" - widens a rough BSDF's\n"
-					  << "               GGX alpha after the path's first non-specular bounce, taming\n"
-					  << "               fireflies from hard caustic paths at the cost of some blur.\n"
-					  << "               A loaded .pbrt scene requesting this itself already gets it\n"
-					  << "               regardless of this flag - this only ever forces it ON, never\n"
-					  << "               off. Default path tracer only, both backends.\n"
-					  << "  " << render_flags::kMaxComponentValue << " VALUE: pbrt-v4 Film \"maxcomponentvalue\" - clamps any\n"
-					  << "               pixel sample whose brightest channel exceeds VALUE, scaling\n"
-					  << "               all channels down to preserve hue (default effectively\n"
-					  << "               unbounded). Only overrides a loaded scene's own request when\n"
-					  << "               explicitly passed. CPU and both GPU backends -\n"
-					  << "               recursive matches CPU exactly, wavefront approximates it\n"
-					  << "               per-contribution rather than per-sample-total.\n"
-					  << "  " << render_flags::kCrop << " X0 Y0 X1 Y1: pbrt-v4 Film \"cropwindow\" - renders only the\n"
-					  << "               rectangle from (X0,Y0) to (X1,Y1), each a fraction of the full\n"
-					  << "               frame in [0,1] (e.g. \"0 0 0.5 0.5\" is the top-left quadrant).\n"
-					  << "               Pixels outside the rectangle write black rather than shrinking\n"
-					  << "               the output file. Only overrides a loaded scene's own\n"
-					  << "               cropwindow/pixelbounds when explicitly passed. Default path\n"
-					  << "               tracer only, both backends.\n"
-					  << "  " << render_flags::kSeed << " N: makes the render reproducible - the same scene, same\n"
-					  << "               settings, and same seed always produce the same pixels. Without\n"
-					  << "               this, CPU renders draw fresh randomness every run (never\n"
-					  << "               reproducible); GPU renders already default to a fixed internal\n"
-					  << "               seed, so this just lets you choose a different one. N must be in\n"
-					  << "               [0, 2147483647]. Default path tracer only, both backends; has no\n"
-					  << "               effect under --bdpt/--mlt/--sppm/--randomwalk/--ao/--simplepath/\n"
-					  << "               --simplevolpath/--lightpath. --video reseeds each frame from N so\n"
-					  << "               the whole video reproduces while frames still get distinct noise.\n"
-					  << "  " << render_flags::kSpectral << " : Real hero-wavelength spectral rendering instead of flat RGB.\n"
-					  << "               CPU default path tracer only. Only lambertian, metal,\n"
-					  << "               dielectric, rough_dielectric, conductor, and diffuse_light\n"
-					  << "               materials are supported - scenes using anything else fail\n"
-					  << "               loudly at load time rather than silently rendering wrong\n"
-					  << "               colors. Noticeably slower per-sample than the default RGB\n"
-					  << "               path (spectral upsampling table lookups every bounce).\n"
-					  << "  " << render_flags::kTonemap << " MODE: Which tone-mapping operator to apply before the sRGB\n"
-					  << "               OETF (default aces, this project's pre-existing behavior).\n"
-					  << "               One of aces, reinhard, none. Applies to both CPU and GPU\n"
-					  << "               (recursive and wavefront). No effect under\n"
-					  << "               --bdpt/--mlt/--sppm (warns).\n"
-					  << "  --sppm     : Render with Stochastic Progressive Photon Mapping instead of\n"
-					  << "               the path tracer (incompatible with --video). Best for hard\n"
-					  << "               caustic/glass scenes. CPU: verified end-to-end on scene 11\n"
-					  << "               (Cornell Rough Glass); other scenes are unverified and only\n"
-					  << "               support lambertian + delta-BSDF materials. GPU (--sppm --gpu):\n"
-					  << "               capability-checked per scene -- Lambertian/DiffuseLight,\n"
-					  << "               RoughDielectric, Metal, Dielectric, Conductor, RoughMetal,\n"
-					  << "               DiffuseTransmission, and Mix are supported (area lights only);\n"
-					  << "               any scene using another material falls back to an error, use\n"
-					  << "               CPU SPPM (--sppm without --gpu) instead.\n"
-					  << "  --sppm-iterations N: SPPM iteration count (default " << kDefaultSppmIterations << ")\n"
-					  << "  --sppm-photons N   : Photons shot per SPPM iteration (default " << kDefaultSppmPhotons << ")\n"
-					  << "  --bdpt     : Render with Bidirectional Path Tracing instead of the path\n"
-					  << "               tracer (incompatible with --video, --sppm, --mlt). CPU only -\n"
-					  << "               no GPU/OptiX implementation exists; --gpu is ignored (with a\n"
-					  << "               warning) if combined with --bdpt. Samples area, point, spot,\n"
-					  << "               distant, and sky/infinite lights from one unified distribution\n"
-					  << "               (goniometric/projection lights not yet included). Verified\n"
-					  << "               end-to-end on scene A1 (Cornell Box) plus punctual/sky-only\n"
-					  << "               scenes (C1-C4); other scenes are unverified.\n"
-					  << "  --bdpt-max-depth N : Maximum BDPT path depth (default " << kDefaultBdptMaxDepth << ")\n"
-					  << "  --mlt      : Render with Metropolis Light Transport instead of the path\n"
-					  << "               tracer (incompatible with --video, --sppm, --bdpt). CPU only -\n"
-					  << "               no GPU/OptiX implementation exists; --gpu is ignored (with a\n"
-					  << "               warning) if combined with --mlt. Same light coverage and\n"
-					  << "               verification scope as --bdpt (MLT is built directly on BDPT's\n"
-					  << "               subpath machinery).\n"
-					  << "  --mlt-bootstrap N  : MLT bootstrap samples per depth (default " << kDefaultMltBootstrap << ")\n"
-					  << "  --mlt-mutations N  : Total Metropolis mutations, all chains combined\n"
-					  << "                       (default " << kDefaultMltMutations << ")\n"
-					  << "  --mlt-max-depth N  : Maximum BDPT path depth per MLT sample (default " << kDefaultMltMaxDepth << ")\n"
-					  << "  --randomwalk : Render with RandomWalkIntegrator (pbrt-v4's unbiased\n"
-					  << "               reference path tracer - uniform-sphere sampling, no NEE/MIS).\n"
-					  << "               CPU only, incompatible with --video/--sppm/--bdpt/--mlt.\n"
-					  << "  --ao       : Render with AOIntegrator (ambient occlusion only - no\n"
-					  << "               indirect lighting or material color, a visualization/debug\n"
-					  << "               mode, not a lit render). CPU only, same incompatibilities as\n"
-					  << "               --randomwalk.\n"
-					  << "  --ao-max-dist N    : Occlusion test distance (default " << kDefaultAoMaxDist << " = unbounded)\n"
-					  << "  --ao-uniform       : Uniform-hemisphere sampling instead of the default\n"
-					  << "                       cosine-hemisphere sampling\n"
-					  << "  --ao-illum-scale N : Flat multiplier on the occlusion color (default " << kDefaultAoIllumScale << ")\n"
-					  << "  --ao-illum-rgb R G B : Occlusion color (default 1 1 1 = white)\n"
-					  << "  --simplepath : Render with SimplePathIntegrator (pbrt-v4's canonical\n"
-					  << "               reference path tracer, optional NEE + optional BSDF\n"
-					  << "               importance sampling - both on by default). CPU only, same\n"
-					  << "               incompatibilities as --randomwalk. NEE (when enabled) samples\n"
-					  << "               the same unified area/point/spot/distant/sky distribution as\n"
-					  << "               --bdpt/--mlt.\n"
-					  << "  --simplepath-no-lights : Disable NEE (direct light sampling)\n"
-					  << "  --simplepath-no-bsdf   : Disable BSDF importance sampling (falls back to\n"
-					  << "                           uniform hemisphere)\n"
-					  << "  --simplevolpath : Render with SimpleVolPathIntegrator (pbrt-v4's simplest\n"
-					  << "               volumetric path tracer - pure delta tracking, no NEE/MIS/\n"
-					  << "               surface BSDFs). CPU only, same incompatibilities as\n"
-					  << "               --randomwalk. Reachable but medium-FREE in this integration\n"
-					  << "               (see cpu_interface.h's cpu_render_main_simplevolpath() doc\n"
-					  << "               comment) - renders mostly black on ordinary solid-geometry\n"
-					  << "               scenes except where camera rays land directly on a light,\n"
-					  << "               matching pbrt-v4's own upstream behavior on medium-free scenes.\n"
-					  << "  --lightpath : Render with LightPathIntegrator (a pure light tracer - every\n"
-					  << "               sample starts at a light and splats camera-connection\n"
-					  << "               contributions into the film, the opposite direction of every\n"
-					  << "               other integrator here). CPU only, same incompatibilities as\n"
-					  << "               --randomwalk. Area lights only - its own light-emission sample\n"
-					  << "               was not extended alongside --bdpt/--mlt/--simplepath's NEE.\n"
-					  << "  " << render_flags::kOutput << ",-o: Output file path (default: ./output/image.ppm). A \".exr\"\n"
-					  << "               extension switches to linear HDR EXR output instead of\n"
-					  << "               tonemapped PPM/PNG (both backends); combine with --denoise\n"
-					  << "               to also write \"<name>_albedo.exr\"/\"<name>_normal.exr\" AOVs\n"
-					  << "               (GPU recursive backend only). AOV export reuses the AI\n"
-					  << "               denoiser's own guide-layer buffers, so there is currently no\n"
-					  << "               way to get AOVs alongside a clean, non-AI-denoised beauty EXR -\n"
-					  << "               requesting AOVs always denoises the beauty pass too.\n"
-					  << "  " << render_flags::kVideo << "    : Enable video generation mode\n"
-					  << "  " << render_flags::kFrames << ",-f: Number of frames for video (default: 120)\n"
-					  << "  " << render_flags::kFps << "      : Frames per second for video (default: 30)\n"
-					  << "  " << render_flags::kSpeed << "    : Camera movement speed multiplier for video (default: 1.0)\n"
-					  << "  " << render_flags::kCameraPath << ",-p: Camera animation path "
-				  << "(orbit|linear|figure8|spiral|tour|showcase) - "
-				  << "defaults to the selected scene's own curated recommendation if omitted\n"
-					  << "  --video-preset ID: Sets --video plus scene_id/camera-path/frames/fps/speed\n"
-					  << "               together from one of src/shared/video_preset.h's named bundles.\n"
-					  << "               Accepts either short id or descriptive key:\n"
-					  << "               V1/cornell-orbit, V2/teapot-spin, V3/one-weekend-flyby,\n"
-					  << "               V4/next-week-finale, V5/glass-dragon-caustics,\n"
-					  << "               V6/sponza-flythrough. Any of those five flags placed AFTER\n"
-					  << "               --video-preset on the command line overrides just that one field.\n"
-					  << "  --help,-h  : Show this help message\n"
-					  << "  width      : Image width (default " << kDefaultWidth << ", square unless --height is given)\n"
-					  << "  --height N : Image height, for a non-square image (default: the width)\n"
-					  << "  spp        : Samples per pixel (default " << kDefaultSamplesPerPixel << ")\n"
-					  << "  max_depth  : Max ray depth (default " << kDefaultMaxDepth << ")\n"
-					  << "  scene_id   : Scene selector: a scene name (e.g. \"cornell-box\") or an id, category letter +\n"
-					  << "               number (e.g. \"A1\"=Cornell Box; names are stable, ids can shift),\n"
-					  << "               default " << kDefaultSceneId << " - see src/TheRestOfYourLife/scene_registry.h),\n"
-					  << "               or the path of a .pbrt file (e.g. one saved by the GUI's Scene Builder)\n"
-					  << "  cam_x/y/z  : Camera position - if omitted, uses the selected scene's own\n"
-					  << "               recommended camera (see src/TheRestOfYourLife/scene_registry.h),\n"
-					  << "               not a single fixed default across every scene\n";
+		FlagResult r = FlagResult::NotMine;
+		r = handle_basic_flag(arg, argc, argv, i, consumed_args, out);
+		if (r == FlagResult::NotMine) r = handle_quality_flag(arg, argc, argv, i, consumed_args, out);
+		if (r == FlagResult::NotMine) r = handle_integrator_flag(arg, argc, argv, i, consumed_args, out);
+		if (r == FlagResult::NotMine) r = handle_image_and_video_flag(arg, argc, argv, i, consumed_args, out, explicit_height);
+		if (r == FlagResult::Error) return false;
+		if (r == FlagResult::Handled) continue;
+
+		if (arg == "--help" || arg == "-h") {
+			print_launch_help(argv[0]);
 			if (help_requested) *help_requested = true;
 			return false;
 		} else if (arg.size() >= 2 && arg[0] == '-' && arg[1] == '-' && i + 1 >= argc) {
