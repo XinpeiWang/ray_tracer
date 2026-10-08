@@ -289,10 +289,12 @@ void SceneBuilderWidget::buildUi() {
 	centre->addWidget(previewBox);
 	centre->setStretchFactor(0, 3);
 	centre->setStretchFactor(1, 2);
-	centre->setSizes({500, 280});
-	// The view and the preview keep a usable height: in a window too short for both, the column scrolls instead of squeezing them.
-	layoutBox->setMinimumHeight(820);
-	previewBox->setMinimumHeight(740);
+	centre->setSizes({820, 740});
+	// The column is tall (view + preview) and scrolls when the window is shorter, instead of squeezing them. The splitter's own height is what scrolls, so the
+	// divider can still be dragged to give one of the two more room (each keeps a small minimum; the pair cannot be squeezed below the total).
+	layoutBox->setMinimumHeight(320);
+	previewBox->setMinimumHeight(260);
+	centre->setMinimumHeight(1560);
 
 	split->addWidget(left);
 	auto *centreScroll = new QScrollArea(split);
