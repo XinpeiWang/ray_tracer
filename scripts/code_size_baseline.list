@@ -7,8 +7,6 @@ file gpu/optix/wavefront_device_helpers.h 3312
 file gpu/optix/wavefront_path_tracer.cpp 3451
 file src/TheRestOfYourLife/camera.h 2646
 file src/TheRestOfYourLife/pbrt_cpu_builder.h 2202
-file src/shared/pbrt_flatten.h 2650
-file src/shared/shapes.h 2315
 func gpu/metal/metal_poc_kernel.metal::primaryRayKernel 1631
 func gpu/metal/metal_poc_materials_specular.metal::shadeConductor 329
 func gpu/metal/metal_poc_pbrt_materials.mm::MetalPocApp::mapPbrtMaterial 315
