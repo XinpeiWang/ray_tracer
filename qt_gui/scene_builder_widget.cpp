@@ -70,11 +70,10 @@ SceneBuilderWidget::SceneBuilderWidget(QWidget *parent) : QWidget(parent) {
 
 void SceneBuilderWidget::showEvent(QShowEvent *e) {
 	QWidget::showEvent(e);
-	// The three buttons above the list must fit whatever language and theme padding is in use, so size the panel
-	// from their (now styled) size hints instead of a fixed number.
+	// The panel can be dragged as narrow as the three buttons above the list allow, whatever the language and theme padding: that width comes from
+	// their (now styled) size hints, not from a fixed number.
 	if (!m_leftPanel) return;
-	const int need = m_addButton->sizeHint().width() + m_duplicateButton->sizeHint().width() + m_deleteButton->sizeHint().width() + 2 * 10;
-	if (need > m_leftPanel->minimumWidth()) m_leftPanel->setMinimumWidth(need);
+	m_leftPanel->setMinimumWidth(m_addButton->sizeHint().width() + m_duplicateButton->sizeHint().width() + m_deleteButton->sizeHint().width() + 2 * 6);
 }
 
 SceneBuilderWidget::~SceneBuilderWidget() {
@@ -166,6 +165,7 @@ void SceneBuilderWidget::buildUi() {
 	m_deleteButton = new QPushButton(tr("Delete"), left);
 	m_duplicateButton->setAutoDefault(false);
 	m_deleteButton->setAutoDefault(false);
+	for (QPushButton *b : {addB, m_duplicateButton, m_deleteButton}) b->setStyleSheet("padding: 6px 10px;");  // compact, so the list column can be narrow
 	auto *row = new QHBoxLayout;
 	row->addWidget(addB);
 	row->addWidget(m_duplicateButton);
@@ -173,7 +173,7 @@ void SceneBuilderWidget::buildUi() {
 	leftLayout->addLayout(row);
 	m_list = new QListWidget(left);
 	leftLayout->addWidget(m_list, 1);
-	left->setMinimumWidth(300);
+	left->setMinimumWidth(0);  // showEvent() sets the real minimum from the buttons
 	m_leftPanel = left;
 	m_addButton = addB;
 	connect(m_list, &QListWidget::currentRowChanged, this, [this](int) { onListSelectionChanged(); });
@@ -341,7 +341,7 @@ void SceneBuilderWidget::buildUi() {
 	split->setStretchFactor(0, 0);
 	split->setStretchFactor(1, 1);
 	split->setStretchFactor(2, 0);
-	split->setSizes({310, 600, 420});
+	split->setSizes({270, 640, 420});
 }
 
 // ---- document state -------------------------------------------------------------------------------------------------------------
