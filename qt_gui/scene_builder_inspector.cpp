@@ -374,7 +374,7 @@ void SceneBuilderWidget::inspectObject(QFormLayout *f, int i) {
 	addHeading(f, tr("Object"));
 	addText(f, tr("Name"), [obj]() { return obj() ? &obj()->name : nullptr; });
 	auto *shape = new QComboBox;
-	for (ShapeKind k : {ShapeKind::Sphere, ShapeKind::Box, ShapeKind::Quad, ShapeKind::Disk, ShapeKind::Cylinder, ShapeKind::Cone, ShapeKind::Mesh})
+	for (ShapeKind k : scene_doc::allShapeKinds())
 		shape->addItem(shapeLabel(k), static_cast<int>(k));
 	shape->setCurrentIndex(shape->findData(static_cast<int>(m_doc.objects[i].shape)));
 	connect(shape, QOverload<int>::of(&QComboBox::activated), this, [this, i, shape](int idx) {
@@ -397,6 +397,32 @@ void SceneBuilderWidget::inspectObject(QFormLayout *f, int i) {
 			addNum(f, tr("Radius"), [obj]() { return obj() ? &obj()->radius : nullptr; }, 0.001, 10000, 0.1);
 			addNum(f, tr("Height"), [obj]() { return obj() ? &obj()->height : nullptr; }, 0.001, 10000, 0.1);
 			break;
+		case ShapeKind::Dome:
+			addNum(f, tr("Radius"), [obj]() { return obj() ? &obj()->radius : nullptr; }, 0.001, 10000, 0.1);
+			break;
+		case ShapeKind::Capsule:
+			addNum(f, tr("Radius"), [obj]() { return obj() ? &obj()->radius : nullptr; }, 0.001, 10000, 0.1);
+			addNum(f, tr("Height (with the rounded ends)"), [obj]() { return obj() ? &obj()->height : nullptr; }, 0.001, 10000, 0.1);
+			break;
+		case ShapeKind::Torus:
+			addNum(f, tr("Ring radius"), [obj]() { return obj() ? &obj()->radius : nullptr; }, 0.001, 10000, 0.1);
+			addNum(f, tr("Tube radius"), [obj]() { return obj() ? &obj()->radius2 : nullptr; }, 0.001, 10000, 0.05);
+			break;
+		case ShapeKind::Tube:
+			addNum(f, tr("Outer radius"), [obj]() { return obj() ? &obj()->radius : nullptr; }, 0.001, 10000, 0.1);
+			addNum(f, tr("Hole radius"), [obj]() { return obj() ? &obj()->radius2 : nullptr; }, 0.001, 10000, 0.1);
+			addNum(f, tr("Height"), [obj]() { return obj() ? &obj()->height : nullptr; }, 0.001, 10000, 0.1);
+			break;
+		case ShapeKind::Pyramid:
+			addNum(f, tr("Base width (X)"), [obj]() { return obj() ? &obj()->size.x : nullptr; }, 0.001, 10000, 0.25);
+			addNum(f, tr("Base depth (Z)"), [obj]() { return obj() ? &obj()->size.z : nullptr; }, 0.001, 10000, 0.25);
+			addNum(f, tr("Height"), [obj]() { return obj() ? &obj()->height : nullptr; }, 0.001, 10000, 0.1);
+			break;
+		case ShapeKind::Stairs:
+			addVec3(f, tr("Size"), [obj]() { return obj() ? &obj()->size : nullptr; }, 0.25);
+			addInt(f, tr("Steps"), [obj]() { return obj() ? &obj()->steps : nullptr; }, 1, 100);
+			break;
+		case ShapeKind::Wedge:
 		case ShapeKind::Box:
 			addVec3(f, tr("Size"), [obj]() { return obj() ? &obj()->size : nullptr; }, 0.25);
 			break;

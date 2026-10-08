@@ -39,6 +39,13 @@ inline QString shapeLabel(ShapeKind k) {
 		case ShapeKind::Cylinder: return QObject::tr("Cylinder");
 		case ShapeKind::Cone: return QObject::tr("Cone");
 		case ShapeKind::Mesh: return QObject::tr("Mesh (.ply file)");
+		case ShapeKind::Pyramid: return QObject::tr("Pyramid");
+		case ShapeKind::Wedge: return QObject::tr("Wedge (ramp)");
+		case ShapeKind::Stairs: return QObject::tr("Stairs");
+		case ShapeKind::Torus: return QObject::tr("Torus (ring)");
+		case ShapeKind::Capsule: return QObject::tr("Capsule");
+		case ShapeKind::Dome: return QObject::tr("Dome (half sphere)");
+		case ShapeKind::Tube: return QObject::tr("Tube (pipe)");
 	}
 	return QString();
 }

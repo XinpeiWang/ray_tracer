@@ -37,12 +37,28 @@ Each drag is one undo step. In the flat views, the wheel zooms and right-drag pa
 The 3D view draws flat-shaded shapes with the same size, position and rotation the renderer uses; it shows shape and placement, not materials or lighting (press
 **Preview** for that). A mesh is drawn as a small marker at its position, because the view does not read the file.
 
+## Ready-made shapes
+
+Besides the sphere, box, quad, disk, cylinder, cone and mesh file, the Add menu has shapes with no pbrt primitive of their own. They are written into the scene as triangle meshes with smooth or sharp normals as fits the shape, so they render the same on the CPU, Metal and OptiX.
+
+| Shape | Settings | Notes |
+|---|---|---|
+| Pyramid | base width (X), base depth (Z), height | four sloping sides, apex above the middle |
+| Wedge (ramp) | size X, Y, Z | a box cut along its diagonal: low at the front (-Z), full height at the back |
+| Stairs | size X, Y, Z, steps (1 to 100) | climbs from the front (-Z) to the back |
+| Torus (ring) | ring radius, tube radius | lies flat; the tube must be thinner than the ring radius |
+| Capsule | radius, height | a cylinder with rounded ends; the height includes the ends (never less than twice the radius) |
+| Dome (half sphere) | radius | flat bottom, `radius` tall |
+| Tube (pipe) | outer radius, hole radius, height | a hollow cylinder, open at both ends |
+
+Each one has a picture-friendly set of texture coordinates, so the checker pattern works on them.
+
 ## What the world looks like
 
 * **+Y is up.** Units are whatever you like; the example is a few units across.
 * **Rotation** is three angles in degrees, about the world X, Y and Z axes, applied in that order.
-* A **sphere** is centred on its position. A **box**, **cylinder** and **cone** are centred on their bounding box. A **quad** is a flat rectangle in the XZ plane, a **disk** is a flat circle; a cylinder and a cone stand along +Y.
-* A shape that **gives off light** lights its outer side: a box, sphere, cylinder or cone outward, a quad or disk from the side facing up. To hang a light panel from a ceiling, rotate it 180 degrees about X (the *Light panel* in the Add menu already is). Tick *Both sides* to light both.
+* A **sphere** is centred on its position. A **box**, **cylinder**, **cone** and the ready-made shapes below are centred on their bounding box. A **quad** is a flat rectangle in the XZ plane, a **disk** is a flat circle; a cylinder and a cone stand along +Y.
+* A shape that **gives off light** lights its outer side: a box, sphere, cylinder, cone or any ready-made shape outward, a quad or disk from the side facing up. To hang a light panel from a ceiling, rotate it 180 degrees about X (the *Light panel* in the Add menu already is). Tick *Both sides* to light both.
 * **Colours** are picked as ordinary (sRGB) colours and stored as linear values for the renderer. A light's *Strength* multiplies its colour, so a white panel of strength 12 has a radiance of 12.
 
 ## Materials

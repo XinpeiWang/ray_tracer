@@ -208,6 +208,18 @@ QList<Scene3DView::Face> Scene3DView::buildFaces(const scene_view::View &) const
 				addFace(lo);
 				break;
 			}
+			case ShapeKind::Pyramid:
+			case ShapeKind::Wedge:
+			case ShapeKind::Stairs:
+			case ShapeKind::Torus:
+			case ShapeKind::Capsule:
+			case ShapeKind::Dome:
+			case ShapeKind::Tube: {
+				const scene_doc::ShapeMesh mesh = scene_doc::generatedMesh(o);
+				auto vertex = [&mesh](int k) { return Float3{mesh.P[k * 3], mesh.P[k * 3 + 1], mesh.P[k * 3 + 2]}; };
+				for (std::size_t t = 0; t + 2 < mesh.indices.size(); t += 3) addFace({vertex(mesh.indices[t]), vertex(mesh.indices[t + 1]), vertex(mesh.indices[t + 2])});
+				break;
+			}
 			case ShapeKind::Mesh: {
 				// The file is not read here: an octahedron stands for it, at its position and scale.
 				const double r = 0.5 * o.meshScale;

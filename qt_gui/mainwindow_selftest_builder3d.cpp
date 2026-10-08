@@ -38,8 +38,20 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			check(after.x == before.x && after.y == before.y && after.z == before.z, QString("back where it was after %1").arg(names[axis]));
 		}
 		sb->selectObject(3);
-		QTimer::singleShot(400, this, [this, shot, log, ok]() {
+		QTimer::singleShot(400, this, [this, shot, log, ok, sb]() {
 			shot("builder3d");
+			// RT_GUI_SELFTEST_OPEN=<scene.pbrt>: one more picture, of that builder scene in this view (to look at how a shape or scene draws).
+			const QString open = qEnvironmentVariable("RT_GUI_SELFTEST_OPEN");
+			if (!open.isEmpty()) {
+				QString err;
+				log(sb->openFile(open, &err) ? "opened " + open : "FAIL: could not open " + open + ": " + err);
+				QTimer::singleShot(500, this, [this, shot, log, ok]() {
+					shot("builder3d_open");
+					log(ok ? "RESULT: OK" : "RESULT: FAIL");
+					QApplication::exit(ok ? 0 : 1);
+				});
+				return;
+			}
 			log(ok ? "RESULT: OK" : "RESULT: FAIL");
 			QApplication::exit(ok ? 0 : 1);
 		});

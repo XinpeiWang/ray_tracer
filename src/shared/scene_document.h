@@ -11,9 +11,10 @@
 // Conventions of the builder's world (so a user never has to think about pbrt's):
 //   * +Y is up, units are free (the starter scene is a few units across).
 //   * Rotation is three angles in degrees about the world X, Y and Z axes, applied in the order X, then Y, then Z.
-//   * A Sphere is centred at its position. Box, Quad, Cylinder and Cone are centred on their position too (their bounding box centre).
+//   * A Sphere is centred at its position. Box, Quad, Cylinder, Cone and the generated shapes (Pyramid, Wedge, Stairs, Torus, Capsule, Dome, Tube; see
+//     scene_shapes.h) are centred on their position too (their bounding box centre).
 //   * A Quad is a flat rectangle in the XZ plane (size.x by size.z) whose front side faces +Y; a Disk faces +Y; a Cylinder and a Cone stand along +Y.
-//     An emissive object radiates from its front side (a Box and a Sphere outward; a Quad or Disk towards +Y, so a ceiling light is rotated 180 degrees about X).
+//     An emissive object radiates from its front side (a Box, a Sphere and the generated shapes outward; a Quad or Disk towards +Y, so a ceiling light is rotated 180 degrees about X).
 //   * Colours are linear RGB in 0..1 (an emission colour is multiplied by its strength).
 //
 // pbrt-v4 reference for every directive written here: https://pbrt.org/fileformat-v4
@@ -30,6 +31,8 @@
 #include <string>
 #include <utility>
 #include <vector>
+
+#include "scene_shapes.h"
 
 namespace scene_doc {
 
@@ -55,16 +58,31 @@ struct Material {
 	std::string imageFile;             // Diffuse / CoatedDiffuse: a picture used as the surface colour (replaces `color` and the checker)
 };
 
-enum class ShapeKind { Sphere, Box, Quad, Disk, Cylinder, Cone, Mesh };
+enum class ShapeKind { Sphere, Box, Quad, Disk, Cylinder, Cone, Mesh, Pyramid, Wedge, Stairs, Torus, Capsule, Dome, Tube };
+
+// Every shape, in the order the GUI lists them.
+inline const std::vector<ShapeKind>& allShapeKinds() {
+	static const std::vector<ShapeKind> all = {ShapeKind::Sphere,  ShapeKind::Box,   ShapeKind::Quad,    ShapeKind::Disk,  ShapeKind::Cylinder,
+	                                           ShapeKind::Cone,    ShapeKind::Pyramid, ShapeKind::Wedge, ShapeKind::Stairs, ShapeKind::Torus,
+	                                           ShapeKind::Capsule, ShapeKind::Dome,  ShapeKind::Tube,    ShapeKind::Mesh};
+	return all;
+}
+// A shape that is written as a generated triangle mesh (scene_shapes.h) rather than one of pbrt's own shapes.
+inline bool isGeneratedShape(ShapeKind k) {
+	return k == ShapeKind::Pyramid || k == ShapeKind::Wedge || k == ShapeKind::Stairs || k == ShapeKind::Torus || k == ShapeKind::Capsule ||
+	       k == ShapeKind::Dome || k == ShapeKind::Tube;
+}
 
 struct Object {
 	std::string name = "Object";
 	ShapeKind shape = ShapeKind::Sphere;
 	Float3 position{};
 	Float3 rotation{};                   // degrees, about world X, Y, Z (applied in that order)
-	double radius = 1.0;               // Sphere, Disk, Cylinder, Cone
-	double height = 1.0;               // Cylinder, Cone
-	Float3 size{1.0, 1.0, 1.0};          // Box (x, y, z); Quad (x and z)
+	double radius = 1.0;               // Sphere, Disk, Cylinder, Cone, Capsule, Dome; Torus: the ring; Tube: outside
+	double radius2 = 0.25;             // Torus: the tube's radius; Tube: the hole's radius
+	double height = 1.0;               // Cylinder, Cone, Pyramid, Capsule, Tube
+	Float3 size{1.0, 1.0, 1.0};          // Box, Wedge, Stairs (x, y, z); Quad (x and z); Pyramid (x and z, the base)
+	int steps = 5;                     // Stairs
 	double meshScale = 1.0;            // Mesh
 	std::string meshFile;              // Mesh: a .ply file
 	Material material;
@@ -145,12 +163,18 @@ inline const char* toString(ShapeKind k) {
 		case ShapeKind::Cylinder: return "cylinder";
 		case ShapeKind::Cone: return "cone";
 		case ShapeKind::Mesh: return "mesh";
+		case ShapeKind::Pyramid: return "pyramid";
+		case ShapeKind::Wedge: return "wedge";
+		case ShapeKind::Stairs: return "stairs";
+		case ShapeKind::Torus: return "torus";
+		case ShapeKind::Capsule: return "capsule";
+		case ShapeKind::Dome: return "dome";
+		case ShapeKind::Tube: return "tube";
 	}
 	return "sphere";
 }
 inline bool shapeKindFromString(const std::string& s, ShapeKind& out) {
-	for (ShapeKind k : {ShapeKind::Sphere, ShapeKind::Box, ShapeKind::Quad, ShapeKind::Disk, ShapeKind::Cylinder, ShapeKind::Cone,
-	                    ShapeKind::Mesh})
+	for (ShapeKind k : allShapeKinds())
 		if (s == toString(k)) { out = k; return true; }
 	return false;
 }
@@ -472,6 +496,7 @@ inline std::string toJson(const Document& d) {
 		j.set("name", Json::string(o.name)).set("shape", Json::string(toString(o.shape)));
 		j.set("position", detail::toJson(o.position)).set("rotation", detail::toJson(o.rotation));
 		j.set("radius", Json::number(o.radius)).set("height", Json::number(o.height)).set("size", detail::toJson(o.size));
+		j.set("radius2", Json::number(o.radius2)).set("steps", Json::number(o.steps));
 		j.set("meshScale", Json::number(o.meshScale)).set("meshFile", Json::string(o.meshFile));
 		Json m = Json::object();
 		m.set("kind", Json::string(toString(o.material.kind))).set("color", detail::toJson(o.material.color));
@@ -536,7 +561,7 @@ inline bool fromJson(const std::string& text, Document& out, std::string& err) {
 			std::string shape = toString(o.shape);
 			ok = ok && detail::readStr(j, "name", o.name) && detail::readStr(j, "shape", shape) && shapeKindFromString(shape, o.shape) &&
 			     detail::readVec(j, "position", o.position) && detail::readVec(j, "rotation", o.rotation) && detail::readNum(j, "radius", o.radius) &&
-			     detail::readNum(j, "height", o.height) && detail::readVec(j, "size", o.size) && detail::readNum(j, "meshScale", o.meshScale) &&
+			     detail::readNum(j, "height", o.height) && detail::readVec(j, "size", o.size) && detail::readNum(j, "meshScale", o.meshScale) && detail::readNum(j, "radius2", o.radius2) && detail::readInt(j, "steps", o.steps) &&
 			     detail::readStr(j, "meshFile", o.meshFile) && detail::readBool(j, "emissive", o.emissive) && detail::readRgb(j, "emission", o.emission) &&
 			     detail::readNum(j, "emissionStrength", o.emissionStrength) && detail::readBool(j, "twoSided", o.twoSided);
 			if (const Json* m = j.find("material")) {
@@ -623,6 +648,27 @@ inline std::vector<Problem> validate(const Document& d) {
 				if (!(o.radius > 0.0) || !(o.height > 0.0)) err(who + "the radius and height must be above zero.");
 				break;
 			case ShapeKind::Box: if (!(o.size.x > 0.0 && o.size.y > 0.0 && o.size.z > 0.0)) err(who + "every box size must be above zero."); break;
+			case ShapeKind::Wedge:
+			case ShapeKind::Stairs:
+				if (!(o.size.x > 0.0 && o.size.y > 0.0 && o.size.z > 0.0)) err(who + "every size must be above zero.");
+				if (o.shape == ShapeKind::Stairs && (o.steps < 1 || o.steps > 100)) err(who + "the number of steps must be between 1 and 100.");
+				break;
+			case ShapeKind::Pyramid:
+				if (!(o.size.x > 0.0 && o.size.z > 0.0 && o.height > 0.0)) err(who + "the pyramid's base and height must be above zero.");
+				break;
+			case ShapeKind::Dome: if (!(o.radius > 0.0)) err(who + "the radius must be above zero."); break;
+			case ShapeKind::Capsule:
+				if (!(o.radius > 0.0) || !(o.height > 0.0)) err(who + "the radius and height must be above zero.");
+				else if (o.height < 2 * o.radius) warn(who + "the capsule is shorter than its two rounded ends, so it is as tall as they need (twice the radius).");
+				break;
+			case ShapeKind::Torus:
+				if (!(o.radius > 0.0) || !(o.radius2 > 0.0)) err(who + "the ring and tube radii must be above zero.");
+				else if (o.radius2 >= o.radius) err(who + "the tube must be thinner than the ring's radius, or the ring folds into itself.");
+				break;
+			case ShapeKind::Tube:
+				if (!(o.radius > 0.0) || !(o.height > 0.0) || !(o.radius2 > 0.0)) err(who + "the radii and height must be above zero.");
+				else if (o.radius2 >= o.radius) err(who + "the hole must be narrower than the outside.");
+				break;
 			case ShapeKind::Quad: if (!(o.size.x > 0.0 && o.size.z > 0.0)) err(who + "the quad's width and depth must be above zero."); break;
 			case ShapeKind::Mesh:
 				if (o.meshFile.empty()) err(who + "choose a mesh file (.ply or .obj).");
@@ -721,6 +767,32 @@ inline void writeBox(std::ostringstream& os, const Float3& s, const std::string&
 	os << " ]\n";
 }
 
+inline ShapeMesh meshOfShape(const Object& o) {
+	switch (o.shape) {
+		case ShapeKind::Pyramid: return pyramidMesh(o.size.x, o.height, o.size.z);
+		case ShapeKind::Wedge: return wedgeMesh(o.size.x, o.size.y, o.size.z);
+		case ShapeKind::Stairs: return stairsMesh(o.size.x, o.size.y, o.size.z, o.steps);
+		case ShapeKind::Torus: return torusMesh(o.radius, o.radius2);
+		case ShapeKind::Capsule: return capsuleMesh(o.radius, o.height);
+		case ShapeKind::Dome: return domeMesh(o.radius);
+		case ShapeKind::Tube: return tubeMesh(o.radius, o.radius2, o.height);
+		default: break;
+	}
+	return ShapeMesh();
+}
+
+inline void writeGenerated(std::ostringstream& os, const ShapeMesh& m, const std::string& ind) {
+	os << ind << "Shape \"trianglemesh\" \"integer indices\" [";
+	for (std::size_t i = 0; i < m.indices.size(); ++i) os << (i % 12 == 0 ? "\n" + ind + "    " : " ") << m.indices[i];
+	os << " ]\n" << ind << "  \"point3 P\" [";
+	for (std::size_t i = 0; i < m.P.size(); ++i) os << (i % 12 == 0 ? "\n" + ind + "    " : " ") << num(m.P[i]);
+	os << " ]\n" << ind << "  \"normal N\" [";
+	for (std::size_t i = 0; i < m.N.size(); ++i) os << (i % 12 == 0 ? "\n" + ind + "    " : " ") << num(m.N[i]);
+	os << " ]\n" << ind << "  \"point2 uv\" [";
+	for (std::size_t i = 0; i < m.UV.size(); ++i) os << (i % 12 == 0 ? "\n" + ind + "    " : " ") << num(m.UV[i]);
+	os << " ]\n";
+}
+
 // `pictured`: the surface is coloured by a picture. A quad's texture coordinates then run so the picture is upright and not mirrored when the quad is
 // stood up facing +Z (rotation X = 90) and seen from +Z, i.e. its top is the quad's -Z edge. (Without a picture they keep the checker's orientation.)
 inline void writeShape(std::ostringstream& os, const Object& o, const std::string& ind, bool pictured = false) {
@@ -752,6 +824,15 @@ inline void writeShape(std::ostringstream& os, const Object& o, const std::strin
 			os << ind << "Rotate -90 1 0 0\n" << ind << "Translate 0 0 " << num(-o.height / 2) << "\n"
 			   << ind << "Shape \"cone\" \"float radius\" [ " << num(o.radius) << " ] \"float height\" [ " << num(o.height) << " ]\n";
 			break;
+		case ShapeKind::Pyramid:
+		case ShapeKind::Wedge:
+		case ShapeKind::Stairs:
+		case ShapeKind::Torus:
+		case ShapeKind::Capsule:
+		case ShapeKind::Dome:
+		case ShapeKind::Tube:
+			writeGenerated(os, meshOfShape(o), ind);
+			break;
 		case ShapeKind::Mesh:
 			os << ind << "Scale " << num(o.meshScale) << " " << num(o.meshScale) << " " << num(o.meshScale) << "\n"
 			   << ind << "Shape \"plymesh\" \"string filename\" [ " << quoted(pbrtPath(o.meshFile)) << " ]\n";
@@ -760,6 +841,9 @@ inline void writeShape(std::ostringstream& os, const Object& o, const std::strin
 }
 
 }  // namespace detail
+
+// The triangle mesh of one of the generated shapes (isGeneratedShape), in the object's own space; the GUI's previews draw it too.
+inline ShapeMesh generatedMesh(const Object& o) { return detail::meshOfShape(o); }
 
 inline std::string toPbrt(const Document& d) {
 	std::ostringstream os;
@@ -869,6 +953,13 @@ inline Object makeObject(ShapeKind shape, const std::string& name) {
 		case ShapeKind::Cylinder: o.radius = 0.6; o.height = 2.0; o.position = {0, 1.0, 0}; break;
 		case ShapeKind::Cone: o.radius = 0.8; o.height = 2.0; o.position = {0, 1.0, 0}; break;
 		case ShapeKind::Mesh: o.meshScale = 1.0; break;
+		case ShapeKind::Pyramid: o.size = {1.6, 1.6, 1.6}; o.height = 1.8; o.position = {0, 0.9, 0}; break;
+		case ShapeKind::Wedge: o.size = {2.0, 1.0, 2.0}; o.position = {0, 0.5, 0}; break;
+		case ShapeKind::Stairs: o.size = {2.0, 1.5, 2.5}; o.steps = 5; o.position = {0, 0.75, 0}; break;
+		case ShapeKind::Torus: o.radius = 1.0; o.radius2 = 0.3; o.position = {0, 0.3, 0}; break;
+		case ShapeKind::Capsule: o.radius = 0.5; o.height = 2.0; o.position = {0, 1.0, 0}; break;
+		case ShapeKind::Dome: o.radius = 1.2; o.position = {0, 0.6, 0}; break;
+		case ShapeKind::Tube: o.radius = 0.7; o.radius2 = 0.5; o.height = 1.6; o.position = {0, 0.8, 0}; break;
 	}
 	return o;
 }
