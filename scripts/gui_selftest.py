@@ -11,6 +11,8 @@ result. Screenshots are of the app's own window (never the screen) and are writt
   queue        two real tiny renders through the Render button: the second queues behind the first, both rows end Done with a time and stay in
                the queue table, Clear Finished empties it
   diagnostics  the Diagnostics report is produced
+  tour         (not in the default set) a screenshot of every tab, for looking over the UI: RT_GUI_SELFTEST_WIDTH/_HEIGHT size the window, RT_GUI_SELFTEST_THEME
+               picks a theme id (e.g. solarized-light)
   installphoto the Diagnostics tab's "Install Photo Helper" flow with stand-in installer scripts (not in the default set; no big download)
   livepreview  (--live-preview) selects Live Preview, starts it, lets it render, orbits the camera like a mouse drag, and requires
                frames to flow AND the picture to change
