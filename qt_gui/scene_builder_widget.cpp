@@ -2,6 +2,7 @@
 #include "scene_builder_widget.h"
 
 #include "scene_builder_common.h"
+#include "flow_layout.h"
 #include "app_log.h"
 #include "window_geometry.h"
 #include "atomic_file.h"
@@ -80,7 +81,7 @@ void SceneBuilderWidget::showEvent(QShowEvent *e) {
 	// The panel can be dragged as narrow as the three buttons above the list allow, whatever the language and theme padding: that width comes from
 	// their (now styled) size hints, not from a fixed number.
 	if (!m_leftPanel) return;
-	m_leftPanel->setMinimumWidth(m_addButton->sizeHint().width() + m_duplicateButton->sizeHint().width() + m_deleteButton->sizeHint().width() + 2 * 6);
+	m_leftPanel->setMinimumWidth(std::max({m_addButton->sizeHint().width(), m_duplicateButton->sizeHint().width(), m_deleteButton->sizeHint().width()}) + 6);
 }
 
 SceneBuilderWidget::~SceneBuilderWidget() {
@@ -114,8 +115,7 @@ QString SceneBuilderWidget::launcherPath() const {
 void SceneBuilderWidget::buildUi() {
 	auto *root = new QVBoxLayout(this);
 
-	// ---- top bar
-	auto *bar = new QHBoxLayout;
+	// ---- top bar: one row of buttons and the scene's name, wrapping to more rows when the window is narrow
 	auto button = [this](const QString &text, const QString &tip) {
 		auto *b = new QPushButton(text, this);
 		b->setToolTip(tip);
@@ -137,20 +137,29 @@ void SceneBuilderWidget::buildUi() {
 	m_titleEdit->setToolTip(tr("The name of this scene, shown in the scene list"));
 	m_titleEdit->setMinimumWidth(150);
 	m_titleEdit->setMaximumWidth(320);
-	for (QPushButton *b : {newB, openB, saveB, saveAsB, listB}) bar->addWidget(b);
-	bar->addStretch(1);
-	root->addLayout(bar);
-	// The scene's name and where it is saved get a row of their own: beside the buttons they were squeezed over each other (and the buttons clipped) at an
-	// ordinary window width. The status text may be cut short instead of widening the page; its tooltip has all of it.
-	auto *nameRow = new QHBoxLayout;
-	nameRow->addWidget(m_undoButton);   // Undo and Redo start the second row: with the file buttons a translated label ("Ajouter à la liste des scènes") pushed them out of the row
-	nameRow->addWidget(m_redoButton);
-	nameRow->addSpacing(12);
-	nameRow->addWidget(new QLabel(tr("Name:"), this));
-	nameRow->addWidget(m_titleEdit);
-	m_titleLabel->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Preferred);
-	nameRow->addWidget(m_titleLabel, 1);
-	root->addLayout(nameRow);
+	// A flow layout (flow_layout.h): everything on one line when the window is wide, wrapping to a second or third line as it narrows, so nothing is clipped
+	// however long a translated label is. The status text keeps its tooltip with all of it.
+	auto *toolbar = new QWidget(this);
+	auto *flow = new FlowLayout(toolbar, 0, 6, 6);
+	for (QPushButton *b : {newB, openB, saveB, saveAsB, listB}) {
+		scene_builder_ui::compactStyle(b);
+		flow->addWidget(b);
+	}
+	flow->addGap(14);
+	for (QPushButton *b : {m_undoButton, m_redoButton}) {
+		scene_builder_ui::compactStyle(b);
+		flow->addWidget(b);
+	}
+	flow->addGap(14);
+	auto *nameBox = new QWidget(toolbar);   // the label and its box stay together when the row wraps
+	auto *nameLayout = new QHBoxLayout(nameBox);
+	nameLayout->setContentsMargins(0, 0, 0, 0);
+	nameLayout->addWidget(new QLabel(tr("Name:"), nameBox));
+	nameLayout->addWidget(m_titleEdit);
+	flow->addWidget(nameBox);
+	m_titleLabel->setParent(toolbar);
+	flow->addWidget(m_titleLabel);
+	root->addWidget(toolbar);
 	connect(m_titleEdit, &QLineEdit::textEdited, this, &SceneBuilderWidget::setSceneName);
 	connect(newB, &QPushButton::clicked, this, [this]() { if (confirmDiscard()) newScene(); });
 	connect(openB, &QPushButton::clicked, this, &SceneBuilderWidget::onOpenClicked);
@@ -194,16 +203,17 @@ void SceneBuilderWidget::buildUi() {
 	m_deleteButton = new QPushButton(tr("Delete"), left);
 	m_duplicateButton->setAutoDefault(false);
 	m_deleteButton->setAutoDefault(false);
-	for (QPushButton *b : {addB, m_duplicateButton, m_deleteButton}) b->setStyleSheet("padding: 6px 10px;");  // compact, so the list column can be narrow
-	auto *row = new QHBoxLayout;
+	for (QPushButton *b : {addB, m_duplicateButton, m_deleteButton}) scene_builder_ui::compactStyle(b);   // compact, so the list column can be narrow
+	auto *listBar = new QWidget(left);   // wraps (Add / Duplicate / Delete on two lines) when the column is dragged narrow
+	auto *row = new FlowLayout(listBar, 0, 6, 6);
 	row->addWidget(addB);
 	row->addWidget(m_duplicateButton);
 	row->addWidget(m_deleteButton);
-	leftLayout->addLayout(row);
+	leftLayout->addWidget(listBar);
 	m_list = new QListWidget(left);
 	m_list->setObjectName("sceneBuilderList");  // sized by the application stylesheet (mainwindow_style.cpp)
 	leftLayout->addWidget(m_list, 1);
-	left->setMinimumWidth(0);  // showEvent() sets the real minimum from the buttons
+	left->setMinimumWidth(0);  // showEvent() sets the real minimum from the widest button
 	m_leftPanel = left;
 	m_addButton = addB;
 	connect(m_list, &QListWidget::currentRowChanged, this, [this](int) { onListSelectionChanged(); });
@@ -249,7 +259,8 @@ void SceneBuilderWidget::buildUi() {
 	auto *previewBox = new QWidget;
 	auto *previewLayout = new QVBoxLayout(previewBox);
 	previewLayout->setContentsMargins(0, 0, 0, 0);
-	auto *renderRow = new QHBoxLayout;
+	auto *renderBar = new QWidget(previewBox);
+	auto *renderRow = new FlowLayout(renderBar, 0, 6, 6);
 	m_qualityCombo = new QComboBox(previewBox);
 	m_qualityCombo->addItem(tr("Draft"), 0);
 	m_qualityCombo->addItem(tr("Good"), 1);
@@ -264,13 +275,15 @@ void SceneBuilderWidget::buildUi() {
 	m_finalButton->setAutoDefault(false);
 	m_finalButton->setToolTip(tr("Render at the image size and sample count set under Camera, and save the picture as a PNG"));
 	m_previewStatus = new QLabel(previewBox);
-	renderRow->addWidget(new QLabel(tr("Quality:"), previewBox));
+	renderRow->addWidget(new QLabel(tr("Quality:"), renderBar));
 	renderRow->addWidget(m_qualityCombo);
 	renderRow->addWidget(m_gpuCheck);
-	renderRow->addWidget(m_previewButton, 1);
-	renderRow->addWidget(m_finalButton, 1);
+	scene_builder_ui::compactStyle(m_previewButton);
+	scene_builder_ui::compactStyle(m_finalButton);
+	renderRow->addWidget(m_previewButton);
+	renderRow->addWidget(m_finalButton);
 	m_previewStatus->setWordWrap(true);
-	previewLayout->addLayout(renderRow);
+	previewLayout->addWidget(renderBar);
 	m_previewLabel = new QLabel(previewBox);
 	m_previewLabel->setAlignment(Qt::AlignCenter);
 	m_previewLabel->setMinimumHeight(120);
@@ -324,7 +337,7 @@ void SceneBuilderWidget::buildUi() {
 	split->setStretchFactor(0, 0);
 	split->setStretchFactor(1, 1);
 	split->setStretchFactor(2, 0);
-	split->setSizes({230, 560, 320});
+	split->setSizes({262, 560, 320});   // wide enough for Add / Duplicate / Delete on one line
 	centreScroll->setMinimumWidth(340);   // wide enough for the Top / Front / Side / 3D row of buttons
 	m_mainSplit = split;
 	m_centreSplit = centre;

@@ -5,6 +5,7 @@
 #include "scene_3d_view.h"
 #include "scene_builder_common.h"
 #include "scene_layout_view.h"
+#include "flow_layout.h"
 
 #include <QApplication>
 #include <QAbstractButton>
@@ -25,7 +26,8 @@ using namespace scene_builder_ui;
 using scene_doc::Float3;
 
 void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayout) {
-	auto *planeRow = new QHBoxLayout;
+	auto *viewBar = new QWidget(layoutBox);   // the view buttons and the snap / frame options, one wrapping row
+	auto *planeRow = new FlowLayout(viewBar, 0, 6, 6);
 	auto *planeGroup = new QButtonGroup(this);
 	planeGroup->setExclusive(true);
 	m_view = new SceneLayoutView(layoutBox);
@@ -51,6 +53,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		b->setChecked(i == 0);
 		b->setToolTip(tools[i].second);
 		gizmoGroup->addButton(b, i);
+		scene_builder_ui::compactStyle(b);
 		gizmoLayout->addWidget(b);
 		connect(b, &QPushButton::clicked, this, [this, i]() { m_view3d->setGizmoMode(static_cast<Scene3DView::GizmoMode>(i)); });
 	}
@@ -66,6 +69,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		b->setAutoDefault(false);
 		b->setChecked(pl.second == SceneLayoutView::Plane::Top);
 		planeGroup->addButton(b);
+		scene_builder_ui::compactStyle(b);
 		planeRow->addWidget(b);
 		connect(b, &QPushButton::clicked, this, [this, pl]() {
 			m_viewStack->setCurrentWidget(m_view);
@@ -79,6 +83,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	b3d->setAutoDefault(false);
 	b3d->setToolTip(tr("Look at the scene from any side, and move things in 3D"));
 	planeGroup->addButton(b3d);
+	scene_builder_ui::compactStyle(b3d);
 	planeRow->addWidget(b3d);
 	connect(b3d, &QPushButton::clicked, this, [this]() {
 		m_viewStack->setCurrentWidget(m_view3d);
@@ -99,14 +104,11 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		m_view->frameAll();
 		m_view3d->frameAll();
 	});
-	planeRow->addStretch(1);
-	layoutLayout->addLayout(planeRow);
-	// Snap and Frame all on a row of their own: with the four view buttons they were wider than the column at an ordinary window size and got clipped.
-	auto *optionsRow = new QHBoxLayout;
-	optionsRow->addWidget(snap);
-	optionsRow->addWidget(frame);
-	optionsRow->addStretch(1);
-	layoutLayout->addLayout(optionsRow);
+	// One flow: Top / Front / Side / 3D, Snap to grid and Frame all share a line when the column is wide, and wrap when it is not.
+	scene_builder_ui::compactStyle(frame);
+	planeRow->addWidget(snap);
+	planeRow->addWidget(frame);
+	layoutLayout->addWidget(viewBar);
 	// The tools get a row of their own (only in 3D), so neither row is wider than the column.
 	gizmoLayout->addStretch(1);
 	layoutLayout->addWidget(m_gizmoBar);

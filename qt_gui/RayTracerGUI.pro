@@ -40,6 +40,7 @@ SOURCES += \
 	main.cpp \
 	app_log.cpp \
 	window_geometry.cpp \
+	flow_layout.cpp \
 	render_form_memory.cpp \
 	render_queue_model.cpp \
 	crash_recovery.cpp \
@@ -104,6 +105,7 @@ SOURCES += \
 HEADERS += \
 	app_log.h \
 	window_geometry.h \
+	flow_layout.h \
 	render_form_memory.h \
 	denoiser_installer.h \
 	render_queue_model.h \
