@@ -160,6 +160,8 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		check(sb->openFile(pbrt, &err) && scene_doc::toJson(sb->document()) == before, "re-opened the saved file unchanged " + err);
 		selfTestSceneList(sb, check);
 		selfTestLog(sb, check);
+		selfTestWheelGuard(check);
+		selfTestWindowGeometry(check);
 		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
 		sb->newScene();
 		sb->selectObject(2);

@@ -3,6 +3,8 @@
 
 #include "scene_builder_common.h"
 #include "app_log.h"
+#include "window_geometry.h"
+#include "atomic_file.h"
 #include "../src/shared/scene_doc_diff.h"
 #include "../src/shared/pbrt_asset_check.h"
 
@@ -85,6 +87,10 @@ SceneBuilderWidget::~SceneBuilderWidget() {
 		m_process->waitForFinished(2000);
 	}
 	if (m_dirty && m_autosaveEnabled) writeAutosave();
+	if (!qEnvironmentVariableIsSet("RT_GUI_SELFTEST") && m_mainSplit && m_centreSplit) {
+		window_geometry::saveSplitter(m_mainSplit, "builder/mainSplit");
+		window_geometry::saveSplitter(m_centreSplit, "builder/centreSplit");
+	}
 }
 
 QString SceneBuilderWidget::workFolder() const {
@@ -310,6 +316,20 @@ void SceneBuilderWidget::buildUi() {
 	split->setStretchFactor(1, 1);
 	split->setStretchFactor(2, 0);
 	split->setSizes({270, 640, 420});
+	m_mainSplit = split;
+	m_centreSplit = centre;
+	// The panes come back as the user left them (not under the self-test, which compares screenshots).
+	if (!qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) {
+		window_geometry::restoreSplitter(split, "builder/mainSplit");
+		window_geometry::restoreSplitter(centre, "builder/centreSplit");
+	}
+}
+
+void SceneBuilderWidget::resetPaneSizes() {
+	if (m_mainSplit) m_mainSplit->setSizes({270, 640, 420});
+	if (m_centreSplit) m_centreSplit->setSizes({820, 740});
+	window_geometry::saveSplitter(m_mainSplit, "builder/mainSplit");
+	window_geometry::saveSplitter(m_centreSplit, "builder/centreSplit");
 }
 
 // ---- document state -------------------------------------------------------------------------------------------------------------
@@ -374,12 +394,8 @@ bool SceneBuilderWidget::openFile(const QString &path, QString *error) {
 
 // Writes the scene as pbrt text to `path`, without touching which file the document belongs to.
 static bool writeSceneText(const Document &doc, const QString &path) {
-	QFile f(path);
-	if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return false;
 	const std::string text = scene_doc::toPbrt(doc);
-	if (f.write(text.data(), static_cast<qint64>(text.size())) != static_cast<qint64>(text.size())) return false;
-	f.close();
-	return true;
+	return writeFileAtomically(path, QByteArray::fromRawData(text.data(), static_cast<qsizetype>(text.size())));   // the old file survives a failed write
 }
 
 bool SceneBuilderWidget::saveFile(const QString &path) {
@@ -605,10 +621,8 @@ void SceneBuilderWidget::scheduleAutosave() {
 
 void SceneBuilderWidget::writeAutosave() {
 	if (!m_autosaveEnabled || !m_dirty) return;
-	QFile f(autosavePath());
-	if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return;
 	const std::string text = scene_doc::toPbrt(m_doc);
-	f.write(text.data(), static_cast<qint64>(text.size()));
+	writeFileAtomically(autosavePath(), QByteArray::fromRawData(text.data(), static_cast<qsizetype>(text.size())));
 }
 
 void SceneBuilderWidget::clearAutosave() {

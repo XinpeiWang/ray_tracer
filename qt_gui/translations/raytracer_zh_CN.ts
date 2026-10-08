@@ -4,17 +4,17 @@
 <context>
     <name>DiagnosticsRunner</name>
     <message>
-        <location filename="../mainwindow.cpp" line="732"/>
+        <location filename="../mainwindow.cpp" line="735"/>
         <source>Failed to start ray_tracer.exe: %1</source>
         <translation>无法启动 ray_tracer.exe：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="742"/>
+        <location filename="../mainwindow.cpp" line="745"/>
         <source>Diagnostics process crashed (exit code %1)</source>
         <translation>诊断进程崩溃（退出代码 %1）</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="744"/>
+        <location filename="../mainwindow.cpp" line="747"/>
         <source>Diagnostics process exited with code %1:
 %2</source>
         <translation>诊断进程以代码 %1 退出：
@@ -522,17 +522,17 @@
 <context>
     <name>MainWindow</name>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="190"/>
+        <location filename="../mainwindow_actions.cpp" line="195"/>
         <source>Increase Log Font Size</source>
         <translation>增大日志字号</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="194"/>
+        <location filename="../mainwindow_actions.cpp" line="199"/>
         <source>Decrease Log Font Size</source>
         <translation>减小日志字号</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="198"/>
+        <location filename="../mainwindow_actions.cpp" line="203"/>
         <source>Reset Log Font Size</source>
         <translation>重置日志字号</translation>
     </message>
@@ -584,279 +584,289 @@
         <translation>语言(&amp;L)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="922"/>
+        <location filename="../mainwindow.cpp" line="925"/>
         <source>Ray Tracer - Path Tracing Renderer</source>
         <translation>光线追踪渲染器 - 路径追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1034"/>
+        <location filename="../mainwindow.cpp" line="1021"/>
         <source>Ray Tracer</source>
         <translation>光线追踪渲染器</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1225"/>
+        <location filename="../mainwindow.cpp" line="1248"/>
         <location filename="../mainwindow_slots.cpp" line="2071"/>
         <source>START &amp;RENDER</source>
         <translation>开始渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1235"/>
+        <location filename="../mainwindow.cpp" line="1258"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>使用当前设置渲染所选场景
 （如果已有渲染正在进行，则改为加入队列排在其后）</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1246"/>
+        <location filename="../mainwindow.cpp" line="1269"/>
         <source>S&amp;TOP RENDER</source>
         <translation>停止渲染(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1253"/>
-        <location filename="../mainwindow_actions.cpp" line="70"/>
+        <location filename="../mainwindow.cpp" line="1276"/>
+        <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>停止正在运行的渲染并丢弃其输出</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1266"/>
+        <location filename="../mainwindow.cpp" line="1289"/>
         <location filename="../mainwindow_slots.cpp" line="429"/>
         <location filename="../mainwindow_slots.cpp" line="945"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>暂停渲染(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1272"/>
-        <location filename="../mainwindow_actions.cpp" line="79"/>
+        <location filename="../mainwindow.cpp" line="1295"/>
+        <location filename="../mainwindow_actions.cpp" line="80"/>
         <location filename="../mainwindow_slots.cpp" line="947"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>就地暂停正在运行的渲染 - “继续”会从完全相同的像素处接着渲染</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1281"/>
+        <location filename="../mainwindow.cpp" line="1304"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>放弃并继续下一个(&amp;N)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1288"/>
-        <location filename="../mainwindow_actions.cpp" line="84"/>
+        <location filename="../mainwindow.cpp" line="1311"/>
+        <location filename="../mainwindow_actions.cpp" line="85"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>丢弃正在运行的渲染的输出，并立即开始下一个排队的任务</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="48"/>
+        <location filename="../mainwindow_actions.cpp" line="49"/>
         <source>&amp;Render Image</source>
         <translation>渲染图像(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="51"/>
+        <location filename="../mainwindow_actions.cpp" line="52"/>
         <source>Render the selected scene with the current settings</source>
         <translation>使用当前设置渲染所选场景</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="57"/>
+        <location filename="../mainwindow_actions.cpp" line="58"/>
         <source>Render &amp;Video</source>
         <translation>渲染视频(&amp;V)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="60"/>
+        <location filename="../mainwindow_actions.cpp" line="61"/>
         <source>Render the camera path frame by frame and assemble a video</source>
         <translation>逐帧渲染相机路径并合成为视频</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="66"/>
+        <location filename="../mainwindow_actions.cpp" line="67"/>
         <source>&amp;Stop Render</source>
         <translation>停止渲染(&amp;S)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="77"/>
+        <location filename="../mainwindow_actions.cpp" line="78"/>
         <location filename="../mainwindow_slots.cpp" line="432"/>
         <location filename="../mainwindow_slots.cpp" line="949"/>
         <source>&amp;Pause Render</source>
         <translation>暂停渲染(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="82"/>
+        <location filename="../mainwindow_actions.cpp" line="83"/>
         <source>&amp;Abandon &amp;&amp; Start Next</source>
         <translation>放弃并开始下一个(&amp;A)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="87"/>
+        <location filename="../mainwindow_actions.cpp" line="88"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1571"/>
         <source>Open Output &amp;Folder</source>
         <translation>打开输出文件夹(&amp;F)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="90"/>
+        <location filename="../mainwindow_actions.cpp" line="91"/>
         <source>Show the folder containing the active Preview tab&apos;s render</source>
         <translation>显示当前预览标签页所渲染结果所在的文件夹</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="97"/>
+        <location filename="../mainwindow_actions.cpp" line="98"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1583"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>用默认查看器打开(&amp;V)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="99"/>
+        <location filename="../mainwindow_actions.cpp" line="100"/>
         <source>Open the active Preview tab&apos;s render in the system viewer</source>
         <translation>使用系统查看器打开当前预览标签页的渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="106"/>
+        <location filename="../mainwindow_actions.cpp" line="107"/>
         <source>&amp;Copy Log</source>
         <translation>复制日志(&amp;C)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="109"/>
+        <location filename="../mainwindow_actions.cpp" line="110"/>
         <source>Copy the entire log to the clipboard</source>
         <translation>将完整日志复制到剪贴板</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="112"/>
+        <location filename="../mainwindow_actions.cpp" line="113"/>
         <location filename="../mainwindow_tabs_output.cpp" line="233"/>
         <source>&amp;Save Log…</source>
         <translation>保存日志(&amp;S)…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="120"/>
+        <location filename="../mainwindow_actions.cpp" line="121"/>
         <source>Write the log to a text file</source>
         <translation>将日志写入文本文件</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="123"/>
+        <location filename="../mainwindow_actions.cpp" line="124"/>
         <location filename="../mainwindow_tabs_output.cpp" line="238"/>
         <source>C&amp;lear Log</source>
         <translation>清空日志(&amp;L)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="126"/>
+        <location filename="../mainwindow_actions.cpp" line="127"/>
         <source>Clear the log pane</source>
         <translation>清空日志面板</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="129"/>
+        <location filename="../mainwindow_actions.cpp" line="130"/>
         <source>&amp;About Ray Tracer</source>
         <translation>关于光线追踪渲染器(&amp;A)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="131"/>
+        <location filename="../mainwindow_actions.cpp" line="132"/>
         <source>Version and project information</source>
         <translation>版本与项目信息</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="135"/>
+        <location filename="../mainwindow_actions.cpp" line="136"/>
         <source>Show &amp;Log Folder</source>
         <translation>显示日志文件夹(&amp;L)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="136"/>
+        <location filename="../mainwindow_actions.cpp" line="137"/>
         <source>Open the folder holding the program&apos;s log file (send it with a bug report)</source>
         <translation>打开程序日志文件所在的文件夹（报告问题时请一并发送）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="144"/>
+        <location filename="../mainwindow_actions.cpp" line="145"/>
         <source>About &amp;Qt</source>
         <translation>关于 Qt(&amp;Q)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="147"/>
+        <location filename="../mainwindow_actions.cpp" line="148"/>
         <source>&amp;Quit</source>
         <translation>退出(&amp;Q)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="149"/>
+        <location filename="../mainwindow_actions.cpp" line="150"/>
         <source>Exit the application</source>
         <translation>退出应用程序</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="156"/>
+        <location filename="../mainwindow_actions.cpp" line="157"/>
         <source>&amp;File</source>
         <translation>文件(&amp;F)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="164"/>
+        <location filename="../mainwindow_actions.cpp" line="165"/>
         <source>&amp;Render</source>
         <translation>渲染(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="172"/>
+        <location filename="../mainwindow_actions.cpp" line="173"/>
         <source>&amp;View</source>
         <translation>视图(&amp;V)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="210"/>
+        <location filename="../mainwindow_actions.cpp" line="184"/>
+        <source>Reset Window Layout</source>
+        <translation>重置窗口布局</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_actions.cpp" line="185"/>
+        <source>Put the window back at its default size and place</source>
+        <translation>将窗口恢复为默认大小和位置</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_actions.cpp" line="215"/>
         <source>&amp;Help</source>
         <translation>帮助(&amp;H)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="370"/>
+        <location filename="../mainwindow_actions.cpp" line="369"/>
         <source>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;A physically-based path tracer with parallel CPU and GPU backends, built up from the &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; series into a pbrt-v4-style feature set.&lt;/p&gt;&lt;p&gt;151 built-in scenes and 58 test scenes, a wide BxDF library, multiple light and camera types, triangle-mesh and texture support, BVH acceleration, volumetrics, and a choice of integrators alongside standard path tracing - SPPM photon mapping, bidirectional path tracing (BDPT), Metropolis Light Transport, and several reference/debug integrators (RandomWalk, Ambient Occlusion, SimplePath, SimpleVolPath, LightPath).&lt;/p&gt;&lt;p&gt;This window drives &lt;code&gt;%1&lt;/code&gt; as a subprocess.&lt;/p&gt;</source>
         <translation>&lt;h3&gt;Ray Tracer&lt;/h3&gt;&lt;p&gt;一款基于物理的路径追踪器，带有并行的 CPU 和 GPU 后端，从 &lt;i&gt;Ray Tracing in One Weekend&lt;/i&gt; 系列一路发展为 pbrt-v4 风格的功能集。&lt;/p&gt;&lt;p&gt;内置 151 个场景和 58 个测试场景，拥有丰富的 BxDF 库，支持多种光源和相机类型、三角网格与纹理、BVH 加速、体积渲染，并且除标准路径追踪外还提供多种积分器：SPPM 光子映射、双向路径追踪 (BDPT)、Metropolis 光传输，以及若干参考和调试用积分器（RandomWalk、Ambient Occlusion、SimplePath、SimpleVolPath、LightPath）。&lt;/p&gt;&lt;p&gt;此窗口以子进程方式运行 &lt;code&gt;%1&lt;/code&gt;。&lt;/p&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="247"/>
+        <location filename="../mainwindow_actions.cpp" line="252"/>
         <source>GPU (OptiX)</source>
         <translation>GPU（OptiX）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="250"/>
+        <location filename="../mainwindow_actions.cpp" line="255"/>
         <location filename="../mainwindow_slots.cpp" line="491"/>
         <source>CPU</source>
         <translation>CPU</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="247"/>
+        <location filename="../mainwindow_actions.cpp" line="252"/>
         <source>GPU (OptiX, Wavefront)</source>
         <translation>GPU（OptiX，Wavefront）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="248"/>
+        <location filename="../mainwindow_actions.cpp" line="253"/>
         <source>GPU (Metal)</source>
         <translation>GPU (Metal)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="263"/>
+        <location filename="../mainwindow_actions.cpp" line="268"/>
         <source>%1x%2  ·  %3 spp</source>
         <translation>%1x%2  ·  %3 spp</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="304"/>
+        <location filename="../mainwindow_actions.cpp" line="309"/>
         <source>Save Log</source>
         <translation>保存日志</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="306"/>
-        <location filename="../mainwindow_actions.cpp" line="349"/>
+        <location filename="../mainwindow_actions.cpp" line="311"/>
+        <location filename="../mainwindow_actions.cpp" line="351"/>
         <source>Text Files (*.txt);;All Files (*.*)</source>
         <translation>文本文件 (*.txt);;所有文件 (*.*)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="313"/>
+        <location filename="../mainwindow_actions.cpp" line="318"/>
         <source>[ERROR] Could not write log to %1: %2</source>
         <translation>[错误] 无法将日志写入 %1：%2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="320"/>
+        <location filename="../mainwindow_actions.cpp" line="322"/>
         <source>[INFO] Log saved to %1</source>
         <translation>[信息] 日志已保存至 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="347"/>
+        <location filename="../mainwindow_actions.cpp" line="349"/>
         <source>Save Diagnostics Report</source>
         <translation>保存诊断报告</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="354"/>
+        <location filename="../mainwindow_actions.cpp" line="356"/>
         <source>Save Failed</source>
         <translation>保存失败</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="355"/>
+        <location filename="../mainwindow_actions.cpp" line="357"/>
         <source>Could not write diagnostics report to %1: %2</source>
         <translation>无法将诊断报告写入 %1：%2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_actions.cpp" line="369"/>
+        <location filename="../mainwindow_actions.cpp" line="368"/>
         <source>About Ray Tracer</source>
         <translation>关于光线追踪渲染器</translation>
     </message>
@@ -5415,27 +5425,27 @@ CPU only. Only works with lights that have a physical size or shape.</source>
 <context>
     <name>RenderController</name>
     <message>
-        <location filename="../mainwindow.cpp" line="549"/>
+        <location filename="../mainwindow.cpp" line="552"/>
         <source>Failed to start renderer: %1</source>
         <translation>无法启动渲染器：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="630"/>
+        <location filename="../mainwindow.cpp" line="633"/>
         <source>Render completed successfully!</source>
         <translation>渲染已成功完成！</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="667"/>
+        <location filename="../mainwindow.cpp" line="670"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Troubleshooting:&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;故障排除：&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="669"/>
+        <location filename="../mainwindow.cpp" line="672"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;small&gt;Error Code: %1 | Category: %2&lt;/small&gt;</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;small&gt;错误代码：%1 | 类别：%2&lt;/small&gt;</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="671"/>
+        <location filename="../mainwindow.cpp" line="674"/>
         <source>
 
 Output:
@@ -5751,7 +5761,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="434"/>
-        <location filename="../scene_builder_widget.cpp" line="756"/>
+        <location filename="../scene_builder_widget.cpp" line="770"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>网格 (*.ply *.obj)</translation>
     </message>
@@ -5839,117 +5849,117 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>亮度</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="115"/>
+        <location filename="../scene_builder_widget.cpp" line="121"/>
         <source>New</source>
         <translation>新建</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="115"/>
+        <location filename="../scene_builder_widget.cpp" line="121"/>
         <source>Start again from the example scene</source>
         <translation>从示例场景重新开始</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="116"/>
+        <location filename="../scene_builder_widget.cpp" line="122"/>
         <source>Open...</source>
         <translation>打开...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="116"/>
+        <location filename="../scene_builder_widget.cpp" line="122"/>
         <source>Open a .pbrt file saved by the Scene Builder</source>
         <translation>打开由场景构建器保存的 .pbrt 文件</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="117"/>
+        <location filename="../scene_builder_widget.cpp" line="123"/>
         <source>Save</source>
         <translation>保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="117"/>
+        <location filename="../scene_builder_widget.cpp" line="123"/>
         <source>Save the scene as a .pbrt file</source>
         <translation>将场景保存为 .pbrt 文件</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="118"/>
+        <location filename="../scene_builder_widget.cpp" line="124"/>
         <source>Save As...</source>
         <translation>另存为...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="118"/>
+        <location filename="../scene_builder_widget.cpp" line="124"/>
         <source>Save the scene under a new name</source>
         <translation>以新名称保存场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="119"/>
+        <location filename="../scene_builder_widget.cpp" line="125"/>
         <source>Add to scene list</source>
         <translation>添加到场景列表</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="120"/>
+        <location filename="../scene_builder_widget.cpp" line="126"/>
         <source>Undo</source>
         <translation>撤销</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="121"/>
+        <location filename="../scene_builder_widget.cpp" line="127"/>
         <source>Redo</source>
         <translation>重做</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="126"/>
+        <location filename="../scene_builder_widget.cpp" line="132"/>
         <source>Scene name</source>
         <translation>场景名称</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="127"/>
+        <location filename="../scene_builder_widget.cpp" line="133"/>
         <source>The name of this scene, shown in the scene list</source>
         <translation>此场景的名称，显示在场景列表中</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="135"/>
+        <location filename="../scene_builder_widget.cpp" line="141"/>
         <source>Name:</source>
         <translation>名称：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="155"/>
+        <location filename="../scene_builder_widget.cpp" line="161"/>
         <source>Add</source>
         <translation>添加</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="158"/>
+        <location filename="../scene_builder_widget.cpp" line="164"/>
         <source>Objects</source>
         <translation>物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="161"/>
+        <location filename="../scene_builder_widget.cpp" line="167"/>
         <source>Props (several objects at once)</source>
         <translation>道具（一次添加多个物体）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="163"/>
+        <location filename="../scene_builder_widget.cpp" line="169"/>
         <source>More</source>
         <translation>更多</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="164"/>
+        <location filename="../scene_builder_widget.cpp" line="170"/>
         <source>Object from a photo...</source>
         <translation>由照片生成物体...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="165"/>
+        <location filename="../scene_builder_widget.cpp" line="171"/>
         <source>Light panel (emitting quad)</source>
         <translation>灯板（发光四边形）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="174"/>
+        <location filename="../scene_builder_widget.cpp" line="180"/>
         <source>Lights</source>
         <translation>光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="178"/>
+        <location filename="../scene_builder_widget.cpp" line="184"/>
         <source>Duplicate</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="179"/>
+        <location filename="../scene_builder_widget.cpp" line="185"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
@@ -6004,7 +6014,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>从任意角度查看场景，并在 3D 中移动物体</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="200"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="211"/>
         <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>吸附到网格</translation>
@@ -6020,140 +6030,140 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>显示全部</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="239"/>
+        <location filename="../scene_builder_widget.cpp" line="245"/>
         <source>Draft</source>
         <translation>草稿</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="240"/>
+        <location filename="../scene_builder_widget.cpp" line="246"/>
         <source>Good</source>
         <translation>良好</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="241"/>
+        <location filename="../scene_builder_widget.cpp" line="247"/>
         <source>Best</source>
         <translation>最佳</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="244"/>
+        <location filename="../scene_builder_widget.cpp" line="250"/>
         <source>Use the GPU</source>
         <translation>使用 GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="245"/>
+        <location filename="../scene_builder_widget.cpp" line="251"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>在显卡上渲染（Windows 上为 NVIDIA OptiX，Mac 上为 Metal）。大幅面图像快得多，需要受支持的 GPU。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="246"/>
-        <location filename="../scene_builder_widget.cpp" line="953"/>
+        <location filename="../scene_builder_widget.cpp" line="252"/>
+        <location filename="../scene_builder_widget.cpp" line="967"/>
         <source>Preview</source>
         <translation>预览</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="248"/>
+        <location filename="../scene_builder_widget.cpp" line="254"/>
         <source>Render picture...</source>
         <translation>渲染图像...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="250"/>
+        <location filename="../scene_builder_widget.cpp" line="256"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>按“相机”中设置的图像尺寸和采样数渲染，并将图像保存为 PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="252"/>
+        <location filename="../scene_builder_widget.cpp" line="258"/>
         <source>Quality:</source>
         <translation>质量：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="263"/>
+        <location filename="../scene_builder_widget.cpp" line="269"/>
         <source>Press Preview to see the scene.</source>
         <translation>点击“预览”查看场景。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="342"/>
+        <location filename="../scene_builder_widget.cpp" line="362"/>
         <source>Cannot open %1.</source>
         <translation>无法打开 %1。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="401"/>
+        <location filename="../scene_builder_widget.cpp" line="417"/>
         <source>Unsaved changes</source>
         <translation>有未保存的更改</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="401"/>
+        <location filename="../scene_builder_widget.cpp" line="417"/>
         <source>The scene has changes that are not saved. Save them first?</source>
         <translation>场景有尚未保存的更改。要先保存吗？</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="413"/>
+        <location filename="../scene_builder_widget.cpp" line="429"/>
         <source>Open a Scene Builder scene</source>
         <translation>打开场景构建器的场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="414"/>
-        <location filename="../scene_builder_widget.cpp" line="432"/>
+        <location filename="../scene_builder_widget.cpp" line="430"/>
+        <location filename="../scene_builder_widget.cpp" line="448"/>
         <source>pbrt scenes (*.pbrt)</source>
         <translation>pbrt 场景 (*.pbrt)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="417"/>
+        <location filename="../scene_builder_widget.cpp" line="433"/>
         <source>Cannot open the scene</source>
         <translation>无法打开场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="425"/>
-        <location filename="../scene_builder_widget.cpp" line="435"/>
-        <location filename="../scene_builder_widget.cpp" line="506"/>
+        <location filename="../scene_builder_widget.cpp" line="441"/>
+        <location filename="../scene_builder_widget.cpp" line="451"/>
+        <location filename="../scene_builder_widget.cpp" line="522"/>
         <source>Cannot save</source>
         <translation>无法保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="425"/>
-        <location filename="../scene_builder_widget.cpp" line="435"/>
-        <location filename="../scene_builder_widget.cpp" line="473"/>
-        <location filename="../scene_builder_widget.cpp" line="908"/>
+        <location filename="../scene_builder_widget.cpp" line="441"/>
+        <location filename="../scene_builder_widget.cpp" line="451"/>
+        <location filename="../scene_builder_widget.cpp" line="489"/>
+        <location filename="../scene_builder_widget.cpp" line="922"/>
         <source>Could not write %1.</source>
         <translation>无法写入 %1。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="426"/>
-        <location filename="../scene_builder_widget.cpp" line="436"/>
+        <location filename="../scene_builder_widget.cpp" line="442"/>
+        <location filename="../scene_builder_widget.cpp" line="452"/>
         <source>Saved %1</source>
         <translation>已保存 %1</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="432"/>
+        <location filename="../scene_builder_widget.cpp" line="448"/>
         <source>Save the scene</source>
         <translation>保存场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="486"/>
+        <location filename="../scene_builder_widget.cpp" line="502"/>
         <source>No scenes folder</source>
         <translation>没有场景文件夹</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="493"/>
+        <location filename="../scene_builder_widget.cpp" line="509"/>
         <source>Add to the scene list</source>
         <translation>添加到场景列表</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="494"/>
+        <location filename="../scene_builder_widget.cpp" line="510"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>此场景已在列表中，名称为“%1”。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="495"/>
+        <location filename="../scene_builder_widget.cpp" line="511"/>
         <source>Add as a new scene</source>
         <translation>添加为新场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="496"/>
+        <location filename="../scene_builder_widget.cpp" line="512"/>
         <source>Update the existing one</source>
         <translation>更新现有场景</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="511"/>
+        <location filename="../scene_builder_widget.cpp" line="527"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -6162,102 +6172,102 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 它现在已在场景列表中（“设置”标签页，我的场景）。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="831"/>
+        <location filename="../scene_builder_widget.cpp" line="845"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 个物体，%4 个光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="756"/>
+        <location filename="../scene_builder_widget.cpp" line="770"/>
         <source>Choose a mesh</source>
         <translation>选择网格</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="456"/>
+        <location filename="../scene_builder_widget.cpp" line="472"/>
         <source>The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the environment variable RAY_TRACER_PBRT_DIR to that folder to have the program list it.</source>
         <translation>在程序旁边找不到场景文件夹 (pbrt_scenes)。可以用“另存为”把文件放到任意位置，并将环境变量 RAY_TRACER_PBRT_DIR 设为该文件夹，程序就会把它列出来。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="119"/>
+        <location filename="../scene_builder_widget.cpp" line="125"/>
         <source>Save the scene into the scenes folder so it shows up in the Settings tab</source>
         <translation>将场景保存到场景文件夹，使其出现在“设置”标签页中</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="120"/>
+        <location filename="../scene_builder_widget.cpp" line="126"/>
         <source>Undo the last change (%1)</source>
         <translation>撤销上一次更改 (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="121"/>
+        <location filename="../scene_builder_widget.cpp" line="127"/>
         <source>Redo (%1)</source>
         <translation>重做 (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="243"/>
+        <location filename="../scene_builder_widget.cpp" line="249"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>草稿：宽 480 像素，16 个采样。良好：宽 720，64 个采样。最佳：宽 960，256 个采样。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="510"/>
+        <location filename="../scene_builder_widget.cpp" line="526"/>
         <source>Added to the scene list</source>
         <translation>已添加到场景列表</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="647"/>
+        <location filename="../scene_builder_widget.cpp" line="661"/>
         <source>Camera and image</source>
         <translation>相机与画面</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="668"/>
+        <location filename="../scene_builder_widget.cpp" line="682"/>
         <source>, light</source>
         <translation>，光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="825"/>
+        <location filename="../scene_builder_widget.cpp" line="839"/>
         <source>not saved yet</source>
         <translation>尚未保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="847"/>
+        <location filename="../scene_builder_widget.cpp" line="861"/>
         <source>No problems found.</source>
         <translation>未发现问题。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="853"/>
+        <location filename="../scene_builder_widget.cpp" line="867"/>
         <source>Fix this:</source>
         <translation>请修复：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="853"/>
+        <location filename="../scene_builder_widget.cpp" line="867"/>
         <source>Note:</source>
         <translation>注意：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="881"/>
+        <location filename="../scene_builder_widget.cpp" line="895"/>
         <source>Save the rendered picture</source>
         <translation>保存渲染的图像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="881"/>
+        <location filename="../scene_builder_widget.cpp" line="895"/>
         <source>PNG images (*.png)</source>
         <translation>PNG 图像 (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="885"/>
+        <location filename="../scene_builder_widget.cpp" line="899"/>
         <source>The render failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="896"/>
+        <location filename="../scene_builder_widget.cpp" line="910"/>
         <source>A render is already running.</source>
         <translation>已有渲染正在运行。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="898"/>
+        <location filename="../scene_builder_widget.cpp" line="912"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>请先修复属性中列出的问题。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="899"/>
+        <location filename="../scene_builder_widget.cpp" line="913"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>在程序旁边找不到渲染器 (%1)。</translation>
     </message>
@@ -6328,7 +6338,7 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
-        <location filename="../scene_builder_widget.cpp" line="938"/>
+        <location filename="../scene_builder_widget.cpp" line="952"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
@@ -6353,44 +6363,44 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
         <translation>已根据照片添加 %1。形状是推测的，请从各个角度检查。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="941"/>
+        <location filename="../scene_builder_widget.cpp" line="955"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>正在渲染 %1 x %2，%3 个采样…</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="969"/>
+        <location filename="../scene_builder_widget.cpp" line="983"/>
         <source>The render was cancelled.</source>
         <translation>渲染已取消。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="969"/>
+        <location filename="../scene_builder_widget.cpp" line="983"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>渲染器意外停止。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="969"/>
+        <location filename="../scene_builder_widget.cpp" line="983"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>渲染器没有生成图像（退出代码 %1）。
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="970"/>
+        <location filename="../scene_builder_widget.cpp" line="984"/>
         <source>The render failed.</source>
         <translation>渲染失败。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="976"/>
+        <location filename="../scene_builder_widget.cpp" line="990"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>用时 %1 秒完成 (%2 x %3)。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="979"/>
+        <location filename="../scene_builder_widget.cpp" line="993"/>
         <source>Saved %1.</source>
         <translation>已保存 %1。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="980"/>
+        <location filename="../scene_builder_widget.cpp" line="994"/>
         <source>Could not save to %1.</source>
         <translation>无法保存到 %1。</translation>
     </message>

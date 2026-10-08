@@ -130,6 +130,13 @@ cd RayTracer_Package
 .\RayTracerGUI.exe
 ```
 
+## Behaviours every window shares
+
+* **Window and pane layout are remembered** (`window_geometry.h`): the main window's size, position and maximized state, and the Scene Builder's pane widths, come back on the next start. A saved position is used only if its title bar is still on a connected screen (`src/shared/window_placement.h`, unit-tested); after a monitor is unplugged the window opens at the default size, centred. *View > Reset Window Layout* returns to the defaults.
+* **The mouse wheel does not change a control by accident** (`wheel_guard.h`): a spin box, combo box or slider reacts to the wheel only once it has keyboard focus (click or Tab into it); otherwise the wheel scrolls the page behind it.
+* **Files a user would hate to lose are written atomically** (`atomic_file.h`, `QSaveFile`): saved scenes, the Scene Builder's autosave, saved logs and diagnostics reports go to a temporary file that replaces the old one only when the write has fully succeeded.
+* **Every user operation is logged** - see `docs/LOGGING.md`.
+
 ## Troubleshooting
 
 **"Application failed to start"** - missing Qt DLLs/plugins; re-run

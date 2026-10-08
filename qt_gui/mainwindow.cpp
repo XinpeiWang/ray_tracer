@@ -1,4 +1,7 @@
 #include "mainwindow.h"
+#include "app_log.h"
+#include "window_geometry.h"
+#include "scene_builder_widget.h"
 #include "icon_tint.h"
 #include "error_handler.h"
 #include "scene_metadata_client.h"
@@ -922,25 +925,9 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	setWindowTitle(tr("Ray Tracer - Path Tracing Renderer"));
 	setMinimumSize(600, 500);
 
-	// Auto-adjust initial size based on screen resolution
-	QScreen *screen = QApplication::primaryScreen();
-	if (screen) {
-		QRect screenGeometry = screen->availableGeometry();
-		int screenWidth = screenGeometry.width();
-		int screenHeight = screenGeometry.height();
-
-		// Use 50% of screen width, 70% of screen height (good balance for this UI)
-		int initialWidth = qMin(1000, screenWidth * 50 / 100);
-		int initialHeight = qMin(900, screenHeight * 70 / 100);
-
-		resize(initialWidth, initialHeight);
-
-		// Center the window on screen
-		move(screenGeometry.center() - rect().center());
-	} else {
-		// Fallback if screen info unavailable
-		resize(800, 700);
-	}
+	applyDefaultWindowGeometry();
+	// Where the window was last time, if that place is still on a screen (the self-test sizes the window itself).
+	if (!qEnvironmentVariableIsSet("RT_GUI_SELFTEST")) window_geometry::restore(this);
 
 	// The theme must exist before setupUI(), because createThemeMenu() ticks
 	// the entry matching the active scheme. Same reasoning for the font id -
@@ -1061,7 +1048,43 @@ MainWindow::MainWindow(QWidget *parent, const QString &startupLanguageCode)
 	QTimer::singleShot(0, this, []() { win_taskbar::init(); });
 }
 
+void MainWindow::applyDefaultWindowGeometry() {
+	// Auto-adjust initial size based on screen resolution
+	QScreen *screen = QApplication::primaryScreen();
+	if (screen) {
+		QRect screenGeometry = screen->availableGeometry();
+		int screenWidth = screenGeometry.width();
+		int screenHeight = screenGeometry.height();
+
+		// Use 50% of screen width, 70% of screen height (good balance for this UI)
+		int initialWidth = qMin(1000, screenWidth * 50 / 100);
+		int initialHeight = qMin(900, screenHeight * 70 / 100);
+
+		resize(initialWidth, initialHeight);
+
+		// Center the window on screen
+		move(screenGeometry.center() - rect().center());
+	} else {
+		// Fallback if screen info unavailable
+		resize(800, 700);
+	}
+}
+
+void MainWindow::resetWindowLayout() {
+	showNormal();
+	applyDefaultWindowGeometry();
+	window_geometry::forget();
+	if (m_sceneBuilder) m_sceneBuilder->resetPaneSizes();
+	AppLog::info(QStringLiteral("window"), QStringLiteral("window layout reset to the default"));
+}
+
+void MainWindow::closeEvent(QCloseEvent *event) {
+	window_geometry::save(this);
+	QMainWindow::closeEvent(event);
+}
+
 MainWindow::~MainWindow() {
+	window_geometry::save(this);   // also when the program quits without closing the window (a language change restarts it)
 	if (m_renderController && m_renderController->isRunning()) {
 		m_renderController->stopRender();
 	}

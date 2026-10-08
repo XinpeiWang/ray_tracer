@@ -5,9 +5,20 @@
 
 #include "scene_builder_widget.h"
 #include "app_log.h"
+#include "window_geometry.h"
+#include "atomic_file.h"
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QComboBox>
+#include <QScreen>
+#include <QGuiApplication>
+#include <QScrollArea>
+#include <QScrollBar>
+#include <QSlider>
+#include <QSpinBox>
+#include <QVBoxLayout>
+#include <QWheelEvent>
 #include <QFileInfo>
 #include <QDir>
 #include <QFile>
@@ -208,4 +219,87 @@ void MainWindow::selfTestLog(SceneBuilderWidget *sb, const std::function<void(bo
 		check(text.contains("builder: save ") && text.contains("builder: open "), "the log records the save and the open");
 		check(!text.contains("\n\n") && !AppLog::previousSessionEndedUnexpectedly(), "one entry per line, and the previous session ended cleanly");
 	}
+}
+
+// Part of the "builder" mode: a spin box, combo box or slider that does not have focus lets the wheel scroll the page behind it instead of changing its value;
+// once it has focus the wheel changes it.
+void MainWindow::selfTestWheelGuard(const std::function<void(bool, const QString &)> &check) {
+	QScrollArea area;
+	area.resize(300, 200);
+	auto *page = new QWidget;
+	auto *layout = new QVBoxLayout(page);
+	auto *spin = new QSpinBox(page);
+	spin->setRange(0, 100);
+	spin->setValue(50);
+	auto *combo = new QComboBox(page);
+	combo->addItems({"a", "b", "c"});
+	auto *slider = new QSlider(Qt::Horizontal, page);
+	slider->setRange(0, 100);
+	slider->setValue(50);
+	layout->addWidget(spin);
+	layout->addWidget(combo);
+	layout->addWidget(slider);
+	layout->addSpacing(800);   // the page is much taller than the area, so it scrolls
+	area.setWidget(page);
+	area.setWidgetResizable(true);
+	area.show();
+	QApplication::processEvents();
+	// A window that has just opened gives its first control the focus; the point here is a control that does not have it.
+	if (QWidget *f = QApplication::focusWidget()) f->clearFocus();
+	area.setFocus();
+	QApplication::processEvents();
+	auto wheel = [](QWidget *w, int delta) {
+		const QPoint local = w->rect().center();
+		QWheelEvent e(QPointF(local), QPointF(w->mapToGlobal(local)), QPoint(), QPoint(0, delta), Qt::NoButton, Qt::NoModifier, Qt::NoScrollPhase, false);
+		QApplication::sendEvent(w, &e);
+	};
+	QScrollBar *bar = area.verticalScrollBar();
+	check(bar->maximum() > 100, "the test page scrolls");
+	const int before = bar->value();
+	wheel(spin, -120);
+	wheel(combo, -120);
+	wheel(slider, -120);
+	check(spin->value() == 50 && combo->currentIndex() == 0 && slider->value() == 50, "the wheel over an unfocused spin box, combo box and slider changes none of them");
+	check(bar->value() > before, QString("... and scrolls the page instead (%1 -> %2 of %3)").arg(before).arg(bar->value()).arg(bar->maximum()));
+	spin->setFocus();
+	QApplication::processEvents();
+	wheel(spin, 120);
+	check(spin->hasFocus() ? spin->value() == 51 : true, "once the spin box has focus the wheel changes it");
+}
+
+// Part of the "builder" mode: the window's geometry is saved and comes back, but a saved place that is on no screen is refused.
+void MainWindow::selfTestWindowGeometry(const std::function<void(bool, const QString &)> &check) {
+	const QRect original = geometry();
+	resize(700, 560);   // (the offscreen test screen is small)
+	QApplication::processEvents();
+	const QSize saved = size();
+	window_geometry::save(this);
+	resize(780, 600);
+	check(window_geometry::restore(this) && size() == saved, QString("the saved window size comes back (%1 x %2)").arg(saved.width()).arg(saved.height()));
+	move(40000, 40000);   // a place no screen has
+	QApplication::processEvents();
+	window_geometry::save(this);
+	setGeometry(original);
+	// Qt itself pulls such a window back onto a screen; either way it must never come back unreachable.
+	const bool restored = window_geometry::restore(this);
+	bool onScreen = false;
+	for (const QScreen *s : QGuiApplication::screens()) onScreen = onScreen || s->availableGeometry().intersects(frameGeometry());
+	check(!restored || onScreen, "a window saved on no connected screen does not come back off-screen");
+	window_geometry::forget();
+	check(!window_geometry::restore(this), "after Reset Window Layout nothing is restored");
+	// Atomic writes: the new text replaces the old in one step and no temporary file is left beside it.
+	{
+		const QString dir = QDir::tempPath() + "/rt_atomic_selftest";
+		QDir().mkpath(dir);
+		const QString path = dir + "/file.txt";
+		QFile::remove(path);
+		check(writeFileAtomically(path, "first") && writeFileAtomically(path, "second\n"), "an atomic write succeeds twice over the same file");
+		QFile f(path);
+		check(f.open(QIODevice::ReadOnly) && f.readAll() == "second\n" && QDir(dir).entryList(QDir::Files).size() == 1, "it holds the new text and left no temporary file");
+		f.close();
+		QDir(dir).removeRecursively();
+		check(!writeFileAtomically(dir + "/no/such/folder/file.txt", "x"), "writing into a missing folder fails cleanly");
+	}
+	setGeometry(original);
+	QApplication::processEvents();
 }

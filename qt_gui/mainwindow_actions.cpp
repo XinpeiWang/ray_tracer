@@ -4,6 +4,7 @@
 #include <QApplication>
 #include <QDesktopServices>
 #include "app_log.h"
+#include "atomic_file.h"
 #include <QDir>
 #include <QFile>
 #include <QFileDialog>
@@ -180,6 +181,10 @@ void MainWindow::createMenus() {
 		});
 	}
 	viewMenu->addSeparator();
+	QAction *resetLayout = viewMenu->addAction(tr("Reset Window Layout"));
+	resetLayout->setStatusTip(tr("Put the window back at its default size and place"));
+	connect(resetLayout, &QAction::triggered, this, [this]() { resetWindowLayout(); });
+	viewMenu->addSeparator();
 	viewMenu->addAction(m_actCopyLog);
 	viewMenu->addAction(m_actClearLog);
 
@@ -306,17 +311,14 @@ void MainWindow::saveLogToFile() {
 		tr("Text Files (*.txt);;All Files (*.*)"));
 	if (path.isEmpty()) return;
 
-	QFile file(path);
-	if (!file.open(QFile::WriteOnly | QFile::Text)) {
+	QString writeError;
+	if (!writeTextFileAtomically(path, m_logTextEdit->toPlainText(), &writeError)) {
 		// Previously a failed open was silently ignored, which looked
 		// identical to a successful save.
 		onLogMessage(tr("[ERROR] Could not write log to %1: %2")
-			.arg(path, file.errorString()));
+			.arg(path, writeError));
 		return;
 	}
-	QTextStream out(&file);
-	out << m_logTextEdit->toPlainText();
-	file.close();
 	onLogMessage(tr("[INFO] Log saved to %1").arg(path));
 }
 
@@ -349,15 +351,12 @@ void MainWindow::saveDiagReportToFile() {
 		tr("Text Files (*.txt);;All Files (*.*)"));
 	if (path.isEmpty()) return;
 
-	QFile file(path);
-	if (!file.open(QFile::WriteOnly | QFile::Text)) {
+	QString writeError;
+	if (!writeTextFileAtomically(path, m_diagTextEdit->toPlainText(), &writeError)) {
 		QMessageBox::warning(this, tr("Save Failed"),
-			tr("Could not write diagnostics report to %1: %2").arg(path, file.errorString()));
+			tr("Could not write diagnostics report to %1: %2").arg(path, writeError));
 		return;
 	}
-	QTextStream out(&file);
-	out << m_diagTextEdit->toPlainText();
-	file.close();
 }
 
 void MainWindow::showAboutDialog() {
