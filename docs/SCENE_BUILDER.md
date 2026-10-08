@@ -101,7 +101,7 @@ A scene with no light renders black; the tab says so under the properties.
 
 ## Rendering
 
-**Preview** renders a small picture (*Draft* 320 pixels wide and 16 samples per pixel, *Good* 480 and 64, *Best* 640 and 256) with the same renderer the Render tab uses, on the scene saved to a temporary file. Tick **Use the GPU** to use OptiX (Windows) or Metal (macOS); it needs a supported card and is much faster for large pictures. The button reads *Cancel* while a render runs.
+**Preview** renders a small picture (*Draft* 480 pixels wide and 16 samples per pixel, *Good* 720 and 64, *Best* 960 and 256) and shows it as large as its pane allows with the same renderer the Render tab uses, on the scene saved to a temporary file. Tick **Use the GPU** to use OptiX (Windows) or Metal (macOS); it needs a supported card and is much faster for large pictures. The button reads *Cancel* while a render runs.
 
 **Render picture...** uses the width, height, samples and light bounces under *Camera and image*, and asks where to save the PNG.
 
