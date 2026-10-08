@@ -5,7 +5,6 @@ file gpu/optix/optix_renderer_scene.cpp 2149
 file gpu/optix/optix_types.h 2223
 file gpu/optix/wavefront_device_helpers.h 3312
 file src/TheRestOfYourLife/camera.h 2646
-file src/TheRestOfYourLife/pbrt_cpu_builder.h 2202
 func gpu/metal/metal_poc_kernel.metal::primaryRayKernel 1631
 func gpu/metal/metal_poc_materials_specular.metal::shadeConductor 329
 func gpu/metal/metal_poc_pbrt_materials.mm::MetalPocApp::mapPbrtMaterial 315
