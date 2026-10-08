@@ -120,13 +120,22 @@ void SceneBuilderWidget::buildUi() {
 	m_redoButton = button(tr("Redo"), tr("Redo (Ctrl+Y)"));
 	m_titleLabel = new QLabel(this);
 	m_titleLabel->setTextInteractionFlags(Qt::TextSelectableByMouse);
+	// The scene's name: what the scene list shows, and what a copy added to the list is named after. Edited right here (undoable like any change).
+	m_titleEdit = new QLineEdit(this);
+	m_titleEdit->setPlaceholderText(tr("Scene name"));
+	m_titleEdit->setToolTip(tr("The name of this scene, shown in the scene list"));
+	m_titleEdit->setMinimumWidth(180);
+	m_titleEdit->setMaximumWidth(280);
 	for (QPushButton *b : {newB, openB, saveB, saveAsB, listB}) bar->addWidget(b);
 	bar->addSpacing(12);
 	bar->addWidget(m_undoButton);
 	bar->addWidget(m_redoButton);
 	bar->addStretch(1);
+	bar->addWidget(new QLabel(tr("Name:"), this));
+	bar->addWidget(m_titleEdit);
 	bar->addWidget(m_titleLabel);
 	root->addLayout(bar);
+	connect(m_titleEdit, &QLineEdit::textEdited, this, &SceneBuilderWidget::setSceneName);
 	connect(newB, &QPushButton::clicked, this, [this]() { if (confirmDiscard()) newScene(); });
 	connect(openB, &QPushButton::clicked, this, &SceneBuilderWidget::onOpenClicked);
 	connect(saveB, &QPushButton::clicked, this, &SceneBuilderWidget::onSaveClicked);
@@ -349,6 +358,7 @@ void SceneBuilderWidget::buildUi() {
 void SceneBuilderWidget::newScene() {
 	m_doc = scene_doc::makeStarterScene();
 	m_path.clear();
+	m_listedPath.clear();
 	m_dirty = false;
 	m_undo.clear();
 	m_redo.clear();
@@ -378,6 +388,8 @@ bool SceneBuilderWidget::openFile(const QString &path, QString *error) {
 	}
 	m_doc = std::move(d);
 	m_path = path;
+	// A file opened from the scene-list folder is a listed scene: adding it again offers to update it.
+	m_listedPath = QFileInfo(path).absolutePath() == QFileInfo(sceneListFolder() + "/x").absolutePath() ? path : QString();
 	m_dirty = false;
 	m_undo.clear();
 	m_redo.clear();
@@ -475,7 +487,7 @@ QString SceneBuilderWidget::sceneListFolder() {
 	return QString();
 }
 
-QString SceneBuilderWidget::addToSceneList(QString *error) {
+QString SceneBuilderWidget::addToSceneList(QString *error, bool update) {
 	const QString folder = sceneListFolder();
 	if (folder.isEmpty()) {
 		if (error) *error = tr("The scenes folder (pbrt_scenes) was not found next to the program. Use Save As to put the file where you like, and set the "
@@ -485,12 +497,19 @@ QString SceneBuilderWidget::addToSceneList(QString *error) {
 	QString name = QString::fromStdString(m_doc.title).trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
 	name.remove(QRegularExpression("^-+|-+$"));
 	if (name.isEmpty()) name = "my-scene";
-	const QString path = folder + "/" + name + ".pbrt";
+	QString path = folder + "/" + name + ".pbrt";
+	if (update && !m_listedPath.isEmpty() && QFileInfo::exists(m_listedPath)) {
+		path = m_listedPath;   // the listing this document already has
+	} else {
+		// A name already taken (by another scene, or by an earlier listing of this one) is never overwritten: the copy gets the next free name.
+		for (int n = 2; QFileInfo::exists(path); ++n) path = folder + "/" + name + "-" + QString::number(n) + ".pbrt";
+	}
 	// A copy for the scene list: the document keeps its own file and its unsaved state.
 	if (!writeSceneText(m_doc, path)) {
 		if (error) *error = tr("Could not write %1.").arg(path);
 		return QString();
 	}
+	m_listedPath = path;
 	return path;
 }
 
@@ -502,15 +521,22 @@ void SceneBuilderWidget::onSaveToSceneListClicked() {
 		QMessageBox::information(this, tr("No scenes folder"), why);
 		return;
 	}
-	QString name = QString::fromStdString(m_doc.title).trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
-	name.remove(QRegularExpression("^-+|-+$"));
-	if (name.isEmpty()) name = "my-scene";
-	const QString existing = folder + "/" + name + ".pbrt";
-	if (QFileInfo::exists(existing) && QFileInfo(existing) != QFileInfo(m_path)) {
-		if (QMessageBox::question(this, tr("Replace the scene?"), tr("%1 already exists. Replace it?").arg(existing)) != QMessageBox::Yes) return;
+	// Already listed once (or opened from the list): ask whether this is an update of that scene or a new one. Otherwise there is nothing to ask - a
+	// name that is taken just gets the next free one.
+	bool update = false;
+	if (!m_listedPath.isEmpty() && QFileInfo::exists(m_listedPath)) {
+		QMessageBox box(QMessageBox::Question, tr("Add to the scene list"),
+		                tr("This scene is already in the list as \"%1\".").arg(QFileInfo(m_listedPath).completeBaseName()), QMessageBox::NoButton, this);
+		QPushButton *asNew = box.addButton(tr("Add as a new scene"), QMessageBox::AcceptRole);
+		QPushButton *updateIt = box.addButton(tr("Update the existing one"), QMessageBox::DestructiveRole);
+		box.addButton(QMessageBox::Cancel);
+		box.setDefaultButton(asNew);
+		box.exec();
+		if (box.clickedButton() == updateIt) update = true;
+		else if (box.clickedButton() != asNew) return;
 	}
 	QString error;
-	const QString path = addToSceneList(&error);
+	const QString path = addToSceneList(&error, update);
 	if (path.isEmpty()) {
 		QMessageBox::warning(this, tr("Cannot save"), error);
 		return;
@@ -780,8 +806,13 @@ void SceneBuilderWidget::updateActions() {
 
 void SceneBuilderWidget::updateTitle() {
 	const QString file = m_path.isEmpty() ? tr("not saved yet") : QFileInfo(m_path).fileName();
-	m_titleLabel->setText(tr("%1 (%2)%3  |  %4 objects, %5 lights")
-	                          .arg(QString::fromStdString(m_doc.title), file, m_dirty ? " *" : "")
+	const QString name = QString::fromStdString(m_doc.title);
+	if (m_titleEdit && m_titleEdit->text() != name) {   // an undo, a new scene, an open: not the user typing
+		const QSignalBlocker blocker(m_titleEdit);
+		m_titleEdit->setText(name);
+	}
+	m_titleLabel->setText(tr("(%1)%2  |  %3 objects, %4 lights")
+	                          .arg(file, m_dirty ? " *" : "")
 	                          .arg(m_doc.objects.size())
 	                          .arg(m_doc.lights.size()));
 }
@@ -812,6 +843,12 @@ void SceneBuilderWidget::refreshProblems() {
 // ---- rendering -------------------------------------------------------------------------------------------------------------------
 
 void SceneBuilderWidget::setUseGpu(bool on) { m_gpuCheck->setChecked(on); }
+
+void SceneBuilderWidget::setSceneName(const QString &text) {
+	const std::string name = text.toStdString();
+	if (name == m_doc.title) return;
+	edit(QStringLiteral("title"), [&]() { m_doc.title = name; });
+}
 void SceneBuilderWidget::startPreview(const std::function<void(bool, const QString &)> &done) {
 	static const int widths[3] = {320, 480, 640};
 	static const int spps[3] = {16, 64, 256};

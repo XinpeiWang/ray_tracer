@@ -31,6 +31,53 @@
 #include "scene_technique_notes.h"
 #include "scene_metadata_client.h"
 
+// The Scene Builder's "Add to scene list" checks: where the copy goes (never into a .app bundle), that it is in the scene list at once under its
+// persistent id and category, that the renderer the GUI starts knows the id, that adding again never overwrites, and renaming + updating.
+void MainWindow::selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check) {
+	QString listError;
+	const QString listed = sb->addToSceneList(&listError);
+	check(!listed.isEmpty() && QFile::exists(listed), "added to the scene list: " + (listed.isEmpty() ? listError : listed));
+	if (QCoreApplication::applicationDirPath().contains(".app/Contents/"))
+		check(!listed.contains(".app/Contents/") && listed.contains("user_scenes"), "from a .app bundle the scene went to the per-user folder, not into the bundle");
+	// It must be in the scene list NOW, without a restart: the library lists it, under one id that the renderer this GUI starts also knows
+	// (the id is a persistent number, not a position, so a separate process agrees on it).
+	const int addedNow = SceneMetadataClient::refreshUserScenes();
+	const QString listedId = SceneMetadataClient::sceneIdForFile(listed);
+	check(addedNow >= 0 && !listedId.isEmpty(), "the scene is in the scene list without a restart: " + listedId);
+	if (!listedId.isEmpty()) {
+		check(SceneMetadataClient::sceneName(listedId) == QString("My scene"), "its name in the list is the title the builder saved");
+		check(SceneMetadataClient::sceneCategory(listedId) == QString("My Scenes") && listedId.startsWith(QLatin1Char('M')), "it is in the My Scenes category: " + SceneMetadataClient::sceneCategory(listedId) + " / " + listedId);
+		QProcess renderer;
+		const QString exe = QCoreApplication::applicationDirPath() + QStringLiteral("/ray_tracer") + (QSysInfo::productType() == "windows" ? ".exe" : "");
+		renderer.setWorkingDirectory(QCoreApplication::applicationDirPath());
+		const QString outPpm = QFileInfo(listed).absolutePath() + "/listed_render.ppm";
+		renderer.start(exe, QStringList() << "--cpu" << "--output" << outPpm << "64" << "4" << "3" << listedId);
+		const bool ran = renderer.waitForFinished(180000) && renderer.exitCode() == 0;
+		check(ran && QFileInfo(outPpm.left(outPpm.size() - 4) + ".png").exists() || ran && QFileInfo(outPpm).exists(),
+		      "the renderer the GUI starts renders that scene by its id (exit " + QString::number(renderer.exitCode()) + ")");
+		QFile::remove(outPpm);
+		QFile::remove(outPpm.left(outPpm.size() - 4) + ".png");
+		// What "Add to scene list" does in the real window: the main window lists the scene and selects it in the Settings tab's scene picker.
+		emit sb->sceneListed(listed);
+		check(m_sceneCombo && m_sceneCombo->currentData().toString() == listedId, "the Settings tab's scene picker now shows it selected");
+		check(m_sceneCategoryTabs && m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() == QString("My Scenes"), "the My Scenes tab is the one showing");
+}
+// Adding the same scene again never overwrites: the copy gets the next free name. Renaming it and choosing "Update the existing one"
+// rewrites that listing, and the list shows the new name without a restart.
+QString again;
+const QString second = sb->addToSceneList(&again);
+check(!second.isEmpty() && second != listed && QFile::exists(listed) && QFile::exists(second),
+      "adding it again made a new file (" + QFileInfo(second).fileName() + "); the first one is untouched");
+sb->setSceneName("Renamed room");
+check(sb->sceneName() == "Renamed room", "the scene name can be edited");
+const QString updated = sb->addToSceneList(&again, /*update=*/true);
+check(updated == second, "'update the existing one' rewrites the listing it was added as");
+SceneMetadataClient::refreshUserScenes();
+check(SceneMetadataClient::sceneName(SceneMetadataClient::sceneIdForFile(second)) == QString("Renamed room"), "the scene list shows the new name without a restart");
+QFile::remove(second);
+QFile::remove(listed);
+}
+
 void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 	auto log = [outPrefix](const QString &line) {
 		QFile f(outPrefix + ".txt");
@@ -109,39 +156,7 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 		QString err;
 		sb->newScene();
 		check(sb->openFile(pbrt, &err) && scene_doc::toJson(sb->document()) == before, "re-opened the saved file unchanged " + err);
-		// "Add to scene list": from inside a macOS .app bundle (or any read-only place) it must save to the per-user folder, never into the bundle, and
-		// scene discovery must then list it as a user scene.
-		{
-			QString listError;
-			const QString listed = sb->addToSceneList(&listError);
-			check(!listed.isEmpty() && QFile::exists(listed), "added to the scene list: " + (listed.isEmpty() ? listError : listed));
-			if (QCoreApplication::applicationDirPath().contains(".app/Contents/"))
-				check(!listed.contains(".app/Contents/") && listed.contains("user_scenes"), "from a .app bundle the scene went to the per-user folder, not into the bundle");
-			// It must be in the scene list NOW, without a restart: the library lists it, under one id that the renderer this GUI starts also knows
-			// (the id is a persistent number, not a position, so a separate process agrees on it).
-			const int addedNow = SceneMetadataClient::refreshUserScenes();
-			const QString listedId = SceneMetadataClient::sceneIdForFile(listed);
-			check(addedNow >= 0 && !listedId.isEmpty(), "the scene is in the scene list without a restart: " + listedId);
-			if (!listedId.isEmpty()) {
-				check(SceneMetadataClient::sceneName(listedId) == QString("My scene"), "its name in the list is the title the builder saved");
-				check(SceneMetadataClient::sceneCategory(listedId) == QString("My Scenes") && listedId.startsWith(QLatin1Char('M')), "it is in the My Scenes category: " + SceneMetadataClient::sceneCategory(listedId) + " / " + listedId);
-				QProcess renderer;
-				const QString exe = QCoreApplication::applicationDirPath() + QStringLiteral("/ray_tracer") + (QSysInfo::productType() == "windows" ? ".exe" : "");
-				renderer.setWorkingDirectory(QCoreApplication::applicationDirPath());
-				const QString outPpm = QFileInfo(listed).absolutePath() + "/listed_render.ppm";
-				renderer.start(exe, QStringList() << "--cpu" << "--output" << outPpm << "64" << "4" << "3" << listedId);
-				const bool ran = renderer.waitForFinished(180000) && renderer.exitCode() == 0;
-				check(ran && QFileInfo(outPpm.left(outPpm.size() - 4) + ".png").exists() || ran && QFileInfo(outPpm).exists(),
-				      "the renderer the GUI starts renders that scene by its id (exit " + QString::number(renderer.exitCode()) + ")");
-				QFile::remove(outPpm);
-				QFile::remove(outPpm.left(outPpm.size() - 4) + ".png");
-				// What "Add to scene list" does in the real window: the main window lists the scene and selects it in the Settings tab's scene picker.
-				emit sb->sceneListed(listed);
-				check(m_sceneCombo && m_sceneCombo->currentData().toString() == listedId, "the Settings tab's scene picker now shows it selected");
-				check(m_sceneCategoryTabs && m_sceneCategoryTabs->tabData(m_sceneCategoryTabs->currentIndex()).toString() == QString("My Scenes"), "the My Scenes tab is the one showing");
-			}
-			QFile::remove(listed);
-		}
+		selfTestSceneList(sb, check);
 		// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
 		sb->newScene();
 		sb->selectObject(2);

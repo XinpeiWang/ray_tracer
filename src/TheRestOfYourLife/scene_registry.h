@@ -1096,7 +1096,24 @@ inline int refresh_user_scenes() {
         }
         d.userFile = true;
         d.userSceneNumber = pbrt_discover::userSceneNumber(dir, std::filesystem::path(d.path).filename().string());
-        if (pbrt_scene_registry::appendOne(registry, d, nextNumber, takenSlugs, legacy_id)) ++added;
+        if (pbrt_scene_registry::appendOne(registry, d, nextNumber, takenSlugs, legacy_id)) { ++added; continue; }
+        // Already listed: the file may have been saved again with another title or description (the Scene Builder's "Update the existing one"), so the
+        // list shows what the file says now. The name/description strings live in the pools, so a new one is pushed and the descriptor repointed.
+        for (const auto& kv : pbrt_scene_registry::paths()) {
+            std::error_code ec;
+            if (!std::filesystem::equivalent(kv.second, d.path, ec) || ec) continue;
+            for (SceneDescriptor& s : registry) {
+                if (s.id != kv.first) continue;
+                const std::string name = pbrt_scene_registry::displayNameFor(d);
+                if (name != s.name) { pbrt_scene_registry::namesPool().push_back(name); s.name = pbrt_scene_registry::namesPool().back().c_str(); }
+                if (!d.description.empty() && d.description != s.description) {
+                    pbrt_scene_registry::descriptionsPool().push_back(d.description);
+                    s.description = pbrt_scene_registry::descriptionsPool().back().c_str();
+                }
+                break;
+            }
+            break;
+        }
     }
     return added;
 }

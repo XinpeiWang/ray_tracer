@@ -20,6 +20,7 @@
 #include "../src/shared/scene_document.h"
 
 class QCheckBox;
+class QLineEdit;
 class QComboBox;
 class QFormLayout;
 class QLabel;
@@ -64,7 +65,14 @@ public:
 	static QString sceneListFolder();
 	// Saves a copy of the scene into the scene-list folder (see sceneListFolder()); no dialogs. Returns the path, or "" with `error` set. An existing file
 	// of that name is replaced.
-	QString addToSceneList(QString *error);
+	// With `update` false (the default) a scene of that name already in the folder is never touched: the copy gets the next free name ("my-scene-2").
+	// With `update` true and this document already listed (listedPath()), that listing is overwritten.
+	QString addToSceneList(QString *error, bool update = false);
+	// The scene-list file this document was last added as, or opened from (empty if none).
+	QString listedPath() const { return m_listedPath; }
+	// The scene's name (its title), as typed in the toolbar; setSceneName() is an undoable edit like typing there.
+	QString sceneName() const { return QString::fromStdString(m_doc.title); }
+	void setSceneName(const QString &name);
 
 signals:
 	void statusMessage(const QString &text);
@@ -145,6 +153,8 @@ private:
 
 	// UI
 	QLabel *m_titleLabel = nullptr;
+	QLineEdit *m_titleEdit = nullptr;   // the scene's name, editable in the toolbar
+	QString m_listedPath;
 	QListWidget *m_list = nullptr;
 	SceneLayoutView *m_view = nullptr;
 	QWidget *m_inspectorHost = nullptr;
