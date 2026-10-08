@@ -68,6 +68,8 @@ public:
 
 signals:
 	void statusMessage(const QString &text);
+	// A copy of the scene was saved into the scene-list folder ("Add to scene list"); the main window lists it without a restart.
+	void sceneListed(const QString &path);
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;

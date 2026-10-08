@@ -107,6 +107,24 @@ SCENE_METADATA_API int scene_metadata_count() {
 	}
 }
 
+// Lists scenes saved to the per-user scenes folder since the registry was built; returns how many were added (see cpu_refresh_user_scenes()).
+SCENE_METADATA_API int scene_metadata_refresh_user_scenes() {
+	try {
+		return cpu_refresh_user_scenes();
+	} catch (...) {
+		return 0;
+	}
+}
+
+// The id of the scene loaded from a .pbrt file, or "" (see cpu_scene_id_for_file()).
+SCENE_METADATA_API const char* scene_metadata_id_for_file(const char* path) {
+	try {
+		return cpu_scene_id_for_file(path);
+	} catch (...) {
+		return "";
+	}
+}
+
 SCENE_METADATA_API const char* scene_metadata_id_at_index(int index) {
 	try {
 		return cpu_scene_id(index);

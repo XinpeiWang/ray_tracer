@@ -1328,6 +1328,17 @@ void MainWindow::createRenderOptionsTab() {
 void MainWindow::createSceneBuilderTab() {
 	m_sceneBuilder = new SceneBuilderWidget(this);
 	connect(m_sceneBuilder, &SceneBuilderWidget::statusMessage, this, [this](const QString &text) { statusBar()->showMessage(text, 5000); });
+	// "Add to scene list": list the saved file now (the registry grows while the program runs) and select it in the Settings tab.
+	connect(m_sceneBuilder, &SceneBuilderWidget::sceneListed, this, [this](const QString &path) {
+		SceneMetadataClient::refreshUserScenes();
+		const QString id = SceneMetadataClient::sceneIdForFile(path);
+		if (id.isEmpty()) {
+			statusBar()->showMessage(tr("Saved, but the scene list could not list it until the program is restarted."), 8000);
+			return;
+		}
+		selectSceneById(id);
+		statusBar()->showMessage(tr("Added to the scene list as %1 (Settings tab).").arg(id), 8000);
+	});
 	m_tabWidget->addTab(m_sceneBuilder, tr("Scene Builder"));
 }
 

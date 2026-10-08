@@ -12,11 +12,15 @@
 #include <gtest/gtest.h>
 
 #include "pbrt_discover.h"
+#include "scene_registry.h"
 
 #include <cmath>
 #include <cstdlib>
 #include <cstdio>
 #include <fstream>
+#include <map>
+#include <set>
+#include <vector>
 #include <string>
 
 namespace {
@@ -455,4 +459,69 @@ TEST_F(ScanTree, ScenesInTheUserFolderAreListedAfterTheScannedOnesAsUserFiles) {
 		if (d.userFile) sawUser = true;
 		else EXPECT_FALSE(sawUser) << d.name << " (a scanned scene) is listed after a user one";
 	}
+}
+
+// A scene file in the per-user folder has a persistent number: assigned the first time anyone sees the file, remembered in <folder>/.scene_ids, and the
+// same afterwards in every process - which is what lets a scene added while the program runs have one id everywhere.
+TEST_F(ScanTree, UserSceneNumbersArePersistentAndIndependentOfFileNameOrder) {
+	const std::string folder = root_ + "numbers";
+	EXPECT_EQ(pbrt_discover::userSceneNumber(folder, "zebra.pbrt"), 1);
+	EXPECT_EQ(pbrt_discover::userSceneNumber(folder, "apple.pbrt"), 2);    // added later, sorts earlier: still the next number
+	EXPECT_EQ(pbrt_discover::userSceneNumber(folder, "zebra.pbrt"), 1);    // remembered
+	EXPECT_EQ(pbrt_discover::userSceneNumber(folder, "apple.pbrt"), 2);
+	EXPECT_EQ(pbrt_discover::userSceneNumber(folder, "mango.pbrt"), 3);
+	// A fresh "process" (nothing cached in memory - there is none) reads the same file.
+	std::ifstream in(folder + "/.scene_ids");
+	std::string all((std::istreambuf_iterator<char>(in)), std::istreambuf_iterator<char>());
+	EXPECT_NE(all.find("1\tzebra.pbrt"), std::string::npos) << all;
+	EXPECT_NE(all.find("3\tmango.pbrt"), std::string::npos) << all;
+}
+#include <fstream>
+#include <map>
+#include <set>
+#include <vector>
+
+// ---------------------------------------------------------------------------
+// A scene saved to the per-user folder while the program runs: appendOne() lists it with its persistent id (letter + 10000 + number), not the next
+// sequential one, so the GUI, the renderer it launches and the Live Preview library all call it the same thing. Uses a local registry vector so the
+// process-wide registry the other tests count is left alone.
+// ---------------------------------------------------------------------------
+
+TEST(UserSceneRegistry, AUserSceneGetsItsPersistentIdAndLeavesTheSequentialNumberingAlone) {
+	const char* tmp = std::getenv("TEMP");
+	const std::filesystem::path dir = std::filesystem::path(tmp ? tmp : ".") / "registry_user_scene_test";
+	std::filesystem::create_directories(dir);
+	const std::filesystem::path file = dir / "listed-while-running.pbrt";
+	{
+		std::ofstream out(file);
+		out << "LookAt 0 0 5  0 0 0  0 1 0\nCamera \"perspective\" \"float fov\" [ 40 ]\nFilm \"rgb\" \"integer xresolution\" [ 64 ] \"integer yresolution\" [ 64 ]\n"
+		       "Sampler \"halton\" \"integer pixelsamples\" [ 4 ]\nWorldBegin\nShape \"sphere\" \"float radius\" [ 1 ]\n";
+	}
+	pbrt_discover::Discovered d = pbrt_discover::describeFile(file.string());
+	ASSERT_TRUE(d.ok) << d.error;
+	std::vector<SceneDescriptor> local;
+	std::map<char, int> nextNumber;
+	std::set<std::string> takenSlugs;
+	int legacy = 1000;
+
+	// A scanned scene is numbered in the order found...
+	pbrt_discover::Discovered scanned = d;
+	scanned.path = (dir / "scanned.pbrt").string();
+	scanned.name = "scanned";
+	std::filesystem::copy_file(file, scanned.path, std::filesystem::copy_options::overwrite_existing);
+	ASSERT_TRUE(pbrt_scene_registry::appendOne(local, scanned, nextNumber, takenSlugs, legacy));
+	EXPECT_EQ(local.back().id, "K1");
+
+	// ...a user-folder scene by its persistent number, which does not consume the sequence.
+	d.userFile = true;
+	d.userSceneNumber = 7;
+	ASSERT_TRUE(pbrt_scene_registry::appendOne(local, d, nextNumber, takenSlugs, legacy));
+	EXPECT_EQ(local.back().id, "K10007");
+	EXPECT_EQ(local.back().slug, "listed-while-running");
+	EXPECT_EQ(nextNumber['K'], 1) << "the sequential counter must not advance for a persistent id";
+
+	// Listing the same file again adds nothing.
+	EXPECT_FALSE(pbrt_scene_registry::appendOne(local, d, nextNumber, takenSlugs, legacy));
+	EXPECT_EQ(local.size(), 2u);
+	std::filesystem::remove_all(dir);
 }

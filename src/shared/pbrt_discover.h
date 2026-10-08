@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cstdlib>
 #include <filesystem>
 #include <fstream>
 #include <set>
@@ -115,6 +116,10 @@ struct Discovered {
 	// True for a file the user named explicitly (ray_tracer.exe ... path/to/scene.pbrt, the GUI's Scene Builder) rather than one found by scanning a
 	// scene directory. Such a scene is numbered after every scanned one, so naming a file never shifts the id of a scene that scanning finds.
 	bool userFile = false;
+	// For a scene found in the per-user scenes folder (userSceneDir()): its persistent number (see userSceneNumber()), > 0. The registry gives it the id
+	// <category letter><kUserSceneIdBase + number>, which is the same in every process and session - the GUI, the renderer it launches, the Live Preview
+	// library - so a scene added while the program runs has one id everywhere, and ids never shift when other scenes are added or deleted.
+	int userSceneNumber = 0;
 };
 
 namespace detail {
@@ -416,6 +421,34 @@ inline std::vector<std::string> &extraSceneFiles() {
 // sets that variable to its per-user data folder); "" when the variable is not set, so command-line runs are unaffected.
 inline std::string userSceneDir() { return pbrt_asset_check::userSceneDir(); }
 
+// Scenes in the per-user folder get ids <letter><kUserSceneIdBase + n>, far above any scanned scene's K1, K2, ... so the two never collide.
+constexpr int kUserSceneIdBase = 10000;
+
+// The persistent number of a scene file in the per-user folder: n >= 1, assigned the first time any process sees the file and remembered in
+// <folder>/.scene_ids ("n<TAB>file name", append-only), so it is the same for every process, now and after a restart, whatever order files were added in.
+inline int userSceneNumber(const std::string &folder, const std::string &fileName) {
+	const std::filesystem::path idFile = std::filesystem::path(folder) / ".scene_ids";
+	int maxN = 0;
+	{
+		std::ifstream in(idFile);
+		std::string line;
+		while (std::getline(in, line)) {
+			const std::size_t tab = line.find('\t');
+			if (tab == std::string::npos) continue;
+			const int n = std::atoi(line.substr(0, tab).c_str());
+			if (n <= 0) continue;
+			if (line.substr(tab + 1) == fileName) return n;
+			maxN = std::max(maxN, n);
+		}
+	}
+	std::error_code ec;
+	std::filesystem::create_directories(folder, ec);
+	std::ofstream out(idFile, std::ios::app);
+	if (!out) return 0;   // cannot remember it (read-only folder): the caller falls back to sequential numbering
+	out << (maxN + 1) << '\t' << fileName << '\n';
+	return maxN + 1;
+}
+
 inline std::vector<Discovered> scanDefaultPaths() {
 	std::vector<Discovered> found;
 	for (const std::string &dir : defaultSearchPaths()) {
@@ -432,6 +465,7 @@ inline std::vector<Discovered> scanDefaultPaths() {
 			}
 			if (already) continue;
 			d.userFile = true;
+			d.userSceneNumber = userSceneNumber(userDir, std::filesystem::path(d.path).filename().string());
 			found.push_back(std::move(d));
 		}
 	}

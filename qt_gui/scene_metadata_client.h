@@ -72,6 +72,14 @@ bool metalCompatible(const QString& scene_id, bool& out_compatible);
 // Total number of registered scenes, or 0 if the DLL isn't loaded.
 int sceneCount();
 
+// Lists the scenes saved to the per-user scenes folder since the library built its registry (the Scene Builder's "Add to scene list"), so a new scene
+// shows up without a restart. Returns how many were added: the new scenes are appended at the end, so every existing position and id is unchanged. 0
+// when there was nothing new, or when the library predates this export.
+int refreshUserScenes();
+
+// The id of the scene loaded from the .pbrt file `path`, or "" if the registry does not list it.
+QString sceneIdForFile(const QString& path);
+
 // The id (category letter + number, e.g. "B10") of the scene at registry
 // position index, or "" if not loaded/index out of range. The only bridge
 // from "position in registry" to "id" - every other function below takes

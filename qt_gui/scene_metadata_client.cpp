@@ -33,6 +33,9 @@ struct DllHandle {
 	StringByIdFn slugFn = nullptr;
 	StringByIdFn idForKeyFn = nullptr;
 	SnapshotFn snapshotFn = nullptr;
+	// Optional: lists scenes added to the per-user folder while the program runs. Absent in an older library: a new scene then needs a restart.
+	CountFn refreshFn = nullptr;
+	StringByIdFn idForFileFn = nullptr;   // optional, like refreshFn
 };
 
 // See SceneMetadataClient::lastLoadError()'s own comment (scene_metadata_
@@ -100,6 +103,10 @@ DllHandle& handle() {
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_slug"));
 		h.idForKeyFn = reinterpret_cast<StringByIdFn>(
 			cross_abi_library::lookupSymbol(h.module, "scene_metadata_id_for_key"));
+		h.refreshFn = reinterpret_cast<CountFn>(
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_refresh_user_scenes"));
+		h.idForFileFn = reinterpret_cast<StringByIdFn>(
+			cross_abi_library::lookupSymbol(h.module, "scene_metadata_id_for_file"));
 
 		// Every export is required, including newer ones: a library missing
 		// any of them is a stale build sitting next to a newer exe, and
@@ -153,6 +160,16 @@ bool metalCompatible(const QString& scene_id, bool& out_compatible) {
 int sceneCount() {
 	if (!ensureLoaded()) return 0;
 	return handle().countFn();
+}
+
+int refreshUserScenes() {
+	if (!ensureLoaded() || !handle().refreshFn) return 0;
+	return handle().refreshFn();
+}
+
+QString sceneIdForFile(const QString& path) {
+	if (!ensureLoaded() || !handle().idForFileFn) return QString();
+	return QString::fromUtf8(handle().idForFileFn(path.toUtf8().constData()));
 }
 
 QString sceneIdAtIndex(int index) {

@@ -407,6 +407,15 @@ int cpu_render_main_lightpath(
 /// @return total number of registered scenes
 int cpu_scene_count();
 
+/// Lists the scenes saved in the per-user scenes folder since the registry was built (the Scene Builder's "Add to scene list"), so a new scene
+/// appears without a restart.
+/// @return how many scenes were added (their ids are the persistent ones, the same in every process); 0 when there was nothing new
+int cpu_refresh_user_scenes();
+
+/// The id of the registered scene loaded from the .pbrt file `path` (compared with std::filesystem::equivalent), or "" if none. A pointer into the
+/// registry, valid for the life of the process.
+const char* cpu_scene_id_for_file(const char* path);
+
 /// @param index  position in registry (0..cpu_scene_count()-1)
 /// @return scene id (category letter + number, e.g. "B10"), or "" if index
 /// out of range. This is the only bridge from "position in registry" to
