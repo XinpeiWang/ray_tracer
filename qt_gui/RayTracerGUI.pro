@@ -47,6 +47,9 @@ SOURCES += \
 	mainwindow.cpp \
 	mainwindow_tabs.cpp \
 	mainwindow_tabs_render.cpp \
+	mainwindow_tabs_render_groups.cpp \
+	mainwindow_live_preview.cpp \
+	mainwindow_live_settings.cpp \
 	mainwindow_tabs_render_live.cpp \
 	mainwindow_selftest.cpp \
 	mainwindow_selftest_photo.cpp \
@@ -56,6 +59,12 @@ SOURCES += \
 	mainwindow_tabs_output.cpp \
 	mainwindow_style.cpp \
 	mainwindow_slots.cpp \
+	mainwindow_queue.cpp \
+	mainwindow_diagnostics_log.cpp \
+	mainwindow_thumbnails.cpp \
+	mainwindow_scene_info.cpp \
+	mainwindow_render_events.cpp \
+	mainwindow_downloads.cpp \
 	mainwindow_actions.cpp \
 	icon_tint.cpp \
 	palette_data.cpp \
