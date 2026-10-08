@@ -749,7 +749,7 @@ bool MetalPocApp::dsFillUniforms(DispatchState& s, int argc, const char** argv) 
     uniforms.envMapHeight = envMapHeight;
     uniforms.ggxEnergyRoughRes = (uint32_t)ggxEnergyTable.roughRes;
     uniforms.ggxEnergyMuRes = (uint32_t)ggxEnergyTable.muRes;
-    uniforms.fireflyClamp = pbrtMaxComponentValue;
+    uniforms.fireflyClamp = maxComponentValueOverride > 0.0f ? maxComponentValueOverride : pbrtMaxComponentValue;
     uniforms.debugCensus = censusOn ? 1u : 0u;
     uniforms.liveWorldPos = liveSession ? 1u : 0u;
     // Path regeneration pays off on simple scenes (Cornell-style: -9..-23%) but costs 2-15% on mesh-heavy ones, where lanes

@@ -122,6 +122,7 @@ A change that must not alter pictures (a refactor) should be checked with a byte
 | `METAL_CENSUS=1` | print per-scene lane utilisation and distinct materials per group-bounce |
 | `METAL_TG_W`, `METAL_TG_H`, `METAL_TG_PRINT` | threadgroup shape override / print |
 | `METAL_PARITY_*` | the sweep: `STRICT`, `ALL`, `MODELS`, `ONLY_SCENE_ID`, `SEED`, `SPP`, `DEPTH`, `ADAPTIVE`, `GOLDEN`, `DUMP`, `KEEP`, `TIMING`, `WORKERS`, `SHARD` (see the parity doc) |
+| `RT_METAL_POST_EFFECTS=list` | the PNG's optional finishing effects, from `vignette,aberration,denoise` (or `all` / `none`). Unset = just `denoise` (a bilateral blur that hides some noise: the Mac has no AI denoiser). The vignette (corners 18% darker) and the red/blue colour shift used to be applied to every Metal PNG although the CPU and OptiX renderers add neither, so the same scene looked different on a Mac; they are opt-in now. `.exr` output never gets any of them |
 | `RAY_TRACER_USER_ASSETS` | the per-user folder the loader also searches for downloaded scene files |
 | `RT_METAL_SHADER_DIR` (compile-time) | where the shader sources are found when running from a build tree; an installed app finds them next to the executable |
 

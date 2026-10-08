@@ -14,6 +14,10 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 * **Object from a photo** (Scene Builder, Add menu): one photo becomes a textured 3D mesh, made on your own computer by the open TripoSR model (nothing is uploaded). It is an optional helper set up once with `scripts/setup_photo_to_mesh.ps1` (about 5 GB; an NVIDIA card makes a photo take about half a minute), and the Diagnostics tab lists what it has and what is missing, with an **Install Photo Helper...** button that downloads and installs the missing parts (Windows). The shape is a guess, the back is invented. [docs/PHOTO_TO_SCENE.md](docs/PHOTO_TO_SCENE.md) also covers bringing in a many-photo scan from COLMAP or Meshroom.
 * The command line takes a `.pbrt` path where a scene id goes (`ray_tracer.exe --cpu 800 64 8 my-scene.pbrt`) and `--height N` for a non-square picture.
 
+### Changed
+
+* **Metal PNGs no longer get a vignette or a colour shift.** They were added to every Mac render (corners 18% darker, red and blue shifted apart) although the CPU and OptiX renderers add neither, so the same scene looked different on a Mac. They are opt-in now (`RT_METAL_POST_EFFECTS=vignette,aberration`); the light bilateral blur stays on by default until the Mac has a real denoiser.
+
 ### Scenes
 
 * **Every scene has a stable name** (`cornell-box`, a scene file's name) next to its short id (`A1`, `K37`). Ids still work everywhere, but they move when a category is added or a file is added to `pbrt_scenes/`; names do not. The GUI saves names (recent renders, thumbnails, notes), and the command line accepts either.

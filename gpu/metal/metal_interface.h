@@ -73,10 +73,10 @@ bool metal_get_diagnostics(MetalDiagnostics* out);
 // (a flat pre-tonemap multiplier, section 148, docs/history/METAL_GPU_FEASIBILITY.md),
 // options.seed (selects the per-pixel RNG stream - section 204),
 // options.crop_* (render only a pixel window, rest black - section 205), and
-// METAL_GPU_FEASIBILITY.md) and options.adaptive_sampling/adaptive_threshold (off by default, like the CPU) are
+// METAL_GPU_FEASIBILITY.md), options.max_component_value (the firefly clamp; replaces the scene's own Film value) and options.adaptive_sampling/adaptive_threshold (off by default, like the CPU) are
 // all read - every other RenderOptions field
 // is a documented no-op for this backend (this POC doesn't implement
-// sampler/lightsampler/regularize/max_component_value/
+// sampler/lightsampler/regularize/
 // aperture-or-focus-override/spectral/denoise yet), same "flag
 // has no effect under X" convention render_options.h's own header comment
 // already documents for other backend/field combinations.

@@ -886,8 +886,10 @@ bool MetalPocApp::postProcessAndWrite() {
         return false;
     }
 
-    const float vignetteStrength = 0.18f;
-    const float chromaticAberrationStrength = 0.004f;
+    // Only the effects asked for (RT_METAL_POST_EFFECTS, see PostEffects in metal_poc_host_math.h): by default just the bilateral blur.
+    const PostEffects effects = parsePostEffects(getenv("RT_METAL_POST_EFFECTS"));
+    const float vignetteStrength = effects.vignette ? 0.18f : 0.0f;
+    const float chromaticAberrationStrength = effects.aberration ? 0.004f : 0.0f;
     std::vector<uint8_t> ldr(width * height * 3);
     for (uint32_t i = 0; i < width * height; ++i) {
         uint32_t px = i % width;
@@ -913,7 +915,8 @@ bool MetalPocApp::postProcessAndWrite() {
     // floor's own tile edges, confirming this knob really can wash
     // out real detail if pushed too far, not just theoretically.
     std::vector<uint8_t> denoised(width * height * 3);
-    bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
+    if (effects.denoise) bilateralDenoise(ldr, denoised, width, height, /*radius=*/3, /*sigmaSpatial=*/2.5f, /*sigmaRange=*/20.0f);
+    else denoised = ldr;
 
     // stbi_write_png() returns 0 on failure (unwritable/nonexistent
     // directory, read-only volume, ...) - previously ignored, so a failed
@@ -1049,6 +1052,8 @@ int metal_render_main(int image_width, int image_height, int samples_per_pixel,
         // default stream's own 1u - every explicit
         // seed selects a stream distinct from a run that never passed one.
         if (options.seed >= 0) app.frameSeedValue = (uint32_t)options.seed + 2u;
+        // --max-component-value: the explicit firefly clamp (1e9 = not requested, so the scene's own Film maxcomponentvalue applies).
+        if (options.max_component_value > 0.0 && options.max_component_value < 1e9) app.maxComponentValueOverride = (float)options.max_component_value;
         // --crop: NDC fractions -> pixel bounds via the SAME shared resolver
         // OptiX uses (src/shared/cameras.h), so rounding/clamping match. All
         // four at their defaults (0,0,1,1) means not requested - leave the crop
