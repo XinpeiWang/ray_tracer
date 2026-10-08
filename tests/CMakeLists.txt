@@ -49,6 +49,7 @@ add_executable(unit_tests
     unit/live_spp_scheduler_tests.cpp
     unit/scene_gizmo_tests.cpp
     unit/snapshot_history_tests.cpp
+    unit/backend_capabilities_tests.cpp
     unit/light_sampler_resolution_tests.cpp
     unit/mtl_material_tests.cpp
     unit/obj_negative_indices_tests.cpp

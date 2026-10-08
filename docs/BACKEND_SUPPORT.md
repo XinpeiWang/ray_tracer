@@ -41,7 +41,7 @@ This page is the overview. The detail lives in:
 
 ## How the GUI uses this
 
-The Live Preview controls are shown by what the loaded library says it has (`realtime_backend_features()`, see `src/shared/realtime_api.h`), not by the platform. Options a renderer ignores are accepted and warned about on the command line, never an error.
+The Live Preview controls are shown by what the loaded library says it has (`realtime_backend_features()`, see `src/shared/realtime_api.h`), not by the platform. Which options each renderer reads is one table in `src/shared/backend_capabilities.h`: the Render Options controls a renderer ignores are greyed out from it, and the launcher warns ("`--sampler` has no effect under the Metal renderer - ignoring.") from the same table. An option a renderer ignores is accepted and warned about, never an error.
 
 ## Checking that the renderers agree
 

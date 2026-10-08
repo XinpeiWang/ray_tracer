@@ -70,6 +70,7 @@ extern char** environ;
 #include "src/shared/exr_writer.h"
 #include "src/shared/render_stats.h"
 #include "launcher/camera_path.h"
+#include "src/shared/backend_capabilities.h"   // which options each renderer reads
 #include "launcher/gpu_backend.h"      // the GPU renderer this build has (Metal or OptiX), behind one call
 #include "launcher/launcher_args.h"   // Argument parsing
 #include "launcher/diagnostics.h"     // --diagnose
@@ -439,30 +440,25 @@ static int check_render_mode_options(const LaunchArgs &args, const RenderSetup &
     // block) well before that later code runs. Checking only there meant
     // `--video --gpu --spectral`/`--sampler` silently dropped the flag with
     // no warning at all, unlike the identical combination without --video.
-    if (!args.sampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
-        std::cerr << "Warning: --sampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
-                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-                     "(only the CPU default path tracer supports it) - ignoring.\n";
-    }
-    if (!args.lightsampler.empty() && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
-        std::cerr << "Warning: --lightsampler has no effect under --gpu/--bdpt/--mlt/--sppm/"
-                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-                     "(only the CPU default path tracer supports it) - ignoring.\n";
-    }
-    if (args.adaptive_sampling && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
-        std::cerr << "Warning: --adaptive has no effect under --gpu/--bdpt/--mlt/--sppm/"
-                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-                     "(only the CPU default path tracer supports it) - ignoring.\n";
-    }
-    if (args.time_limit_seconds > 0.0 && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
-        std::cerr << "Warning: --time-limit has no effect under --gpu/--bdpt/--mlt/--sppm/"
-                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-                     "(only the CPU default path tracer supports it) - ignoring.\n";
-    }
-    if (args.spectral && (use_gpu || use_bdpt || use_mlt || use_sppm || use_debug_integrator)) {
-        std::cerr << "Warning: --spectral has no effect under --gpu/--bdpt/--mlt/--sppm/"
-                     "--randomwalk/--ao/--simplepath/--simplevolpath/--lightpath "
-                     "(only the CPU default path tracer supports it) - ignoring.\n";
+    {
+        // Which renderer will run decides which of these flags it reads: one table (src/shared/backend_capabilities.h) instead of a copy of the rule per flag.
+        using namespace backend_caps;
+        const Renderer renderer = (use_bdpt || use_mlt || use_sppm || use_debug_integrator) ? Renderer::CpuOtherIntegrator
+                                  : use_gpu ? (gpu_backend::kIsMetal ? Renderer::GpuMetal : Renderer::GpuOptix)
+                                            : Renderer::CpuDefault;
+        const struct { Option option; bool requested; } flags[] = {
+            {Option::Sampler, !args.sampler.empty()},
+            {Option::LightSampler, !args.lightsampler.empty()},
+            {Option::AdaptiveSampling, args.adaptive_sampling},
+            {Option::TimeLimit, args.time_limit_seconds > 0.0},
+            {Option::Spectral, args.spectral},
+        };
+        for (const auto &f : flags) {
+            if (f.requested && !supports(renderer, f.option)) {
+                std::cerr << "Warning: " << flagName(f.option) << " has no effect under " << rendererName(renderer)
+                          << " - ignoring.\n";
+            }
+        }
     }
     // Unlike --sampler/--lightsampler/--spectral above, --accelerator/
     // --splitmethod affect scene CONSTRUCTION (scene_registry.h's

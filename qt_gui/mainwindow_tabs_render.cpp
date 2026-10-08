@@ -9,6 +9,7 @@
 #include "icon_tint.h"
 #include "scene_technique_notes.h"
 #include "settings_keys.h"
+#include "../src/shared/backend_capabilities.h"   // which options each renderer reads
 
 #include "../src/shared/scene_descriptor.h"
 
@@ -147,89 +148,56 @@ void MainWindow::createSceneBuilderTab() {
 // (construction, m_renderModeCombo's lambda, m_gpuBackendCombo's lambda,
 // onIntegratorChanged() - mainwindow.cpp/mainwindow_slots.cpp).
 void MainWindow::updateRenderOptionsEnabled() {
+	using namespace backend_caps;
 	const bool gpuSelected = m_renderModeCombo->currentData().toBool();
-	// kGpuOptionAvailable (mainwindow.h) is true only on a Windows/OptiX
-	// build - GPU is never offered at all on Linux (no GPU renderer exists
-	// there), so "GPU selected AND not an OptiX build" can only mean the
-	// macOS/Metal backend. Several RenderOptions fields below are real,
-	// working features under OptiX but documented no-ops under Metal
-	// (gpu/metal/metal_interface.h's own field-by-field comment) - this
-	// pair lets each control below gate on the BACKEND that's actually
-	// going to run, not just "is GPU selected" the way this function used
-	// to (a real, previously-unnoticed bug: several no-op-under-Metal
-	// controls stayed clickable whenever GPU was selected on macOS, silently
-	// letting a Mac user toggle a setting that render_options.h's own
-	// RenderOptions get passed into metal_render_main() unchanged with no
-	// effect at all - found via a direct audit, not assumed).
+	// kGpuOptionAvailable (mainwindow.h) is true only on a Windows/OptiX build - GPU is never offered at all on Linux, so "GPU selected AND not an OptiX build"
+	// can only mean the macOS/Metal backend.
 	const bool gpuIsOptix = gpuSelected && kGpuOptionAvailable;
 	const bool gpuIsMetal = gpuSelected && !kGpuOptionAvailable;
 	const auto integrator = static_cast<IntegratorMode>(m_integratorCombo->currentData().toInt());
 	const bool isDefault = (integrator == IntegratorMode::Default);
+	// What will actually run. An integrator other than the default one (BDPT, MLT, SPPM, the debug integrators) is CPU-only, whichever renderer is selected.
+	// Which options each renderer reads is the one table in src/shared/backend_capabilities.h (the launcher's warnings use it too), not a condition per control.
+	const Renderer renderer = !isDefault ? Renderer::CpuOtherIntegrator
+	                          : gpuSelected ? (kGpuOptionAvailable ? Renderer::GpuOptix : Renderer::GpuMetal)
+	                                        : Renderer::CpuDefault;
+	const auto reads = [renderer](Option o) { return supports(renderer, o); };
 
 	if (m_gpuBackendCombo) m_gpuBackendCombo->setEnabled(isDefault && gpuSelected);
-	m_samplerCombo->setEnabled(isDefault && !gpuSelected);
-	m_lightSamplerCombo->setEnabled(isDefault && !gpuSelected);
-	m_spectralCheck->setEnabled(isDefault && !gpuSelected);
-	m_adaptiveSamplingCheck->setEnabled(isDefault && !gpuSelected);
-	m_adaptiveThresholdSpin->setEnabled(isDefault && !gpuSelected && m_adaptiveSamplingCheck->isChecked());
-	m_timeLimitCheck->setEnabled(isDefault && !gpuSelected);
-	m_timeLimitSpin->setEnabled(isDefault && !gpuSelected && m_timeLimitCheck->isChecked());
-	m_exposureSpin->setEnabled(isDefault);
-	m_tonemapCombo->setEnabled(isDefault);
+	m_samplerCombo->setEnabled(reads(Option::Sampler));
+	m_lightSamplerCombo->setEnabled(reads(Option::LightSampler));
+	m_spectralCheck->setEnabled(reads(Option::Spectral));
+	m_adaptiveSamplingCheck->setEnabled(reads(Option::AdaptiveSampling));
+	m_adaptiveThresholdSpin->setEnabled(reads(Option::AdaptiveSampling) && m_adaptiveSamplingCheck->isChecked());
+	m_timeLimitCheck->setEnabled(reads(Option::TimeLimit));
+	m_timeLimitSpin->setEnabled(reads(Option::TimeLimit) && m_timeLimitCheck->isChecked());
+	m_exposureSpin->setEnabled(reads(Option::Exposure));
+	m_tonemapCombo->setEnabled(reads(Option::Tonemap));
 	m_statsCheck->setEnabled(isDefault);
-	// Both GPU backends have their own real denoiser now (WavefrontPathTracer::
-	// denoise(), gpu/optix/wavefront_path_tracer.cpp) - no longer gated on
-	// !wavefrontSelected. Metal has no denoiser at all though (not in
-	// metal_interface.h's own list of fields it reads) - gated on
-	// gpuIsOptix, not the broader gpuSelected, so this stays correctly
-	// disabled when the selected GPU is actually Metal.
-	// A Mac's Metal renderer denoises with Intel's Open Image Denoise (installed on request: mainwindow_denoiser.cpp).
-	const bool denoiseAvailable = gpuIsOptix || (gpuIsMetal && denoiser_installer::isSupportedHere());
-	m_denoiseCheck->setEnabled(isDefault && denoiseAvailable);
-	m_denoiseBlendSpin->setEnabled(isDefault && denoiseAvailable && m_denoiseCheck->isChecked());
-	// OptiX-specific by definition (the checkbox's own label says so) -
-	// meaningless, and previously left clickable, under Metal.
-	m_optixValidateCheck->setEnabled(isDefault && gpuIsOptix);
-	// "Both backends" per render_options.h's own comment, but that predates
-	// Metal - metal_interface.h's own field list confirms Metal doesn't
-	// actually read regularize/max_component_value at all, so each is
-	// gated on !gpuIsMetal (CPU or OptiX-GPU, not Metal-GPU) rather than left
-	// unconditional. (seed and crop are NOT in this list - Metal reads both
-	// now, see gpu/metal/metal_interface.h, so they stay enabled below.)
-	m_regularizeCheck->setEnabled(isDefault && !gpuIsMetal);
-	m_maxComponentValueCheck->setEnabled(isDefault);   // Metal reads it too now (the explicit firefly clamp replaces the scene's own)
-	m_maxComponentValueSpin->setEnabled(isDefault && m_maxComponentValueCheck->isChecked());
-	m_cropCheck->setEnabled(isDefault);
-	const bool cropSpinsEnabled = isDefault && m_cropCheck->isChecked();
+	// The denoiser: OptiX's on a Windows GPU; Open Image Denoise on a Mac's Metal renderer (installed on request: mainwindow_denoiser.cpp). The command line
+	// also denoises the CPU path tracer with Open Image Denoise, but there is no installer for it here yet, so the control stays off for the CPU.
+	const bool denoiseAvailable = reads(Option::Denoise) && (gpuIsOptix || (gpuIsMetal && denoiser_installer::isSupportedHere()));
+	m_denoiseCheck->setEnabled(denoiseAvailable);
+	m_denoiseBlendSpin->setEnabled(denoiseAvailable && m_denoiseCheck->isChecked());
+	m_optixValidateCheck->setEnabled(reads(Option::OptixValidate));
+	m_regularizeCheck->setEnabled(reads(Option::Regularize));
+	m_maxComponentValueCheck->setEnabled(reads(Option::MaxComponentValue));
+	m_maxComponentValueSpin->setEnabled(reads(Option::MaxComponentValue) && m_maxComponentValueCheck->isChecked());
+	m_cropCheck->setEnabled(reads(Option::Crop));
+	const bool cropSpinsEnabled = reads(Option::Crop) && m_cropCheck->isChecked();
 	m_cropX0Spin->setEnabled(cropSpinsEnabled);
 	m_cropY0Spin->setEnabled(cropSpinsEnabled);
 	m_cropX1Spin->setEnabled(cropSpinsEnabled);
 	m_cropY1Spin->setEnabled(cropSpinsEnabled);
-	m_seedCheck->setEnabled(isDefault);
-	m_seedSpin->setEnabled(isDefault && m_seedCheck->isChecked());
-	// Unlike every field above, NOT gated on isDefault - accelerator/
-	// splitmethod affect scene construction, shared by every integrator
-	// (default path tracer, BDPT/MLT, SPPM), not one integrator's own logic.
-	// Still CPU-only (GPU always builds its own fixed BVH) - correctly
-	// gated on the broad gpuSelected already, no gpuIsMetal split needed
-	// since this one's disabled for EITHER GPU backend alike.
-	m_acceleratorCombo->setEnabled(!gpuSelected);
-	const bool splitMethodMeaningful =
-		!gpuSelected && m_acceleratorCombo->currentData().toString() != QStringLiteral("kdtree");
+	m_seedCheck->setEnabled(reads(Option::Seed));
+	m_seedSpin->setEnabled(reads(Option::Seed) && m_seedCheck->isChecked());
+	// Accelerator and split method shape scene construction, shared by every CPU integrator; a GPU always builds its own BVH.
+	m_acceleratorCombo->setEnabled(reads(Option::Accelerator));
+	const bool splitMethodMeaningful = reads(Option::Accelerator) && m_acceleratorCombo->currentData().toString() != QStringLiteral("kdtree");
 	m_splitMethodCombo->setEnabled(splitMethodMeaningful);
-	// m_dofOverrideCheck/m_apertureSpin/m_focusDistanceSpin are likewise NOT
-	// gated on isDefault here, same reasoning as accelerator/splitmethod
-	// just above: depth-of-field lens sampling lives in camera ray
-	// generation itself (camera.h's get_ray()/GPU's wf_generate_primary_ray),
-	// shared unconditionally by every integrator (AO, SimplePath, BDPT/MLT,
-	// SPPM, the default path tracer), not gated behind any one integrator's
-	// own logic the way maxComponentValue/crop/seed above are. IS gated on
-	// !gpuIsMetal though (added, previously unconditional) - the override is
-	// only wired for gpu/optix/scene_builder.cpp's own pbrt-camera branch,
-	// a real OptiX-only feature (CPU has its own separate, always-available
-	// DOF support), not one metal_interface.h lists Metal as reading at all.
-	m_dofOverrideCheck->setEnabled(!gpuIsMetal);
-	const bool dofSpinsEnabled = !gpuIsMetal && m_dofOverrideCheck->isChecked();
+	// Depth-of-field lens sampling lives in camera ray generation, shared by every CPU integrator; of the GPUs only OptiX takes the override.
+	m_dofOverrideCheck->setEnabled(reads(Option::DofOverride));
+	const bool dofSpinsEnabled = reads(Option::DofOverride) && m_dofOverrideCheck->isChecked();
 	m_apertureSpin->setEnabled(dofSpinsEnabled);
 	m_focusDistanceSpin->setEnabled(dofSpinsEnabled);
 }

@@ -22,6 +22,7 @@
 namespace gpu_backend {
 
 #ifdef RT_HAVE_METAL
+inline constexpr bool kIsMetal = true;   // which backend_capabilities.h row applies
 inline const char* name() { return "Metal"; }                       // how the backend is spoken of to the user
 inline const char* entryPoint() { return "metal_render_main"; }     // for log lines and error reports
 inline const char* reportTag() { return "METAL"; }
@@ -35,6 +36,7 @@ inline int render(int width, int height, int samples, int maxDepth, const char* 
 	return metal_render_main(width, height, samples, maxDepth, outputPath, sceneId, camX, camY, camZ, forceCameraOverride, options);
 }
 #else
+inline constexpr bool kIsMetal = false;
 inline const char* name() { return "OptiX"; }
 inline const char* entryPoint() { return "optix_render_main"; }
 inline const char* reportTag() { return "OptiX"; }
