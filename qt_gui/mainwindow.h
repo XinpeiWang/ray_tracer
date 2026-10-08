@@ -74,6 +74,7 @@ namespace SceneMetadataClient { struct SceneMetadata; }
 // machinery dragged in just to see the member declaration.
 class RealtimePreviewSession;
 class SceneBuilderWidget;
+class PhotoHelperCheck;
 
 
 // ============================================================================
@@ -1589,6 +1590,10 @@ private:
 	void startPackDownload(const scene_packs::Pack &pack, bool confirm, std::function<void(bool ok, const QString &error)> onDone = nullptr);
 	// The "Network" section appended to the Diagnostics report once the CLI part is in (see onDiagnosticsReportReady()).
 	asset_downloader::ConnectionCheck *m_connectionCheck = nullptr;
+	// ...and, after that, the "Photo helper" section (photo_import.h): what the optional Object-from-a-photo helper has and lacks.
+	PhotoHelperCheck *m_photoCheck = nullptr;
+	bool diagnosticsBusy() const;
+	void startPhotoHelperCheck();
 	void onDownloadMissingAssetsClicked();
 	// Runs the download; `confirm` false skips the dialogs (the self-test). `onDone` is called with the result.
 	void startAssetDownload(const QList<asset_downloader::Job> &jobs, bool confirm,

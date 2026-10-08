@@ -1,5 +1,6 @@
 #include "mainwindow.h"
 #include "icon_tint.h"
+#include "photo_import.h"
 #include "scene_metadata_client.h"
 #include "win_taskbar.h"
 #include "render_output_parser.h"
@@ -540,7 +541,7 @@ void MainWindow::onClearQueue() {
 void MainWindow::onRunDiagnosticsClicked() {
 	// A stray click while one is already running would leak a second
 	// QProcess and race both sets of signals into the same text edit.
-	if (m_diagnosticsRunner || (m_connectionCheck && m_connectionCheck->isRunning())) return;
+	if (diagnosticsBusy()) return;
 
 	m_lastDiagReport.clear();  // no report to recolour until reportReady fires
 	if (m_diagTextEdit) {
@@ -586,14 +587,34 @@ void MainWindow::onDiagnosticsReportReady(const QString &report) {
 				m_lastDiagReport += section;
 				rebuildDiagPane();
 			}
-			if (m_runDiagnosticsButton && !m_diagnosticsRunner) m_runDiagnosticsButton->setEnabled(true);
+			startPhotoHelperCheck();  // the next section; the button stays off until it is in
 		});
 	}
 	m_connectionCheck->start();
-	// The runner's own cleanup (connected after this slot) re-enables the button; keep it off until the check is done too.
+	// The runner's own cleanup (connected after this slot) re-enables the button; keep it off until the checks are done too.
 	QTimer::singleShot(0, this, [this]() {
-		if (m_runDiagnosticsButton && m_connectionCheck && m_connectionCheck->isRunning()) m_runDiagnosticsButton->setEnabled(false);
+		if (m_runDiagnosticsButton && diagnosticsBusy()) m_runDiagnosticsButton->setEnabled(false);
 	});
+}
+
+bool MainWindow::diagnosticsBusy() const {
+	return m_diagnosticsRunner || (m_connectionCheck && m_connectionCheck->isRunning()) || (m_photoCheck && m_photoCheck->isRunning());
+}
+
+// The report's last section. Run after the network check so the sections always come in the same order.
+void MainWindow::startPhotoHelperCheck() {
+	if (!m_photoCheck) {
+		m_photoCheck = new PhotoHelperCheck(this);
+		connect(m_photoCheck, &PhotoHelperCheck::finished, this, [this](const QString &section) {
+			if (!m_lastDiagReport.isEmpty()) {
+				if (!m_lastDiagReport.endsWith(QLatin1Char('\n'))) m_lastDiagReport += QLatin1Char('\n');
+				m_lastDiagReport += section;
+				rebuildDiagPane();
+			}
+			if (m_runDiagnosticsButton && !diagnosticsBusy()) m_runDiagnosticsButton->setEnabled(true);
+		});
+	}
+	m_photoCheck->start();
 }
 
 void MainWindow::onDiagnosticsFailed(const QString &message) {

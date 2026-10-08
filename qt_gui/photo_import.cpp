@@ -5,6 +5,7 @@
 #include <QFileInfo>
 #include <QStandardPaths>
 #include <QStringList>
+#include <QTimer>
 
 namespace photo_import {
 
@@ -61,6 +62,69 @@ bool parseProgressLine(const QString &line, int *percent, QString *message) {
 }
 
 }  // namespace photo_import
+
+PhotoHelperCheck::~PhotoHelperCheck() {
+	if (m_process) {
+		m_process->disconnect(this);
+		m_process->kill();
+		m_process->waitForFinished(2000);
+	}
+}
+
+void PhotoHelperCheck::start() {
+	if (m_running) return;
+	m_running = true;
+	const photo_import::Setup setup = photo_import::locate();
+	m_head = QStringLiteral("=== Photo helper (Scene Builder, Add > Object from a photo; optional) ===\n");
+	m_head += setup.script.isEmpty() ? QStringLiteral("Helper Script: missing (tools/photo_to_mesh/photo_to_mesh.py was not found next to the program)\n")
+	                                 : QStringLiteral("Helper Script: present (%1)\n").arg(QDir::toNativeSeparators(setup.script));
+	if (!QFileInfo::exists(setup.python)) {
+		m_head += QStringLiteral("Python Environment: not available (not set up; run scripts\\setup_photo_to_mesh.ps1 once to enable the feature, about 5 GB)\n");
+		m_head += QStringLiteral("Expected At: %1\n").arg(QDir::toNativeSeparators(setup.python));
+		finish(QString());
+		return;
+	}
+	m_head += QStringLiteral("Python Environment: present (%1)\n").arg(QDir::toNativeSeparators(setup.python));
+	if (setup.script.isEmpty()) {
+		finish(QString());
+		return;
+	}
+	m_process = new QProcess(this);
+	m_process->setProcessChannelMode(QProcess::MergedChannels);
+	QProcessEnvironment env = QProcessEnvironment::systemEnvironment();
+	env.insert("PYTHONIOENCODING", "utf-8");
+	m_process->setProcessEnvironment(env);
+	connect(m_process, QOverload<int, QProcess::ExitStatus>::of(&QProcess::finished), this, [this](int code, QProcess::ExitStatus st) {
+		const QString out = QString::fromUtf8(m_process->readAll());
+		if (st == QProcess::NormalExit && code == 0) {
+			finish(out);
+		} else {
+			// A broken install: say it as a fact, with the last line of Python's complaint.
+			const QStringList lines = out.trimmed().split('\n');
+			finish(QStringLiteral("Python Check: not usable (%1)\n").arg(lines.isEmpty() ? QStringLiteral("exit code %1").arg(code) : lines.last().trimmed().left(200)));
+		}
+	});
+	connect(m_process, &QProcess::errorOccurred, this, [this](QProcess::ProcessError e) {
+		if (e == QProcess::FailedToStart) finish(QStringLiteral("Python Check: not usable (could not start python)\n"));
+	});
+	// Importing PyTorch takes a few seconds; a hung or broken install must not hold the Diagnostics button forever.
+	QTimer::singleShot(60000, this, [this]() {
+		if (m_running && m_process) {
+			m_process->disconnect(this);
+			m_process->kill();
+			finish(QStringLiteral("Python Check: not usable (no answer after 60 seconds)\n"));
+		}
+	});
+	m_process->start(setup.python, {setup.script, "--check"});
+}
+
+void PhotoHelperCheck::finish(const QString &facts) {
+	if (!m_running) return;
+	m_running = false;
+	QString section = m_head + facts;
+	if (!section.endsWith('\n')) section += '\n';
+	emit finished(section);
+}
 
 PhotoToMeshJob::PhotoToMeshJob(const photo_import::Setup &setup, const QString &image, const QString &outFolder, bool removeBackground, QObject *parent)
     : QObject(parent), m_setup(setup), m_image(image), m_out(outFolder), m_removeBackground(removeBackground) {}
