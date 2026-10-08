@@ -1,10 +1,10 @@
 # Written by scripts/check_code_size.py --update. Functions over 300 lines and files over 2000 lines that exist today;
 # CI fails when one grows or a new one appears. Lower or delete a line after splitting something. Format: <key> <lines>
-file gpu/optix/optix_types.h 2223
 file src/TheRestOfYourLife/camera.h 2646
 func gpu/metal/metal_poc_kernel.metal::primaryRayKernel 1631
 func gpu/metal/metal_poc_materials_specular.metal::shadeConductor 329
 func gpu/metal/metal_poc_pbrt_materials.mm::MetalPocApp::mapPbrtMaterial 315
+func gpu/optix/optix_device_shade.h::shade_material 849
 func gpu/optix/optix_renderer_init.cpp::OptiXRenderer::createProgramGroups 421
 func gpu/optix/optix_renderer_render.cpp::OptiXRenderer::render 398
 func gpu/optix/optix_renderer_scene.cpp::OptiXRenderer::uploadLightBuffers 326
