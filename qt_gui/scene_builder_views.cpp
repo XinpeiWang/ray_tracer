@@ -32,8 +32,30 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	m_viewStack->addWidget(m_view3d);
 	m_viewHint = new QLabel(layoutBox);
 	const QString hint2d = tr("Wheel: zoom. Right-drag: pan.");
-	const QString hint3d = tr("Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.");
+	const QString hint3d = tr("Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.");
 	m_viewHint->setText(hint2d);
+	m_gizmoBar = new QWidget(layoutBox);  // the Move / Rotate / Scale tools of the 3D view (W, E, R); shown with it
+	auto *gizmoLayout = new QHBoxLayout(m_gizmoBar);
+	gizmoLayout->setContentsMargins(0, 0, 0, 0);
+	auto *gizmoGroup = new QButtonGroup(this);
+	gizmoGroup->setExclusive(true);
+	const std::pair<QString, QString> tools[] = {{tr("Move"), tr("Move (W): drag an object, or an arrow to move along one axis")},
+	                                             {tr("Rotate"), tr("Rotate (E): drag a ring to turn the object about that axis")},
+	                                             {tr("Scale"), tr("Scale (R): drag a square handle to stretch the object along that axis")}};
+	for (int i = 0; i < 3; ++i) {
+		auto *b = new QPushButton(tools[i].first, m_gizmoBar);
+		b->setCheckable(true);
+		b->setAutoDefault(false);
+		b->setChecked(i == 0);
+		b->setToolTip(tools[i].second);
+		gizmoGroup->addButton(b, i);
+		gizmoLayout->addWidget(b);
+		connect(b, &QPushButton::clicked, this, [this, i]() { m_view3d->setGizmoMode(static_cast<Scene3DView::GizmoMode>(i)); });
+	}
+	connect(m_view3d, &Scene3DView::gizmoModeChanged, this, [gizmoGroup](int mode) {
+		if (auto *b = gizmoGroup->button(mode)) b->setChecked(true);  // the W / E / R keys
+	});
+	m_gizmoBar->setVisible(false);
 
 	const std::pair<QString, SceneLayoutView::Plane> planes[] = {{tr("Top"), SceneLayoutView::Plane::Top}, {tr("Front"), SceneLayoutView::Plane::Front}, {tr("Side"), SceneLayoutView::Plane::Side}};
 	for (const auto &pl : planes) {
@@ -47,6 +69,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 			m_viewStack->setCurrentWidget(m_view);
 			m_view->setPlane(pl.second);
 			m_viewHint->setText(hint2d);
+			m_gizmoBar->setVisible(false);
 		});
 	}
 	auto *b3d = new QPushButton(tr("3D"), layoutBox);
@@ -58,6 +81,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	connect(b3d, &QPushButton::clicked, this, [this, hint3d]() {
 		m_viewStack->setCurrentWidget(m_view3d);
 		m_viewHint->setText(hint3d);
+		m_gizmoBar->setVisible(true);
 	});
 
 	auto *snap = new QCheckBox(tr("Snap to grid"), layoutBox);
@@ -73,6 +97,8 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		m_view->frameAll();
 		m_view3d->frameAll();
 	});
+	planeRow->addSpacing(8);
+	planeRow->addWidget(m_gizmoBar);
 	planeRow->addSpacing(8);
 	planeRow->addWidget(snap);
 	planeRow->addWidget(frame);
@@ -113,6 +139,19 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	connect(m_view3d, &Scene3DView::selectionRequested, this, onSelection);
 	connect(m_view3d, &Scene3DView::dragBegan, this, onDragBegan);
 	connect(m_view3d, &Scene3DView::positionDragged, this, onDragged);
+	// A turn or a stretch arrives as the whole edited object; the angles and dimensions are taken from it.
+	connect(m_view3d, &Scene3DView::objectEdited, this, [this](const BuilderSelection &s, const scene_doc::Object &updated) {
+		if (s.kind != SelKind::Object || s.index < 0 || s.index >= static_cast<int>(m_doc.objects.size())) return;
+		edit(QString("drag#%1").arg(m_editCounter), [&]() {
+			scene_doc::Object &o = m_doc.objects[s.index];
+			o.rotation = updated.rotation;
+			o.radius = updated.radius;
+			o.height = updated.height;
+			o.size = updated.size;
+			o.meshScale = updated.meshScale;
+		});
+		refreshInspectorValues();
+	});
 
 	for (QWidget *view : {static_cast<QWidget *>(m_view), static_cast<QWidget *>(m_view3d)}) {
 		auto *undoView = new QShortcut(QKeySequence::Undo, view);
@@ -150,8 +189,9 @@ void SceneBuilderWidget::frameViews() {
 // ---- self-test helpers for the 3D view (real mouse events, like dragObjectForTest for the 2D one) -----------------------------------------
 void SceneBuilderWidget::show3dView(bool on) {
 	m_viewStack->setCurrentWidget(on ? static_cast<QWidget *>(m_view3d) : static_cast<QWidget *>(m_view));
-	m_viewHint->setText(on ? tr("Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.")
+	m_viewHint->setText(on ? tr("Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.")
 	                       : tr("Wheel: zoom. Right-drag: pan."));
+	m_gizmoBar->setVisible(on);
 }
 
 static void sendMouse(QWidget *w, QEvent::Type type, const QPointF &pos, Qt::MouseButton button, Qt::MouseButtons buttons) {
@@ -190,4 +230,34 @@ bool SceneBuilderWidget::dragAxis3dForTest(int index, int axis, double pixels) {
 	for (int a = 0; a < 3; ++a)
 		if (a != axis && std::abs(d[a]) > 1e-9) return false;
 	return std::abs(d[axis]) > 1e-9;
+}
+
+// Selects the object, then drags its `axis` ring from 45 degrees round (halfway between where the three rings cross) to 45 + `degrees`; true if the object now has the angles a turn of (about) that much
+// about that world axis gives.
+bool SceneBuilderWidget::dragRotate3dForTest(int index, int axis, double degrees) {
+	if (index < 0 || index >= static_cast<int>(m_doc.objects.size())) return false;
+	m_view3d->setGizmoMode(Scene3DView::GizmoMode::Rotate);
+	setSelection({SelKind::Object, index});
+	const Float3 before = m_doc.objects[index].rotation;
+	const QPointF from = m_view3d->ringPoint(axis, 45.0);
+	sendMouse(m_view3d, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+	for (int step = 1; step <= 6; ++step) sendMouse(m_view3d, QEvent::MouseMove, m_view3d->ringPoint(axis, 45.0 + degrees * step / 6.0), Qt::NoButton, Qt::LeftButton);
+	sendMouse(m_view3d, QEvent::MouseButtonRelease, m_view3d->ringPoint(axis, 45.0 + degrees), Qt::LeftButton, Qt::NoButton);
+	const Float3 after = m_doc.objects[index].rotation;
+	return before.x != after.x || before.y != after.y || before.z != after.z;
+}
+
+// Selects the object, then drags the end of its `axis` handle to `ratio` times its distance from the object; true if something changed.
+bool SceneBuilderWidget::dragScale3dForTest(int index, int axis, double ratio) {
+	if (index < 0 || index >= static_cast<int>(m_doc.objects.size())) return false;
+	m_view3d->setGizmoMode(Scene3DView::GizmoMode::Scale);
+	setSelection({SelKind::Object, index});
+	const scene_doc::Object before = m_doc.objects[index];
+	const QPointF from = m_view3d->scaleHandlePoint(axis, 1.0);
+	sendMouse(m_view3d, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+	for (int step = 1; step <= 4; ++step) sendMouse(m_view3d, QEvent::MouseMove, m_view3d->scaleHandlePoint(axis, 1.0 + (ratio - 1.0) * step / 4.0), Qt::NoButton, Qt::LeftButton);
+	sendMouse(m_view3d, QEvent::MouseButtonRelease, m_view3d->scaleHandlePoint(axis, ratio), Qt::LeftButton, Qt::NoButton);
+	const scene_doc::Object& after = m_doc.objects[index];
+	return before.radius != after.radius || before.height != after.height || before.meshScale != after.meshScale || before.size.x != after.size.x ||
+	       before.size.y != after.size.y || before.size.z != after.size.z;
 }

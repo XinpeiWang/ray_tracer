@@ -53,6 +53,8 @@ public:
 	void show3dView(bool on);
 	bool dragObject3dForTest(int index, const QPointF &deltaPx);
 	bool dragAxis3dForTest(int index, int axis, double pixels);
+	bool dragRotate3dForTest(int index, int axis, double degrees);
+	bool dragScale3dForTest(int index, int axis, double ratio);
 	void addObject(scene_doc::ShapeKind shape);
 	void addLight(scene_doc::LightKind kind);
 	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
@@ -169,6 +171,7 @@ private:
 	Scene3DView *m_view3d = nullptr;
 	QStackedWidget *m_viewStack = nullptr;  // m_view (Top / Front / Side) or m_view3d, one at a time
 	QLabel *m_viewHint = nullptr;
+	QWidget *m_gizmoBar = nullptr;           // the 3D view's Move / Rotate / Scale buttons
 	// scene_builder_views.cpp: building the views, and doing one thing to both (they follow the same document and selection).
 	void createViews(QWidget *layoutBox, QVBoxLayout *layoutLayout);
 	void updateViews();

@@ -188,3 +188,76 @@ TEST(SceneViewClipTest, AFaceCrossingTheNearPlaneIsCutAtIt) {
 	for (const V3& p : cut) onPlane = onPlane || std::abs(p.z - 0.5) < 1e-9;
 	EXPECT_TRUE(onPlane);
 }
+
+TEST(SceneViewRotateTest, AngleAroundReadsWhereTheMouseIsOnARing) {
+	const View v = makeView();
+	const V3 centre{0, 1, 0};
+	const V3 axis{0, 1, 0}, ref{1, 0, 0};  // a ring in the floor plane, measured from +X
+	for (double deg : {0.0, 30.0, 90.0, 135.0, -60.0, -170.0}) {
+		const double a = deg * kPi / 180.0;
+		const V3 onRing = centre + (ref * std::cos(a) + cross(axis, ref) * std::sin(a)) * 1.5;
+		double sx, sy;
+		ASSERT_TRUE(v.project(onRing, sx, sy));
+		double got = 0;
+		ASSERT_TRUE(angleAround(v.ray(sx, sy), centre, axis, ref, got));
+		EXPECT_NEAR(angleDelta(deg, got), 0.0, 1e-6) << "at " << deg;
+	}
+}
+
+TEST(SceneViewRotateTest, AngleAroundRefusesAParallelRay) {
+	double deg;
+	EXPECT_FALSE(angleAround({{0, 5, 0}, {1, 0, 0}}, {0, 0, 0}, {0, 1, 0}, {1, 0, 0}, deg));
+}
+
+TEST(SceneViewRotateTest, AngleDeltaTakesTheShortWayRound) {
+	EXPECT_NEAR(angleDelta(170, -170), 20.0, 1e-9);
+	EXPECT_NEAR(angleDelta(-170, 170), -20.0, 1e-9);
+	EXPECT_NEAR(angleDelta(10, 40), 30.0, 1e-9);
+	EXPECT_NEAR(angleDelta(0, 180), 180.0, 1e-9);
+	EXPECT_NEAR(angleDelta(720, 725), 5.0, 1e-9);
+}
+
+namespace {
+void expectSameMatrix(const Mat3& a, const Mat3& b, double eps = 1e-9) {
+	for (int i = 0; i < 3; ++i)
+		for (int j = 0; j < 3; ++j) EXPECT_NEAR(a.m[i][j], b.m[i][j], eps) << i << "," << j;
+}
+}  // namespace
+
+TEST(SceneViewEulerTest, RotationXYZMatchesWhatTheSceneFileDoes) {
+	// Turn about X first, then Y, then Z: a point on +Y turned 90 about X goes to +Z, then 90 about Y to +X, then 90 about Z to +Y.
+	const V3 p = rotationXYZ({90, 90, 90}) * V3{0, 1, 0};
+	expectNear(p, {0, 1, 0}, 1e-9);
+	expectNear(rotationXYZ({0, 0, 90}) * V3{1, 0, 0}, {0, 1, 0}, 1e-9);
+	expectNear(rotationXYZ({90, 0, 0}) * V3{0, 1, 0}, {0, 0, 1}, 1e-9);
+	expectNear(rotationXYZ({0, 90, 0}) * V3{0, 0, 1}, {1, 0, 0}, 1e-9);
+}
+
+TEST(SceneViewEulerTest, AnglesRoundTripThroughTheMatrix) {
+	for (double x : {-170.0, -60.0, 0.0, 25.0, 140.0})
+		for (double y : {-80.0, -20.0, 0.0, 45.0, 85.0})
+			for (double z : {-150.0, 0.0, 33.0, 179.0}) {
+				const Mat3 m = rotationXYZ({x, y, z});
+				expectSameMatrix(rotationXYZ(eulerXYZ(m)), m, 1e-9);
+			}
+}
+
+TEST(SceneViewEulerTest, StraightUpAndDownStillGiveTheSameTurn) {
+	for (double y : {90.0, -90.0})
+		for (double x : {0.0, 30.0, -100.0}) {
+			const Mat3 m = rotationXYZ({x, y, 40.0});
+			expectSameMatrix(rotationXYZ(eulerXYZ(m)), m, 1e-9);
+		}
+}
+
+TEST(SceneViewEulerTest, TurningAboutAWorldAxisTurnsTheObjectAboutThatAxisWhateverItsAngles) {
+	const V3 start{20, 35, -50};
+	for (const V3& axis : {V3{1, 0, 0}, V3{0, 1, 0}, V3{0, 0, 1}}) {
+		const V3 angles = turnAboutWorldAxis(start, axis, 30.0);
+		// the object's own "forward" direction after, against turning the direction it had by 30 degrees about that world axis
+		const V3 want = axisAngle(axis, 30.0) * (rotationXYZ(start) * V3{0.3, 0.5, 0.8});
+		expectNear(rotationXYZ(angles) * V3{0.3, 0.5, 0.8}, want, 1e-9);
+	}
+	expectNear(turnAboutWorldAxis({0, 0, 0}, {0, 1, 0}, 90.0), {0, 90, 0}, 1e-9);
+	expectNear(turnAboutWorldAxis({0, 0, 0}, {0, 1, 0}, 0.0), {0, 0, 0}, 1e-9);
+}

@@ -1538,9 +1538,74 @@ They will be saved in:
 %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="31"/>
+        <location filename="../mainwindow_photo_install.cpp" line="42"/>
+        <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
+        <translation>在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh)。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="47"/>
+        <source>The script that will run (PowerShell, with the execution policy bypassed):</source>
+        <translation>将运行的脚本（PowerShell，绕过执行策略）：</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="48"/>
+        <source>PyTorch (from download.pytorch.org)</source>
+        <translation>PyTorch（来自 download.pytorch.org）</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="49"/>
+        <source>It needs Python 3.10 to 3.12 and git on your PATH</source>
+        <translation>需要 Python 3.10 到 3.12，并且 git 在 PATH 中</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="51"/>
+        <source>The script that will run (bash):</source>
+        <translation>将运行的脚本（bash）：</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="52"/>
+        <source>PyTorch (from PyPI)</source>
+        <translation>PyTorch（来自 PyPI）</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="53"/>
+        <source>It needs Python 3.10 to 3.12 (for example brew install python@3.12) and git (xcode-select --install)</source>
+        <translation>需要 Python 3.10 到 3.12（例如 brew install python@3.12）和 git（xcode-select --install）</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_photo_install.cpp" line="56"/>
+        <source>Install the photo helper?
+
+This downloads about 5 GB and installs it for your user only, in %1:
+  - %4 and the Python packages the helper needs (from PyPI)
+  - the TripoSR code (from GitHub) and its model weights, about 1.7 GB (from Hugging Face)
+  - the background-removal model, about 176 MB (from GitHub)
+
+%5 and takes several minutes. You can keep using the program meanwhile.
+
+Missing now:
+%2
+
+%6
+%3</source>
+        <translation>要安装照片辅助程序吗？
+
+将下载约 5 GB，并仅为当前用户安装到 %1：
+  - %4 以及辅助程序所需的 Python 包（来自 PyPI）
+  - TripoSR 代码（来自 GitHub）及其模型权重，约 1.7 GB（来自 Hugging Face）
+  - 背景去除模型，约 176 MB（来自 GitHub）
+
+%5，耗时数分钟。期间你可以继续使用本程序。
+
+当前缺少：
+%2
+
+%6
+%3</translation>
+    </message>
+    <message>
         <source>The installer is for Windows. On other systems see docs/PHOTO_TO_SCENE.md.</source>
-        <translation>安装程序仅适用于 Windows。其他系统请参阅 docs/PHOTO_TO_SCENE.md。</translation>
+        <translation type="vanished">安装程序仅适用于 Windows。其他系统请参阅 docs/PHOTO_TO_SCENE.md。</translation>
     </message>
     <message>
         <source>Install the photo helper?
@@ -1567,18 +1632,16 @@ Missing now:
 %2</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="46"/>
-        <location filename="../mainwindow_photo_install.cpp" line="58"/>
+        <location filename="../mainwindow_photo_install.cpp" line="42"/>
+        <location filename="../mainwindow_photo_install.cpp" line="63"/>
         <source>Install the photo helper</source>
         <translation>安装照片辅助程序</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="46"/>
         <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation>在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh.ps1)。</translation>
+        <translation type="vanished">在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh.ps1)。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="51"/>
         <source>Install the photo helper?
 
 This downloads about 5 GB and installs it for your user only, in %1:
@@ -1593,7 +1656,7 @@ Missing now:
 
 The script that will run (PowerShell, with the execution policy bypassed):
 %3</source>
-        <translation>要安装照片辅助程序吗？
+        <translation type="vanished">要安装照片辅助程序吗？
 
 将下载约 5 GB，并仅为当前用户安装到 %1：
   - PyTorch（来自 download.pytorch.org）以及辅助程序所需的 Python 包（来自 PyPI）
@@ -1609,29 +1672,29 @@ The script that will run (PowerShell, with the execution policy bypassed):
 %3</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="63"/>
+        <location filename="../mainwindow_photo_install.cpp" line="68"/>
         <source>Installing the photo helper</source>
         <translation>正在安装照片辅助程序</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="76"/>
+        <location filename="../mainwindow_photo_install.cpp" line="85"/>
         <location filename="../mainwindow_slots.cpp" line="2333"/>
         <location filename="../mainwindow_slots.cpp" line="2420"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="101"/>
+        <location filename="../mainwindow_photo_install.cpp" line="110"/>
         <source>Installed. Running the diagnostics again to check it...</source>
         <translation>已安装。正在重新运行诊断进行检查…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="101"/>
+        <location filename="../mainwindow_photo_install.cpp" line="110"/>
         <source>The installation did not finish: %1</source>
         <translation>安装未完成：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="102"/>
+        <location filename="../mainwindow_photo_install.cpp" line="111"/>
         <source>Close</source>
         <translation>关闭</translation>
     </message>
@@ -4080,7 +4143,7 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>请先选择一个场景</translation>
     </message>
     <message>
-        <location filename="../mainwindow_photo_install.cpp" line="66"/>
+        <location filename="../mainwindow_photo_install.cpp" line="71"/>
         <location filename="../mainwindow_tabs_render.cpp" line="1833"/>
         <source>Starting...</source>
         <translation>正在启动…</translation>
@@ -4642,40 +4705,48 @@ CPU only. Only works with lights that have a physical size or shape.</source>
 <context>
     <name>PhotoHelperInstaller</name>
     <message>
-        <location filename="../photo_import.cpp" line="129"/>
+        <location filename="../photo_import.cpp" line="126"/>
+        <source>The installer script (scripts/setup_photo_to_mesh) was not found next to the program.</source>
+        <translation>在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh)。</translation>
+    </message>
+    <message>
+        <location filename="../photo_import.cpp" line="139"/>
         <source>Cancelled.</source>
         <translation>已取消。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="130"/>
+        <location filename="../photo_import.cpp" line="140"/>
         <source>The installer stopped (exit code %1).</source>
         <translation>安装程序已停止（退出代码 %1）。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="142"/>
-        <source>Could not start PowerShell to run the installer.</source>
-        <translation>无法启动 PowerShell 来运行安装程序。</translation>
+        <location filename="../photo_import.cpp" line="152"/>
+        <source>Could not start the installer (PowerShell on Windows, bash elsewhere).</source>
+        <translation>无法启动安装程序（Windows 上为 PowerShell，其他系统为 bash）。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="116"/>
+        <source>Could not start PowerShell to run the installer.</source>
+        <translation type="vanished">无法启动 PowerShell 来运行安装程序。</translation>
+    </message>
+    <message>
         <source>The installer script (scripts/setup_photo_to_mesh.ps1) was not found next to the program.</source>
-        <translation>在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh.ps1)。</translation>
+        <translation type="vanished">在程序旁边找不到安装脚本 (scripts/setup_photo_to_mesh.ps1)。</translation>
     </message>
 </context>
 <context>
     <name>PhotoToMeshJob</name>
     <message>
-        <location filename="../photo_import.cpp" line="277"/>
+        <location filename="../photo_import.cpp" line="300"/>
         <source>Could not start the photo helper (%1).</source>
         <translation>无法启动照片辅助程序 (%1)。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="314"/>
+        <location filename="../photo_import.cpp" line="337"/>
         <source>Cancelled.</source>
         <translation>已取消。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="323"/>
+        <location filename="../photo_import.cpp" line="346"/>
         <source>The helper stopped unexpectedly (exit code %1).</source>
         <translation>辅助程序意外停止（退出代码 %1）。</translation>
     </message>
@@ -5303,23 +5374,23 @@ CPU only. Only works with lights that have a physical size or shape.</source>
         <translation>半透明（纸张、树叶）</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="55"/>
-        <location filename="../photo_import.cpp" line="60"/>
+        <location filename="../photo_import.cpp" line="61"/>
+        <location filename="../photo_import.cpp" line="66"/>
         <source>none yet</source>
         <translation>暂无</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="61"/>
+        <location filename="../photo_import.cpp" line="67"/>
         <source>%1 folders, %2 MB</source>
         <translation>%1 个文件夹，%2 MB</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="78"/>
+        <location filename="../photo_import.cpp" line="84"/>
         <source>The helper script (tools/photo_to_mesh/photo_to_mesh.py) was not found next to the program.</source>
         <translation>在程序旁边找不到辅助脚本 (tools/photo_to_mesh/photo_to_mesh.py)。</translation>
     </message>
     <message>
-        <location filename="../photo_import.cpp" line="80"/>
+        <location filename="../photo_import.cpp" line="86"/>
         <source>The photo helper has not been set up on this computer yet.</source>
         <translation>此计算机上尚未设置照片辅助程序。</translation>
     </message>
@@ -5361,7 +5432,7 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="435"/>
+        <location filename="../scene_3d_view.cpp" line="567"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
@@ -5628,6 +5699,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="409"/>
+        <location filename="../scene_builder_views.cpp" line="44"/>
         <source>Scale</source>
         <translation>缩放</translation>
     </message>
@@ -5828,54 +5900,83 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>删除</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="35"/>
-        <location filename="../scene_builder_views.cpp" line="153"/>
         <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Drag an arrow to move along one axis; Shift-drag an object to lift it.</source>
-        <translation>拖动背景：环绕观察。右键拖动：平移。滚轮：缩放。拖动箭头可沿单个轴移动；按住 Shift 拖动物体可将其抬起。</translation>
+        <translation type="vanished">拖动背景：环绕观察。右键拖动：平移。滚轮：缩放。拖动箭头可沿单个轴移动；按住 Shift 拖动物体可将其抬起。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="35"/>
+        <location filename="../scene_builder_views.cpp" line="192"/>
+        <source>Drag the background: orbit. Right-drag: pan. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
+        <translation>拖动背景：环绕观察。右键拖动：平移。滚轮：缩放。选择“移动”“旋转”或“缩放”（W、E、R），然后拖动箭头、圆环或方块；按住 Shift 拖动物体可将其抬起。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move</source>
+        <translation>移动</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="42"/>
+        <source>Move (W): drag an object, or an arrow to move along one axis</source>
+        <translation>移动 (W)：拖动物体，或拖动箭头沿一个轴移动</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate</source>
+        <translation>旋转</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="43"/>
+        <source>Rotate (E): drag a ring to turn the object about that axis</source>
+        <translation>旋转 (E)：拖动圆环使物体绕该轴旋转</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="44"/>
+        <source>Scale (R): drag a square handle to stretch the object along that axis</source>
+        <translation>缩放 (R)：拖动方块沿该轴拉伸物体</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Top</source>
         <translation>顶视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Front</source>
         <translation>前视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="38"/>
+        <location filename="../scene_builder_views.cpp" line="60"/>
         <source>Side</source>
         <translation>侧视</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="52"/>
+        <location filename="../scene_builder_views.cpp" line="75"/>
         <source>3D</source>
         <translation>3D</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="55"/>
+        <location filename="../scene_builder_views.cpp" line="78"/>
         <source>Look at the scene from any side, and move things in 3D</source>
         <translation>从任意角度查看场景，并在 3D 中移动物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="63"/>
+        <location filename="../scene_builder_views.cpp" line="87"/>
         <source>Snap to grid</source>
         <translation>吸附到网格</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="65"/>
+        <location filename="../scene_builder_views.cpp" line="89"/>
         <source>Dragging moves things in steps of 0.25. Hold Alt to drag freely.</source>
         <translation>拖动时按 0.25 的步长移动。按住 Alt 键可自由拖动。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_views.cpp" line="70"/>
+        <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Frame all</source>
         <translation>显示全部</translation>
     </message>
     <message>
         <location filename="../scene_builder_views.cpp" line="34"/>
-        <location filename="../scene_builder_views.cpp" line="154"/>
+        <location filename="../scene_builder_views.cpp" line="193"/>
         <source>Wheel: zoom. Right-drag: pan.</source>
         <translation>滚轮：缩放。右键拖动：平移。</translation>
     </message>
@@ -6149,7 +6250,6 @@ Restart the program to see it in the scene list (Settings tab, Custom Scenes).</
         <translation>未安装照片辅助程序</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="35"/>
         <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an NVIDIA graphics card is strongly recommended).
 
 %1
@@ -6159,7 +6259,7 @@ To set it up, run this in PowerShell from the program&apos;s folder:
 powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
 
 Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
-        <translation>将照片转换为 3D 物体需要一个可选的辅助程序：一个在你自己的计算机上运行的 AI 模型（安装约需 5 GB，强烈建议使用 NVIDIA 显卡）。
+        <translation type="vanished">将照片转换为 3D 物体需要一个可选的辅助程序：一个在你自己的计算机上运行的 AI 模型（安装约需 5 GB，强烈建议使用 NVIDIA 显卡）。
 
 %1
 
@@ -6170,12 +6270,33 @@ powershell -ExecutionPolicy Bypass -File scripts\setup_photo_to_mesh.ps1
 然后再次选择此项。指南 (docs/PHOTO_TO_SCENE.md) 说明了它的作用和局限。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="47"/>
+        <location filename="../scene_builder_photo.cpp" line="35"/>
+        <source>Turning a photo into a 3D object needs an optional helper: an AI model that runs on your own computer (about 5 GB to install, and an graphics card - NVIDIA on Windows, Apple silicon on a Mac - is strongly recommended).
+
+%1
+
+To set it up, use the Diagnostics tab: Run Diagnostics, then Install Photo Helper. Or run this once yourself:
+
+%2
+
+Then choose this again. The guide (docs/PHOTO_TO_SCENE.md) explains what it does and where its limits are.</source>
+        <translation>将照片转换为 3D 物体需要一个可选的辅助程序：一个在你自己的计算机上运行的 AI 模型（安装约需 5 GB，强烈建议使用显卡：Windows 上为 NVIDIA，Mac 上为 Apple 芯片）。
+
+%1
+
+要进行设置，请使用“诊断”标签页：先运行诊断，再点击“安装照片辅助程序”。或者自己运行一次：
+
+%2
+
+然后再次选择此项。指南 (docs/PHOTO_TO_SCENE.md) 说明了它的作用和局限。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_photo.cpp" line="52"/>
         <source>Object from a photo</source>
         <translation>由照片生成物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="48"/>
+        <location filename="../scene_builder_photo.cpp" line="53"/>
         <source>One photo is turned into a 3D object by an AI model running on this computer; the photo is not uploaded anywhere.
 
 The shape is a guess: the back is invented and fine detail is soft. It works best on one object against a plain background. The first run downloads the model (about 1.7 GB) and can take several minutes.</source>
@@ -6184,53 +6305,53 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 形状是推测出来的：背面是编造的，细节会比较模糊。对纯色背景上的单个物体效果最好。首次运行会下载模型（约 1.7 GB），可能需要几分钟。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="52"/>
+        <location filename="../scene_builder_photo.cpp" line="57"/>
         <source>Do not show this again</source>
         <translation>不再显示此消息</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="58"/>
+        <location filename="../scene_builder_photo.cpp" line="63"/>
         <source>Choose a photo</source>
         <translation>选择照片</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="58"/>
+        <location filename="../scene_builder_photo.cpp" line="63"/>
         <source>Photos (*.png *.jpg *.jpeg *.bmp *.webp)</source>
         <translation>照片 (*.png *.jpg *.jpeg *.bmp *.webp)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="61"/>
+        <location filename="../scene_builder_photo.cpp" line="66"/>
         <source>Could not make the object</source>
         <translation>无法生成物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="76"/>
+        <location filename="../scene_builder_photo.cpp" line="81"/>
         <source>Could not create the folder %1.</source>
         <translation>无法创建文件夹 %1。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="80"/>
+        <location filename="../scene_builder_photo.cpp" line="85"/>
         <location filename="../scene_builder_widget.cpp" line="858"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="80"/>
+        <location filename="../scene_builder_photo.cpp" line="85"/>
         <source>Starting...</source>
         <translation>正在开始…</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="81"/>
+        <location filename="../scene_builder_photo.cpp" line="86"/>
         <source>Making a 3D object from the photo</source>
         <translation>正在根据照片生成 3D 物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="120"/>
+        <location filename="../scene_builder_photo.cpp" line="125"/>
         <source>Photo object</source>
         <translation>照片物体</translation>
     </message>
     <message>
-        <location filename="../scene_builder_photo.cpp" line="130"/>
+        <location filename="../scene_builder_photo.cpp" line="135"/>
         <source>Added %1 from the photo. The shape is a guess; check it from every side.</source>
         <translation>已根据照片添加 %1。形状是推测的，请从各个角度检查。</translation>
     </message>

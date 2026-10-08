@@ -29,13 +29,17 @@ Each drag is one undo step. In the flat views, the wheel zooms and right-drag pa
 | Right- or middle-drag | Pan |
 | Wheel | Zoom |
 | Click an object, light or the camera | Select it (the camera is the little box with its view frame; a spotlight, sun or the camera also has a target you can drag) |
-| Drag a selected item | Move it on the floor |
-| Shift-drag a selected item | Move it up and down |
-| Drag one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
+| **Move** tool (W): drag a selected item | Move it on the floor (Shift-drag: up and down) |
+| **Move**: drag one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
+| **Rotate** tool (E): drag a coloured ring | Turn the object about that world axis (in steps of 5 degrees; Alt for free); the three Rotation numbers are worked out for you |
+| **Scale** tool (R): drag a square handle | Stretch the object along that one of its own axes (steps of 5 %): a box's size, a cylinder's or cone's height or radius, a quad's width or depth. A sphere, a disk and a mesh scale all round |
 | **Frame all** | Bring everything back into view |
 
+Rotate and Scale apply to objects; for a light or the camera the Move tool stays. Pressing the Move / Rotate / Scale buttons (above the view) or the W / E / R keys
+(when the view has focus) switches tool.
+
 The 3D view draws flat-shaded shapes with the same size, position and rotation the renderer uses; it shows shape and placement, not materials or lighting (press
-**Preview** for that). A mesh is drawn as a small marker at its position, because the view does not read the file.
+**Preview** for that). A mesh is drawn at its real size: its bounding box (at the object's Scale) with a sample of its vertices, so you can see how big it is and which way it faces; a file that cannot be read, or one over 80 MB, shows a small marker instead.
 
 ## What the world looks like
 
@@ -103,7 +107,7 @@ The scene's **name** is the field at the top right of the tab (it is also the *T
 * Bump or normal maps, hair, subsurface, participating media, the principled material and instanced copies: use a hand-written pbrt file for those ([PBRT_SUPPORT.md](PBRT_SUPPORT.md) lists what the renderer accepts).
 * A mesh (`.ply`) is shown in the layout view only as a small marker at its position, because the view does not read the file; its scale and rotation apply when it renders.
 * No animation or camera paths.
-* The 3D view shows shapes, not materials or lighting, and a mesh only as a marker. Use it with the flat views, or type exact numbers in the properties.
+* The 3D view shows shapes, not materials or lighting, and a mesh as its bounding box and a sample of its points. Use it with the flat views, or type exact numbers in the properties.
 
 ## How it is checked
 
