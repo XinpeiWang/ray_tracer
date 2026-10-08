@@ -1,0 +1,64 @@
+name: Windows GUI
+
+# Builds the Windows GUI (CPU renderer, no CUDA/OptiX - a hosted runner has neither) and runs the headless GUI smoke test on it, the way
+# release-macos.yml does for the Mac app: the window comes up, the Render Options and Scene Builder tabs work (edits, undo, save and re-open, a real
+# preview render on the CPU), the render queue runs two real tiny renders, and Diagnostics produces its report.
+#
+# The steps are the ones that were run by hand on a clean checkout: the root CMakeLists.txt builds ray_tracer.exe and scene_metadata.dll without the GPU
+# option, qt_gui/RayTracerGUI.pro builds the GUI with qmake, windeployqt copies the Qt runtime, and scripts/gui_selftest.py drives it with Qt's
+# `offscreen` platform (no display needed). The GPU modes (Live Preview, the GPU preview in the builder test) are not run: that needs an NVIDIA GPU.
+on:
+  push:
+    branches: [main]
+  pull_request:
+    branches: [main]
+  workflow_dispatch:
+
+jobs:
+  gui-smoke:
+    runs-on: windows-latest
+    timeout-minutes: 60
+    steps:
+      - uses: actions/checkout@v4
+
+      # Puts cl, link and nmake on the PATH (qmake's win32-msvc spec needs them).
+      - uses: ilammy/msvc-dev-cmd@v1
+        with:
+          arch: x64
+
+      - name: Install Qt
+        uses: jurplel/install-qt-action@v4
+        with:
+          version: '6.11.1'
+          arch: win64_msvc2022_64
+          modules: 'qtmultimedia'
+          cache: true
+
+      - name: Build ray_tracer.exe and scene_metadata.dll (CPU only)
+        # No explicit -G: CMake picks the newest installed Visual Studio generator (see unit-tests.yml's own comment on why a hard-coded one went stale).
+        run: |
+          cmake -S . -B build_win -A x64
+          cmake --build build_win --config Release --target ray_tracer scene_metadata -- /m
+
+      - name: Build the GUI
+        working-directory: qt_gui
+        run: |
+          qmake RayTracerGUI.pro -spec win32-msvc "CONFIG+=release"
+          nmake /nologo /f Makefile.Release
+
+      - name: Assemble the package folder
+        run: |
+          Copy-Item build_win\Release\ray_tracer.exe RayTracer_Package\
+          Copy-Item build_win\Release\scene_metadata.dll RayTracer_Package\
+          windeployqt --release --no-translations RayTracer_Package\RayTracerGUI.exe
+
+      - name: Smoke-test the GUI (headless)
+        # The default mode set: ui, options, builder, queue, diagnostics.
+        run: python scripts\gui_selftest.py RayTracer_Package\RayTracerGUI.exe --out gui_selftest_logs
+
+      - name: Self-test logs (on failure)
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: gui-selftest-logs-windows
+          path: gui_selftest_logs
