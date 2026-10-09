@@ -137,3 +137,7 @@ The Metal loader still has its own copy of both. Replace them with calls to the 
 2. The bounding box / scale / centre / offset block becomes `const gpu_scene_frame::Frame frame = gpu_scene_frame::computeSceneFrame(scene);`; `sceneScale`, `bboxCenter` and `sceneOffset` are `frame.scale`, `frame.centre` and `frame.offset`, `toWorld` is `frame.toWorld(...)`, and the two `fprintf` lines can use `frame.extent`, `frame.fullExtent` and `frame.ignoredGiantSphere`. Live Preview's camera and position conversions use the same `Frame`.
 
 Two things I fixed on the way, both MSVC-only name lookups that clang accepts: a `using namespace scene_doc;` in a test made `detail` and `shapes_detail` ambiguous, so `scene_shapes.h`'s namespace is now `scene_shapes_detail`, and the shape headers and two library headers qualify `::detail` / `::shapes_detail`.
+
+## Checking a Metal loader change (Mac)
+
+`scripts/metal_render_hash.sh capture <name>` renders the 95 scenes of the parity sweep plus option variants (adaptive, clamp, lock-step, bands, crop) at a fixed seed and stores a hash of each float EXR; `compare <name>` does the same again and lists every picture that changed. About 40 s each way, and all 108 renders reproduce exactly run to run. Use it as the gate for stages 0-4 (host-side moves must give identical files). It is not for shader changes (use the parity sweep and `scripts/update_metal_golden.sh`). `scripts/render_baseline.py` is the statistical version for the CPU and OptiX; it needs numpy, which this Mac's Python does not have, and has no Metal backend.
