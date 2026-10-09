@@ -649,6 +649,26 @@ if(RT_BUILD_METAL)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "CROP_TEST_OK")
 
+    # A pbrt Shape's "texture alpha" cutout mask under Metal: metal_poc_alpha_check.cpp is a host-only pixel prober driven by
+    # metal_poc_alpha_test.sh, which renders pbrt_scenes/alpha-cutout.pbrt through the real ray_tracer --gpu path.
+    add_executable(metal_poc_alpha_check gpu/metal/metal_poc_alpha_check.cpp)
+    add_test(NAME metal_poc_alpha_cutout
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_alpha_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_alpha_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_alpha_cutout PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "ALPHA_TEST_OK")
+
+    # Energy conservation of the cloud medium under Metal: a non-absorbing cloud under a uniform sky must be invisible
+    # (pbrt_scenes/cloud-furnace.pbrt; metal_poc_furnace_check.cpp is a host-only window-mean comparer).
+    add_executable(metal_poc_furnace_check gpu/metal/metal_poc_furnace_check.cpp)
+    add_test(NAME metal_poc_cloud_furnace
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_furnace_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_furnace_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_cloud_furnace PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "FURNACE_TEST_OK")
+
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
             $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")

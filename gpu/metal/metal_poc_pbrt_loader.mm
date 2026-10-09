@@ -404,6 +404,32 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             mat.bumpIsNormalMap = it->second[3];
         }
     };
+    // Alpha cutout masks (a pbrt Shape's "alpha" / "texture alpha"): each distinct file is decoded once (gpu_scene_textures::decodeAlphaMask, the
+    // decode OptiX and the CPU use) into the shared float buffer, one float per texel. filename -> {offset, width, height}; width 0 = unusable.
+    std::map<std::string, std::array<int, 3>> alphaMasks;
+    auto applyAlphaMask = [&](TriangleMaterial& mat, const pbrt_flatten::Material& m) {
+        if (m.alphaTextureFilename.empty() || mat.lightId >= 0) return;
+        auto it = alphaMasks.find(m.alphaTextureFilename);
+        if (it == alphaMasks.end()) {
+            std::array<int, 3> entry{0, 0, 0};
+            const gpu_scene_textures::DecodedImage mask = gpu_scene_textures::decodeAlphaMask(m.alphaTextureFilename);
+            if (mask.found && mask.width > 0 && mask.height > 0) {
+                entry = {(int)rgbGridData.size(), mask.width, mask.height};
+                const size_t texels = (size_t)mask.width * mask.height;
+                rgbGridData.reserve(rgbGridData.size() + texels);
+                for (size_t k = 0; k < texels; ++k) rgbGridData.push_back(mask.pixels[k * 3] / 255.0f);   // the mask is replicated in R, G, B
+            } else {
+                fprintf(stderr, "loadPbrtScene: alpha mask '%s' could not be read; ignoring it\n", m.alphaTextureFilename.c_str());
+            }
+            it = alphaMasks.emplace(m.alphaTextureFilename, entry).first;
+        }
+        if (it->second[1] > 0) {
+            mat.alphaOffset = it->second[0];
+            mat.alphaWidth = it->second[1];
+            mat.alphaHeight = it->second[2];
+            havePbrtAlphaMasks = true;
+        }
+    };
     for (int i = 0; i < (int)scene.triangles.size(); ++i) {
         if (triangleHandled[i]) continue;
         const pbrt_flatten::Triangle& t = scene.triangles[i];
@@ -445,7 +471,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
         }
         TriangleMaterial mat = materialFor(t.material);
-        if (t.material >= 0 && t.material < (int)scene.materials.size()) applyImageBump(mat, scene.materials[t.material]);
+        if (t.material >= 0 && t.material < (int)scene.materials.size()) { applyImageBump(mat, scene.materials[t.material]); applyAlphaMask(mat, scene.materials[t.material]); }
         if (mat.materialType == METAL_MAT_HAIR) {
             auto tanIt = pbrtTriangleFiberTangent.find(i);
             if (tanIt != pbrtTriangleFiberTangent.end()) mat.conductorK = PackedFloat3{tanIt->second[0], tanIt->second[1], tanIt->second[2]};   // real fibre tangent (curves)

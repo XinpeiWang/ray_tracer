@@ -192,6 +192,10 @@ Checked: seeded renders of the CPU and the OptiX recursive backend are byte-iden
 
 On the question about the chromatic-medium thresholds (2% for a glass sphere's medium, 1% for the camera fog): Metal names them now (`kChromaticGlassMediumSpread`, `kChromaticFogSpread` at the top of `metal_poc_pbrt_loader.mm`) but keeps both values. Making them one number would move the picture of any fog whose extinction spread is between 1% and 2%, and nothing shows the two were meant to differ or to agree, so it is a behaviour decision for whoever next touches chromatic media, not part of this refactor.
 
+## Alpha masks on Metal: done (2026-10-09)
+
+The gap noted under "Stage 1, Mac half" is closed. `gpu_scene_textures::decodeAlphaMask` is the decode (one float per texel, in the shared float buffer), `TriangleMaterial` gained `alphaOffset/alphaWidth/alphaHeight`, and the main triangle geometry becomes non-opaque and goes through `alphaTriangleIntersectionFunction` (function-table slot 3) only when the scene has a mask. The intersector's `force_opacity(opaque)` shortcut must be off for that, so the library is compiled with `METAL_ALPHA_MASKS` in that case; every other scene compiles exactly as before (the 108-render hash panel is unchanged). Not covered: instanced meshes (their geometry groups stay opaque) and a mix material's sub-materials.
+
 ## NanoVDB on the GPU (Windows, 2026-10-09) - a Metal opening
 
 `src/shared/nanovdb_dense.h` (`readGrid()`, `placeInWorld()`) is the NanoVDB read and densify step moved out of the CPU builder; the CPU renderer (byte-identical output) and the OptiX builder both use it, and OptiX draws the result with its existing `uniformgrid` medium, so E9 now matches the CPU (it was the last real gap in the CPU-versus-OptiX sweep). Metal has a dense grid medium too (pbrt `uniformgrid`), so the same two calls would give it NanoVDB: read the file, then fill the grid the way its `uniformgrid` branch does. Not done on the Mac side; it would be a feature (E9 currently has no Metal rendering of the NanoVDB density), so the Mac parity sweep, not the byte-identical gate, is the check.

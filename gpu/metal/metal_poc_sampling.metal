@@ -409,6 +409,50 @@ inline float2 texCoordFor(uint primId, float2 barycentric, device const packed_f
     return w0 * uv0 + barycentric.x * uv1 + barycentric.y * uv2;
 }
 
+// pbrt-v4's stochastic alpha test (src/shared/ray_hash.h, the same function the CPU and OptiX use): a hit is kept with probability
+// `alpha`, decided by a hash of the ray, so shadow rays and camera rays make independent, state-free choices.
+inline uint rayHashMix(uint h) {   // murmur3 finalizer
+    h ^= h >> 16; h *= 0x85ebca6bu;
+    h ^= h >> 13; h *= 0xc2b2ae35u;
+    h ^= h >> 16;
+    return h;
+}
+inline float rayHash01(float3 o, float3 d) {
+    uint h = 0x9e3779b9u;
+    h = rayHashMix(h ^ as_type<uint>(o.x)); h = rayHashMix(h ^ as_type<uint>(o.y)); h = rayHashMix(h ^ as_type<uint>(o.z));
+    h = rayHashMix(h ^ as_type<uint>(d.x)); h = rayHashMix(h ^ as_type<uint>(d.y)); h = rayHashMix(h ^ as_type<uint>(d.z));
+    return float(h >> 8) * (1.0 / 16777216.0);
+}
+inline bool alphaPasses(float a, float3 o, float3 d) {
+    if (a >= 1.0) return true;
+    if (a <= 0.0) return false;
+    return rayHash01(o, d) <= a;
+}
+
+// Alpha-cutout any-hit test for the main triangle geometry (only made non-opaque, and this function only linked into the table, when the
+// scene has an alpha mask). `primitive_id` is the index into the flat triangle arrays. The mask is sampled like the CPU's image_texture:
+// nearest texel, (u, v) clamped to [0, 1], v flipped.
+[[intersection(triangle, triangle_data, instancing)]]
+bool alphaTriangleIntersectionFunction(
+    float2 barycentric [[barycentric_coord]],
+    uint primitiveIndex [[primitive_id]],
+    float3 origin [[origin]],
+    float3 direction [[direction]],
+    device const TriangleMaterial* triMaterials [[buffer(5)]],
+    device const packed_float2* uvs [[buffer(6)]],
+    device const float* alphaData [[buffer(7)]])
+{
+    const TriangleMaterial mat = triMaterials[primitiveIndex];
+    if (mat.alphaWidth <= 0) return true;
+    const float2 uv = texCoordFor(primitiveIndex, barycentric, uvs);
+    const float u = clamp(uv.x, 0.0, 1.0);
+    const float v = 1.0 - clamp(uv.y, 0.0, 1.0);
+    const int i = min(int(u * float(mat.alphaWidth)), mat.alphaWidth - 1);
+    const int j = min(int(v * float(mat.alphaHeight)), mat.alphaHeight - 1);
+    const float alpha = alphaData[mat.alphaOffset + j * mat.alphaWidth + i];
+    return alphaPasses(alpha, origin, direction);
+}
+
 // A per-triangle tangent (constant across the triangle, same "flat is
 // fine here" reasoning addQuad()'s own flat face normal already relies
 // on - every quad this POC hand-authors is planar with a single UV
