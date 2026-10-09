@@ -32,11 +32,13 @@
 #include <functional>
 #include <iterator>
 #include <map>
+#include <memory>
 #include <mutex>
 #include <string>
 #include <utility>
 
 #include "../../src/shared/srgb_decode.h"   // srgb8 helpers used with the texture table
+#include "../../src/shared/nanovdb_dense.h"   // MakeNamedMedium "nanovdb": the file -> dense grid step, shared with the CPU builder
 #include "../../src/shared/gpu_scene_materials.h"   // reflectanceToConductorK(), shared with the CPU builder and the Metal loader
 #include "../../src/shared/gpu_scene_textures.h"   // image / alpha-mask decode and the grayscale test, shared with the Metal loader
 #include <vector>
@@ -145,6 +147,8 @@ struct BuildStats {
 	// "altitude" code-review finding on the nanovdb medium round for why
 	// that hand-sync was a real risk for the next unsupported type added.
 	std::map<std::string, int> unsupportedMediumTypeCounts;
+	// How many "nanovdb" media named a "temperaturename" grid: the GPU grid medium has no per-voxel emission, so the blackbody glow is dropped (the density is rendered).
+	int nanovdbEmissionDropped = 0;
 	// How many disk/cylinder shapes carry real object motion blur (pbrt-v4
 	// ActiveTransform "StartTime"/"EndTime" - see pbrt_flatten::Disk::
 	// xformEnd's own comment) that this builder renders STATIC (at the
@@ -426,6 +430,39 @@ inline void setupMaterialLookup(BuildCtx &c) {
 	};
 }
 
+// Appends one dense-grid medium (density on the voxel lattice, x fastest) to the scene and returns the index of the GridMedium material that points at it. Shared by
+// "uniformgrid" and "nanovdb", which both end up as a dense density grid: the majorant is the grid's peak density times its scattering scale, with a 1% margin (the same
+// convention rgbgrid uses).
+inline int appendGridMediumMaterial(SceneData &out, GpuGridMedium meta, const std::vector<float> &density) {
+	float maxDensity = 0.0f;
+	for (float v : density) maxDensity = std::fmax(maxDensity, v);
+	meta.sigma_maj = maxDensity * meta.sigma_scale * 1.01f;
+	meta.dataOffset = static_cast<int>(out.gridData.size());
+	out.gridData.insert(out.gridData.end(), density.begin(), density.end());
+	const int gridIdx = static_cast<int>(out.gridMediums.size());
+	out.gridMediums.push_back(meta);
+	MaterialData d = {};
+	d.type = MaterialType::GridMedium;
+	d.medium_albedo = make_float3(1.0f, 1.0f, 1.0f);
+	d.grid_medium_extra.gridMediumIdx = static_cast<float>(gridIdx);
+	const int idx = static_cast<int>(out.materials.size());
+	out.materials.push_back(d);
+	return idx;
+}
+
+// A NanoVDB file read once per process and reused: reading and densifying it is the expensive part, and Live Preview rebuilds the scene on every camera move (the same
+// "no hot-reload" rule the image cache above follows). The temperature grid is not read: the GPU grid medium has no per-voxel emission.
+inline std::shared_ptr<const nanovdb_dense::Grid> cachedNanovdbGrid(const std::string &file, const std::string &gridName) {
+	static std::map<std::string, std::shared_ptr<const nanovdb_dense::Grid>> s_cache;
+	static std::mutex s_mutex;
+	std::lock_guard<std::mutex> lock(s_mutex);
+	const std::string key = file + "|" + gridName;
+	auto it = s_cache.find(key);
+	if (it == s_cache.end())
+		it = s_cache.emplace(key, std::make_shared<const nanovdb_dense::Grid>(nanovdb_dense::readGrid(file, gridName, std::string()))).first;
+	return it->second;
+}
+
 // Medium lookup: the Medium material a shape's MediumInterface turns into.
 inline void setupMediumLookup(BuildCtx &c) {
 	using namespace detail;
@@ -640,17 +677,34 @@ inline void setupMediumLookup(BuildCtx &c) {
 				// grid rather than reading past the end of an empty vector.
 				df.assign(voxels, 0.0f);
 			}
-			meta.sigma_maj = max_density * meta.sigma_scale * 1.01f;   // small safety margin, matches rgbgrid's own convention
-			meta.dataOffset = static_cast<int>(out.gridData.size());
-			out.gridData.insert(out.gridData.end(), df.begin(), df.end());
-			const int gridIdx = static_cast<int>(out.gridMediums.size());
-			out.gridMediums.push_back(meta);
-			MaterialData d = {};
-			d.type = MaterialType::GridMedium;
-			d.medium_albedo = make_float3(1.0f, 1.0f, 1.0f);
-			d.grid_medium_extra.gridMediumIdx = static_cast<float>(gridIdx);
-			const int idx = static_cast<int>(out.materials.size());
-			out.materials.push_back(d);
+			const int idx = appendGridMediumMaterial(out, meta, df);
+			mediumCache.emplace(cacheKey, idx);
+			return idx;
+		}
+		if (md.type == "nanovdb") {
+			// A NanoVDB file is read and densified on the host (src/shared/nanovdb_dense.h, the same step the CPU renderer uses) and then rendered by the dense-grid
+			// medium "uniformgrid" already has, so no NanoVDB code runs on the device. Pure scattering with sigma_s = luminance(md.sigma_s), like CPU's bake. The grid has
+			// no per-voxel emission, so a "temperaturename" grid is counted and dropped (scene_builder.cpp warns).
+			GpuGridMedium meta{};
+			meta.nx = 1; meta.ny = 1; meta.nz = 1;
+			for (int i = 0; i < 3; ++i) meta.mat[i * 3 + i] = 1.0f;
+			std::vector<float> density(1, 0.0f);   // an unusable file degrades to an empty, invisible grid, as CPU's does
+			const std::shared_ptr<const nanovdb_dense::Grid> grid = cachedNanovdbGrid(md.nanovdbFilename, md.nanovdbGridName);
+			nanovdb_dense::Placement placement;
+			if (grid && grid->ok() && nanovdb_dense::placeInWorld(*grid, md.nanovdbXform, placement)) {
+				for (int i = 0; i < 3; ++i) {
+					meta.bounds_min[i] = static_cast<float>(placement.worldMin[i]);
+					meta.bounds_max[i] = static_cast<float>(placement.worldMax[i]);
+					meta.translate[i] = static_cast<float>(placement.toMediumTranslate[i]);
+				}
+				for (int i = 0; i < 9; ++i) meta.mat[i] = static_cast<float>(placement.toMediumMat[i]);
+				meta.nx = grid->nx; meta.ny = grid->ny; meta.nz = grid->nz;
+				density = grid->density;
+				if (!md.nanovdbTemperatureGridName.empty()) ++stats.nanovdbEmissionDropped;
+			}
+			meta.sigma_scale = static_cast<float>(sig_s);
+			meta.phase_g = static_cast<float>(md.g);
+			const int idx = appendGridMediumMaterial(out, meta, density);
 			mediumCache.emplace(cacheKey, idx);
 			return idx;
 		}

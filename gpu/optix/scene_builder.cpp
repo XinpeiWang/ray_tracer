@@ -829,8 +829,8 @@ static void apply_loaded_scene_settings(const char* path,
 	}
 
 	// Any pbrt_flatten::Medium::type mediumMaterialIndex() (pbrt_gpu_
-	// builder.h) had no real branch for - e.g. "nanovdb" (CPU-only, v1
-	// scope; GPU has no NanoVDB reader at all) - falls through to the
+	// builder.h) had no real branch for - a type added to the scene format that
+	// the GPU builder has not learned yet - falls through to the
 	// generic homogeneous-medium path (MaterialType::Medium), using the
 	// SAME sigma_a/sigma_s the scene declared but filling the ENTIRE
 	// boundary shape uniformly - a flat fog, not whatever real
@@ -842,6 +842,10 @@ static void apply_loaded_scene_settings(const char* path,
 	// SAME place the fallthrough decision is actually made, so a future
 	// medium type left unhandled in pbrt_gpu_builder.h gets this warning
 	// automatically instead of needing a matching edit in this file too.
+	if (stats.nanovdbEmissionDropped > 0) {
+		std::cerr << "[OptiX] Warning: " << stats.nanovdbEmissionDropped << " \"nanovdb\" medium/media name a \"temperaturename\" grid; the GPU renders their density "
+			   "but not the per-voxel blackbody glow (use --cpu for the emission).\n";
+	}
 	for (const auto &[type, count] : stats.unsupportedMediumTypeCounts) {
 		std::cerr << "[OptiX] Warning: scene has " << count << " \"" << type << "\" "
 			   "medium/media, which GPU has no real support for - it/they will "

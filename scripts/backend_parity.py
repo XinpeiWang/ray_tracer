@@ -62,6 +62,17 @@ def scene_ids():
     return ids
 
 
+# Scenes whose default-size comparison is dominated by sampling noise rather than a difference between the backends: one 16x16 block holds a bright caustic or highlight
+# that 64 samples at 96 px barely hit (G25's block (4, 0) reads x4 to x11 between two renders of the SAME backend). They are compared at a larger size instead of being
+# listed as known gaps, which would hide a real regression there. An explicit --width / --spp on the command line wins.
+SIZE_OVERRIDES = {'G25': (192, 256)}
+
+
+def size_for(scene, args):
+    width, spp = SIZE_OVERRIDES.get(scene, (96, 64))
+    return (args.width if args.width is not None else width, args.spp if args.spp is not None else spp)
+
+
 def known_gaps():
     gaps = {}
     if os.path.exists(KNOWN_GAPS):
@@ -84,7 +95,8 @@ def render(exe, backend, scene, args, tmp):
         cmd += ['--cpu']
     else:
         cmd += ['--gpu'] + (['--wavefront'] if backend == 'wf' else [])
-    cmd += ['--seed', str(args.seed), '--output', out, str(args.width), str(args.spp), str(args.depth), scene]
+    width, spp = size_for(scene, args)
+    cmd += ['--seed', str(args.seed), '--output', out, str(width), str(spp), str(args.depth), scene]
     proc = subprocess.run(cmd, cwd=REPO, capture_output=True, text=True, timeout=1800)
     if proc.returncode != 0 or not os.path.exists(out):
         tail = (proc.stdout + proc.stderr).strip().splitlines()[-2:]
@@ -139,8 +151,8 @@ def main():
     ap.add_argument('--exe', default=default_exe())
     ap.add_argument('--backend', choices=['rec', 'wf', 'both'], default='both')
     ap.add_argument('--scenes', default='', help='comma-separated scene ids (default: all)')
-    ap.add_argument('--width', type=int, default=96)
-    ap.add_argument('--spp', type=int, default=64)
+    ap.add_argument('--width', type=int, default=None, help='image width in pixels (default 96; a few noisy scenes use more, see SIZE_OVERRIDES)')
+    ap.add_argument('--spp', type=int, default=None, help='samples per pixel (default 64; see SIZE_OVERRIDES)')
     ap.add_argument('--depth', type=int, default=6)
     ap.add_argument('--seed', type=int, default=7)
     ap.add_argument('--list', action='store_true')

@@ -467,12 +467,14 @@ loader and no longer match the code:
   `MediumInterface` on a disk/cylinder/trianglemesh has no GPU effect — see
   the disk/cylinder gap above). `pbrt_scenes/cloud-medium.pbrt`,
   `pbrt_scenes/rgbgrid-medium.pbrt` and `pbrt_scenes/uniformgrid-medium.pbrt`
-  are worked examples of all three. `"nanovdb"` is ALSO real now, **CPU
-  only** — see this file's own entry below for the full scope; any other
+  are worked examples of all three. `"nanovdb"` is ALSO real now, on the
+  CPU and both OptiX backends — see this file's own entry below for the full scope; any other
   `"type"` value still falls back to homogeneous with a warning.
 
 - `MakeNamedMedium "nanovdb"` (pbrt-v4's real NanoVDB-format sparse
-  density grid, read from an external `.nvdb` file) is real on **CPU**:
+  density grid, read from an external `.nvdb` file) is real on **CPU and
+  both OptiX backends** (the file reading below is shared, `src/shared/
+  nanovdb_dense.h`; the GPU part is the last paragraph of this entry):
   `pbrt_cpu_builder.h` reads the named `float` grid (`"gridname"`,
   default `"density"`) via a vendored, header-only NanoVDB reader
   (`src/external/nanovdb/` — NVIDIA's own `NanoVDB.h`/`io/IO.h`,
@@ -515,23 +517,23 @@ loader and no longer match the code:
   voxels falls back to an invisible medium rather than attempting the
   allocation. Same "sigma_a forced to 0" scope as `"uniformgrid"` above
   (`grid_medium_hittable.h`'s own limitation, not new here).
-  **GPU has no NanoVDB support at all** - `pbrt_gpu_builder.h` has no
-  `"nanovdb"` branch, so a nanovdb medium falls through to the generic
-  homogeneous-medium path there, rendering as flat fog filling the WHOLE
-  boundary shape (using the scene's own `sigma_a`/`sigma_s`) rather than
-  the real sparse density field - `scene_builder.cpp` warns explicitly by
-  name, since this is a visibly *wrong* render on GPU, not merely an
-  absent one (unlike, say, Cone/Paraboloid, which just don't appear).
-  NanoVDB's own format is explicitly designed to need no deserialization
-  on GPU (the raw file bytes already ARE the traversable structure, just
-  `cudaMemcpy` + `reinterpret_cast`), which could make GPU support cheaper
-  than a typical CPU-to-CUDA port if attempted later - but this codebase
-  has two prior unresolved GPU device-crash precedents on non-trivial
-  device call graphs (`CloudMedium::compute_density()`'s member-call
-  stall, worked around by hand-duplicating a free function; the light-BVH
-  device-consumption CUDA 700 crash, never root-caused despite 5
-  ruled-out theories), so GPU NanoVDB is scoped as a genuinely separate
-  follow-up round with its own isolated spike, not attempted here.
+  **GPU (both OptiX backends)**: the file is read and densified on the
+  host by the same code the CPU uses (`src/shared/nanovdb_dense.h`:
+  `readGrid()` and `placeInWorld()`) and `pbrt_gpu_builder.h`'s `"nanovdb"`
+  branch feeds the result to the dense-grid medium `"uniformgrid"` already
+  has (`GpuGridMedium`, delta tracking against one global majorant), so
+  NO NanoVDB code runs on a device. That was the cheap route the old note
+  hoped for without the device-crash risk: the CPU already densifies the
+  grid, so the GPU just uploads the same flat array. E9 (`nanovdb-medium`)
+  went from flat fog to matching the CPU to 0.1% in brightness (0.6075 CPU,
+  0.6080 recursive, 0.6074 wavefront; the worst block of the 6x6 sweep grid within 2%). Limits:
+  a `"string temperaturename"` blackbody grid is read on the CPU only (the
+  GPU grid medium has no per-voxel emission; `scene_builder.cpp` counts it
+  in `BuildStats::nanovdbEmissionDropped` and warns, and the density still
+  renders); the same sphere-hit-triggered dispatch caveat as the other grid
+  media; the file is read once per process (`cachedNanovdbGrid()`), like
+  the image cache, so Live Preview does not re-read it per camera move.
+  Metal does not read `.nvdb` files yet.
 
 - `MakeNamedMedium`'s own `"rgb Le"`/`"float Lescale"` (pbrt-v4) — a real
   self-emitting medium (fire/plasma/glowing fog) — is decoded for
@@ -869,11 +871,10 @@ loader and no longer match the code:
   `g>0`/`g<0` forward/back-scatter bias for any anisotropic medium on that
   backend — the recursive backend's own identical call sites already had
   this fixed from an earlier round. NanoVDB heterogeneous media
-  (`"nanovdb"`, real on CPU now — see the `MakeNamedMedium` entry above)
-  remain out of scope on GPU regardless (GPU has no `"nanovdb"` branch at
-  all, so it falls through to the generic homogeneous-medium path) — this
-  fix applies to every medium type this loader can actually build on GPU
-  today.
+  (`"nanovdb"`) were not covered when this was fixed (the GPU had no
+  `"nanovdb"` branch then); they render as a `GpuGridMedium` now (see the
+  `MakeNamedMedium` entry above), and this fix applies to them like every
+  other medium type.
   **GPU SPPM** (`sppm_programs.cu`, a third, independently-duplicated
   render loop neither of the two backends above shares — see this same
   file's earlier note on GPU SPPM's own separate architecture) is **not**

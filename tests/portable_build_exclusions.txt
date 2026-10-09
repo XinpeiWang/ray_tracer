@@ -37,6 +37,7 @@ unit/pbrt_gpu_instance_sphere_tests.cpp
 unit/pbrt_gpu_light_coverage_tests.cpp
 unit/pbrt_gpu_light_lookup_tests.cpp
 unit/pbrt_gpu_mix_material_tests.cpp
+unit/pbrt_gpu_nanovdb_tests.cpp
 unit/pbrt_gpu_quad_light_tests.cpp
 unit/pbrt_gpu_texture_tests.cpp
 unit/pbrt_gpu_triangle_light_tests.cpp

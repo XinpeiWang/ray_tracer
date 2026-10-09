@@ -16,6 +16,7 @@
 #include "../external/tinyexr.h"   // LoadEXR() - see decodePunctualLightImageFile()
 #include "../external/nanovdb/NanoVDB.h"   // MakeNamedMedium "nanovdb" - see addMediumIfPresent()'s own nanovdb branch
 #include "../external/nanovdb/io/IO.h"     // nanovdb::io::readGrid()
+#include "../shared/nanovdb_dense.h"     // readGrid() + placeInWorld(): the NanoVDB file -> dense grid step, shared with the OptiX builder
 
 #include "bvh.h"
 #include "bvh_aggregate_hittable.h"
@@ -509,240 +510,25 @@ inline double luminanceOf(const double c[3]) {
 }
 
 // Reads the NanoVDB file a medium names and bakes its active region into a dense grid hittable; nullptr (with a message on stderr) if it cannot.
-// The file read plus an O(voxel count) bake is expensive, which is why CpuSceneBuilder caches the result per medium index.
+// The file read plus an O(voxel count) bake is expensive, which is why CpuSceneBuilder caches the result per medium index. The read, the bake and the world
+// placement are shared with the OptiX builder (src/shared/nanovdb_dense.h); only the CPU hittable is built here.
 inline std::shared_ptr<hittable> bakeNanovdbMedium(const pbrt_flatten::Medium &md) {
 	if (md.nanovdbFilename.empty()) return nullptr;
 
-	std::vector<double> density;
-	// Kelvin per voxel, same layout/resolution as density - filled
-	// below only when md.nanovdbTemperatureGridName is non-empty
-	// (see that field's own comment); empty means "no emission".
-	std::vector<double> temperature;
-	int nx = 0, ny = 0, nz = 0;
-	double corner00[3] = {0,0,0}, cornerX[3] = {0,0,0}, cornerY[3] = {0,0,0}, cornerZ[3] = {0,0,0};
-	bool ok = false;
-	try {
-		auto handle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbGridName);
-		const auto* grid = handle.grid<float>();
-		if (!grid) {
-			// The named grid exists in the file but isn't a plain
-			// float build (Vec3f/Mask/Fp4/Fp8/Fp16/FpN/etc - this
-			// loader only reads float grids, disclosed in
-			// docs/PBRT_SUPPORT.md). Unlike a corrupt/unreadable
-			// file, readGrid() doesn't throw for this case, so
-			// without an explicit message here the medium would
-			// silently vanish with nothing in the log to explain
-			// why - the exact gap the catch block below's own
-			// "this file's one deliberate exception" comment claims
-			// is already closed.
-			std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
-					  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
-					  << "\" is not a plain float grid (only float grids are "
-						 "supported); the medium will render as empty (invisible)\n";
-		} else {
-			const auto bbox = grid->indexBBox();
-			const auto bmin = bbox.min();
-			const auto bmax = bbox.max();
-			// bmin/bmax components are int32_t (nanovdb::Coord) read
-			// straight from the file with no min<=max validation -
-			// a corrupt/adversarial file can claim any individually
-			// representable int32 pair, including a degenerate one
-			// (e.g. bmin > bmax). Subtracting in int32 itself (the
-			// prior version of this code did `bmax[0]-bmin[0]` before
-			// ever casting) is signed-overflow UB for such a pair,
-			// which could wrap to a small value that slips past the
-			// kMaxVoxelsPerAxis cap below meant to reject exactly
-			// this input - promoting to int64_t before subtracting
-			// closes that off; the true difference of two int32
-			// values always fits in int64_t, so this is exact, not
-			// just "less wrong".
-			const std::int64_t nx64 = static_cast<std::int64_t>(bmax[0]) - static_cast<std::int64_t>(bmin[0]) + 1;
-			const std::int64_t ny64 = static_cast<std::int64_t>(bmax[1]) - static_cast<std::int64_t>(bmin[1]) + 1;
-			const std::int64_t nz64 = static_cast<std::int64_t>(bmax[2]) - static_cast<std::int64_t>(bmin[2]) + 1;
-			// Sanity cap, checked BEFORE any multiplication and
-			// entirely in int64_t (so it can't itself overflow): a
-			// real .nvdb grid's active bounding box is at most a few
-			// thousand voxels per axis even for large production
-			// assets, but a corrupt or maliciously crafted file
-			// could in principle claim an extreme (still
-			// individually int32-representable) bbox - nx*ny*nz
-			// would then overflow even a 64-bit size_t computation,
-			// silently under-allocating `density` below while the
-			// bake loop still iterates the TRUE (huge) nx/ny/nz - a
-			// real heap buffer overflow, not just a slow/huge
-			// render. Capping each axis independently, before any
-			// multiplication happens, closes that off entirely
-			// (512^3 already safely fits in size_t with enormous
-			// headroom) while still being far more generous than
-			// any real or bundled test asset needs.
-			constexpr std::int64_t kMaxVoxelsPerAxis = 512;
-			if (nx64 > 0 && ny64 > 0 && nz64 > 0 &&
-				nx64 <= kMaxVoxelsPerAxis && ny64 <= kMaxVoxelsPerAxis && nz64 <= kMaxVoxelsPerAxis) {
-				nx = static_cast<int>(nx64);
-				ny = static_cast<int>(ny64);
-				nz = static_cast<int>(nz64);
-				const auto& tree = grid->tree();
-				// A cached accessor, not tree.getValue() directly -
-				// this bake loop's access pattern is spatially
-				// coherent (x fastest, matching the grid's own
-				// internal locality), so a real accessor's cached
-				// traversal state pays off here.
-				auto acc = grid->getAccessor();
-				density.resize(static_cast<std::size_t>(nx) * ny * nz);
-				for (int z = 0; z < nz; ++z)
-					for (int y = 0; y < ny; ++y)
-						for (int x = 0; x < nx; ++x) {
-							const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
-							density[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
-								static_cast<double>(acc.getValue(ijk));
-						}
+	const nanovdb_dense::Grid dense = nanovdb_dense::readGrid(md.nanovdbFilename, md.nanovdbGridName, md.nanovdbTemperatureGridName);
+	if (!dense.ok()) return nullptr;
+	nanovdb_dense::Placement placement;
+	if (!nanovdb_dense::placeInWorld(dense, md.nanovdbXform, placement)) return nullptr;
+	const int nx = dense.nx, ny = dense.ny, nz = dense.nz;
+	std::vector<double> density(dense.density.begin(), dense.density.end());
+	// Kelvin per voxel, same layout/resolution as density; empty means "no emission" (see Medium::nanovdbTemperatureGridName).
+	std::vector<double> temperature(dense.temperature.begin(), dense.temperature.end());
+	const double *worldMin = placement.worldMin, *worldMax = placement.worldMax;
+	const double *toMediumMat = placement.toMediumMat, *toMediumTranslate = placement.toMediumTranslate;
 
-				// Real blackbody emission (Medium::
-				// nanovdbTemperatureGridName's own comment): a
-				// SECOND named grid in the same file, sampled at the
-				// SAME index-space voxel coordinates as density
-				// above (bmin[]+x/y/z) rather than re-deriving its
-				// own active bbox - a real .nvdb fire/smoke asset's
-				// temperature and density grids share the same
-				// active region in practice, and nanovdb's own
-				// accessor already degrades gracefully (returns the
-				// grid's background value, typically 0) for any
-				// index outside whatever active region the
-				// temperature grid actually has, so a mismatched
-				// bbox just means "no emission at the mismatched
-				// voxels" rather than a crash or garbage read.
-				if (!md.nanovdbTemperatureGridName.empty()) {
-					try {
-						auto tHandle = nanovdb::io::readGrid(md.nanovdbFilename, md.nanovdbTemperatureGridName);
-						const auto* tGrid = tHandle.grid<float>();
-						if (!tGrid) {
-							std::cerr << "[pbrt_cpu_builder] nanovdb medium: temperature grid \""
-									  << md.nanovdbTemperatureGridName << "\" in \"" << md.nanovdbFilename
-									  << "\" is not a plain float grid (only float grids are "
-										 "supported); blackbody emission is dropped\n";
-						} else {
-							auto tAcc = tGrid->getAccessor();
-							temperature.resize(static_cast<std::size_t>(nx) * ny * nz);
-							for (int z = 0; z < nz; ++z)
-								for (int y = 0; y < ny; ++y)
-									for (int x = 0; x < nx; ++x) {
-										const nanovdb::Coord ijk(bmin[0] + x, bmin[1] + y, bmin[2] + z);
-										temperature[(static_cast<std::size_t>(z) * ny + y) * nx + x] =
-											static_cast<double>(tAcc.getValue(ijk));
-									}
-						}
-					} catch (...) {
-						std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read temperature "
-									 "grid \"" << md.nanovdbTemperatureGridName << "\" from \""
-								  << md.nanovdbFilename << "\" (corrupt file or wrong gridname); "
-									 "blackbody emission is dropped\n";
-						temperature.clear();
-					}
-				}
-
-				// Reconstruct the composed (index-[0,1]-space ->
-				// world) affine map by sampling its origin + 3
-				// unit-basis corners, rather than hand-deriving/
-				// multiplying NanoVDB's own Map matrix convention
-				// together with md.nanovdbXform - 4 points fully
-				// determine any affine map, and grid->indexToWorld()
-				// already folds in the grid's own baked voxel-size/
-				// origin transform correctly regardless of what
-				// convention it uses internally.
-				pbrt_scene::Matrix4 sceneXform;
-				for (int i = 0; i < 16; ++i) sceneXform.m[i] = md.nanovdbXform[i];
-				auto mapCorner = [&](double u, double v, double w, double out[3]) {
-					const nanovdb::Vec3d idx(bmin[0] + u * nx, bmin[1] + v * ny, bmin[2] + w * nz);
-					const nanovdb::Vec3d native = grid->indexToWorld(idx);
-					pbrt_flatten::flatten_detail::transformPoint(sceneXform, native[0], native[1], native[2], out);
-				};
-				mapCorner(0, 0, 0, corner00);
-				mapCorner(1, 0, 0, cornerX);
-				mapCorner(0, 1, 0, cornerY);
-				mapCorner(0, 0, 1, cornerZ);
-				ok = true;
-			} else {
-				// Either a degenerate bbox (bmin > bmax on some axis
-				// - possible for a corrupt/adversarial file even
-				// after the int64_t-safe subtraction above, which
-				// only guarantees the VALUE is exact, not positive)
-				// or a real, oversized active region past the
-				// kMaxVoxelsPerAxis cap. Same "explain every nanovdb
-				// degradation" rationale as the grid<float>() check
-				// above and the catch block below.
-				std::cerr << "[pbrt_cpu_builder] nanovdb medium: grid \""
-						  << md.nanovdbGridName << "\" in \"" << md.nanovdbFilename
-						  << "\" has an active bounding box of " << nx64 << "x" << ny64
-						  << "x" << nz64 << " voxels, which is degenerate or exceeds the "
-						  << kMaxVoxelsPerAxis << "-voxels-per-axis cap this loader "
-						  << "enforces; the medium will render as empty (invisible)\n";
-			}
-		}
-	} catch (...) {
-		// Corrupt file, wrong/missing grid name, or any other NanoVDB
-		// read failure - degrade the same way an empty/wrong-length
-		// uniformgrid "density" array does just above: no hittable
-		// added, an invisible medium, rather than propagating the
-		// exception. pbrt_load.h already confirmed the file EXISTS
-		// (path resolution); this catches everything path resolution
-		// can't - a truncated/non-NanoVDB file, or a gridname pbrt_
-		// flatten.h had no way to check without opening it.
-		//
-		// This file otherwise has NO console-output convention at
-		// all (every other silent-degradation branch above/below
-		// was already warned about earlier, at flatten()/pbrt_load.h
-		// time, where this codebase's real warning infrastructure
-		// lives) - this is a deliberate, disclosed exception: unlike
-		// every sibling case, THIS failure mode genuinely cannot be
-		// detected any earlier than here (opening and parsing the
-		// file is the only way to know the gridname exists or the
-		// bytes are valid NanoVDB), so without this line a scene
-		// author who typos "gridname" or ships a corrupt .nvdb gets
-		// zero indication anywhere why their medium vanished.
-		std::cerr << "[pbrt_cpu_builder] nanovdb medium: failed to read grid \""
-				  << md.nanovdbGridName << "\" from \"" << md.nanovdbFilename
-				  << "\" (corrupt file, wrong gridname, or an unsupported "
-					 "NanoVDB grid type - only plain float grids are read); "
-					 "the medium will render as empty (invisible)\n";
-		ok = false;
-	}
-	if (!ok || density.empty()) return nullptr;
-
-	// world = worldFromMedium * (u,v,w) + corner00 - worldFromMedium's
-	// columns are the 3 sampled basis differences, matching
-	// pbrt_scene::Matrix4's own row-major layout exactly.
-	pbrt_scene::Matrix4 worldFromMedium;
-	for (int r = 0; r < 3; ++r) {
-		worldFromMedium.m[r * 4 + 0] = cornerX[r] - corner00[r];
-		worldFromMedium.m[r * 4 + 1] = cornerY[r] - corner00[r];
-		worldFromMedium.m[r * 4 + 2] = cornerZ[r] - corner00[r];
-		worldFromMedium.m[r * 4 + 3] = corner00[r];
-	}
-	pbrt_scene::Matrix4 mediumFromWorld;
-	if (!worldFromMedium.inverseAffine(mediumFromWorld)) return nullptr;
-
-	// World-space AABB of the unit cube [0,1]^3 (this medium's own
-	// index-space bounds) under worldFromMedium, and the world<-
-	// >medium matrix split - same shared helpers pbrt_flatten.h's
-	// own cloud/rgbgrid/uniformgrid AABB/transform block uses
-	// (pbrt_flatten::flatten_detail::aabbOfTransformedBox/
-	// splitAffine), rather than each re-deriving the "transform 8
-	// corners, take axis-aligned min/max" and "slice an affine
-	// Matrix4 into mat9+translate3" logic by hand a second time.
-	double worldMin[3], worldMax[3];
-	const double unitLo[3] = {0.0, 0.0, 0.0}, unitHi[3] = {1.0, 1.0, 1.0};
-	pbrt_flatten::flatten_detail::aabbOfTransformedBox(worldFromMedium, unitLo, unitHi, worldMin, worldMax);
-
-	double toMediumMat[9], toMediumTranslate[3];
-	pbrt_flatten::flatten_detail::splitAffine(mediumFromWorld, toMediumMat, toMediumTranslate);
-
-	// sigma_a is forced to 0 (pure scattering) UNLESS a real
-	// temperature grid was just baked above - same convention/
-	// reason as uniformgrid above otherwise (flatten() already
-	// warned if the scene gave a nonzero sigma_a with no
-	// "temperaturename"); see Medium::nanovdbTemperatureGridName's
-	// own comment for why blackbody emission needs a real sigma_a
-	// to be anything other than a physical no-op.
+	// sigma_a is forced to 0 (pure scattering) UNLESS a real temperature grid was just baked above - same convention/reason as uniformgrid above otherwise
+	// (flatten() already warned if the scene gave a nonzero sigma_a with no "temperaturename"); see Medium::nanovdbTemperatureGridName's own comment for why
+	// blackbody emission needs a real sigma_a to be anything other than a physical no-op.
 	const bool hasEmission = !temperature.empty();
 	const Bounds3<double> bounds(0.0, 0.0, 0.0, 1.0, 1.0, 1.0);
 	// std::move: `density` is a disposable local (unlike

@@ -205,6 +205,8 @@
     <ClCompile Include="unit\gpu_scene_frame_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_textures_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_materials_tests.cpp" />
+    <ClCompile Include="unit\nanovdb_dense_tests.cpp" />
+    <ClCompile Include="unit\pbrt_gpu_nanovdb_tests.cpp" />
     <ClCompile Include="unit\backend_capabilities_tests.cpp" />
     <ClCompile Include="unit\pbrt_quadify_tests.cpp" />
     <ClCompile Include="unit\pbrt_subdiv_tests.cpp" />

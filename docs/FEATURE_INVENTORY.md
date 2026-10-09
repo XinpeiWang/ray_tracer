@@ -338,20 +338,7 @@ at load time rather than sampled natively sparse (a real memory/scope
 tradeoff, not a NanoVDB limitation), capped at 512 voxels/axis
 (`pbrt_cpu_builder.h`'s `kMaxVoxelsPerAxis` - also closes a real
 integer-overflow-into-heap-overflow risk a code-review pass found for a
-corrupt/malicious file claiming an extreme bbox). **GPU has no NanoVDB
-support at all** — a nanovdb medium falls through to GPU's generic
-homogeneous-
-medium path, rendering as flat fog filling the whole boundary shape
-(using the scene's own sigma_a/sigma_s) rather than the real sparse
-density field, warned explicitly (`scene_builder.cpp`) since this is a
-visibly *wrong* render on GPU, not merely an absent one. NanoVDB's own
-format is explicitly designed to need no deserialization on GPU (the raw
-file bytes already are the traversable structure), which could make GPU
-support cheaper than a typical CPU-to-CUDA port if attempted later — but
-this codebase has two prior unresolved GPU device-crash precedents on
-non-trivial device call graphs (`CloudMedium::compute_density()`'s
-member-call stall, the light-BVH CUDA 700 crash — see §4's own gap), so
-it's scoped as a genuinely separate follow-up round, not attempted here.
+corrupt/malicious file claiming an extreme bbox). **On the GPU** (both OptiX backends) the file is read and densified on the host by the same code the CPU uses (`src/shared/nanovdb_dense.h`) and then rendered by the dense-grid medium `"uniformgrid"` already has, so no NanoVDB code runs on a device (which avoids the device-crash problems earlier GPU media work ran into). E9 matches the CPU to 0.1% in brightness (0.6075 CPU, 0.6080 recursive, 0.6074 wavefront), where it used to render as flat fog. Differences: a `"temperaturename"` blackbody grid is read on the CPU only (the GPU grid medium has no per-voxel emission; `scene_builder.cpp` warns and renders the density), and the file is read once per process (Live Preview does not re-read it on every camera move). Metal does not read NanoVDB files yet; `nanovdb_dense.h` is the shared reader it can call.
 
 **Gap**: GPU medium dispatch (all types) is sphere-hit-triggered only — a
 `MediumInterface` on a disk/cylinder/trianglemesh has no effect on GPU

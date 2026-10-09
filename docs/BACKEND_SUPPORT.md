@@ -23,7 +23,7 @@ This page is the overview. The detail lives in:
 | **Textures**: image, checker, marble, fbm, windy, wrinkled, dots, bilerp | Y | Y | Y | Y |
 | **Lights**: point, spot, distant, goniometric, projection, area (all samplable shapes), infinite (constant and image), portal | Y | Y | Y | Y |
 | **Media**: homogeneous (incl. per-channel), cloud, RGB grid | Y | Y | Y | homogeneous and RGB grid Y (rgbgrid-medium matches the CPU); cloud Y (E2 cloud-medium-scene and E5 cloud-medium: the body matches the CPU to about 2%; the density, including the wispiness warp, is checked against the CPU's by a shader test; OptiX's density still has no wispiness warp. Open: in E5 the top quarter of the cloud, viewed from below, comes out darker on Metal than on the CPU (the body agrees to about 2%)) |
-| uniform grid, NanoVDB | Y | grid Y, NanoVDB approx | grid Y, NanoVDB approx | - (their `interface` boundary material is not supported: grey diffuse, no medium) |
+| uniform grid, NanoVDB | Y | grid Y, NanoVDB Y (the density; a blackbody `temperaturename` glow is dropped with a warning) | grid Y, NanoVDB Y (the same) | - (their `interface` boundary material is not supported: grey diffuse, no medium) |
 | camera medium | Y | Y | Y | Y |
 | **Cameras**: perspective (+ depth of field), orthographic, spherical, realistic lens | Y | Y | Y | Y |
 | motion blur (camera, spheres) | Y | Y | Y | Y (cornell-camera-motion-blur, disk-cylinder-motion-blur: means within 1-4%) |
