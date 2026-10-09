@@ -973,6 +973,10 @@ struct TriangleMaterial {
     int bumpHeight;
     float bumpScale;
     int bumpIsNormalMap;   // 1: RGB tangent-space normal map (3 floats per texel), 0: height map (1 float per texel)
+    // Alpha cutout: see metal_poc_gpu_types.h. alphaWidth == 0 means none.
+    int alphaOffset;
+    int alphaWidth;
+    int alphaHeight;
 };
 
 // E2/section 178: a real heterogeneous, procedural Perlin-FBm-density

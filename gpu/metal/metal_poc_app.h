@@ -173,6 +173,7 @@ struct MetalPocApp {
     // compileShaderAndDispatch() reads these instead of its own hardcoded
     // literals whenever this is true.
     bool havePbrtCamera = false;
+    bool havePbrtAlphaMasks = false;   // some triangle material has an alpha-cutout mask: the triangle geometry is then non-opaque and tested by alphaTriangleIntersectionFunction
     float3 pbrtCameraPos{0, 0, 0};
     float3 pbrtCameraForward{0, 0, -1};
     float3 pbrtCameraRight{1, 0, 0};
