@@ -87,6 +87,8 @@ inline bool scatterAtSurface(thread const KernelRes& R, thread PathState& P, thr
                           earthTexture, pbrtEnvTexture, goniometricTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, textureSampler,
                           isect, accelStructure, functionTable,
                           rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState)) return false;
+    } else if (mat.materialType == METAL_MAT_SUBSURFACE) {
+        if (!shadeSubsurface(R, P, B)) return false;
     } else if (mat.materialType == METAL_MAT_HAIR) {
         pathTouchedHair = true;
         if (!shadeHair(mat, hitPoint, facingNormal,

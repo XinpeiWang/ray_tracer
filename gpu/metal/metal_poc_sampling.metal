@@ -429,20 +429,23 @@ inline bool alphaPasses(float a, float3 o, float3 d) {
     return rayHash01(o, d) <= a;
 }
 
-// Alpha-cutout any-hit test for the main triangle geometry (only made non-opaque, and this function only linked into the table, when the
-// scene has an alpha mask). `primitive_id` is the index into the flat triangle arrays. The mask is sampled like the CPU's image_texture:
-// nearest texel, (u, v) clamped to [0, 1], v flipped.
+// Any-hit test for the main triangle geometry, which is made non-opaque (so this runs) only when the scene needs it: an alpha-cutout mask
+// (a hit is kept with probability alpha, the mask sampled like the CPU's image_texture: nearest texel, (u, v) clamped to [0, 1], v flipped) or
+// a subsurface material (a shadow ray passes through it, as on the CPU and OptiX: the BSSRDF accounts for the light inside the object).
+// `primitive_id` is the index into the flat triangle arrays.
 [[intersection(triangle, triangle_data, instancing)]]
-bool alphaTriangleIntersectionFunction(
+bool triangleAnyHitFunction(
     float2 barycentric [[barycentric_coord]],
     uint primitiveIndex [[primitive_id]],
     float3 origin [[origin]],
     float3 direction [[direction]],
     device const TriangleMaterial* triMaterials [[buffer(5)]],
     device const packed_float2* uvs [[buffer(6)]],
-    device const float* alphaData [[buffer(7)]])
+    device const float* alphaData [[buffer(7)]],
+    ray_data SpherePayload& payload [[payload]])
 {
     const TriangleMaterial mat = triMaterials[primitiveIndex];
+    if (payload.isShadowRay && mat.materialType == METAL_MAT_SUBSURFACE) return false;
     if (mat.alphaWidth <= 0) return true;
     const float2 uv = texCoordFor(primitiveIndex, barycentric, uvs);
     const float u = clamp(uv.x, 0.0, 1.0);

@@ -173,7 +173,7 @@ struct MetalPocApp {
     // compileShaderAndDispatch() reads these instead of its own hardcoded
     // literals whenever this is true.
     bool havePbrtCamera = false;
-    bool havePbrtAlphaMasks = false;   // some triangle material has an alpha-cutout mask: the triangle geometry is then non-opaque and tested by alphaTriangleIntersectionFunction
+    bool havePbrtTriangleAnyHit = false;   // some triangle has an alpha-cutout mask or a subsurface material: the triangle geometry is then non-opaque and tested by triangleAnyHitFunction
     float3 pbrtCameraPos{0, 0, 0};
     float3 pbrtCameraForward{0, 0, -1};
     float3 pbrtCameraRight{1, 0, 0};
@@ -516,10 +516,12 @@ struct MetalPocApp {
         float3 sceneOffset;
         std::unordered_set<std::string> warnedUnsupportedMaterialKinds;
         std::unordered_map<std::string, int> measuredTableCache;   // resolved .bsdf path -> descriptor index in rgbGridData, or -1
+        std::map<std::pair<double, double>, int> bssrdfTableCache;   // (g, eta) -> element offset of that BSSRDF table in rgbGridData
         std::unordered_map<const void*, TriangleMaterial> mixCache;   // a Mix material (by address) -> its mapped METAL_MAT_MIX entry, so each is stored once
     };
     TriangleMaterial mapPbrtMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth);
     bool mapPbrtPerHitMix(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth, TriangleMaterial& out);
+    int bssrdfTableOffset(PbrtMaterialMapState& st, double g, double eta);
     TriangleMaterial mapPbrtDiffuseMaterial(const pbrt_flatten::Material& m, float sceneScale, float3 bboxCenter, float3 sceneOffset);
     // Area lights ("single quad, 2 triangles" shape only) - populates
     // `lights`, and the two out-params the very next phase

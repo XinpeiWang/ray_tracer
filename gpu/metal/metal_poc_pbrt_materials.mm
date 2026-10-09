@@ -11,6 +11,7 @@
 #include "../../src/shared/curve_tessellate.h"
 #include "../../src/shared/fresnel.h"   // CauchyCoefficientsFromAbbe
 #include "../../src/shared/gpu_scene_materials.h"   // reflectanceToConductorK
+#include "../../src/shared/bssrdf.h"   // BSSRDFTable, ComputeBeamDiffusionBSSRDF
 #include "../../src/shared/srgb_decode.h"
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
 #include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
@@ -284,6 +285,25 @@ TriangleMaterial MetalPocApp::mapPbrtDiffuseMaterial(const pbrt_flatten::Materia
 // own 66,532-triangle "coateddiffuse" mesh) used to print that exact
 // line 66,532 times.
 // `depth` guards a Mix material that (wrongly) refers back to itself.
+// The tabulated BSSRDF for a (g, eta) pair, computed once (the same CPU ComputeBeamDiffusionBSSRDF that OptiX and the CPU use) and stored in the shared
+// float buffer in the layout metal_poc_bssrdf.metal reads: n_rho, n_radius, rho samples, radius samples, profile, profile CDF. Returns its element offset.
+int MetalPocApp::bssrdfTableOffset(PbrtMaterialMapState& st, double g, double eta) {
+    const auto key = std::make_pair(g, eta);
+    auto it = st.bssrdfTableCache.find(key);
+    if (it != st.bssrdfTableCache.end()) return it->second;
+    BSSRDFTable table(100, 64);
+    ComputeBeamDiffusionBSSRDF(g, eta, &table);
+    const int offset = (int)rgbGridData.size();
+    rgbGridData.push_back((float)table.n_rho);
+    rgbGridData.push_back((float)table.n_radius);
+    for (double v : table.rho_samples) rgbGridData.push_back((float)v);
+    for (double v : table.radius_samples) rgbGridData.push_back((float)v);
+    for (double v : table.profile) rgbGridData.push_back((float)v);
+    for (double v : table.profile_cdf) rgbGridData.push_back((float)v);
+    st.bssrdfTableCache.emplace(key, offset);
+    return offset;
+}
+
 // A pbrt `mix` of two plain surface materials as one METAL_MAT_MIX entry: both sub-materials are mapped and stored whole in the shared float
 // buffer, and resolveHit() picks one at each hit, the second with probability `amount`, as pbrt-v4's MixMaterial does (and OptiX and the CPU).
 // `amount` <= 0 or >= 1 is just one material, left to the caller. Returns false (leaving `out` alone) for a nested Mix or a medium-bounding
@@ -382,6 +402,23 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
             const double baseRough = m.conductorRoughness_u >= 0.0 ? m.conductorRoughness_u : m.roughness_u;
             mat.transmitColor = PackedFloat3{(float)(m.remapRoughness ? std::sqrt(baseRough) : baseRough), (float)m.coatThickness, 0.0f};
             setConductorOptics(mat, m);
+            return mat;
+        }
+        case pbrt_flatten::MaterialKind::Subsurface: {
+            // pbrt SubsurfaceMaterial -> materialType 34: a smooth dielectric interface over a tabulated BSSRDF (shadeSubsurface). color = sigma_a and
+            // transmitColor = sigma_s per channel, both divided by the scene scale (a coefficient is per unit length, and the scene was rescaled);
+            // ior = eta; roughness = the NormalizedFresnel constant c of the exit BSDF (as for materialType 18); conductorEta.x = the BSSRDF table's
+            // offset in the shared float buffer, an int stored bit for bit.
+            const float eta = (float)m.ior;
+            float nfC = 1.0f - 2.0f * fresnelMoment1(1.0f / eta);
+            if (nfC <= 0.0f) nfC = 1e-6f;
+            const float invScale = 1.0f / st.sceneScale;
+            TriangleMaterial mat{PackedFloat3{(float)m.sigma_a[0] * invScale, (float)m.sigma_a[1] * invScale, (float)m.sigma_a[2] * invScale},
+                                 /*materialType=*/METAL_MAT_SUBSURFACE, /*ior=*/eta,
+                                 PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/nfC};
+            mat.transmitColor = PackedFloat3{(float)m.sigma_s[0] * invScale, (float)m.sigma_s[1] * invScale, (float)m.sigma_s[2] * invScale};
+            const int tableOffset = bssrdfTableOffset(st, m.g, m.ior);
+            std::memcpy(&mat.conductorEta.x, &tableOffset, sizeof(float));
             return mat;
         }
         case pbrt_flatten::MaterialKind::NormalizedFresnel: {

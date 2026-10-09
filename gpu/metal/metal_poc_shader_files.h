@@ -41,10 +41,12 @@ inline const char* const* metalShaderFileNames(int* outCount) {
         "metal_poc_materials_extra.metal",
         "metal_poc_materials_medium.metal",
         "metal_poc_materials_hair.metal",
+        "metal_poc_bssrdf.metal",          // the tabulated BSSRDF profile: Sr, its pdf, and sampling a radius
         "metal_poc_kernel_state.metal",    // primaryRayKernel's bundles (resources, path state, bounce state) and their alias macros
         "metal_poc_kernel_camera.metal",   // camera ray + fresh path state
         "metal_poc_kernel_media.metal",    // bounded media and the global camera / glass medium
         "metal_poc_kernel_surface.metal",  // escape, hit resolution, normal perturbation, albedo, emission
+        "metal_poc_kernel_subsurface.metal", // the BSSRDF probe walk and the subsurface material (uses resolveHit and shadeNormalizedFresnel)
         "metal_poc_kernel_bounce.metal",   // scattering by material, glass-medium bookkeeping, traceBounce()
         "metal_poc_kernel.metal",          // primaryRayKernel itself
         "metal_poc_test_kernels.metal",
