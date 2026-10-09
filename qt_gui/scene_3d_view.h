@@ -76,12 +76,12 @@ private:
 	struct Face;
 	struct Ctx;
 	struct Hit {
-		enum class Kind { None, Item, Axis, Ring, ScaleHandle } kind = Kind::None;
+		enum class Kind { None, Item, Axis, Ring, ScaleHandle, FreeHandle } kind = Kind::None;
 		BuilderSelection sel;
 		int which = 0;   // 0: the item's position, 1: its target
 		int axis = 0;    // for an arrow, ring or handle
 	};
-	enum class Mode { None, Orbit, Pan, Ground, Vertical, Axis, Rotate, Scale };
+	enum class Mode { None, Orbit, Pan, Ground, Vertical, Free, Axis, Rotate, Scale };
 
 	scene_view::View view() const;
 	// The shapes as world-space polygons. Tessellating them is the expensive part of a repaint, so they are kept until the document changes (found by

@@ -538,5 +538,11 @@ void Scene3DView::drawTool(Ctx &c) const {
 		c.p->drawText(e + QPointF(8, 4), QString(QChar('X' + a)));
 		c.p->setFont(c.normal);
 	}
+	if (mode == GizmoMode::Move) {   // the dot in the middle, on top of where the arrows start: drag it to move the item in any direction
+		const bool active = m_mode == Mode::Free;
+		c.p->setPen(QPen(QColor(40, 40, 48), 1.5));
+		c.p->setBrush(active ? QColor(255, 255, 255) : QColor(235, 235, 240, 235));
+		c.p->drawEllipse(b, active ? 7.0 : 5.5, active ? 7.0 : 5.5);
+	}
 }
 

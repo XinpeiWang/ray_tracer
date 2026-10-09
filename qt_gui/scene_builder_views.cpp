@@ -235,13 +235,13 @@ QPointF SceneBuilderWidget::shiftPanBackground3dForTest(int index, const QPointF
 	return m_view3d->itemScreenPos({SelKind::Object, index}) - before;
 }
 
-bool SceneBuilderWidget::dragObject3dForTest(int index, const QPointF &deltaPx) {
+bool SceneBuilderWidget::dragObject3dForTest(int index, const QPointF &deltaPx, Qt::KeyboardModifiers mods) {
 	if (index < 0 || index >= static_cast<int>(m_doc.objects.size())) return false;
 	const Float3 before = m_doc.objects[index].position;
 	const QPointF start = m_view3d->itemScreenPos({SelKind::Object, index});
-	sendMouse(m_view3d, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
-	for (int step = 1; step <= 4; ++step) sendMouse(m_view3d, QEvent::MouseMove, start + deltaPx * (step / 4.0), Qt::NoButton, Qt::LeftButton);
-	sendMouse(m_view3d, QEvent::MouseButtonRelease, start + deltaPx, Qt::LeftButton, Qt::NoButton);
+	sendMouse(m_view3d, QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton, mods);
+	for (int step = 1; step <= 4; ++step) sendMouse(m_view3d, QEvent::MouseMove, start + deltaPx * (step / 4.0), Qt::NoButton, Qt::LeftButton, mods);
+	sendMouse(m_view3d, QEvent::MouseButtonRelease, start + deltaPx, Qt::LeftButton, Qt::NoButton, mods);
 	const Float3 after = m_doc.objects[index].position;
 	return before.x != after.x || before.y != after.y || before.z != after.z;
 }

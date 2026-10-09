@@ -66,10 +66,18 @@ inline QString altKeyName() {
 	return QStringLiteral("Alt");
 #endif
 }
+// The key that makes a drag a free move (Qt's Ctrl is the Command key on a Mac).
+inline QString ctrlKeyName() {
+#ifdef Q_OS_MAC
+	return QObject::tr("Command");
+#else
+	return QStringLiteral("Ctrl");
+#endif
+}
 inline QString shortcutText(QKeySequence::StandardKey key) { return QKeySequence(key).toString(QKeySequence::NativeText); }
 inline QString viewHint2d() { return QObject::tr("Wheel: zoom. Drag the background or right-drag: pan."); }
 inline QString viewHint3d() {
-	return QObject::tr("Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.");
+	return QObject::tr("Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.").arg(ctrlKeyName());
 }
 
 inline QString propLabel(scene_doc::PropKind k) {
