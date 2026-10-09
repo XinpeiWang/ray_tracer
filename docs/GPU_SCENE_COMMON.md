@@ -67,3 +67,48 @@ The shaders and kernels, the GPU struct layouts, the pipelines, and the Live Pre
 ## Who
 
 Stages 1 and 2 need both sides, so the Mac session should review this before anyone starts. A first useful, low-risk step that is Windows-only: stage 1 for the OptiX functions, with the Mac side added once it has agreed on the names.
+
+## Mac session review (2026-10-08)
+
+Read against `gpu/metal/metal_poc_pbrt_loader.mm` (1,789 lines) and `metal_poc_pbrt_materials.mm` (599) on main at 40f30a7.
+
+**Verdict: agree with the split (decisions in shared, packing per backend), agree with most names, disagree with the stage order, and four of the "decided independently" items are not what they look like.**
+
+### Where the Metal loader is not a copy of the OptiX one
+
+1. **Mix materials are decided differently on purpose, not duplicated.** OptiX picks between the two sub-materials per hit (stochastically, `optix_device_mix_camera.h`) and uses `resolveMixColor` where it needs one colour. Metal assigns materials per triangle at load time, so `mapPbrtMaterial` deterministically takes sub-material B when `mixWeight >= 0.5` and A otherwise (the comment in `metal_poc_pbrt_materials.mm` says why; BACKEND_SUPPORT.md lists it as an approximation). `resolveMixColor` has no Metal counterpart. The IR should carry (A, B, weight) and each packer should decide. Making Metal use the OptiX rule would be a behaviour change (new shader work, new golden snapshot), not a refactor.
+2. **Textures: Metal can bind one image per slot.** The kernel has nine texture slots (environment, goniometric, projection, area-light, diffuse reflectance, transmit...), and only the *first* matching material in a scene gets a real image lookup; a second one falls back to its colour. A neutral texture table with N entries is richer than anything Metal can consume. The Metal packer needs a slot policy ("first use wins"), so the IR should list textures in order of first use, and stage 3 should say so.
+3. **There is no BSSRDF on Metal.** Subsurface is unsupported there. The measured-BRDF tables are *already* shared (`measured_bxdf_loader.h`); Metal's `appendMeasuredBrdf` / `putMeasuredPL2D` only flatten them into its float buffer, which is packing and stays in Metal.
+4. **Shapes: Metal does not walk bilinear patches, curves, cones or paraboloids at all.** `tessellateUnsupportedShapes` (about 170 lines in the loader) rewrites the `FlatScene` into triangles *before* the bounding box, materials, area lights or instancing look at it. OptiX tessellates curves and patches but not cones or paraboloids (BACKEND_SUPPORT.md). So "the same list in much the same order" is true only after that pass. It is also the best first stage: a pure `FlatScene -> FlatScene` step, testable on the CPU, with exactly the capability flag the proposal already wants.
+
+### Things the proposal does not mention
+
+* **The scene frame is more than a function.** `loadPbrtScene` computes the bounding box (ignoring a "huge ground-like sphere"), the scale `2 / extent`, the centre and a +X offset. The scale is then threaded through lights, medium coefficients (sigma), material parameters (`PbrtMaterialMapState`) and **Live Preview** (`metal_live_preview.mm` converts the GUI's camera and the first-hit positions with `pbrtSceneScale`, `pbrtSceneOffset` and `pbrtBboxCenter`). "Live Preview stays per backend" is right, but it depends on this rule: moving it into shared code must keep returning scale, centre and offset.
+* **Visit order is part of the result.** Metal loads area-light triangles first (`loadPbrtAreaLights` assigns the light ids and probabilities), then the remaining triangles, spheres, disks, cylinders, instances, punctual lights, media, the infinite light and the camera. Ids come from that order, so changing it changes images. Stage 4 has to keep it.
+* **File size.** One `gpu_scene_common.h` for all of this would break the size ratchet (2,000 lines per file, 300 per function) quickly. One header per stage is easier to keep under it.
+
+### Names
+
+* `GpuSceneIR`, "material table", "texture table", `backend_capabilities.h` as the home of the per-backend flag: fine.
+* Keep the existing OptiX names (`resolveMixColor`, `resolveProceduralReflectanceTexture`) where they stay OptiX-only; do not generalise them.
+* Suggested shared names: `tessellateForBackend(FlatScene&, const TessellationCaps&)` (Metal's `tessellateUnsupportedShapes` generalised), `computeSceneFrame(const FlatScene&) -> {scale, centre, offset}` (instead of "the scene-scale rule"), and one header per stage: `gpu_scene_tessellate.h`, `gpu_scene_frame.h`, `gpu_scene_textures.h`, `gpu_scene_materials.h`.
+* For the table in this file: Metal's `mapPbrtMaterial` corresponds to OptiX's `makeMaterial`.
+
+### Stage order (revised)
+
+0. **`tessellateForBackend` and `computeSceneFrame` first**, both pure and complete on the Metal side already. OptiX adopts patches and curves through the capability flag and keeps its native shapes. CPU unit tests on triangle counts, areas and bounds.
+1. Image and alpha-mask decoding plus sRGB (`stb_load_large.h`, `srgb_decode.h`), shared; the slot policy stays per backend.
+2. The material decisions that really are common (reflectance colour, procedural average colour, chromatic-medium reduction). **Not mix.**
+3. The material and texture tables as the neutral type, with the first-use texture order.
+4. Shapes and lights last, in Metal's current visit order.
+
+### Checking each stage on the Mac
+
+Metal's loader refactors do not touch the shaders, so a seeded Metal render is **bit-identical** before and after (checked on this Mac: the same `--seed` gives the same EXR for 109 of 111 renders; D8 and D12 are not reproducible even run to run). That is a stronger check than the golden snapshot's tolerances and should be the gate for stages 0-4. It is not true for a *shader* change: moving code between shader functions changed float rounding in the kernel split and only the statistics stayed equal.
+
+`scripts/render_baseline.py` has no Metal backend (it expects `x64\Release` and the OptiX recursive and wavefront backends). The Mac side needs `--backends metal` there before stage 0; the seeded-hash approach above is about 30 lines.
+
+### Open for the Windows session
+
+* Is mix on Metal meant to stay an approximation? (Per-hit mixing needs shader work; this proposal should not decide it.)
+* Should OptiX grow native cones and paraboloids, or take Metal's tessellation through the flag? That decides how big `TessellationCaps` is.
