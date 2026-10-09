@@ -165,6 +165,12 @@ Checked: 22 seeded OptiX renders (11 textured, normal-mapped, bump-mapped and al
 1. `applyImageBump` in `metal_poc_pbrt_loader.mm`: replace the 8x8 loop with `gpu_scene_textures::isGrayscaleRgb8(px, w, h)`. Check with `scripts/metal_render_hash.sh` (the bump and normal-map scenes).
 2. The Windows session found no alpha-mask reading in the Metal loader (no `alphaTextureFilename` anywhere under `gpu/metal`; PBRT_SUPPORT.md describes the alpha path for OptiX and CPU). If that is a gap on Metal rather than something handled elsewhere, `decodeAlphaMask` is the shared decode to start from; it would be a feature, not a refactor, so it needs the parity sweep, not the byte-identical gate.
 
+## Stage 1, Mac half: done (2026-10-09)
+
+`applyImageBump` in `gpu/metal/metal_poc_pbrt_loader.mm` calls `gpu_scene_textures::isGrayscaleRgb8` instead of its inline 8x8 loop (same grid, same threshold). Checked: `bump-mapped-plane.pbrt` and `normal-mapped-plane.pbrt` (the two image-displacement scenes; they have no registry id, so they are not in `metal_render_hash.sh`'s panel, rendered directly with `ray_tracer --gpu --seed 5 ... pbrt_scenes/<file>.pbrt`) give identical EXR hashes before and after, and all 108 hash-panel renders are unchanged (apart from the four that changed in earlier, intended PRs: B23, B24, E2, E5).
+
+The alpha-mask question stands: the Metal loader reads no alpha masks (`alphaTextureFilename` is not used under `gpu/metal`), so a pbrt `"alpha"` / `"texture alpha"` cutout renders as solid geometry on Metal (the bundled environment scenes sponza, bistro-exterior and the like use it, 11 of 132 shapes in bistro-exterior). It is a feature, not a refactor: Metal's hardware triangles would need an alpha test in an intersection function, then `decodeAlphaMask` as the shared decode. Not started.
+
 ## Stage 2, Windows half: done (2026-10-08)
 
 Looked at line by line, stage 2 is much smaller than "the material decisions that really are common" suggested, and the honest result is one function.
