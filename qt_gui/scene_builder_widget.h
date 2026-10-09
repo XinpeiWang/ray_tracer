@@ -52,6 +52,7 @@ public:
 	bool openFile(const QString &path, QString *error = nullptr);
 	bool saveFile(const QString &path);
 	void selectObject(int index);
+	void selectLight(int index);   // (the self-test picks the sky)
 	bool dragObjectForTest(int index, const QPointF &deltaPx);
 	// The 3D view, for the self-test: show it (or go back to the 2D views), drag an object on the floor, or along one axis arrow of the selected item.
 	void show3dView(bool on);
@@ -59,6 +60,9 @@ public:
 	bool dragObject3dForTest(int index, const QPointF &deltaPx);
 	QPointF shiftPanBackground3dForTest(int index, const QPointF &deltaPx);
 	bool dragAxis3dForTest(int index, int axis, double pixels);
+	// Selects the object, presses on the inner part of its `axis` arrow (a `fraction` of the way to the tip: that is the object itself, not the arrow) and drags by
+	// `deltaPx`; true if it moved in both X and Z, on the floor.
+	bool dragInnerArrow3dForTest(int index, int axis, double fraction, const QPointF &deltaPx);
 	bool dragRotate3dForTest(int index, int axis, double degrees);
 	bool dragScale3dForTest(int index, int axis, double ratio);
 	void orbit3dForTest(double yawDeg, double pitchDeg);
@@ -137,6 +141,12 @@ private:
 
 	// An edit: takes an undo snapshot (merging a run of edits with the same key, such as a spin box being dragged), applies `mutate`, and refreshes.
 	void edit(const QString &key, const std::function<void()> &mutate);
+	// Sun & sky (src/shared/scene_sky.h): while an Infinite light has it on, its picture and the scene's Sun follow its sun settings. The sun is brought into line
+	// right after an edit that changed those settings (skySignature() differs from the one the document had before), and only then, so a Sun the user moved by
+	// hand stays where it is until the sky is changed again.
+	std::string skySignature() const;
+	void syncSunAndSky();
+	static QString skyImageFolder();   // where the generated sky pictures go: <user assets>/skies
 	void pushUndo();
 	bool restore(const std::string &json);   // false (and nothing changed) if the snapshot cannot be read
 	void scheduleAutosave();
@@ -175,6 +185,7 @@ private:
 	QStringList m_loggedProblems;   // the problems already written to the log, so each is said once when it appears
 	std::vector<scene_doc::Problem> m_problems;   // validate() of the current document, refreshed by refreshProblems()
 	QString m_lastEditKey;
+	std::string m_skySignature;
 	// What changed since the last undo step began, for the log file: one line per step ("object 'Ball': position 0,1,0 -> 2,1,0"), not one per drag movement.
 	scene_doc::Document m_logBase;
 	bool m_logPending = false;

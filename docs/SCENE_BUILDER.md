@@ -30,12 +30,12 @@ Each drag is one undo step. In the flat views, the wheel zooms and right-drag (o
 | Wheel | Zoom |
 | Click an object, light or the camera | Select it (the camera is the little box with its view frame; a spotlight, sun or the camera also has a target you can drag) |
 | **Move** tool (W): drag a selected item | Move it on the floor (Shift-drag: up and down) |
-| **Move**: drag one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
+| **Move**: drag the outer half of one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
 | **Rotate** tool (E): drag a coloured ring | Turn the object about that world axis (in steps of 5 degrees; Alt or Option for free); the three Rotation numbers are worked out for you |
 | **Scale** tool (R): drag a square handle | Stretch the object along that one of its own axes (steps of 5 %): a box's size, a cylinder's or cone's height or radius, a quad's width or depth. A sphere, a disk and a mesh scale all round |
 | **Frame all** | Bring everything back into view |
 
-Rotate and Scale apply to objects; for a light or the camera the Move tool stays.  In the Move tool, a press on the very middle of the selected object (where the three arrows start) is a free move on the floor, not an arrow; in the
+Rotate and Scale apply to objects; for a light or the camera the Move tool stays.  In the Move tool only the outer part of an arrow takes hold (from about half way to its tip); a press anywhere else on the selected object, the middle and the inner part of the arrows included, is a free move on the floor, not an arrow; in the
 Scale tool only the square at the end of a handle takes hold (so the scale starts at 1 and does not jump); a ring seen almost edge-on holds still instead of
 spinning the object. The Rotate and Scale buttons are greyed while a light or the camera is selected, and Move shows pressed. A new object is dropped on the
 floor under the middle of the view, or under what the camera looks at when the camera is nearly level (so it never lands far off-screen). A mesh file is read in
@@ -78,6 +78,16 @@ The **Props** section of the Add menu puts a few ordinary objects in at once: a 
 * A shape that **gives off light** lights its outer side: a box, sphere, cylinder, cone or any ready-made shape outward, a quad or disk from the side facing up. To hang a light panel from a ceiling, rotate it 180 degrees about X (the *Light panel* in the Add menu already is). Tick *Both sides* to light both.
 * **Colours** are picked as ordinary (sRGB) colours and stored as linear values for the renderer. A light's *Strength* multiplies its colour, so a white panel of strength 12 has a radiance of 12.
 
+## Sun & sky
+
+Tick **Sun & sky** in a sky light's properties for a clear outdoor sky at a chosen time of day: **Preset** (Sunrise, Morning, Noon, Afternoon, Sunset) or **Sun height** and **Sun direction**, **Haze** (1.7 very clear, 3 ordinary, 6 and up hazy) and **Ground brightness**. Direction 0 is towards +X, 90 away from the starting camera, 180 towards -X, 270 behind it.
+
+What it makes: the sky is the Hosek-Wilkie analytic sky model (the one Blender's Cycles offers; `src/shared/hosek_sky.h`) written as a 512 x 256 equirectangular HDR picture, `sky_v1_e<height>_a<direction>_t<haze>_g<ground>.hdr`, in the `skies` folder beside your My Scenes (`~/Library/Application Support/Ray Tracer Project/Ray Tracer/user_assets/skies` on a Mac); below the horizon the picture is the ground, its brightness times the light that falls on level ground. The scene's **Sun** (the first Distant light, or a new one named "Sun") is aimed along the sun with its colour and strength from the atmosphere the light crosses (Rayleigh and aerosol extinction): a sun on the horizon is dim and deep orange, a high one nearly white. Both are ordinary lights in the saved `.pbrt` (the picture is referenced by its full path, like any picture you pick), so every renderer reads them with nothing special.
+
+Units: an unobstructed sun gives an irradiance of 3 on a surface facing it (what the starter scene's Sun uses) and the sky is scaled at the real ratio of sky to sun light, so **Brightness 1** is a daylight scene. A level plate under the sun and sky renders to albedo / pi times the sun's irradiance times sin(height) plus the sky picture's irradiance, which `tests/unit/scene_sky_tests.cpp` checks on the CPU renderer (within 5%). CPU and Metal agree on the three test scenes within 0.2%.
+
+The sun follows these settings only when they change; a Sun light you move by hand stays where you put it until you change the sky again. Changing a setting makes a new picture (a few tens of milliseconds); the old ones stay in the folder.
+
 ## Materials
 
 | In the tab | What it is | Settings |
@@ -101,7 +111,7 @@ A **Picture** (matte and glossy paint) replaces the colour with an image on any 
 | Point light | a tiny bulb: position, colour, strength |
 | Spotlight | a cone of light: position, the point it aims at, cone angle, soft edge |
 | Sun (distant light) | parallel light from a direction: where it shines from and towards |
-| Sky | light from every direction: a colour, or an equirectangular panorama image (`.exr`, `.hdr`, `.png`, `.jpg`) |
+| Sky | light from every direction: a colour, an equirectangular panorama image (`.exr`, `.hdr`, `.png`, `.jpg`), or **Sun & sky** (below) |
 | any shape with *Gives off light* | an area light; a panel or a ball makes soft shadows |
 
 A scene with no light renders black; the tab says so under the properties.

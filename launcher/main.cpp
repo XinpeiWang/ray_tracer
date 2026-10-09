@@ -1426,6 +1426,14 @@ int main(int argc, char** argv) {
 		use_gpu = false;
 	}
 #endif
+#ifdef RT_HAVE_METAL
+	// SPPM has a CPU and an OptiX implementation and no Metal one, so on a Mac --sppm renders on the CPU, with the same warning --bdpt/--mlt and the debug
+	// integrators give (it used to fall into the OptiX-only branch below and fail with "OptiX is not available!"). docs/BACKEND_SUPPORT.md's Metal column says CPU.
+	if (use_gpu && args.use_sppm) {
+		if (args.gpu_flag_explicit) std::cerr << "WARNING: --gpu is ignored under --sppm on a Mac (SPPM has a CPU and an OptiX implementation, no Metal one) - rendering on CPU" << std::endl;
+		use_gpu = false;
+	}
+#endif
 	int  image_width        = args.image_width;
 	int  image_height       = args.image_height;
 	int  samples_per_pixel  = args.samples_per_pixel;

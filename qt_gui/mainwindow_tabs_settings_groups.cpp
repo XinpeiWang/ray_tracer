@@ -216,7 +216,8 @@ void MainWindow::buildSceneGroup(QWidget *basicTab, QVBoxLayout *layout) {
 		"Clear it (the small \"x\" inside the field) to see every scene "
 		"in the current category again.")));
 
-	m_sceneViewToggle = new QToolButton(basicTab);
+	m_sceneViewToggle = new QPushButton(basicTab);
+	m_sceneViewToggle->setAutoDefault(false);
 	m_sceneViewToggle->setCheckable(true);
 	m_sceneViewToggle->setText(tr("Grid"));
 	m_sceneViewToggle->setToolTip(tr("Switch between the dropdown list and a thumbnail gallery grid"));
@@ -311,7 +312,7 @@ void MainWindow::buildSceneGroup(QWidget *basicTab, QVBoxLayout *layout) {
 	// calculation - the standard Qt workaround for this exact behavior.
 	// comboPage starts current (index 0), so gridPage starts Ignored.
 	gridPage->setSizePolicy(QSizePolicy::Ignored, QSizePolicy::Ignored);
-	connect(m_sceneViewToggle, &QToolButton::toggled, this, [this, comboPage, gridPage](bool gridChecked) {
+	connect(m_sceneViewToggle, &QPushButton::toggled, this, [this, comboPage, gridPage](bool gridChecked) {
 		m_sceneViewStack->setCurrentIndex(gridChecked ? 1 : 0);
 		comboPage->setSizePolicy(gridChecked ? QSizePolicy::Ignored : QSizePolicy::Preferred,
 		                          gridChecked ? QSizePolicy::Ignored : QSizePolicy::Preferred);
@@ -1463,7 +1464,7 @@ void MainWindow::buildOutputGroup(QWidget *basicTab, QVBoxLayout *layout) {
 	QString defaultPath = defaultRenderOutputDir() + "/render_" + timestamp + ".png";
 	m_outputPathEdit = new QLineEdit(QDir::toNativeSeparators(defaultPath), basicTab);
 	m_outputPathEdit->setStyleSheet(
-		"QLineEdit { font-size: 11pt; padding: 6px 8px; min-height: 32px; }"
+		"QLineEdit { font-size: 11pt; }"
 	);
 	m_outputPathEdit->setToolTip(
 		tr("Where the rendered image is written. A .png is always saved alongside\n"
@@ -1502,4 +1503,6 @@ void MainWindow::buildOutputGroup(QWidget *basicTab, QVBoxLayout *layout) {
 	outputLayout->addLayout(pathLayout);
 
 	layout->addWidget(outputGroup);
-}
+}
+
+

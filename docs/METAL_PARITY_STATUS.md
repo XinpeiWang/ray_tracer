@@ -99,6 +99,8 @@ materialType 25 is a family of textures selected by `conductorK.y` (0 = 2D check
 
 (none - `kKnownGapScenes` is empty. C17, the portal-light scene, used to be listed here for a missing sky image; it now uses a generated in-repo sky and passes.)
 
+**Found by looking at pictures, not by the sweep (2026-10-08):** a pbrt scene's *cloud* medium is not rendered on Metal: `pbrt_scenes/cloud-medium.pbrt` (E5) and `cloud-medium-scene.pbrt` show no cloud (the second a black disc where the cloud's sphere is), the same with the build from before the kernel was split. The sweep cannot see it (whole-image and regional means are dominated by the sky, and E5 is inside the tolerance), so `kKnownGapScenes` stays empty but this is a gap: the loader reports `interface` as an unsupported material for it.
+
 Smaller approximations not covered by a scene: shadow rays use shutter time 0 (a moving sphere casts its
 shadow at its start position); the layered shaders use one roughness for both interfaces; a marble reflectance on a
 *coated diffuse* material renders flat; animated (motion-blurred) bilinear patches and curves are dropped;

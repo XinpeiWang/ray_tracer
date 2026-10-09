@@ -78,6 +78,15 @@ struct Object {
 
 enum class LightKind { Point, Spot, Distant, Infinite };
 
+// The Sun & sky option of an Infinite light (scene_sky.h): when `physicalSky` is on, the light's picture is a generated clear sky for this sun, and the scene's
+// Sun (a Distant light) follows it. Angles in degrees; azimuth 0 is +X, 90 is -Z, 180 is -X, 270 is +Z.
+struct SkyParams {
+	double sunElevation = 35.0;   // above the horizon
+	double sunAzimuth = 250.0;
+	double turbidity = 3.0;       // haze: 1.7 very clear, 3 ordinary, 6+ hazy
+	double groundAlbedo = 0.3;    // the ground the sky light bounces off
+};
+
 struct Light {
 	std::string name = "Light";
 	LightKind kind = LightKind::Point;
@@ -88,6 +97,8 @@ struct Light {
 	double coneAngle = 30.0;           // Spot, degrees
 	double coneDelta = 5.0;            // Spot, degrees of soft edge
 	std::string imageFile;             // Infinite: an equirectangular image (empty: a constant colour)
+	bool physicalSky = false;          // Infinite: imageFile is the generated sky of `sky` (scene_sky.h)
+	SkyParams sky;
 };
 
 struct Camera {

@@ -490,12 +490,50 @@ void SceneBuilderWidget::inspectLight(QFormLayout *f, int i) {
 		addVec3(f, tr("Towards"), [lt]() { return lt() ? &lt()->target : nullptr; }, 0.25);
 	}
 	if (l.kind == LightKind::Infinite) {
-		addFile(f, tr("Sky image"), [lt]() { return lt() ? &lt()->imageFile : nullptr; }, tr("Images (*.exr *.hdr *.png *.jpg *.jpeg)"));
-		auto *hint = new QLabel(tr("Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama."));
-		hint->setWordWrap(true);
-		f->addRow(hint);
+		// Sun & sky: a clear sky for a time of day. Its picture and the scene's Sun are made from these settings (scene_sky.h).
+		auto *physical = new QCheckBox(tr("Sun && sky (a clear sky for a time of day)"));
+		physical->setChecked(l.physicalSky);
+		connect(physical, &QCheckBox::toggled, this, [this, i](bool on) {
+			if (m_loading || i >= static_cast<int>(m_doc.lights.size())) return;
+			edit(QString(), [&]() {
+				Light &sky = m_doc.lights[i];
+				sky.physicalSky = on;
+				if (on) sky.intensity = 1.0;   // the generated sky is in real proportions: brightness 1 is a daylight scene
+				else sky.imageFile.clear();
+			});
+			rebuildList();
+			QTimer::singleShot(0, this, [this]() { rebuildInspector(); });
+		});
+		f->addRow(physical);
+		if (l.physicalSky) {
+			auto *time = new QComboBox;
+			time->addItem(tr("Time of day..."), -1.0);
+			const std::pair<const char *, double> times[] = {{QT_TR_NOOP("Sunrise"), 4.0}, {QT_TR_NOOP("Morning"), 25.0}, {QT_TR_NOOP("Noon"), 70.0},
+			                                                  {QT_TR_NOOP("Afternoon"), 40.0}, {QT_TR_NOOP("Sunset"), 3.0}};
+			for (const auto &t : times) time->addItem(tr(t.first), t.second);
+			connect(time, QOverload<int>::of(&QComboBox::activated), this, [this, i, time](int idx) {
+				const double height = time->itemData(idx).toDouble();
+				if (m_loading || height < 0.0 || i >= static_cast<int>(m_doc.lights.size())) return;
+				edit(QString(), [&]() { m_doc.lights[i].sky.sunElevation = height; });
+				QTimer::singleShot(0, this, [this]() { rebuildInspector(); });
+			});
+			f->addRow(tr("Preset"), time);
+			addNum(f, tr("Sun height"), [lt]() { return lt() ? &lt()->sky.sunElevation : nullptr; }, 0.5, 90, 1, 1, QString::fromUtf8(" \xC2\xB0"));
+			addNum(f, tr("Sun direction"), [lt]() { return lt() ? &lt()->sky.sunAzimuth : nullptr; }, 0, 360, 5, 0, QString::fromUtf8(" \xC2\xB0"));
+			addNum(f, tr("Haze"), [lt]() { return lt() ? &lt()->sky.turbidity : nullptr; }, 1.7, 10, 0.1, 1);
+			addNum(f, tr("Ground brightness"), [lt]() { return lt() ? &lt()->sky.groundAlbedo : nullptr; }, 0, 1, 0.05, 2);
+			auto *hint = new QLabel(tr("The sky picture and the Sun light are made from these settings; change the sun here rather than moving the Sun light. Direction 0 is "
+			                           "towards +X, 90 away from the starting camera, 180 towards -X, 270 behind it. Brightness 1 is a daylight scene."));
+			hint->setWordWrap(true);
+			f->addRow(hint);
+		} else {
+			addFile(f, tr("Sky image"), [lt]() { return lt() ? &lt()->imageFile : nullptr; }, tr("Images (*.exr *.hdr *.png *.jpg *.jpeg)"));
+			auto *hint = new QLabel(tr("Leave the image empty for a plain colour sky. An image is an equirectangular (lat-long) panorama."));
+			hint->setWordWrap(true);
+			f->addRow(hint);
+		}
 	}
-	if (l.kind != LightKind::Infinite || l.imageFile.empty()) addColor(f, tr("Colour"), [lt]() { return lt() ? &lt()->color : nullptr; });
+	if (l.kind != LightKind::Infinite || (l.imageFile.empty() && !l.physicalSky)) addColor(f, tr("Colour"), [lt]() { return lt() ? &lt()->color : nullptr; });
 	addNum(f, l.kind == LightKind::Point || l.kind == LightKind::Spot ? tr("Strength") : tr("Brightness"), [lt]() { return lt() ? &lt()->intensity : nullptr; }, 0, 100000, 0.5, 2);
 }
 

@@ -28,6 +28,7 @@
 #include <QScrollArea>
 #include <QScrollBar>
 #include <QSlider>
+#include <QDoubleSpinBox>
 #include <QSpinBox>
 #include <QVBoxLayout>
 #include <QWheelEvent>
@@ -109,6 +110,11 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			const scene_doc::Float3 b1 = sb->document().objects[2].position;
 			check(b1.x != b0.x && b1.z != b0.z && b1.y == b0.y, "on the floor in both X and Z, not locked to one axis by an arrow");
 			check(sb->undo(), "undo");
+			// ...and so is a press anywhere on the body of the selected object, over the inner part of an arrow: only the outer part of an arrow is an axis drag.
+			for (int axis = 0; axis < 3; ++axis) {
+				check(sb->dragInnerArrow3dForTest(2, axis, 0.3, QPointF(60, 40)), QString("a press on the inner part of the %1 arrow, on the object, moves it freely on the floor").arg(names[axis]));
+				check(sb->undo(), "undo");
+			}
 		}
 		// The tool buttons follow what can be turned: a light or the camera has only Move, so Rotate and Scale are greyed and Move shows pressed.
 		{
@@ -251,6 +257,56 @@ void MainWindow::selfTestShapes(SceneBuilderWidget *sb, const std::function<void
 		check(allUndone && sb->document().objects.size() == before, "undo removes them one by one");
 		for (size_t n = 0; n < added; ++n) sb->redo();
 		for (size_t n = 0; n < added; ++n) sb->undo();
+	}
+	// Sun & sky: ticking it in the sky light's properties makes a sky picture (a real file) and a Sun that follows the settings; changing the sun height through the
+	// real spin box moves both; one undo takes it back; unticking drops the picture.
+	{
+		const size_t lightsBefore = sb->document().lights.size();
+		sb->selectLight(0);
+		QApplication::processEvents();
+		auto findBox = [sb]() {
+			QCheckBox *found = nullptr;
+			for (QCheckBox *c : sb->findChildren<QCheckBox *>())
+				if (c->text().startsWith(QStringLiteral("Sun && sky"))) found = c;   // (the && is how a literal & is written in a label)
+			return found;
+		};
+		QCheckBox *box = findBox();
+		check(box != nullptr, "the sky light's properties have a Sun & sky switch");
+		if (box) {
+			box->click();
+			QApplication::processEvents();
+			const scene_doc::Light &sky = sb->document().lights[0];
+			check(sky.physicalSky && QFileInfo::exists(QString::fromStdString(sky.imageFile)) && QFileInfo(QString::fromStdString(sky.imageFile)).size() > 1000,
+			      "ticking Sun & sky writes the sky picture: " + QString::fromStdString(sky.imageFile));
+			int suns = 0;
+			for (const scene_doc::Light &l : sb->document().lights) suns += l.kind == scene_doc::LightKind::Distant ? 1 : 0;
+			check(sb->document().lights.size() == lightsBefore + 1 && suns >= 1, "and adds a Sun light that follows it");
+			QDoubleSpinBox *height = nullptr;
+			for (QDoubleSpinBox *s : sb->findChildren<QDoubleSpinBox *>())
+				if (s->suffix().contains(QChar(0x00B0)) && std::fabs(s->value() - sb->document().lights[0].sky.sunElevation) < 1e-9 && s->maximum() == 90.0) height = s;
+			check(height != nullptr, "the sun height is a spin box in the properties");
+			if (height) {
+				height->setValue(10.0);
+				QApplication::processEvents();
+				const scene_doc::Light &moved = sb->document().lights[0];
+				const scene_doc::Light *sun = nullptr;
+				for (const scene_doc::Light &l : sb->document().lights)
+					if (l.kind == scene_doc::LightKind::Distant) sun = &l;
+				const double rise = sun ? (sun->position.y - sun->target.y) / 10.0 : -1.0;
+				check(moved.sky.sunElevation == 10.0 && moved.imageFile.find("e10.0") != std::string::npos && QFileInfo::exists(QString::fromStdString(moved.imageFile)),
+				      "changing the sun height makes the sky picture for it");
+				check(sun && std::fabs(rise - std::sin(10.0 * 3.14159265358979 / 180.0)) < 1e-6, "and the Sun light follows (it sits at that height)");
+				check(sb->undo() && sb->document().lights[0].sky.sunElevation == scene_doc::SkyParams().sunElevation && sb->document().lights[0].physicalSky, "one undo puts the sun height back");
+			}
+			box = findBox();
+			if (box) {
+				box->click();   // off again
+				QApplication::processEvents();
+				check(!sb->document().lights[0].physicalSky && sb->document().lights[0].imageFile.empty(), "unticking drops the generated picture");
+			}
+		}
+		while (sb->document().lights.size() > lightsBefore && sb->undo()) {}   // back to the starter's lights
+		sb->selectObject(1);
 	}
 	// The Preset list in a material's properties: choosing "Gold" in the real combo box makes the selected object a gold conductor, as one undo step.
 	{

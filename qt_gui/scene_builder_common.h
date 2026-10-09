@@ -5,6 +5,7 @@
 #include <QCoreApplication>
 #include <QKeySequence>
 #include <QObject>
+#include <QWidget>
 #include <QString>
 #include <QStringList>
 
@@ -15,6 +16,10 @@
 #include "../src/shared/scene_props.h"
 
 namespace scene_builder_ui {
+
+// The toolbar buttons are plain and close together, so a row of them fits (and wraps) in a narrow window: less side padding than the application's own button style.
+// (The vertical padding is the common one, so the height is too: only the width is tighter.)
+inline void compactStyle(QWidget *button) { button->setStyleSheet(QStringLiteral("padding: 6px 12px;")); }
 
 using scene_doc::LightKind;
 using scene_doc::MaterialKind;

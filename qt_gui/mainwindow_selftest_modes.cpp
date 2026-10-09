@@ -9,6 +9,9 @@
 #include "../src/shared/pbrt_asset_check.h"
 
 #include <QApplication>
+#include <QAbstractSpinBox>
+#include <QLineEdit>
+#include <QPushButton>
 #include <QMessageBox>
 #include <QCheckBox>
 #include <QComboBox>
@@ -38,6 +41,34 @@
 // The Scene Builder's "Add to scene list" checks: where the copy goes (never into a .app bundle), that it is in the scene list at once under its
 
 void MainWindow::runOptionsSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot) {
+	// Every button, drop-down, line edit and spin box is the same height (46px: a 40px box and a 3px margin above and below - see the QPushButton rule in
+	// mainwindow_style.cpp), on every tab. Looks at the visible ones; a control that sets its own height shows up here.
+	{
+		resize(1500, 1000);
+		show();
+		QStringList wrong;
+		int checked = 0;
+		for (int t = 0; t < m_tabWidget->count(); ++t) {
+			m_tabWidget->setCurrentIndex(t);
+			QApplication::processEvents();
+			for (QWidget *w : m_tabWidget->currentWidget()->findChildren<QWidget *>()) {
+				if (!w->isVisible()) continue;
+				QString kind;
+				if (qobject_cast<QPushButton *>(w)) kind = "button";
+				else if (qobject_cast<QComboBox *>(w)) kind = "drop-down";
+				else if (qobject_cast<QAbstractSpinBox *>(w)) kind = "spin box";
+				else if (qobject_cast<QLineEdit *>(w) && !qobject_cast<QAbstractSpinBox *>(w->parentWidget()) && !qobject_cast<QComboBox *>(w->parentWidget())) kind = "line edit";
+				else continue;
+				++checked;
+				if (w->height() != 46) {
+					const QString text = qobject_cast<QPushButton *>(w) ? qobject_cast<QPushButton *>(w)->text() : QString();
+					wrong << QString("%1 \"%2\" %3 (%4): %5px").arg(kind, text, w->objectName(), m_tabWidget->tabText(t)).arg(w->height());
+				}
+			}
+		}
+		log(QString("%1: %2 controls checked, every one 46px tall%3").arg(wrong.isEmpty() ? "ok" : "FAIL").arg(checked).arg(wrong.isEmpty() ? QString() : QString(" - not: ") + wrong.join("; ")));
+		if (!wrong.isEmpty()) { QApplication::exit(1); return; }
+	}
 	// The Render Options tab with Live Preview selected, large enough to read: which live controls does this platform show?
 	resize(1100, 1500);
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW

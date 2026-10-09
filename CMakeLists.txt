@@ -656,6 +656,13 @@ if(RT_BUILD_METAL)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "SEED_TEST_OK")
 
+    add_test(NAME metal_poc_sppm_gpu_falls_back
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_sppm_fallback_test.sh"
+            $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_sppm_gpu_falls_back PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "SPPM_FALLBACK_OK")
+
     # CPU vs Metal-GPU render-output parity sweep - see metal_cpu_gpu_
     # parity_check.cpp's own header comment for the full "why"/design.
     # Links cpu_renderer (for cpu_render_main, and for free: tinyexr/

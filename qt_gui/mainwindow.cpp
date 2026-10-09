@@ -1105,7 +1105,7 @@ void MainWindow::balanceActionButtons() {
 	int i = 0;
 	for (QPushButton *b : {m_renderButton, m_stopButton, m_pauseButton, m_abandonButton}) {
 		if (!b) return;
-		b->setStyleSheet(QStringLiteral("padding: 8px 8px;"));   // the usual 18 px each side is room a long translated label needs
+		b->setStyleSheet(QStringLiteral("padding-left: 8px; padding-right: 8px;"));   // the usual 18 px each side is room a long translated label needs (the height is the common one)
 		m_actionButtonLayout->setStretch(i++, (std::max)(1, b->sizeHint().width()));
 	}
 }
@@ -1287,7 +1287,6 @@ void MainWindow::setupUI() {
 	// Singles this out as the primary action in the stylesheet (2px accent
 	// border + bold), so it isn't visually tied with every other button.
 	m_renderButton->setObjectName("primaryAction");
-	m_renderButton->setMinimumHeight(50);
 	// The style's default 16px icon is dwarfed by a 50px-tall button with
 	// 13pt bold text; 20px sits correctly against the cap height.
 	m_renderButton->setIconSize(QSize(20, 20));
@@ -1306,7 +1305,6 @@ void MainWindow::setupUI() {
 	icon_tint::apply(m_stopButton, ":/icons/stop.svg",
 	                 icon_tint::Role::Danger, m_activeTheme.error);
 	m_stopButton->setObjectName("dangerAction");
-	m_stopButton->setMinimumHeight(50);
 	m_stopButton->setIconSize(QSize(20, 20));
 	m_stopButton->setEnabled(false);
 	m_stopButton->setToolTip(tr("Stop the running render and discard its output"));
@@ -1325,7 +1323,6 @@ void MainWindow::setupUI() {
 	m_pauseButton = new QPushButton(tr("&PAUSE RENDER"), this);
 	icon_tint::apply(m_pauseButton, ":/icons/pause.svg",
 	                 icon_tint::Role::Body, m_activeTheme.textBody);
-	m_pauseButton->setMinimumHeight(50);
 	m_pauseButton->setIconSize(QSize(20, 20));
 	m_pauseButton->setEnabled(false);
 	m_pauseButton->setToolTip(tr("Pause the running render in place - Resume continues from the exact same pixels"));
@@ -1341,7 +1338,6 @@ void MainWindow::setupUI() {
 	icon_tint::apply(m_abandonButton, ":/icons/skip_next.svg",
 	                 icon_tint::Role::Danger, m_activeTheme.error);
 	m_abandonButton->setObjectName("dangerAction");
-	m_abandonButton->setMinimumHeight(50);
 	m_abandonButton->setIconSize(QSize(20, 20));
 	m_abandonButton->setEnabled(false);
 	m_abandonButton->setToolTip(tr("Discard the running render's output and immediately start the next queued job"));
