@@ -183,6 +183,16 @@ inline void resolveHit(thread const KernelRes& R, thread PathState& P, thread Bo
         normal = shadingNormalFor(primId, result.triangle_barycentric_coord, normals, vertices);
         mat = triMaterials[primId];
     }
+    // pbrt MixMaterial (METAL_MAT_MIX): pick one of the two stored materials for THIS hit, the second with probability `amount`
+    // (kept in `roughness`), as pbrt-v4, OptiX and the CPU do. The pair sits in the shared float buffer at `bumpOffset`. The light id
+    // and sidedness of the mix itself carry over (a Mix has none of its own).
+    if (mat.materialType == METAL_MAT_MIX) {
+        device const TriangleMaterial* pair = (device const TriangleMaterial*)(rgbGridData + mat.bumpOffset);
+        const bool pickSecond = randFloat(rngState) < mat.roughness;
+        const int mixLightId = mat.lightId;
+        mat = pickSecond ? pair[1] : pair[0];
+        mat.lightId = mixLightId;
+    }
     // Raw (outward, unflipped) normal kept separately from here -
     // dielectric handling below needs to know which side of the
     // surface the ray is entering from (front vs back face) to

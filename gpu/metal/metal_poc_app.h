@@ -515,8 +515,10 @@ struct MetalPocApp {
         float3 sceneOffset;
         std::unordered_set<std::string> warnedUnsupportedMaterialKinds;
         std::unordered_map<std::string, int> measuredTableCache;   // resolved .bsdf path -> descriptor index in rgbGridData, or -1
+        std::unordered_map<const void*, TriangleMaterial> mixCache;   // a Mix material (by address) -> its mapped METAL_MAT_MIX entry, so each is stored once
     };
     TriangleMaterial mapPbrtMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth);
+    bool mapPbrtPerHitMix(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth, TriangleMaterial& out);
     TriangleMaterial mapPbrtDiffuseMaterial(const pbrt_flatten::Material& m, float sceneScale, float3 bboxCenter, float3 sceneOffset);
     // Area lights ("single quad, 2 triangles" shape only) - populates
     // `lights`, and the two out-params the very next phase
