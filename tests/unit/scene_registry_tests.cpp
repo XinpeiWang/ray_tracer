@@ -984,7 +984,10 @@ TEST(SceneNameTest, APbrtFileQualifierAppearsOnlyWhereItDisambiguates) {
 
 TEST(SceneNameTest, BuiltInNamesAreUniqueAndTheListedNameOfAFileIsNotItsRawStem) {
 	std::set<std::string> names;
-	for (const auto& s : get_scene_registry()) EXPECT_TRUE(names.insert(s.name).second || s.category == std::string(SceneCategories::CustomScenes)) << s.id << ": " << s.name;
+	// A name is free text for the scenes a user brings: two Scene Builder saves can share the default title "My scene", and any file found on disk is a Custom Scene.
+	for (const auto& s : get_scene_registry())
+		EXPECT_TRUE(names.insert(s.name).second || s.category == std::string(SceneCategories::CustomScenes) || s.category == std::string(SceneCategories::MyScenes))
+			<< s.id << ": " << s.name;
 	const SceneDescriptor* s = find_scene("chromatic-absorber");
 	if (!s) GTEST_SKIP() << "pbrt_scenes/ was not discovered - run from the repository root";
 	EXPECT_STREQ(s->name, "Chromatic Absorber");

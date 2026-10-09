@@ -487,7 +487,16 @@ TEST_F(ScanTree, UserSceneNumbersArePersistentAndIndependentOfFileNameOrder) {
 // process-wide registry the other tests count is left alone.
 // ---------------------------------------------------------------------------
 
+// appendOne() also records the scene's file in the process-wide pbrt_scene_registry::paths(), keyed by its id. These tests list scenes with ids like "K1" and "M1", which are
+// real scenes' ids too (K1 is the Barcelona Pavilion), so without putting paths() back the CPU-vs-GPU and gallery tests that run later in the same process resolve those
+// ids to a file that does not exist ("cannot open scene file: scenes/made-in-builder.pbrt").
+struct RestorePaths {
+	std::map<std::string, std::string> saved = pbrt_scene_registry::paths();
+	~RestorePaths() { pbrt_scene_registry::paths() = saved; }
+};
+
 TEST(UserSceneRegistry, AUserSceneGetsItsPersistentIdAndLeavesTheSequentialNumberingAlone) {
+	RestorePaths restorePaths;
 	const char* tmp = std::getenv("TEMP");
 	const std::filesystem::path dir = std::filesystem::path(tmp ? tmp : ".") / "registry_user_scene_test";
 	std::filesystem::create_directories(dir);
@@ -529,6 +538,7 @@ TEST(UserSceneRegistry, AUserSceneGetsItsPersistentIdAndLeavesTheSequentialNumbe
 }
 
 TEST(UserSceneRegistry, ASceneBuilderTitleAlsoMakesItAMyScenesScene) {
+	RestorePaths restorePaths;
 	std::vector<SceneDescriptor> local;
 	std::map<char, int> nextNumber;
 	std::set<std::string> takenSlugs;
