@@ -207,6 +207,12 @@ bool MetalPocApp::buildTriangleAS(GpuBuildState& s) {
     // hit could otherwise get routed through the SAME table slot the
     // sphere's own intersection function occupies.
     geomDesc.opaque = YES;
+    // A scene with an alpha-cutout mask: these triangles are tested by alphaTriangleIntersectionFunction (function table slot 3), which
+    // rejects the hit where the mask says "transparent". Only then; otherwise the hardware result is taken directly, as before.
+    if (havePbrtAlphaMasks) {
+        geomDesc.opaque = NO;
+        geomDesc.intersectionFunctionTableOffset = 3;
+    }
 
     MTLPrimitiveAccelerationStructureDescriptor* primDesc =
         [MTLPrimitiveAccelerationStructureDescriptor descriptor];

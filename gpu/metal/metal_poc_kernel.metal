@@ -135,7 +135,13 @@ kernel void primaryRayKernel(
     // (spheres/disks/cylinders), so tell the traversal so: no opacity checks, no curve/motion paths. Measured on an
     // M2: A1 1.54 s -> 1.27 s, B2 1.84 s -> 1.55 s, images unchanged. (The shadow-ray intersector copies this one.)
     isect.assume_geometry_type(geometry_type::triangle | geometry_type::bounding_box);
+#ifdef METAL_ALPHA_MASKS
+    // A scene with an alpha-cutout mask (set when the library is compiled, see dsCompileLibrary): the main triangles are non-opaque and
+    // alphaTriangleIntersectionFunction decides each hit, so the geometry's own opacity flags must be honoured.
+    isect.force_opacity(forced_opacity::none);
+#else
     isect.force_opacity(forced_opacity::opaque);
+#endif
 
     // Everything the kernel is bound to, in one bundle for the functions below (metal_poc_kernel_state.metal).
     const KernelRes R{earthTexture, goniometricTexture, pbrtEnvTexture, pbrtGoniometricTexture, pbrtProjectionTexture, pbrtAreaLightTexture, pbrtDiffuseTexture, pbrtTransmitTexture, accelStructure, &uniforms, triMaterials, vertices, sphereMaterials, spheres, functionTable, normals, uvs, lights, suzanneNormals, suzanneMaterials, instanceTransforms, disks, diskMaterials, pointLights, directionalLights, projectionLights, goniometricLights, envMarginalCDF, envConditionalCDF, ggxEnergyTable, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, lensElements, exitPupilBounds, cylinders, cylinderMaterials, cloudMediums, rgbGridMediums, rgbGridData, isect};

@@ -1078,7 +1078,7 @@ per-`MaterialKind` behavior.)
   out rather than rendering as solid quads even before this fix, via the
   barycentric UV fallback (small enough triangles that it varied usefully
   across them), so this closes a latent accuracy gap rather than a visible
-  regression.
+  regression. **Metal (2026-10-09):** the mask is read too (`gpu_scene_textures::decodeAlphaMask`, one float per texel in the shared float buffer) and tested by `alphaTriangleIntersectionFunction`, a triangle intersection function the main triangle geometry is routed through only when the scene has a mask (the shader library is then compiled with `METAL_ALPHA_MASKS`, so every other scene is unchanged). Same sampling as the CPU (nearest texel, UV clamped, V flipped) and the same ray-hash stochastic test. `pbrt_scenes/alpha-cutout.pbrt` and the `metal_poc_alpha_cutout` test cover it; instanced meshes and a mix's sub-materials do not get a mask.
 
 - A `Texture "imagemap"`'s own `"string encoding"` / `"string wrap"` /
   `"bool invert"` params (previously never parsed at all — every 8-bit

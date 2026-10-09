@@ -475,6 +475,11 @@ struct TriangleMaterial {
     int32_t bumpHeight = 0;
     float bumpScale = 0.0f;
     int32_t bumpIsNormalMap = 0;   // 1: the image at bumpOffset is an RGB tangent-space normal map (3 floats per texel, linear), not a height map
+    // Alpha cutout (a pbrt Shape's "alpha" mask): one float per texel (byte / 255, row 0 = top) at alphaOffset in the shared float buffer,
+    // sampled at a triangle hit's (u, v) by alphaTriangleIntersectionFunction. alphaWidth == 0 means none.
+    int32_t alphaOffset = 0;
+    int32_t alphaWidth = 0;
+    int32_t alphaHeight = 0;
 };
 
 // Mirrors metal_poc_types.metal's GpuCloudMedium byte-for-byte (E2,

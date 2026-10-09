@@ -20,6 +20,7 @@ This page is the overview. The detail lives in:
 | subsurface (tabulated BSSRDF) | Y | Y | Y | - (the loader says so and uses a grey diffuse) |
 | measured (`.bsdf`) | Y | Y | Y | Y (measured-brdf-showroom: means within 1% of the CPU) |
 | dispersion | Y | approx (3 wavelengths) | Y | approx (3 wavelengths, like OptiX recursive: B23's colour fan matches the CPU's `--spectral` render; each path picks one of three channels at its first dispersive hit) |
+| alpha cutout (a Shape's `"alpha"` / `"texture alpha"` mask, pbrt-v4's stochastic test) | Y | Y | Y | Y for ordinary (non-instanced) triangle meshes: an intersection function tests the mask (alpha-cutout: a square with a round hole and notches matches the CPU's picture; means within 3%). Not for an instanced mesh, and not for a mix's sub-material |
 | **Textures**: image, checker, marble, fbm, windy, wrinkled, dots, bilerp | Y | Y | Y | Y |
 | **Lights**: point, spot, distant, goniometric, projection, area (all samplable shapes), infinite (constant and image), portal | Y | Y | Y | Y |
 | **Media**: homogeneous (incl. per-channel), cloud, RGB grid | Y | Y | Y | homogeneous and RGB grid Y (rgbgrid-medium matches the CPU); cloud Y (E2 cloud-medium-scene and E5 cloud-medium: the body matches the CPU to about 2%; the density, including the wispiness warp, is checked against the CPU's by a shader test; OptiX's density still has no wispiness warp. Open: in E5 the top quarter of the cloud, viewed from below, comes out darker on Metal than on the CPU (the body agrees to about 2%)) |
