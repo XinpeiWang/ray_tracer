@@ -81,6 +81,48 @@ void testGpuCloudDensity(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCom
     }
 }
 
+// The tabulated BSSRDF profile (metal_poc_bssrdf.metal) against the CPU's TabulatedBSSRDF (src/shared/bssrdf.h) on the same table: Sr, PDF_Sr and
+// SampleSr at random albedos, extinctions, radii and uniform samples. The table is built here by ComputeBeamDiffusionBSSRDF and laid out as the loader
+// lays it out (MetalPocApp::bssrdfTableOffset).
+void testBssrdfProfile(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
+    BSSRDFTable table(100, 64);
+    ComputeBeamDiffusionBSSRDF(0.0, 1.33, &table);
+    std::vector<float> flat;
+    flat.push_back((float)table.n_rho);
+    flat.push_back((float)table.n_radius);
+    for (double v : table.rho_samples) flat.push_back((float)v);
+    for (double v : table.radius_samples) flat.push_back((float)v);
+    for (double v : table.profile) flat.push_back((float)v);
+    for (double v : table.profile_cdf) flat.push_back((float)v);
+
+    std::mt19937 rng(8675309);
+    std::uniform_real_distribution<double> rhoDist(0.2, 0.999), sigmaDist(0.5, 20.0), radiusOpt(0.01, 6.0), uDist(0.02, 0.98);
+    const int n = 90;
+    std::vector<simd::float4> cases(n);
+    std::vector<double> expected(n);
+    for (int i = 0; i < n; ++i) {
+        const double rho = rhoDist(rng), sigmaT = sigmaDist(rng);
+        const double sigmaS = rho * sigmaT, sigmaA = sigmaT - sigmaS;
+        TabulatedBSSRDF cpu(&sigmaA, &sigmaS, &table, 1);
+        const int mode = i / 30;   // 0: Sr, 1: PDF_Sr, 2: SampleSr
+        double x;
+        if (mode < 2) { x = radiusOpt(rng) / sigmaT; expected[i] = mode == 0 ? cpu.sr(0, x) : cpu.pdf_sr(0, x); }
+        else          { x = (i >= 80) ? 0.999 : uDist(rng); expected[i] = cpu.sample_sr(0, x); }   // the last ten: u = 0.999, which the probe walk uses for its maximum radius
+        cases[i] = simd::float4{(float)sigmaT, (float)rho, (float)x, (float)mode};
+    }
+    id<MTLBuffer> tableBuf = makeBuffer(device, flat.data(), flat.size() * sizeof(float));
+    id<MTLBuffer> caseBuf = makeBuffer(device, cases.data(), n * sizeof(simd::float4));
+    id<MTLBuffer> outBuf = makeOutputBuffer(device, n * sizeof(float));
+    if (runKernel(device, library, queue, @"test_bssrdfProfile", @[tableBuf, caseBuf, outBuf], nil, n)) {
+        float* out = (float*)outBuf.contents;
+        for (int i = 0; i < n; ++i) {
+            char label[128];
+            snprintf(label, sizeof(label), "bssrdf %s matches the CPU's TabulatedBSSRDF (case %d)", i < 30 ? "Sr" : (i < 60 ? "PDF_Sr" : "SampleSr"), i);
+            expectNear(label, out[i], expected[i], std::max(1e-5, std::fabs(expected[i]) * 5e-3));
+        }
+    }
+}
+
 // gpuRgbGridTrilinear() numeric cross-check against
 // SampledGrid<double>::lookup(px,py,pz) (src/shared/sampled_grid.h) -
 // see test_kernels.metal's own comment on why only genuinely INTERIOR

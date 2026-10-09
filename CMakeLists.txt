@@ -669,6 +669,16 @@ if(RT_BUILD_METAL)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "FURNACE_TEST_OK")
 
+    # pbrt's SubsurfaceMaterial (a tabulated BSSRDF) under Metal: metal_poc_subsurface_check.cpp compares four window means of a render of
+    # pbrt_scenes/subsurface-ball.pbrt with what the CPU renderer produces (metal_poc_subsurface_test.sh drives it).
+    add_executable(metal_poc_subsurface_check gpu/metal/metal_poc_subsurface_check.cpp)
+    add_test(NAME metal_poc_subsurface
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_subsurface_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_subsurface_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_subsurface PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "SUBSURFACE_TEST_OK")
+
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
             $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")

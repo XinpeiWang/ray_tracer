@@ -135,9 +135,9 @@ kernel void primaryRayKernel(
     // (spheres/disks/cylinders), so tell the traversal so: no opacity checks, no curve/motion paths. Measured on an
     // M2: A1 1.54 s -> 1.27 s, B2 1.84 s -> 1.55 s, images unchanged. (The shadow-ray intersector copies this one.)
     isect.assume_geometry_type(geometry_type::triangle | geometry_type::bounding_box);
-#ifdef METAL_ALPHA_MASKS
+#ifdef METAL_TRIANGLE_ANY_HIT
     // A scene with an alpha-cutout mask (set when the library is compiled, see dsCompileLibrary): the main triangles are non-opaque and
-    // alphaTriangleIntersectionFunction decides each hit, so the geometry's own opacity flags must be honoured.
+    // triangleAnyHitFunction decides each hit, so the geometry's own opacity flags must be honoured.
     isect.force_opacity(forced_opacity::none);
 #else
     isect.force_opacity(forced_opacity::opaque);

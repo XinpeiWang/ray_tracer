@@ -76,6 +76,7 @@
 // BxDF-family headers.
 #include "../../src/shared/noise.h"
 #include "../../src/shared/cloud_medium.h"
+#include "../../src/shared/bssrdf.h"
 #include "../../src/shared/sampled_grid.h"
 
 using simd::float3;
@@ -317,6 +318,7 @@ void testShadeThinDielectric(id<MTLDevice> device, id<MTLLibrary> library, id<MT
 // phase-function checks (Perlin noise, cloud/RGB-grid density, HG phase).
 void testPerlinNoise3D(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testGpuCloudDensity(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
+void testBssrdfProfile(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testGpuRgbGridTrilinear(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testSampleHenyeyGreensteinProperties(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);
 void testHenyeyGreensteinPhase(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue);

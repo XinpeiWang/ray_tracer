@@ -1222,7 +1222,7 @@ SphereIntersectionResult sphereIntersectionFunction(
     // so it's unaffected by this check.
     {
         uint mt = sphereMaterials[primitiveIndex].materialType;
-        if (payload.isShadowRay && (mt == 29u || mt == 30u)) return result;
+        if (payload.isShadowRay && (mt == 29u || mt == 30u || mt == METAL_MAT_SUBSURFACE)) return result;   // (a shadow ray passes through a medium trigger sphere or a subsurface surface)
         // A glass sphere that bounds a medium is NOT in this list: like every pbrt-v4 surface with a material it is opaque to NEE
         // shadow rays (VolPathIntegrator::SampleLd), so a scatter vertex inside it cannot see a light through its own shell and the fog is
         // lit only along specular chains - the same rule the CPU and both OptiX backends follow (commit 2f8dc3d). A boundary that should
