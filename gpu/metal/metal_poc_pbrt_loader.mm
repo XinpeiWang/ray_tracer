@@ -735,7 +735,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
         // over RGB (the shader takes one scalar) and divided by sceneScale
         // for the same reason loadPbrtMedium() does it for the camera fog:
         // optical depth = sigma_t * distance must survive the rescale.
-        // Other medium types (cloud/rgbgrid/...) and a real surface material
+        // Other medium types (uniformgrid/nanovdb/...) and a real surface material
         // on a medium-bounded sphere are not covered here.
         const bool interfaceSphere = s.areaLight < 0 && s.material >= 0 && s.material < (int)scene.materials.size() &&
             scene.materials[s.material].kind == pbrt_flatten::MaterialKind::Interface;
@@ -818,6 +818,36 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             mat.materialType = METAL_MAT_MEDIUM_RGB_GRID;
             mat.lightId = -1;
             mat.conductorEta = PackedFloat3{(float)gridIdx, 0.0f, 0.0f};
+        } else if (interfaceSphere && s.medium >= 0 && s.medium < (int)scene.media.size() &&
+                   scene.media[s.medium].type == "cloud") {
+            // pbrt "cloud" medium (E5): procedural Perlin-noise density inside the interface sphere, rendered by
+            // shadeCloudMediumSphere (materialType 29; the sphere is its trigger volume, the cloud's own medium-space box
+            // [p0,p1] clips the actual medium). Same field mapping as OptiX's pbrt_gpu_builder.h: pure scattering with the
+            // luminance of sigma_s (sigma_a = 0), phase g in `roughness`, albedo 1. The world->medium map and sigma are
+            // rescaled by sceneScale exactly as for the rgbgrid medium above (optical depth must survive the rescale).
+            const pbrt_flatten::Medium& cm = scene.media[s.medium];
+            const float invScale = 1.0f / sceneScale;
+            GpuCloudMedium cloud{};
+            for (int i = 0; i < 3; ++i) { cloud.boundsMin[i] = (float)cm.p0[i]; cloud.boundsMax[i] = (float)cm.p1[i]; }
+            const float3 cOff = -toWorld(float3{0.0f, 0.0f, 0.0f}) * invScale;
+            for (int r = 0; r < 3; ++r) {
+                for (int c = 0; c < 3; ++c) cloud.worldToMediumMat[r * 3 + c] = (float)cm.toMediumMat[r * 3 + c] * invScale;
+                cloud.worldToMediumTranslate[r] = (float)cm.toMediumTranslate[r]
+                    + (float)(cm.toMediumMat[r * 3 + 0] * cOff.x + cm.toMediumMat[r * 3 + 1] * cOff.y + cm.toMediumMat[r * 3 + 2] * cOff.z);
+            }
+            cloud.sigmaA = 0.0f;
+            cloud.sigmaS = (float)(0.2126 * cm.sigma_s[0] + 0.7152 * cm.sigma_s[1] + 0.0722 * cm.sigma_s[2]) * invScale;
+            cloud.density = (float)cm.density;
+            cloud.wispiness = (float)cm.wispiness;
+            cloud.frequency = (float)cm.frequency;
+            const int cloudIdx = (int)cloudMediums.size();
+            cloudMediums.push_back(cloud);
+            mat = TriangleMaterial{};
+            mat.color = PackedFloat3{1.0f, 1.0f, 1.0f};
+            mat.materialType = METAL_MAT_MEDIUM_HETEROGENEOUS;
+            mat.lightId = -1;
+            mat.roughness = (float)cm.g;
+            mat.conductorEta = PackedFloat3{(float)cloudIdx, 0.0f, 0.0f};
         } else if (interfaceSphere) {
             // An interface sphere whose medium this loader cannot represent (rgbgrid/
             // nanovdb/cloud/..., or no medium at all). The gray-Lambertian fallback

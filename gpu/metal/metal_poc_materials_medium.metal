@@ -236,7 +236,8 @@ inline void shadeCloudMediumSphere(
     thread float3& rayDir, thread float3& rayOrigin,
     thread float3& throughput, thread float3& radiance,
     thread float& bsdfPdf, thread bool& specularBounce, thread uint& rngState,
-    thread bool& scatteredInMedium, thread bool& passedThroughMediumSphere) {
+    thread bool& scatteredInMedium, thread bool& passedThroughMediumSphere,
+    thread bool& envLightSampled) {
     // E2/section 178: heterogeneous, procedural Perlin-
     // noise cloud - delta tracking (null-collision free-
     // path sampling, pbrt-v4 SampleT_maj) through the
@@ -260,6 +261,11 @@ inline void shadeCloudMediumSphere(
         cloud.worldToMediumMat[6]*rayDir.x + cloud.worldToMediumMat[7]*rayDir.y + cloud.worldToMediumMat[8]*rayDir.z);
     float segMin, segMax;
     bool hasSeg = cloudAabbSlabIntersect(cloud, mo, md, segMin, segMax);
+    // A box that ends at or behind the ray origin (a ray that just left it and is still inside the loose trigger sphere) is a
+    // miss: its zero-length (or negative) "segment" made the ray stand still, or step backwards into the box, and re-enter this
+    // shader until its depth budget ran out - dark rows along the cloud's edge where almost no ray scatters. Same guard as the
+    // grid medium's.
+    hasSeg = hasSeg && segMax > 1e-5;
     float sigmaMaj = cloud.sigmaA + cloud.sigmaS;
 
     bool didScatter = false;
@@ -430,7 +436,20 @@ inline void shadeCloudMediumSphere(
             float bgSegMin, bgSegMax;
             bool bgHasSeg = cloudAabbSlabIntersect(cloud, bgMo, bgMd, bgSegMin, bgSegMax);
             float remainingDist = (bgHasSeg && bgSegMax > 0.0) ? bgSegMax : 0.0;
-            float selfTransmittance = exp(-sigmaMaj * remainingDist);
+            // Ratio tracking through the rest of the cloud (CPU's src/shared/ratio_tracking.h estimator): every majorant
+            // collision multiplies by the probability of a NULL collision, 1 - density. The old exp(-majorant * distance)
+            // treated the whole box as maximally dense, which for a cloud of any real optical depth (a pbrt scene's
+            // sigma_s 0.6 over a 160-unit box) made every environment-light NEE ray black.
+            float selfTransmittance = 1.0;
+            if (remainingDist > 0.0 && sigmaMaj > 0.0) {
+                float rt = max(bgSegMin, 0.0);
+                for (int riter = 0; riter < 256 && selfTransmittance > 1e-3; ++riter) {
+                    rt += -log(max(1.0 - randFloat(rngState), 1e-8)) / sigmaMaj;
+                    if (rt >= remainingDist) break;
+                    float3 rp = bgMo + rt * bgMd;
+                    selfTransmittance *= 1.0 - gpuCloudDensity(cloud, rp.x, rp.y, rp.z);
+                }
+            }
 
             ray bgShadowRay;
             bgShadowRay.origin = mediumPoint;
@@ -444,6 +463,10 @@ inline void shadeCloudMediumSphere(
             }
         }
 
+        // The environment light was just sampled directly (the NEE ray above, drawn from the same phase function as the
+        // continuation ray), so the continuation ray escaping to the constant environment must not add it a second time;
+        // shadeEscapedRay reads this, and a surface hit clears it.
+        envLightSampled = (uniforms.pbrtHasConstantEnvLight != 0u);
         float3 newDir = sampleHenyeyGreenstein(wo, mediumMat.roughness, rngState);
         throughput *= float3(mediumMat.color);
         bsdfPdf = henyeyGreensteinPhase(dot(wo, newDir), mediumMat.roughness);

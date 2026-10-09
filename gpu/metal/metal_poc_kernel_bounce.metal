@@ -226,6 +226,7 @@ inline bool traceBounce(thread const KernelRes& R, thread PathState& P) {
             shadeEscapedRay(R, P, B);
             return false;
         }
+        envLightSampled = false;   // a surface vertex: the environment is no longer sampled for this ray
         resolveHit(R, P, B);
         perturbShadingNormal(R, P, B);
         computeAlbedo(R, P, B);

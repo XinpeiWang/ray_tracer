@@ -65,7 +65,8 @@ inline void shadeEscapedRay(thread const KernelRes& R, thread PathState& P, thre
             // no NEE strategy for this light to double-count
             // against, since none of this shader's material-
             // shading functions sample it explicitly yet.
-            radiance += throughput * float3(uniforms.pbrtEnvColor);
+            // (A ray leaving a cloud scatter already had this light sampled by that scatter's NEE: not counted twice.)
+            if (!envLightSampled) radiance += throughput * float3(uniforms.pbrtEnvColor);
         } else if (uniforms.isPbrtScene == 0u) {
             float skyT = 0.5 * (rayDir.y + 1.0);
             radiance += throughput * mix(skyBottom, skyTop, skyT);
