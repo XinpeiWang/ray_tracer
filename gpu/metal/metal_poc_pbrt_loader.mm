@@ -16,6 +16,7 @@
 #include "../../src/shared/curve_tessellate.h"
 #include "../../src/shared/gpu_tessellate.h"
 #include "../../src/shared/gpu_scene_frame.h"
+#include "../../src/shared/gpu_scene_textures.h"   // isGrayscaleRgb8
 #include "../../src/shared/srgb_decode.h"
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
 #include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
@@ -371,13 +372,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
                                                           (int)bytes.size(), &w, &h, &ch, 3);
                 if (px && w > 0 && h > 0) {
                     // The CPU classifies a displacement image by content: grayscale = height map (bump), otherwise a normal map.
-                    int maxDiff = 0;
-                    for (int sy = 0; sy < 8; ++sy)
-                        for (int sx = 0; sx < 8; ++sx) {
-                            const unsigned char* p = px + ((size_t)((sy * h) / 8) * w + (sx * w) / 8) * 3;
-                            maxDiff = std::max({maxDiff, std::abs((int)p[0] - (int)p[1]), std::abs((int)p[1] - (int)p[2]), std::abs((int)p[0] - (int)p[2])});
-                        }
-                    if (maxDiff <= 10) {
+                    if (gpu_scene_textures::isGrayscaleRgb8(px, w, h)) {
                         entry = {(int)rgbGridData.size(), w, h, 0};
                         rgbGridData.reserve(rgbGridData.size() + (size_t)w * h);
                         for (size_t k = 0; k < (size_t)w * h; ++k) rgbGridData.push_back(srgb_decode::byteToLinear(px[k * 3]));   // pbrt decodes an 8-bit image as sRGB
