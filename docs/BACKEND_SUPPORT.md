@@ -8,7 +8,7 @@ This page is the overview. The detail lives in:
 * [`FEATURE_INVENTORY.md`](FEATURE_INVENTORY.md) - the CPU / OptiX survey, row by row (it has no Metal column; this page does).
 * [`METAL_BACKEND.md`](METAL_BACKEND.md) and [`METAL_PARITY_STATUS.md`](METAL_PARITY_STATUS.md) - how Metal works, and how closely it matches the CPU.
 
-`Y` supported, `approx` supported with a documented approximation, `-` not supported (the scene still loads; the loader warns and falls back), `CPU` means the request is moved to the CPU with a warning. A `†` marks a Metal entry read from the source and the Metal docs rather than from a test run - the Mac session should confirm it.
+`Y` supported, `approx` supported with a documented approximation, `-` not supported (the scene still loads; the loader warns and falls back), `CPU` means the request is moved to the CPU with a warning. A `†` marks a Metal entry read from the source and the Metal docs rather than from a test run; the Mac session ran each of them on 2026-10-08 (the notes below say what was seen), so none is marked any more.
 
 | Area | CPU | OptiX recursive | OptiX wavefront | Metal |
 |---|:-:|:-:|:-:|:-:|
@@ -17,26 +17,26 @@ This page is the overview. The detail lives in:
 | cones, paraboloids | Y | - | - | Y (tessellated to triangles at load) |
 | instancing (`ObjectInstance`) | Y | Y | Y | Y (hardware instancing) |
 | **Materials**: diffuse, conductor, dielectric (smooth, rough, thin), diffuse transmission, coated diffuse / coated conductor, hair, principled, mix | Y | Y | Y | Y |
-| subsurface (tabulated BSSRDF) | Y | Y | Y | - † |
-| measured (`.bsdf`) | Y | Y | Y | Y † |
-| dispersion | Y | approx (3 wavelengths) | Y | - † |
+| subsurface (tabulated BSSRDF) | Y | Y | Y | - (the loader says so and uses a grey diffuse) |
+| measured (`.bsdf`) | Y | Y | Y | Y (measured-brdf-showroom: means within 1% of the CPU) |
+| dispersion | Y | approx (3 wavelengths) | Y | - (the shader has it, but the pbrt loader never selects it: B23 renders with no colour fan, the CPU's `--spectral` render has one) |
 | **Textures**: image, checker, marble, fbm, windy, wrinkled, dots, bilerp | Y | Y | Y | Y |
 | **Lights**: point, spot, distant, goniometric, projection, area (all samplable shapes), infinite (constant and image), portal | Y | Y | Y | Y |
-| **Media**: homogeneous (incl. per-channel), cloud, RGB grid | Y | Y | Y | Y (homogeneous, cloud, RGB grid †) |
-| uniform grid, NanoVDB | Y | grid Y, NanoVDB approx | grid Y, NanoVDB approx | - † |
+| **Media**: homogeneous (incl. per-channel), cloud, RGB grid | Y | Y | Y | homogeneous and RGB grid Y (rgbgrid-medium matches the CPU); **cloud: no** - a pbrt scene's cloud (E5 cloud-medium, cloud-medium-scene) renders without the cloud, a black disc where its sphere is; the same before the kernel split, and the parity sweep does not see it (the picture is mostly sky) |
+| uniform grid, NanoVDB | Y | grid Y, NanoVDB approx | grid Y, NanoVDB approx | - (their `interface` boundary material is not supported: grey diffuse, no medium) |
 | camera medium | Y | Y | Y | Y |
 | **Cameras**: perspective (+ depth of field), orthographic, spherical, realistic lens | Y | Y | Y | Y |
-| motion blur (camera, spheres) | Y | Y | Y | Y † |
-| motion blur (meshes, curves, patches, discs, cylinders) | Y | static | static | static † |
+| motion blur (camera, spheres) | Y | Y | Y | Y (cornell-camera-motion-blur, disk-cylinder-motion-blur: means within 1-4%) |
+| motion blur (meshes, curves, patches, discs, cylinders) | Y | static | static | static (object-motion-blur: the moving object blurs less than on the CPU) |
 | **Integrators**: path, volumetric path | Y | Y | Y | Y |
-| SPPM | Y | Y (own pipeline) | - | CPU |
+| SPPM | Y | Y (own pipeline) | - | CPU (`--sppm --gpu` warns and renders on the CPU; it used to stop with "OptiX is not available!") |
 | BDPT, MLT, random walk, AO, debug integrators | Y | CPU | CPU | CPU |
 | **Sampling options**: `--sampler`, `--lightsampler`, `--regularize`, `--spectral` | Y | ignored (warned) | partly (always-on spectral pipeline) | ignored (warned) |
 | adaptive sampling | Y | - | Live Preview only | Y (off unless asked) |
 | crop window, `--seed` (reproducible), firefly clamp, exposure, tone map | Y | Y | Y | Y |
 | **Denoising** (`--denoise`) | Intel Open Image Denoise (default path tracer; GUI installs it on request; `--denoise-guides` adds surface colour and normal) | OptiX AI denoiser | OptiX AI denoiser | Intel Open Image Denoise (colour only) |
 | **Render passes** (`--aovs`) | Y | Y (made on the CPU scene) | Y (same) | Y (same) |
-| **Live Preview** | - | - | Y (ReSTIR, SVGF, probe cache, NRC, upscaling, ...) | Y (plain frames + a display-only smoothing of new pixels) |
+| **Live Preview** | - | - | Y (ReSTIR, SVGF, probe cache, NRC, upscaling, ...) | Y (plain frames, more samples per frame once still, and two display-only aids: smoothing of new pixels, or AI denoise with Open Image Denoise) |
 | **Video** (`--video`) | Y | Y | Y | Y |
 
 ## How the GUI uses this
