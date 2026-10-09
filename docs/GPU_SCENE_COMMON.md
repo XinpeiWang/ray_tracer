@@ -112,3 +112,28 @@ Metal's loader refactors do not touch the shaders, so a seeded Metal render is *
 
 * Is mix on Metal meant to stay an approximation? (Per-hit mixing needs shader work; this proposal should not decide it.)
 * Should OptiX grow native cones and paraboloids, or take Metal's tessellation through the flag? That decides how big `TessellationCaps` is.
+
+## Windows session reply (2026-10-08)
+
+Agreed with the Mac review: the stage order below replaces the one in "How to do it safely", the shared names are the ones suggested (`tessellateForBackend`, `computeSceneFrame`), one header per stage, mix stays a per-backend decision (the IR carries (A, B, weight)), `resolveMixColor` stays OptiX-only, textures carry a first-use order, and Metal's visit order is kept.
+
+**The two open questions**
+
+* *Mix on Metal:* leave it as the load-time approximation. Per-hit mixing is shader work; this proposal does not decide it.
+* *Cones and paraboloids on OptiX:* take Metal's tessellation through the capability flag (`TessellationCaps::conesAndParaboloids()`), not native shapes. It was the cheaper answer and it is done: F14 (cone and paraboloid gallery) went from a documented known gap, with the shapes dropped, to passing the CPU-versus-GPU parity sweep on both OptiX renderers (mean 0.4311 vs 0.4292). `TessellationCaps` is four booleans: bilinear patches, curves, cones, paraboloids; Metal asks for all four, OptiX for the last two (its native patches and curve dicing stay).
+
+**Stage 0, Windows half: done**
+
+* `src/shared/gpu_tessellate.h`: `tessellateForBackend(FlatScene&, TessellationCaps, FiberTangents*)`. It is `tessellateUnsupportedShapes` from `metal_poc_pbrt_loader.mm` moved over with the numbers unchanged (`PackedFloat3` became `std::array<float, 3>`).
+* `src/shared/gpu_scene_frame.h`: `computeSceneFrame(const FlatScene&) -> Frame {scale, centre[3], offset[3], extent, ...}` with `toWorld()` and `fromWorld()`. The bounding box, the huge-ground-sphere rule, the `2 / extent` scale and the +60 X offset are `loadPbrtScene`'s arithmetic, in the same single-precision order.
+* CPU unit tests for both (`tests/unit/gpu_tessellate_tests.cpp`, `gpu_scene_frame_tests.cpp`): triangle counts per shape, a flat patch keeps its area exactly, a cone is within 1% of pi * r * slant, interface-material shapes are skipped, material and area-light ids carry over, the Cornell-box-sized frame, the ground-sphere rule, the empty scene.
+* OptiX uses `tessellateForBackend` for cones and paraboloids (`gpu/optix/scene_builder.cpp`).
+
+**Stage 0, Mac half: for the Mac session**
+
+The Metal loader still has its own copy of both. Replace them with calls to the shared ones and check that a seeded Metal render is byte-identical before and after:
+
+1. In `loadPbrtScene()`: `tessellateUnsupportedShapes(result.scene, pbrtTriangleFiberTangent)` becomes `gpu_tessellate::tessellateForBackend(result.scene, gpu_tessellate::TessellationCaps::all(), &tangents)` (copy `tangents` into `pbrtTriangleFiberTangent` as `PackedFloat3`, or change that map's value type to `std::array<float, 3>`), and delete the local `tessellateGrid`, `normalize3` and `tessellateUnsupportedShapes`.
+2. The bounding box / scale / centre / offset block becomes `const gpu_scene_frame::Frame frame = gpu_scene_frame::computeSceneFrame(scene);`; `sceneScale`, `bboxCenter` and `sceneOffset` are `frame.scale`, `frame.centre` and `frame.offset`, `toWorld` is `frame.toWorld(...)`, and the two `fprintf` lines can use `frame.extent`, `frame.fullExtent` and `frame.ignoredGiantSphere`. Live Preview's camera and position conversions use the same `Frame`.
+
+Two things I fixed on the way, both MSVC-only name lookups that clang accepts: a `using namespace scene_doc;` in a test made `detail` and `shapes_detail` ambiguous, so `scene_shapes.h`'s namespace is now `scene_shapes_detail`, and the shape headers and two library headers qualify `::detail` / `::shapes_detail`.

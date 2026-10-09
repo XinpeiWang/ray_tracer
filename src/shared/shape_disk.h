@@ -83,7 +83,7 @@ struct DiskShape {
 		// pbrt-v4 pError for disk: gamma(3) * |pHit.x|, gamma(3) * |pHit.y|, 0
 		// (z = height plane is exact; x,y accumulate rounding from t*rdx/rdy)
 		// Reference: Cylinder::InteractionFromIntersection, shapes.h -- gamma(3)*Abs(x,y,0)
-		T g3 = shapes_detail::gamma_fp<T>(3);
+		T g3 = ::shapes_detail::gamma_fp<T>(3);
 		ShapeHit<T> hit;
 		hit.t  = t_hit;
 		hit.nx = T(0); hit.ny = T(0); hit.nz = T(1);
@@ -153,7 +153,7 @@ struct DiskShape {
 	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
 					   T wi_dx, T wi_dy, T wi_dz) const {
 		// Intersect the wi ray with the disk and compute Jacobian
-		T wi_len = shapes_detail::len3(wi_dx, wi_dy, wi_dz);
+		T wi_len = ::shapes_detail::len3(wi_dx, wi_dy, wi_dz);
 		if (wi_len == T(0)) return T(0);
 		T wix = wi_dx/wi_len, wiy = wi_dy/wi_len, wiz = wi_dz/wi_len;
 		// Ray from ctx in direction wi
@@ -164,4 +164,4 @@ struct DiskShape {
 		                                 wix, wiy, wiz, hit->t, pdf_area());
 	}
 };
-
+

@@ -33,6 +33,7 @@
 #include "scene_registry.h"
 #include "disk_cylinder_hittable.h"
 #include "sphere_clipped_hittable.h"
+#include "cone_paraboloid_hittable.h"
 
 extern "C" {
 	#include "cpu_interface.h"
@@ -358,6 +359,24 @@ static int count_cpu_emissive_lights(const std::shared_ptr<hittable>& h) {
 		return std::dynamic_pointer_cast<diffuse_light>(c->get_material()) ? 1 : 0;
 	if (auto sc = std::dynamic_pointer_cast<sphere_clipped_hittable>(h))
 		return std::dynamic_pointer_cast<diffuse_light>(sc->get_material()) ? 1 : 0;
+	if (auto cn = std::dynamic_pointer_cast<cone_hittable>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(cn->get_material()) ? 1 : 0;
+	if (auto pb = std::dynamic_pointer_cast<paraboloid_hittable>(h))
+		return std::dynamic_pointer_cast<diffuse_light>(pb->get_material()) ? 1 : 0;
+	return 0;
+}
+
+// How many of those lights are cones or paraboloids: OptiX has no such shapes, so it tessellates each into triangles (src/shared/gpu_tessellate.h) and every emissive
+// triangle is a light of its own - one CPU light can be many GPU lights.
+static int count_cpu_tessellated_lights(const std::shared_ptr<hittable>& h) {
+	if (!h) return 0;
+	if (auto hl = std::dynamic_pointer_cast<hittable_list>(h)) {
+		int n = 0;
+		for (const auto& obj : hl->objects) n += count_cpu_tessellated_lights(obj);
+		return n;
+	}
+	if (auto cn = std::dynamic_pointer_cast<cone_hittable>(h)) return std::dynamic_pointer_cast<diffuse_light>(cn->get_material()) ? 1 : 0;
+	if (auto pb = std::dynamic_pointer_cast<paraboloid_hittable>(h)) return std::dynamic_pointer_cast<diffuse_light>(pb->get_material()) ? 1 : 0;
 	return 0;
 }
 
@@ -436,10 +455,14 @@ TEST_P(CpuGpuLightParityTest, LightCountMatches) {
 			<< s->name << " (id " << s->id << "): CPU scene has " << cpuLights
 			<< " emissive light(s), GPU scene has only " << gpuLights
 			<< " - more than a parallelogram-pair merge can explain.";
-		EXPECT_LE(gpuLights, cpuLights)
+		// An emissive cone or paraboloid is one CPU light but, tessellated for OptiX, up to 2 x 48 x 24 triangle lights; nothing else may grow the count.
+		constexpr int kMaxTrianglesPerQuadric = 2 * 48 * 24;
+		int tessellated = 0;
+		for (const auto& obj : s->build_lights().objects) tessellated += count_cpu_tessellated_lights(obj);
+		EXPECT_LE(gpuLights, cpuLights - tessellated + tessellated * kMaxTrianglesPerQuadric)
 			<< s->name << " (id " << s->id << "): GPU scene has " << gpuLights
 			<< " emissive light(s), more than CPU's " << cpuLights
-			<< " - a merge can only reduce the count, never grow it.";
+			<< " - a merge can only reduce the count, never grow it (a tessellated cone or paraboloid may).";
 	} else {
 		EXPECT_EQ(cpuLights, gpuLights)
 			<< s->name << " (id " << s->id << "): CPU scene has " << cpuLights

@@ -59,7 +59,7 @@ struct ConeShape {
 	          T rdx, T rdy, T rdz,
 	          T t_min, T t_max) const
 	{
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		const T pi = T(3.14159265358979323846);
 		if (height == T(0)) return {};
 		const T k = radius / height;
@@ -122,7 +122,7 @@ struct ConeShape {
 	// substitute for this loader's own v1 NEE support.
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		// Mirrors intersect()'s own "height==0 -> return {}" guard just
 		// above, and ParaboloidShape::sample()'s identical "radius==0"
 		// guard below - without it, k=radius/height=inf and r_local below
@@ -171,7 +171,7 @@ struct ConeShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
 	                    T wi_dx, T wi_dy, T wi_dz) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		T wi_len=len3(wi_dx,wi_dy,wi_dz);
 		if (wi_len==T(0)) return T(0);
 		T wix=wi_dx/wi_len, wiy=wi_dy/wi_len, wiz=wi_dz/wi_len;
@@ -200,4 +200,4 @@ struct ConeShape {
 		return pdf;
 	}
 };
-
+

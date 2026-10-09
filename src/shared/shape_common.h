@@ -183,7 +183,7 @@ template<typename T>
 CPU_GPU T solid_angle_pdf_from_sample(T sample_px, T sample_py, T sample_pz,
                                         T sample_nx, T sample_ny, T sample_nz,
                                         const SamplingContext<T>& ctx, T pdf_area) {
-	using namespace shapes_detail;
+	using namespace ::shapes_detail;
 	T wix = sample_px - ctx.px, wiy = sample_py - ctx.py, wiz = sample_pz - ctx.pz;
 	T dist2 = wix*wix + wiy*wiy + wiz*wiz;
 	if (dist2 == T(0)) return T(0);
@@ -198,10 +198,10 @@ CPU_GPU T solid_angle_pdf_from_sample(T sample_px, T sample_py, T sample_pz,
 template<typename T>
 CPU_GPU T solid_angle_pdf_from_hit(T hit_nx, T hit_ny, T hit_nz,
                                      T wi_ux, T wi_uy, T wi_uz, T hit_t, T pdf_area) {
-	using namespace shapes_detail;
+	using namespace ::shapes_detail;
 	T cos_theta = std::abs(dot3(hit_nx, hit_ny, hit_nz, -wi_ux, -wi_uy, -wi_uz));
 	if (cos_theta == T(0)) return T(0);
 	T pdf = pdf_area * (hit_t * hit_t) / cos_theta;
 	return std::isfinite(pdf) ? pdf : T(0);
 }
-
+

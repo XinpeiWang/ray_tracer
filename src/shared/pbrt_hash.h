@@ -121,7 +121,7 @@ CPU_GPU uint64_t Hash(Args... args) {
 	constexpr size_t sz = (sizeof(Args) + ... + 0);
 	constexpr size_t n  = (sz + 7) / 8;   // number of uint64_t words needed
 	uint64_t buf[n == 0 ? 1 : n];          // avoid zero-length array
-	detail::hash_recursive_copy(reinterpret_cast<char*>(buf), args...);
+	::detail::hash_recursive_copy(reinterpret_cast<char*>(buf), args...);
 	return MurmurHash64A(reinterpret_cast<const unsigned char*>(buf), sz, 0);
 }
 

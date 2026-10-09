@@ -36,6 +36,8 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 * **Live Preview controls follow the renderer's real features**, not the platform: the library says which optional features it has (`realtime_backend_features()`), and its C interface is declared once (`src/shared/realtime_api.h`) instead of copied into the GUI and each library.
 * **The Scene Builder log is more complete**: a deleted object is named correctly, the last edit is written before a render and on quit, restoring the unsaved scene and a failing backup write are logged, and so are selections, the 3D tool keys, scene problems and meshes the 3D view cannot read. [docs/LOGGING.md](docs/LOGGING.md).
 
+* **The OptiX renderers now draw cones and paraboloids** (as a triangle approximation, the same step the Metal renderer uses; `src/shared/gpu_tessellate.h`) instead of dropping them with a warning. The cone and paraboloid gallery (F14) matches the CPU render (mean 0.431 vs 0.429). The scale/centre/offset rule the Mac loader places a scene in is shared too (`gpu_scene_frame.h`), the first step of [docs/GPU_SCENE_COMMON.md](docs/GPU_SCENE_COMMON.md).
+
 ### Scenes
 
 * **Every scene has a stable name** (`cornell-box`, a scene file's name) next to its short id (`A1`, `K37`). Ids still work everywhere, but they move when a category is added or a file is added to `pbrt_scenes/`; names do not. The GUI saves names (recent renders, thumbnails, notes), and the command line accepts either.

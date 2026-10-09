@@ -12,6 +12,7 @@
 #include "../../cpu_renderer/cpu_interface.h"
 #include "pbrt_gpu_builder.h"
 #include "../../src/shared/pbrt_load.h"
+#include "../../src/shared/gpu_tessellate.h"   // cones and paraboloids become triangles (the same step Metal uses for all its unsupported shapes)
 #include "../../src/shared/scene_descriptor.h"
 #include <cmath>
 #include <cstdlib>
@@ -799,19 +800,6 @@ static void apply_loaded_scene_settings(const char* path,
 		out_camera_extra->cameraMediumMaterialIdx = builtScene.cameraMediumMaterialIdx;
 	}
 
-	// Shape "cone"/"paraboloid" (pbrt_flatten::Cone/Paraboloid's own comment)
-	// - CPU-only, v1 scope; GPU (both backends) has no counterpart at all yet.
-	// Warned rather than silently rendering with the shape simply missing,
-	// same "warn rather than silently drop" precedent as every other CPU-
-	// only feature in this codebase.
-	if (!loaded.scene.cones.empty() || !loaded.scene.paraboloids.empty()) {
-		std::cerr << "[OptiX] Warning: scene has " << loaded.scene.cones.size()
-			<< " cone(s) and " << loaded.scene.paraboloids.size()
-			<< " paraboloid(s), which are not supported on GPU - they will "
-			   "not be rendered; use --cpu instead if this geometry matters "
-			   "for this render.\n";
-	}
-
 	// checkerboard/mix "tex1"/"tex2" nesting a further procedural texture
 	// (pbrt_flatten::NestedProceduralTexture's own comment) - CPU-only;
 	// TextureData's tex1ImageIdx/tex2ImageIdx (optix_types.h) are image-only,
@@ -1034,7 +1022,17 @@ static bool build_loaded_pbrt_scene(
 
 	const std::shared_ptr<const PbrtBuiltScene> built = s_pbrtBuiltSceneCache.get_or_build(std::string(path),
 		[&](PbrtBuiltScene& out) -> bool {
-			out.stats = pbrt_gpu::build(loaded.scene, out.sceneData);
+			// OptiX has no cone or paraboloid intersection, so those two shapes are rewritten as triangles first (gpu_tessellate.h, shared with Metal): a close
+			// approximation, drawn instead of dropped. Only a scene that has one pays for the copy of the cached FlatScene.
+			if (!loaded.scene.cones.empty() || !loaded.scene.paraboloids.empty()) {
+				pbrt_flatten::FlatScene tessellated = loaded.scene;
+				const size_t added = gpu_tessellate::tessellateForBackend(tessellated, gpu_tessellate::TessellationCaps::conesAndParaboloids(), nullptr);
+				std::cerr << "[OptiX] " << loaded.scene.cones.size() << " cone(s) and " << loaded.scene.paraboloids.size() << " paraboloid(s) tessellated into " << added
+				          << " triangles (an approximation of the exact shape).\n";
+				out.stats = pbrt_gpu::build(tessellated, out.sceneData);
+			} else {
+				out.stats = pbrt_gpu::build(loaded.scene, out.sceneData);
+			}
 			return true;
 		});
 	if (!built) return false;

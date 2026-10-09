@@ -22,7 +22,7 @@ struct ShapeMesh {
 	std::size_t triangleCount() const { return indices.size() / 3; }
 };
 
-namespace shapes_detail {
+namespace scene_shapes_detail {
 
 struct V { double x, y, z; };
 inline V sub(V a, V b) { return {a.x - b.x, a.y - b.y, a.z - b.z}; }
@@ -86,11 +86,11 @@ inline void lathe(ShapeMesh& m, const std::vector<ProfilePoint>& profile, int se
 		}
 }
 
-}  // namespace shapes_detail
+}  // namespace scene_shapes_detail
 
 // Base `w` (X) by `d` (Z), apex over the middle of it; `h` tall.
 inline ShapeMesh pyramidMesh(double w, double h, double d) {
-	using namespace shapes_detail;
+	using namespace scene_shapes_detail;
 	ShapeMesh m;
 	const double x = w / 2, z = d / 2, lo = -h / 2, hi = h / 2;
 	const V b0{-x, lo, -z}, b1{x, lo, -z}, b2{x, lo, z}, b3{-x, lo, z}, apex{0, hi, 0};
@@ -105,7 +105,7 @@ inline ShapeMesh pyramidMesh(double w, double h, double d) {
 
 // A ramp: the box w x h x d cut along its diagonal, low at the front (-Z) and `h` high at the back (+Z).
 inline ShapeMesh wedgeMesh(double w, double h, double d) {
-	using namespace shapes_detail;
+	using namespace scene_shapes_detail;
 	ShapeMesh m;
 	const double x = w / 2, y = h / 2, z = d / 2;
 	const V fl{-x, -y, -z}, fr{x, -y, -z}, bl{-x, -y, z}, br{x, -y, z}, tl{-x, y, z}, tr{x, y, z};
@@ -122,7 +122,7 @@ constexpr int kMaxStairSteps = 100;
 
 // `steps` steps climbing from the front (-Z) to the back (+Z), `w` wide, `h` high in all and `d` deep.
 inline ShapeMesh stairsMesh(double w, double h, double d, int steps) {
-	using namespace shapes_detail;
+	using namespace scene_shapes_detail;
 	ShapeMesh m;
 	steps = std::min(kMaxStairSteps, std::max(1, steps));
 	const double x = w / 2, lo = -h / 2;
@@ -141,7 +141,7 @@ inline ShapeMesh stairsMesh(double w, double h, double d, int steps) {
 
 // A ring (doughnut) lying flat: `major` from its centre to the middle of the tube, `minor` the tube's radius.
 inline ShapeMesh torusMesh(double major, double minor) {
-	using namespace shapes_detail;
+	using namespace scene_shapes_detail;
 	const double pi = 3.14159265358979323846;
 	ShapeMesh m;
 	std::vector<ProfilePoint> profile;
@@ -156,7 +156,7 @@ inline ShapeMesh torusMesh(double major, double minor) {
 
 // A cylinder with rounded ends: `radius` across, `height` in all (never less than the two ends need).
 inline ShapeMesh capsuleMesh(double radius, double height) {
-	using namespace shapes_detail;
+	using namespace scene_shapes_detail;
 	const double pi = 3.14159265358979323846;
 	ShapeMesh m;
 	const double straight = std::max(0.0, height - 2 * radius) / 2;
@@ -176,7 +176,7 @@ inline ShapeMesh capsuleMesh(double radius, double height) {
 
 // Half a sphere with a flat bottom, `radius` across; the whole thing is `radius` high, centred on its position.
 inline ShapeMesh domeMesh(double radius) {
-	using namespace shapes_detail;
+	using namespace scene_shapes_detail;
 	const double pi = 3.14159265358979323846;
 	ShapeMesh m;
 	const double lo = -radius / 2;
@@ -194,7 +194,7 @@ inline ShapeMesh domeMesh(double radius) {
 
 // A pipe: a cylinder `height` tall with a round hole through it; `radius` outside, `inner` inside.
 inline ShapeMesh tubeMesh(double radius, double inner, double height) {
-	using namespace shapes_detail;
+	using namespace scene_shapes_detail;
 	ShapeMesh m;
 	const double hy = height / 2;
 	std::vector<ProfilePoint> profile = {

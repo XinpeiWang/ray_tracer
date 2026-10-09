@@ -66,7 +66,7 @@ struct ParaboloidShape {
 	          T rdx, T rdy, T rdz,
 	          T t_min, T t_max) const
 	{
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		const T pi = T(3.14159265358979323846);
 		if (radius == T(0)) return {};
 		const T k = z_max / (radius*radius);
@@ -123,7 +123,7 @@ struct ParaboloidShape {
 	// dependent ss.pdf, not a shape-wide constant" technique and rationale.
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		if (radius == T(0)) return ShapeSample<T>{0,0,0, 0,0,1, 0,0, T(0)};
 		const T k = z_max / (radius*radius);
 		T z = z_min + u0*(z_max - z_min);
@@ -161,7 +161,15 @@ struct ParaboloidShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
 	                    T wi_dx, T wi_dy, T wi_dz) const {
-		using namespace shapes_detail;
+		// The area density sample() draws a point at height z with (see there), evaluated at a hit. (Defined before the using-directive below, and with qualified
+		// names: MSVC reads a lambda inside a using-directive's scope as ambiguous in a TU that has `using namespace scene_doc;`.)
+		const T k = z_max / (radius*radius);
+		const auto pdfAreaAt = [&](const ShapeHit<T>& h) {
+			T z = z_min + h.v * (z_max - z_min);
+			T dAdz = (phi_max / k) * ::shapes_detail::safe_sqrt(k*z + T(0.25));
+			return (dAdz > T(0)) ? (T(1) / (z_max - z_min)) / dAdz : T(0);
+		};
+		using namespace ::shapes_detail;
 		if (radius == T(0)) return T(0);
 		T wi_len=len3(wi_dx,wi_dy,wi_dz);
 		if (wi_len==T(0)) return T(0);
@@ -169,13 +177,6 @@ struct ParaboloidShape {
 		auto hit=intersect(ctx.px,ctx.py,ctx.pz,wix,wiy,wiz,
 		                   T(1e-4),std::numeric_limits<T>::max());
 		if(!hit) return T(0);
-		const T k = z_max / (radius*radius);
-		// The area density sample() draws a point at height z with (see there), evaluated at a hit.
-		const auto pdfAreaAt = [&](const ShapeHit<T>& h) {
-			T z = z_min + h.v * (z_max - z_min);
-			T dAdz = (phi_max / k) * safe_sqrt(k*z + T(0.25));
-			return (dAdz > T(0)) ? (T(1) / (z_max - z_min)) / dAdz : T(0);
-		};
 		T pdf = solid_angle_pdf_from_hit(hit->nx, hit->ny, hit->nz,
 		                                  wix, wiy, wiz, hit->t, pdfAreaAt(*hit));
 		// Both crossings of a ray count, as in ConeShape::pdf_from() and CylinderShape::pdf_from() (see there): the sampler reaches the far side of the bowl as
@@ -188,4 +189,4 @@ struct ParaboloidShape {
 		return pdf;
 	}
 };
-
+

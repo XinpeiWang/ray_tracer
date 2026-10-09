@@ -281,7 +281,7 @@ loader and no longer match the code:
   shapes. Hyperboloid was never added here and, since it isn't a real
   pbrt-v4 gap either, isn't planned.
 
-  `Shape "cone"`/`Shape "paraboloid"` are supported, **CPU only**
+  `Shape "cone"`/`Shape "paraboloid"` are supported on the CPU exactly, and on the OptiX GPU renderers as a **tessellated approximation** (`src/shared/gpu_tessellate.h`: 48 x 4 cells for a cone, 48 x 24 for a paraboloid, smooth analytic normals - the same step the Metal renderer uses; before, the GPU dropped them with a warning)
   (`ConeShape<T>`/`ParaboloidShape<T>`, `src/shared/shapes.h`, wrapped by
   `cone_hittable`/`paraboloid_hittable`,
   `src/TheRestOfYourLife/cone_paraboloid_hittable.h` - same object-space-plus-

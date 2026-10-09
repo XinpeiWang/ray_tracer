@@ -170,6 +170,6 @@ CPU_GPU CompensatedFloat inner_product_impl(double a, double b, T... terms) {
 
 template <typename... T>
 CPU_GPU double InnerProduct(T... terms) {
-	CompensatedFloat ip = detail::inner_product_impl(static_cast<double>(terms)...);
+	CompensatedFloat ip = ::detail::inner_product_impl(static_cast<double>(terms)...);
 	return double(ip);
 }

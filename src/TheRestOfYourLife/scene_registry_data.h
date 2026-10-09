@@ -941,7 +941,7 @@ inline std::vector<SceneDescriptor> builtin_scenes_part7() {
             "Fast", "reverseorientation.pbrt"),
         pbrt_scene_registry::build_curated_pbrt_scene_descriptor(
             "F14", 153, SceneNames::ConeParaboloidGalleryPbrtExample, SceneCategories::Geometry,
-            "Cones and paraboloids (an extension of this renderer's pbrt-v3-compatible shapes) as diffuse shapes, an area-light emitter and a medium boundary in one gallery. CPU only: the GPU drops these shapes.",
+            "Cones and paraboloids (an extension of this renderer's pbrt-v3-compatible shapes) as diffuse shapes, an area-light emitter and a medium boundary in one gallery. The GPU draws them as triangle approximations.",
             "Fast", "cone-paraboloid-gallery.pbrt"),
 
         // -- Models --

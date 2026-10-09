@@ -64,7 +64,7 @@ struct TriangleShape {
 	CPU_GPU void geometric_normal(T& nx, T& ny, T& nz) const {
 		T e1x = p1x-p0x, e1y = p1y-p0y, e1z = p1z-p0z;
 		T e2x = p2x-p0x, e2y = p2y-p0y, e2z = p2z-p0z;
-		shapes_detail::cross3(e1x,e1y,e1z, e2x,e2y,e2z, nx,ny,nz);
+		::shapes_detail::cross3(e1x,e1y,e1z, e2x,e2y,e2z, nx,ny,nz);
 	}
 
 	// -----------------------------------------------------------------------
@@ -73,7 +73,7 @@ struct TriangleShape {
 	CPU_GPU T area() const {
 		T nx, ny, nz;
 		geometric_normal(nx,ny,nz);
-		return T(0.5) * shapes_detail::len3(nx,ny,nz);
+		return T(0.5) * ::shapes_detail::len3(nx,ny,nz);
 	}
 
 	CPU_GPU T pdf_area() const { return T(1) / area(); }
@@ -87,7 +87,7 @@ struct TriangleShape {
 			  T rdx, T rdy, T rdz,
 			  T t_min, T t_max) const
 	{
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 
 		// Degenerate check
 		T gnx, gny, gnz;
@@ -199,7 +199,7 @@ struct TriangleShape {
 			if (nlen > T(0)) { nnx /= nlen; nny /= nlen; nnz /= nlen; }
 		} else {
 			nnx = gnx; nny = gny; nnz = gnz;
-			shapes_detail::normalize3(nnx, nny, nnz);
+			::shapes_detail::normalize3(nnx, nny, nnz);
 		}
 
 		// (u,v) = barycentric (b0, b1)
@@ -236,10 +236,10 @@ struct TriangleShape {
 			nnx = b0*n0x + b1*n1x + b2*n2x;
 			nny = b0*n0y + b1*n1y + b2*n2y;
 			nnz = b0*n0z + b1*n1z + b2*n2z;
-			shapes_detail::normalize3(nnx, nny, nnz);
+			::shapes_detail::normalize3(nnx, nny, nnz);
 		} else {
 			geometric_normal(nnx, nny, nnz);
-			shapes_detail::normalize3(nnx, nny, nnz);
+			::shapes_detail::normalize3(nnx, nny, nnz);
 		}
 
 		return ShapeSample<T>{px_w, py_w, pz_w,
@@ -257,7 +257,7 @@ struct TriangleShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
 									   T u0, T u1) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		// Mirror pbrt-v4 MinSphericalSampleArea=3e-4, MaxSphericalSampleArea=6.22
 		const T solid_angle_min = T(3e-4);
 		const T solid_angle_max = T(6.22);
@@ -310,10 +310,10 @@ struct TriangleShape {
 			// (this file, above) for why an unqualified call here is a
 			// latent ambiguity risk once this branch is ever instantiated
 			// in a TU that also pulls in bxdfs_base.h's own global normalize3<T>.
-			shapes_detail::normalize3(nnx, nny, nnz);
+			::shapes_detail::normalize3(nnx, nny, nnz);
 		} else {
 			geometric_normal(nnx, nny, nnz);
-			shapes_detail::normalize3(nnx, nny, nnz);
+			::shapes_detail::normalize3(nnx, nny, nnz);
 		}
 
 		T pdf_val = (sa_out > T(0)) ? T(1) / sa_out : T(0);
@@ -330,7 +330,7 @@ struct TriangleShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
 					   T wi_dx, T wi_dy, T wi_dz) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		// Mirror pbrt-v4 MinSphericalSampleArea=3e-4, MaxSphericalSampleArea=6.22
 		const T solid_angle_min = T(3e-4);
 		const T solid_angle_max = T(6.22);
@@ -1076,4 +1076,4 @@ struct TriangleShape {
 										}
 								};
 
-
+

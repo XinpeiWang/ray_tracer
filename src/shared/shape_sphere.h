@@ -56,7 +56,7 @@ struct SphereShape {
 			  T rdx, T rdy, T rdz,
 			  T t_min, T t_max) const
 	{
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 
 		// Transform ray to object space (sphere centered at origin)
 		T ox = rox - cx, oy = roy - cy, oz = roz - cz;
@@ -187,7 +187,7 @@ struct SphereShape {
 		T pz_obj = r * wz;
 
 		// Reproject to exact sphere surface
-		T len = shapes_detail::len3(px_obj, py_obj, pz_obj);
+		T len = ::shapes_detail::len3(px_obj, py_obj, pz_obj);
 		if (len > T(0)) { px_obj *= r/len; py_obj *= r/len; pz_obj *= r/len; }
 
 		// World-space position
@@ -232,7 +232,7 @@ struct SphereShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample_from(const SamplingContext<T>& ctx,
 									   T u0, T u1) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		const T pi = T(3.14159265358979323846);
 
 		T dist2 = sq(ctx.px - cx) + sq(ctx.py - cy) + sq(ctx.pz - cz);
@@ -281,11 +281,11 @@ struct SphereShape {
 		T frame_z_z = cz - ctx.pz;
 		// Qualified: a TU that also pulls in bxdfs_base.h's own global
 		// normalize3<T> (e.g. via a material header) sees both that one and
-		// this file's `using namespace shapes_detail;` version, which is
+		// this file's `using namespace ::shapes_detail;` version, which is
 		// ambiguous for an unqualified call - SphereShape<T> was never
 		// actually instantiated in such a TU until sphere_clipped_hittable.h
 		// started using it, so this was latent rather than previously dead.
-		shapes_detail::normalize3(frame_z_x, frame_z_y, frame_z_z);
+		::shapes_detail::normalize3(frame_z_x, frame_z_y, frame_z_z);
 
 		ShadingFrame<T> frame = ShadingFrame<T>::from_normal(frame_z_x, frame_z_y, frame_z_z);
 
@@ -346,7 +346,7 @@ struct SphereShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
 					   T wi_dx, T wi_dy, T wi_dz) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		const T pi = T(3.14159265358979323846);
 
 		T dist2 = sq(ctx.px - cx) + sq(ctx.py - cy) + sq(ctx.pz - cz);
@@ -375,7 +375,7 @@ struct SphereShape {
 		T frame_z_y = cy - ctx.py;
 		T frame_z_z = cz - ctx.pz;
 		// Qualified - see sample_from()'s identical fix above for why.
-		shapes_detail::normalize3(frame_z_x, frame_z_y, frame_z_z);
+		::shapes_detail::normalize3(frame_z_x, frame_z_y, frame_z_z);
 
 		T cos_wi = dot3(wix,wiy,wiz, frame_z_x,frame_z_y,frame_z_z);
 		if (cos_wi < cos_theta_max) return T(0);
@@ -385,4 +385,4 @@ struct SphereShape {
 			   : T(0);
 	}
 };
-
+

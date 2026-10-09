@@ -14,7 +14,7 @@ This page is the overview. The detail lives in:
 |---|:-:|:-:|:-:|:-:|
 | **Shapes**: sphere, disk, cylinder, triangle meshes | Y | Y | Y | Y |
 | bilinear patches, curves | Y (curves analytic) | Y (tessellated) | Y (tessellated) | Y (tessellated to triangles at load) |
-| cones, paraboloids | Y | - | - | Y (tessellated to triangles at load) |
+| cones, paraboloids | Y | approx (tessellated) | approx (tessellated) | Y (tessellated to triangles at load) |
 | instancing (`ObjectInstance`) | Y | Y | Y | Y (hardware instancing) |
 | **Materials**: diffuse, conductor, dielectric (smooth, rough, thin), diffuse transmission, coated diffuse / coated conductor, hair, principled, mix | Y | Y | Y | Y |
 | subsurface (tabulated BSSRDF) | Y | Y | Y | - (the loader says so and uses a grey diffuse) |

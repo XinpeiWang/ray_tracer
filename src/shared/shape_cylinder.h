@@ -68,7 +68,7 @@ struct CylinderShape {
 	          T rdx, T rdy, T rdz,
 	          T t_min, T t_max) const
 	{
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		const T pi = T(3.14159265358979323846);
 		T ox = rox-cx, oy = roy-cy, oz = roz;
 		T dx = rdx, dy = rdy, dz = rdz;
@@ -107,7 +107,7 @@ struct CylinderShape {
 	// Reference: pbrt-v4 Cylinder::Sample(Point2f u)
 	// -----------------------------------------------------------------------
 	CPU_GPU ShapeSample<T> sample(T u0, T u1) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		T z=z_min+u0*(z_max-z_min), phi=u1*phi_max;
 		T lx=radius*std::cos(phi), ly=radius*std::sin(phi);
 		T hitRad=safe_sqrt(lx*lx+ly*ly);
@@ -135,7 +135,7 @@ struct CylinderShape {
 	// -----------------------------------------------------------------------
 	CPU_GPU T pdf_from(const SamplingContext<T>& ctx,
 	                    T wi_dx, T wi_dy, T wi_dz) const {
-		using namespace shapes_detail;
+		using namespace ::shapes_detail;
 		T wi_len=len3(wi_dx,wi_dy,wi_dz);
 		if(wi_len==T(0)) return T(0);
 		T wix=wi_dx/wi_len, wiy=wi_dy/wi_len, wiz=wi_dz/wi_len;
@@ -158,4 +158,4 @@ struct CylinderShape {
 		return pdf;
 	}
 };
-
+
