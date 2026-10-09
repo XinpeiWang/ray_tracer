@@ -1,0 +1,32 @@
+# cloud-furnace.pbrt -- a white furnace for the cloud medium.
+#
+# A scattering-only cloud (no absorption, albedo 1) alone under a uniform sky: by energy conservation every pixel must come out as the
+# sky itself, whatever the cloud's density, so the cloud's box must be invisible. Any picture of the box (a darker or brighter patch,
+# a speckled edge) is a transport bug in the renderer. The depth limit is set high in the tests (40), because a path through a denser cloud
+# scatters many times (the CPU loses about 4% at the bottom of a sigma 0.3 box for that reason; sigma 0.15 keeps the truncation under 1%). It caught Metal losing energy after a cloud scatter (a per-path flag left set across samples).
+#
+# Original, so it carries no licence constraints.
+
+LookAt  278 260 -500    358 280 330    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Film "rgb" "integer xresolution" [ 300 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.5 0.5 0.5 ]
+
+AttributeBegin
+  Translate 278 200 250
+  Scale 160 160 160
+  MakeNamedMedium "puffcloud" "string type" [ "cloud" ]
+    "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.15 0.15 0.15 ] "float g" [ 0.3 ]
+    "float density" [ 1 ] "float wispiness" [ 1 ] "float frequency" [ 4 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 358 280 330
+  Material "interface"
+  MediumInterface "puffcloud" ""
+  Shape "sphere" "float radius" [ 145 ]
+AttributeEnd
