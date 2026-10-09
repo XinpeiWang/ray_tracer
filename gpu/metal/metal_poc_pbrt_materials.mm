@@ -9,6 +9,7 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 #include "../../src/shared/curve_tessellate.h"
+#include "../../src/shared/fresnel.h"   // CauchyCoefficientsFromAbbe
 #include "../../src/shared/srgb_decode.h"
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
 #include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
@@ -421,6 +422,23 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
             // no "reflectance"): passing it through made every pbrt glass absorb 0.5/unit.
             // Clear by default; loadPbrtSpheres() sets a real coefficient for a glass sphere
             // that bounds a homogeneous medium.
+            // "float abbenumber" on a dielectric makes the glass dispersive (a prism's colour fan): materialType 22 (smooth) / 23 (frosted).
+            // The Cauchy pair (A, B) is derived from (eta_d, Abbe number) exactly as OptiX and the CPU do, and rides in conductorEta.xy;
+            // each path then picks one of the three colour channels at its first dispersive hit (see shadeDispersiveDielectric).
+            if (m.abbeNumber > 0.0) {
+                double cauchyA = 0.0, cauchyB = 0.0;
+                CauchyCoefficientsFromAbbe(m.ior, m.abbeNumber, cauchyA, cauchyB);
+                const bool frosted = m.roughness_u > 0.0 || m.roughness_v > 0.0;
+                float roughnessSqrtAlpha = 0.0f;
+                if (frosted) {
+                    const double rr = std::max(m.roughness_u, m.roughness_v);
+                    roughnessSqrtAlpha = std::sqrt((float)(m.remapRoughness ? std::sqrt(rr) : rr));   // same convention as the rough dielectric below
+                }
+                TriangleMaterial mat{PackedFloat3{0, 0, 0}, /*materialType=*/frosted ? METAL_MAT_DISPERSIVE_ROUGH_DIELECTRIC : METAL_MAT_DISPERSIVE_DIELECTRIC,
+                                     /*ior=*/(float)m.ior, PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/roughnessSqrtAlpha};
+                mat.conductorEta = PackedFloat3{(float)cauchyA, (float)cauchyB, 0.0f};
+                return mat;
+            }
             if (m.roughness_u > 0.0 || m.roughness_v > 0.0) {
                 // Rough (frosted) dielectric -> materialType 5 (GGX microfacet interface). Same convention as the
                 // conductor mapping above: the shader squares `roughness` into alpha, so store sqrt(alpha).
