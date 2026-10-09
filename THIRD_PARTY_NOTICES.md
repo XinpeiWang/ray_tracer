@@ -16,6 +16,7 @@ are the terms you inherit.
 | **Hosek-Wilkie sky model** (Lukas Hosek and Alexander Wilkie; coefficient tables as shipped in Blender's Cycles) | `src/shared/hosek_sky.h` (a re-write of the evaluation code) and `src/external/hosek_sky_data.h` (the tables, copied unchanged) | BSD-3-Clause, full text in [`licenses/BSD-3-Clause-Hosek-Wilkie.txt`](licenses/BSD-3-Clause-Hosek-Wilkie.txt) |
 | **stb_image / stb_image_write** (Sean Barrett and contributors) | `src/external/stb_image.h`, `stb_image_write.h` | Public domain (or MIT, at your choice); see the end of each header |
 | **miniz** (Rich Geldreich and contributors) | `src/external/miniz.c`, `miniz.h` | Public domain ("unlicense" statement at the end of the file) |
+| **Noto Sans SC** (the Source Han Sans design: Copyright 2014-2021 Adobe, Reserved Font Name 'Source'; distributed by Google as Noto Sans CJK) | `qt_gui/fonts/NotoSansSC-Regular.ttf`, compiled into the GUI so Simplified Chinese text renders on a machine without a CJK font | SIL Open Font License 1.1 (`qt_gui/fonts/OFL.txt`; the release packages carry it as `licenses/NotoSansSC-OFL.txt`) |
 
 ## Tools and libraries used but not stored here
 
@@ -26,6 +27,10 @@ are the terms you inherit.
 | **NVIDIA OptiX SDK** | Needed to build the OptiX backend. **Not included in this repository or in the releases**: install it yourself and accept NVIDIA's licence | NVIDIA OptiX SDK licence |
 | **Apple Metal / Foundation frameworks** | The macOS GPU backend uses the system frameworks | Apple's system licence |
 | **GoogleTest** | The unit tests (fetched by CMake / vcpkg at configure time, not stored here) | BSD-3-Clause |
+| **FFmpeg** (the `avcodec`, `avformat`, `avutil`, `swresample` and `swscale` DLLs) | Shipped in the Medium and Full packages because Qt's multimedia backend (the Live Preview video and the in-app video preview) needs them; we do not modify them | LGPL-2.1-or-later. Source and licence: https://ffmpeg.org/ |
+| **Intel Open Image Denoise** | The AI denoiser for the CPU and Metal renderers. **Not in the repository or the packages**: the app offers to download Intel's own release once (about 57 MB on Windows), checked against a pinned SHA-256, and loads it at run time | Apache-2.0. https://www.openimagedenoise.org/ |
+| **TripoSR** (Stability AI and Tripo) | The optional "Object from a photo" helper. **Not in the repository or the packages**: `scripts/setup_photo_to_mesh.ps1` downloads the model on request (about 5 GB) | MIT (its repository and model card; check them before you redistribute the weights). https://github.com/VAST-AI-Research/TripoSR |
+| **Microsoft Visual C++ runtime** (`vcruntime140*.dll`, `msvcp140.dll`) | Redistributed in the Windows packages | Microsoft's redistributable terms |
 
 ## Meshes, textures and scenes
 

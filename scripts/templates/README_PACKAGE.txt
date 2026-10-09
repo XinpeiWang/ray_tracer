@@ -24,6 +24,16 @@ What's in this package
 - Full package: adds GPU rendering (OptiX/CUDA) and the interactive Live
   Preview feature, on top of everything Medium has.
 
+Scenes and licences
+--------------------
+- pbrt_scenes\ holds the bundled scenes (plain pbrt-v4 text files); the
+  renderer and the GUI read them from here, so keep the folder next to the
+  executables. Scenes that need large mesh or texture downloads (Sponza,
+  Bistro, Power Plant and similar) are not included: the GUI offers to
+  download what is missing the first time you pick one.
+- LICENSE, THIRD_PARTY_NOTICES.md and licenses\ carry the licences of this
+  program and of the libraries and data it includes.
+
 GPU requirements (Full package only)
 --------------------------------------
 GPU rendering needs a current NVIDIA driver and an RTX-capable GPU. The

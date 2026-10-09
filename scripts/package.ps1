@@ -294,6 +294,58 @@ if (Test-Path $launcherSrc) {
 	Write-Host "  [WARNING] $launcherSrc not found - package will ship without launcher.bat" -ForegroundColor Yellow
 }
 
+# The licences that travel with the files: ours, the third-party notices, the licence texts those point to, and the OFL text for the bundled
+# Noto Sans SC font. Every tier ships them - even Lite redistributes the MSVC runtime DLLs, and Medium and Full redistribute Qt (LGPL), ffmpeg
+# (LGPL, inside Qt's multimedia backend) and the NVIDIA CUDA runtime, whose terms ask that a copy of the notices goes with them.
+$repoRoot = Split-Path -Parent $PSScriptRoot
+foreach ($doc in @("LICENSE", "THIRD_PARTY_NOTICES.md")) {
+	$src = Join-Path $repoRoot $doc
+	if (Test-Path $src) {
+		Copy-Item $src (Join-Path $OutputDir $doc) -Force
+		Write-Host "  OK $doc" -ForegroundColor Green
+	} else {
+		Write-Host "  [WARNING] $src not found - package will ship without $doc" -ForegroundColor Yellow
+	}
+}
+$licenseDir = Join-Path $OutputDir "licenses"
+New-Item -ItemType Directory -Force $licenseDir | Out-Null
+Get-ChildItem (Join-Path $repoRoot "licenses") -Filter "*.txt" -ErrorAction SilentlyContinue | Copy-Item -Destination $licenseDir -Force
+$fontLicense = Join-Path $repoRoot "qt_gui\fonts\OFL.txt"
+if (Test-Path $fontLicense) { Copy-Item $fontLicense (Join-Path $licenseDir "NotoSansSC-OFL.txt") -Force }
+Write-Host "  OK licenses\ ($((Get-ChildItem $licenseDir -File).Count) files)" -ForegroundColor Green
+
+# The scene collection and the small demo assets. Nearly every scene in the list loads from pbrt_scenes\*.pbrt, and the GUI runs the renderer with the package folder
+# as its working directory, so a pbrt_scenes\ folder beside the executable is the search path that resolves on any machine (src/shared/pbrt_discover.h). Without it
+# the renderer fails with "Scene contains no objects" (error 101) on A1 and most others. Only the files Git tracks go in (about 6 MB): a working copy also holds
+# gigabytes of downloaded scene assets (Sponza, Bistro, Power Plant...), which are large and carry non-commercial licences, so they are fetched on request instead
+# (same rule as the macOS package, scripts/build_and_deploy_macos.sh). The demo room's own small meshes and picture come along as well.
+$trackedScenes = @()
+if (Get-Command git -ErrorAction SilentlyContinue) {
+	$trackedScenes = @(& git -C $RepoRoot ls-files -- pbrt_scenes images/earthmap.jpg models/suzanne.obj models/spot.obj)
+}
+if ($trackedScenes.Count -eq 0) {
+	Write-Host "  [ERROR] could not list the tracked scene files (is git on PATH and is this a checkout?) - the package would have no scenes" -ForegroundColor Red
+	exit 1
+}
+$sceneBytes = 0
+foreach ($rel in $trackedScenes) {
+	$src = Join-Path $RepoRoot $rel
+	if (-not (Test-Path $src)) { continue }
+	$dst = Join-Path $OutputDir $rel
+	New-Item -ItemType Directory -Force (Split-Path -Parent $dst) | Out-Null
+	Copy-Item $src $dst -Force
+	$sceneBytes += (Get-Item $src).Length
+}
+Write-Host ("  OK scenes: {0} files, {1:N1} MB (pbrt_scenes\, images\earthmap.jpg, models\suzanne.obj, models\spot.obj)" -f $trackedScenes.Count, ($sceneBytes / 1MB)) -ForegroundColor Green
+
+# A package that cannot render the first scene is not a package: fail here, not on a user's machine.
+foreach ($must in @("ray_tracer.exe", "pbrt_scenes\cornell-box-native.pbrt", "images\earthmap.jpg", "LICENSE", "THIRD_PARTY_NOTICES.md")) {
+	if (-not (Test-Path (Join-Path $OutputDir $must))) {
+		Write-Host "  [ERROR] the package is missing $must" -ForegroundColor Red
+		exit 1
+	}
+}
+
 # The optional "Object from a photo" helper (Scene Builder, Add menu) is two small text files: the GUI finds the script at
 # <package>\tools\photo_to_mesh\ and tells the user to run <package>\scripts\setup_photo_to_mesh.ps1 once. The model itself
 # (several GB) is never shipped; the setup script downloads it. Lite has no GUI, so it gets neither.
@@ -385,7 +437,7 @@ if ($Zip) {
 	# matches what -Tier actually promises regardless of build order or
 	# what a previous run left behind.
 	$zipExcludeNames = [System.Collections.Generic.List[string]]@("output")
-	$zipExcludePatterns = @("test_*", "debug_*", "verify_*", "working_*", "cornell_*", "*.run_marker.txt", "*.ppm")
+	$zipExcludePatterns = @("test_*", "debug_*", "verify_*", "working_*", "cornell_*", "*.run_marker.txt", "*.ppm", "gui_selftest*")
 	if ($Tier -eq "Lite") {
 		$zipExcludeNames.AddRange([string[]]@("RayTracerGUI.exe", "scene_metadata.dll", "realtime_renderer.dll", "optix_programs.ptx", "wavefront_programs.ptx", "platforms", "styles", "imageformats", "multimedia", "iconengines", "generic", "networkinformation", "tls"))
 		# Allow-list, not a Qt6*.dll deny-list: windeployqt also drops non-

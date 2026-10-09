@@ -73,11 +73,13 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 
 ### Testing and project
 
-* Over 5,000 automated tests, including closed-form scenes; the CPU integrator agreement tests also build as a GPU-free CMake target and are wired into GitHub CI (not yet seen to pass there).
+* Over 5,000 automated tests, including closed-form scenes; the CPU integrator agreement tests also build as a GPU-free CMake target and run in GitHub CI, where they pass (as do the code-size, build-list, macOS and Windows GUI jobs).
 * The slow test tier uses 8.5 GB instead of 23 GB; incremental builds and a fast test tier were added.
 * A `LICENSE` (MIT), [third-party notices](THIRD_PARTY_NOTICES.md), a README gallery, a CPU-only quick start, [CONTRIBUTING](CONTRIBUTING.md), issue and pull request templates, and a code of conduct.
 * A fresh clone is clean again (stale Git LFS rules removed).
-* **`scripts/backend_parity.py`** compares the CPU with both OptiX renderers the way the Mac's Metal sweep does (same seed, small image, whole-image, per-channel and a 6x6 block grid): 195 of 206 scene/backend pairs pass, 5 are marginal, and 3 scenes are documented known gaps (`scripts/backend_parity_known_gaps.txt`).
+* **The Windows packages now include the scenes** (`pbrt_scenes\`, the small demo assets and nothing downloaded; about 6 MB) and the packaging script fails if they are missing. Before, a Windows package could not render A1 or most other scenes ("Scene contains no objects"), because the scene list had moved to `.pbrt` files and only the macOS package copied them.
+* **The Windows packages now carry their licences**: `LICENSE`, `THIRD_PARTY_NOTICES.md` and a `licenses/` folder (including the OFL text for the bundled Noto Sans SC font) are copied into every tier, and the notices now name the FFmpeg DLLs, the Noto font, Intel Open Image Denoise, TripoSR and the Visual C++ runtime. Leftover GUI self-test files are no longer zipped.
+* **`scripts/backend_parity.py`** compares the CPU with both OptiX renderers the way the Mac's Metal sweep does (same seed, small image, whole-image, per-channel and a 6x6 block grid): 201 of 206 scene/backend pairs pass, 5 are marginal (D8, J6, E11: sampling noise or the documented nested-texture fallback) and none is a known gap (`scripts/backend_parity_known_gaps.txt` is empty).
 * **A Windows GUI job** (`.github/workflows/windows-gui.yml`) builds the CPU-only GUI and runs the headless GUI smoke test, like the macOS release workflow.
 * **The big files are split by topic** (no code changed; seeded renders are byte-identical on the CPU, both OptiX renderers): no source file is over 2,000 lines now, and the largest functions went from about 1,400 lines to a few hundred.
 
@@ -86,3 +88,5 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 * GPU SPPM's gather radius is a fixed 5 units; SPPM emits photons from area lights only (sky-lit scenes read 2-3% low); one SPPM scene (A7, Perlin spheres) reads about 10% low on CPU and GPU alike.
 * `--lightpath` has not been checked in participating media. BDPT, MLT and SPPM do not support camera media; BDPT/MLT/SPPM do not support portal lights.
 * GPU BDPT/MLT do not exist. Linux and a native arm64 macOS GUI are not supported yet.
+* A NanoVDB `temperaturename` blackbody glow renders on the CPU only (the GPU renders the density and warns); Metal does not read NanoVDB files yet.
+* A two-level nested texture (a checkerboard inside a checkerboard that holds an image) is flattened to one average colour on the GPU, with a warning (scene J6).

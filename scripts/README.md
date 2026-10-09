@@ -55,6 +55,13 @@ Utility scripts for building, packaging, and testing the ray tracer.
     RayTracerGUI.exe (`QT += multimedia`), not a strippable runtime plugin;
     see the script's own header comment for why that would need a source
     change, not a packaging one.
+  - Every tier also gets the scene collection and the licences: the files
+    Git tracks under `pbrt_scenes\` (about 6 MB; most scenes load from
+    there, so a package without it cannot render A1), `images\earthmap.jpg`,
+    `models\suzanne.obj` and `models\spot.obj`, plus `LICENSE`,
+    `THIRD_PARTY_NOTICES.md` and `licenses\`. Large downloaded scene assets
+    are never packaged. The script stops with an error if one of these is
+    missing from the result.
   - Templates for the in-package `README.txt`/`launcher.bat` live in
     `scripts\templates\` - edit those, not this script, to change their wording.
   - Usage: `.\scripts\package.ps1 -Tier Lite` / `-Tier Full -Zip`
