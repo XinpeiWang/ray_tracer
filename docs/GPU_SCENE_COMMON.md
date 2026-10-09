@@ -141,3 +141,9 @@ Two things I fixed on the way, both MSVC-only name lookups that clang accepts: a
 ## Checking a Metal loader change (Mac)
 
 `scripts/metal_render_hash.sh capture <name>` renders the 95 scenes of the parity sweep plus option variants (adaptive, clamp, lock-step, bands, crop) at a fixed seed and stores a hash of each float EXR; `compare <name>` does the same again and lists every picture that changed. About 40 s each way, and all 108 renders reproduce exactly run to run. Use it as the gate for stages 0-4 (host-side moves must give identical files). It is not for shader changes (use the parity sweep and `scripts/update_metal_golden.sh`). `scripts/render_baseline.py` is the statistical version for the CPU and OptiX; it needs numpy, which this Mac's Python does not have, and has no Metal backend.
+
+## Stage 0, Mac half: done (2026-10-08)
+
+`MetalPocApp::loadPbrtScene()` now calls `gpu_tessellate::tessellateForBackend(scene, TessellationCaps::all(), &pbrtTriangleFiberTangent)` and `gpu_scene_frame::computeSceneFrame(scene)`; `tessellateGrid`, `normalize3`, `tessellateUnsupportedShapes` and the bounding-box / scale / centre / offset block are gone from `gpu/metal/metal_poc_pbrt_loader.mm` (about 215 lines fewer). `pbrtTriangleFiberTangent` is now `std::unordered_map<int, std::array<float, 3>>`. `toWorld` stays a `float3` lambda over the frame's three numbers, so the arithmetic is the one it was. Checked with `scripts/metal_render_hash.sh`: all 108 seeded renders (the 95 scenes plus option variants) are byte-identical to the pre-change binary; `ctest` 13/13. F7 (hair curves) renders differently from run to run on the unchanged binary too (3 distinct hashes in 6 runs), so the script retries a differing scene a few times before counting it as changed.
+
+Next on the Mac side: stage 1 (image and alpha-mask decoding, sRGB) once the Windows half exists.

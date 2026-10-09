@@ -27,29 +27,30 @@ cd "$REPO_ROOT"
 render() {  # tag, extra ray_tracer args, scene id, environment assignments
 	local tag="$1" extra="$2" id="$3" envs="$4" h=NOIMAGE
 	# shellcheck disable=SC2086
-	env $envs "$EXE" --gpu --seed 5 $extra --output "$OUT/$tag.exr" 96 8 8 "$id" >"$OUT/$tag.log" 2>&1 || true
+	env $envs "$EXE" --gpu --seed 5 $extra --output "$OUT/$tag.exr" 96 8 8 "$id" >"$OUT/$tag.log" 2>&1 </dev/null || true
 	[[ -s "$OUT/$tag.exr" ]] && h=$(shasum -a 256 "$OUT/$tag.exr" | cut -c1-16)
 	rm -f "$OUT/$tag.exr"
 	printf '%s\t%s\n' "$tag" "$h"
 }
 
-panel() {
-	for id in $(grep -v '^#' gpu/metal/parity_golden.txt | cut -d' ' -f1); do render "$id" "" "$id" ""; done
+specs() {   # tag | extra args | scene id | environment assignments (a '|' separator: empty fields must survive `read`)
+	for id in $(grep -v '^#' gpu/metal/parity_golden.txt | cut -d' ' -f1); do printf '%s||%s|\n' "$id" "$id"; done
 	for id in A1 B1 C1; do
-		render "$id.adaptive" "--adaptive" "$id" ""
-		render "$id.clamp" "--maxcomponentvalue 2" "$id" ""
-		render "$id.lockstep" "" "$id" "METAL_REGEN=0"
-		render "$id.bands" "" "$id" "METAL_BANDS=4"
+		printf '%s|%s|%s|%s\n' "$id.adaptive" "--adaptive" "$id" ""
+		printf '%s|%s|%s|%s\n' "$id.clamp" "--maxcomponentvalue 2" "$id" ""
+		printf '%s|%s|%s|%s\n' "$id.lockstep" "" "$id" "METAL_REGEN=0"
+		printf '%s|%s|%s|%s\n' "$id.bands" "" "$id" "METAL_BANDS=4"
 	done
-	render "A1.crop" "--crop 10 10 60 60" "A1" ""
+	printf '%s|%s|%s|%s\n' "A1.crop" "--crop 10 10 60 60" "A1" ""
 }
+panel() { specs | while IFS='|' read -r tag extra id envs; do render "$tag" "$extra" "$id" "$envs"; done; }
 
 if [[ "$MODE" == capture ]]; then
 	mkdir -p "$DIR"
-	# Twice, so a scene that differs from itself is known and excluded from later comparisons.
-	panel > "$DIR/run1.tsv"; panel > "$DIR/run2.tsv"
-	join -t "$(printf '\t')" <(sort "$DIR/run1.tsv") <(sort "$DIR/run2.tsv") | awk -F'\t' '{ if ($2 == $3) print $1 "\t" $2; else print $1 "\tUNSTABLE" }' > "$DIR/hashes.tsv"
-	rm -f "$DIR/run1.tsv" "$DIR/run2.tsv"
+	# Three times: a scene that differs from itself is recorded as UNSTABLE and left out of later comparisons.
+	panel | sort > "$DIR/run1.tsv"; panel | sort > "$DIR/run2.tsv"; panel | sort > "$DIR/run3.tsv"
+	paste "$DIR/run1.tsv" "$DIR/run2.tsv" "$DIR/run3.tsv" | awk -F'\t' '{ if ($2 == $4 && $2 == $6) print $1 "\t" $2; else print $1 "\tUNSTABLE" }' > "$DIR/hashes.tsv"
+	rm -f "$DIR/run1.tsv" "$DIR/run2.tsv" "$DIR/run3.tsv"
 	echo "Captured $(wc -l < "$DIR/hashes.tsv" | tr -d ' ') renders ($(grep -c UNSTABLE "$DIR/hashes.tsv" || true) unstable) into ${DIR#"$REPO_ROOT"/}"
 	exit 0
 fi
@@ -58,8 +59,17 @@ fi
 panel | sort > "$OUT/now.tsv"
 sort "$DIR/hashes.tsv" > "$OUT/base.tsv"
 changed=0; same=0; unstable=0
+specs > "$OUT/specs.tsv"
 while IFS=$'\t' read -r tag old new; do
-	if [[ "$old" == UNSTABLE ]]; then unstable=$((unstable + 1)); elif [[ "$old" == "$new" ]]; then same=$((same + 1)); else changed=$((changed + 1)); echo "  CHANGED  $tag ($old -> $new)"; fi
+	if [[ "$old" == UNSTABLE ]]; then unstable=$((unstable + 1)); continue; fi
+	if [[ "$old" != "$new" ]]; then   # a scene that is occasionally non-reproducible gets a few more tries before it counts as changed
+		IFS='|' read -r _ extra id envs < <(grep -m1 "^$tag|" "$OUT/specs.tsv")
+		for _try in 1 2 3 4 5 6; do
+			new=$(render "$tag" "$extra" "$id" "$envs" | cut -f2)
+			[[ "$old" == "$new" ]] && break
+		done
+	fi
+	if [[ "$old" == "$new" ]]; then same=$((same + 1)); else changed=$((changed + 1)); echo "  CHANGED  $tag (was $old, now $new)"; fi
 done < <(join -t "$(printf '\t')" "$OUT/base.tsv" "$OUT/now.tsv")
 echo "$same identical, $changed changed, $unstable unstable (not compared)"
 [[ $changed -eq 0 ]]

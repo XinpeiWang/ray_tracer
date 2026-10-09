@@ -257,7 +257,7 @@ struct MetalPocApp {
     std::unordered_map<int, int32_t> pbrtEmissiveTriangleLightId;
     // triangle index -> unit fibre tangent for the tube triangles tessellated from pbrt curves, so the
     // hair shader (materialType 31) gets the real fibre direction instead of the normal-as-tangent proxy.
-    std::unordered_map<int, PackedFloat3> pbrtTriangleFiberTangent;
+    std::unordered_map<int, std::array<float, 3>> pbrtTriangleFiberTangent;
     bool havePbrtMedium = false;
     float pbrtFogSigmaT = 0.0f;
     float3 pbrtFogSigmaT3{0, 0, 0};   // per-channel extinction (chromatic camera medium); pbrtFogSigmaT is its mean
