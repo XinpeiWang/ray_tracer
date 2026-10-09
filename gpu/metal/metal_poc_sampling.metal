@@ -1420,11 +1420,9 @@ inline float3 sampleHenyeyGreenstein(float3 wo, float g, thread uint& rngState) 
     return sinTheta * cos(phi) * tangent + sinTheta * sin(phi) * bitangent + cosTheta * wo;
 }
 
-// E2/section 178: 5-octave-FBm-only cloud density at a MEDIUM-space
-// point, [0,1]-clamped - direct port of gpu/optix/optix_intersection_
-// sphere.h's own gpu_cloud_density() (the GPU-backend variant every GPU
-// backend uses; deliberately without CloudMedium<T>::compute_density()'s
-// own CPU-only wispiness perturbation - see that function's comment,
+// E2/section 178: cloud density at a MEDIUM-space point, [0,1]-clamped - a port of
+// CloudMedium<T>::compute_density() (5-octave FBm plus, since 2026-10-08, its wispiness warp; OptiX's gpu_cloud_density() still
+// leaves the warp out - see that function's comment,
 // src/shared/cloud_medium.h). Reuses materialType 17's own
 // perlinNoise3D()/kNoisePerm (this file, above) rather than a second
 // copy of the same fixed permutation table - the fixed table + Noise()
@@ -1434,6 +1432,22 @@ inline float3 sampleHenyeyGreenstein(float3 wo, float g, thread uint& rngState) 
 // thinned to nothing.
 inline float gpuCloudDensity(GpuCloudMedium cloud, float mx, float my, float mz) {
     float3 pp = cloud.frequency * float3(mx, my, mz);
+    // "Wispiness": two octaves of domain warping by the finite-difference gradient of the noise, as CloudMedium::compute_density() does
+    // on the CPU (src/shared/cloud_medium.h; pbrt-v4's CloudMedium). Without it the cloud is smoother and denser along its top.
+    if (cloud.wispiness > 0.0) {
+        float vomega = 0.05 * cloud.wispiness;
+        float vlambda = 10.0;
+        for (int w = 0; w < 2; ++w) {
+            const float3 q = vlambda * pp;
+            const float n0 = perlinNoise3D(q);
+            const float delta = 0.01;
+            pp += vomega * float3((perlinNoise3D(q + float3(delta, 0.0, 0.0)) - n0) / delta,
+                                  (perlinNoise3D(q + float3(0.0, delta, 0.0)) - n0) / delta,
+                                  (perlinNoise3D(q + float3(0.0, 0.0, delta)) - n0) / delta);
+            vomega *= 0.5;
+            vlambda *= 1.99;
+        }
+    }
     float d = 0.0;
     float omega = 0.5, lambda = 1.0;
     for (int oct = 0; oct < 5; ++oct) {

@@ -36,35 +36,35 @@ void testPerlinNoise3D(id<MTLDevice> device, id<MTLLibrary> library, id<MTLComma
     }
 }
 
-// gpuCloudDensity() numeric cross-check against
-// CloudMedium<double>::compute_density() called with wispiness=0 - see
-// test_kernels.metal's own comment on why wispiness=0 is the right,
-// honest comparison (gpuCloudDensity() is a deliberate GPU-only port
-// that never implements the CPU reference's own wispiness perturbation
-// at all, not a gap this test should paper over by faking one in).
+// gpuCloudDensity() numeric cross-check against CloudMedium<double>::compute_density(): half the cases with wispiness 0 (the plain
+// 5-octave FBm), half with wispiness > 0 (the two-octave domain warp by the finite-difference noise gradient, ported to the shader on
+// 2026-10-08). The warped cases get a looser tolerance: the shader differences the noise in float with delta 0.01, the CPU in double.
 void testGpuCloudDensity(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCommandQueue> queue) {
     std::mt19937 rng(31337);
     std::uniform_real_distribution<double> zeroOne(0.0, 1.0);
     std::uniform_real_distribution<double> freqDist(0.5, 4.0);
     std::uniform_real_distribution<double> densityDist(0.5, 3.0);
+    std::uniform_real_distribution<double> wispDist(0.5, 1.5);
 
-    const int n = 30;
+    const int n = 60;
     std::vector<GpuCloudMediumGPU> clouds(n);
     std::vector<simd::float3> points(n);
     std::vector<double> expected(n);
     for (int i = 0; i < n; ++i) {
         double frequency = freqDist(rng);
         double density = densityDist(rng);
+        double wispiness = (i < n / 2) ? 0.0 : wispDist(rng);
         double mx = zeroOne(rng), my = zeroOne(rng), mz = zeroOne(rng);
         clouds[i] = GpuCloudMediumGPU{};
         clouds[i].density = (float)density;
         clouds[i].frequency = (float)frequency;
+        clouds[i].wispiness = (float)wispiness;
         points[i] = simd::float3{(float)mx, (float)my, (float)mz};
 
         CloudMedium<double> ref{};
         ref.density = density;
         ref.frequency = frequency;
-        ref.wispiness = 0.0;  // GPU never implements this term - see above
+        ref.wispiness = wispiness;
         expected[i] = ref.compute_density(mx, my, mz);
     }
     id<MTLBuffer> cloudBuf = makeBuffer(device, clouds.data(), n * sizeof(GpuCloudMediumGPU));
@@ -74,8 +74,9 @@ void testGpuCloudDensity(id<MTLDevice> device, id<MTLLibrary> library, id<MTLCom
         float* out = (float*)outBuf.contents;
         for (int i = 0; i < n; ++i) {
             char label[128];
-            snprintf(label, sizeof(label), "gpuCloudDensity matches CloudMedium::compute_density, wispiness=0 (case %d)", i);
-            expectNear(label, out[i], expected[i], std::max(1e-4, std::fabs(expected[i]) * 1e-3));
+            snprintf(label, sizeof(label), "gpuCloudDensity matches CloudMedium::compute_density, wispiness=%s (case %d)", i < n / 2 ? "0" : ">0", i);
+            const double tol = (i < n / 2) ? std::max(1e-4, std::fabs(expected[i]) * 1e-3) : std::max(0.02, std::fabs(expected[i]) * 0.05);
+            expectNear(label, out[i], expected[i], tol);
         }
     }
 }
