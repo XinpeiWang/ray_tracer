@@ -78,7 +78,7 @@ inline bool traverseBoundedMedia(thread const KernelRes& R, thread PathState& P,
                 cloudMediums, lights, uniforms, pbrtAreaLightTexture, textureSampler,
                 isect, accelStructure, functionTable, shadowSpherePayload,
                 rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
-                scatteredInMedium, passedThroughMediumSphere);
+                scatteredInMedium, passedThroughMediumSphere, envLightSampled);
         } else if (mediumMat.materialType == METAL_MAT_MEDIUM_RGB_GRID) {
             shadeRgbGridMediumSphere(mediumMat, result.distance,
                 rgbGridMediums, rgbGridData, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,

@@ -46,6 +46,7 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 
 ### Rendering correctness
 
+* **Clouds now render on a Mac.** A pbrt scene's `cloud` medium (E2, E5) showed no cloud on Metal at all: the loader had no case for it. It does now, and the picture matches the CPU's (the body to about 2%; like OptiX the GPU cloud has no "wispiness" warp, so its top is a little denser). Three shader faults it exposed are fixed in the same change: rays that had just left the cloud's box re-entered the shader without moving (a dark fringe), the sky-light rays used the box's maximum density instead of the real one (a black cloud), and the sky light was counted twice after a scatter (too bright).
 * **Path tracers add the last continuation ray.** The CPU and both OptiX backends stopped one segment early, so the emission or sky seen by the last
   bounce was lost: a diffuse sphere (albedo 0.5) under a white sky read 0.09 at depth 1 instead of 0.5, and a Cornell box was 1% / 3% / 10% dark at depth 8 / 4 / 2.
 * **Measured BRDFs** now use pbrt's path weight `f * cos / pdf` (a white-furnace sphere read 7.8 / 8.1 / 3.5 instead of 0.1 / 0.2 / 0.4) and take direct-light samples with MIS.

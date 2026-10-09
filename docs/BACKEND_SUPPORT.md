@@ -22,7 +22,7 @@ This page is the overview. The detail lives in:
 | dispersion | Y | approx (3 wavelengths) | Y | - (the shader has it, but the pbrt loader never selects it: B23 renders with no colour fan, the CPU's `--spectral` render has one) |
 | **Textures**: image, checker, marble, fbm, windy, wrinkled, dots, bilerp | Y | Y | Y | Y |
 | **Lights**: point, spot, distant, goniometric, projection, area (all samplable shapes), infinite (constant and image), portal | Y | Y | Y | Y |
-| **Media**: homogeneous (incl. per-channel), cloud, RGB grid | Y | Y | Y | homogeneous and RGB grid Y (rgbgrid-medium matches the CPU); **cloud: no** - a pbrt scene's cloud (E5 cloud-medium, cloud-medium-scene) renders without the cloud, a black disc where its sphere is; the same before the kernel split, and the parity sweep does not see it (the picture is mostly sky) |
+| **Media**: homogeneous (incl. per-channel), cloud, RGB grid | Y | Y | Y | homogeneous and RGB grid Y (rgbgrid-medium matches the CPU); cloud Y (E2 cloud-medium-scene and E5 cloud-medium: the body matches the CPU to about 2%; the GPU density has no "wispiness" warp (as on OptiX), so the cloud's top is a little denser and sharper-edged than the CPU's) |
 | uniform grid, NanoVDB | Y | grid Y, NanoVDB approx | grid Y, NanoVDB approx | - (their `interface` boundary material is not supported: grey diffuse, no medium) |
 | camera medium | Y | Y | Y | Y |
 | **Cameras**: perspective (+ depth of field), orthographic, spherical, realistic lens | Y | Y | Y | Y |
