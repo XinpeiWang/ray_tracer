@@ -37,6 +37,7 @@
 #include <utility>
 
 #include "../shared/mtl_parse.h"
+#include "../shared/gpu_scene_textures.h"   // isGrayscaleImage(): one definition of the height-map-vs-normal-map test for CPU, OptiX and Metal
 
 
 
@@ -113,27 +114,11 @@ inline std::unordered_map<std::string, std::string> parse_mtl_bump_textures(cons
 }
 
 // Distinguishes a genuine grayscale height/displacement map from a
-// tangent-space RGB normal map by sampling an 8x8 grid of pixels - see
-// src/shared/mtl_parse.h's own file comment for why this stays CPU-side
-// rather than moving into that shared header (it inspects `rtw_image`,
-// a CPU-only representation; GPU's mirror, is_grayscale_texture_gpu() in
-// scene_builder.cpp, does the same algorithm against its own device pixel
-// buffer instead).
+// tangent-space RGB normal map by sampling an 8x8 grid of pixels. The test itself is
+// shared (src/shared/gpu_scene_textures.h) so the CPU and both GPU backends classify an
+// image the same way; this wrapper only adapts `rtw_image`.
 inline bool is_grayscale_image(const rtw_image& img) {
-	int w = img.width(), h = img.height();
-	if (w <= 0 || h <= 0) return true; // degenerate load; harmless default
-	constexpr int kGrid = 8;
-	int max_diff = 0;
-	for (int sy = 0; sy < kGrid; ++sy) {
-		int y = (sy * h) / kGrid;
-		for (int sx = 0; sx < kGrid; ++sx) {
-			int x = (sx * w) / kGrid;
-			const unsigned char* p = img.pixel_data(x, y);
-			int r = p[0], g = p[1], b = p[2];
-			max_diff = std::max({max_diff, std::abs(r - g), std::abs(g - b), std::abs(r - b)});
-		}
-	}
-	return max_diff <= 10;
+	return gpu_scene_textures::isGrayscaleImage(img.width(), img.height(), [&img](int x, int y) { return img.pixel_data(x, y); });
 }
 
 inline std::unordered_map<std::string, std::string> parse_mtl_alpha_textures(const std::string& filepath) {

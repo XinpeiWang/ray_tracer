@@ -202,7 +202,7 @@ inline int getOrBuildMeasuredTable(const std::string& resolvedPath, SceneData& o
 // that never uses the rest of that header, matching how this file already
 // hand-duplicates a handful of other CPU-side constants rather than
 // including their whole home header).
-constexpr float kGpuImagemapDefaultGamma = 2.2f;
+constexpr float kGpuImagemapDefaultGamma = gpu_scene_textures::kDefaultImagemapGamma;
 
 inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData& out,
 									  std::map<std::string, int>& cache,
@@ -228,100 +228,19 @@ inline int getOrBuildPbrtImageTexture(const std::string& resolvedPath, SceneData
 	const auto it = cache.find(cacheKey);
 	if (it != cache.end()) return it->second;
 
-	// `cache` above is a fresh, per-call dedup against inserting the SAME
-	// texture twice into THIS scene's own out.textures/out.texturePixels -
-	// its stored index is only ever meaningful for the specific SceneData
-	// it was built into (a brand-new, empty one every call), so it can
-	// never itself be made process-lifetime. The actual stbi_loadf DECODE
-	// is what's expensive and scene-content-scaling, though, and doesn't
-	// depend on which SceneData it ends up copied into - cached here by the
-	// same composite (path, gamma, wrap, invert) key, for the life of the
-	// process, so a pbrt scene with image-mapped materials doesn't re-decode
-	// every referenced image from disk on every Live Preview frame the
-	// camera moves. Same "no hot-reload" precedent as scene_builder.cpp's
-	// own load_image_texture_gpu() cache, which this function otherwise
-	// duplicates rather than calls (this file's own header comment explains
-	// why - a link-order constraint, not a design choice).
-	struct DecodedImage {
-		bool found = false;
-		bool srgb = false;   // pixels are the file's own sRGB bytes (decoded per texel on the GPU), not 8-bit linear
-		int width = 0, height = 0;
-		std::vector<unsigned char> pixels;
-	};
+	// `cache` above is a fresh, per-call dedup against inserting the SAME texture twice into THIS scene's own out.textures/out.texturePixels - its stored index is only
+	// meaningful for the SceneData it was built into, so it can never itself be made process-lifetime. The DECODE is what is expensive, and it does not depend on which
+	// SceneData the pixels are copied into, so it is cached by the same composite key for the life of the process: a scene with image-mapped materials does not re-decode
+	// every image from disk on every Live Preview frame the camera moves. The decode itself (gpu_scene_textures.h) is shared with the Metal loader.
+	using gpu_scene_textures::DecodedImage;
 	static std::map<std::string, DecodedImage> s_decodedImageCache;
 	static std::mutex s_decodedImageCacheMutex;
 	const DecodedImage* decoded;
 	{
 		std::lock_guard<std::mutex> lock(s_decodedImageCacheMutex);
 		auto decodedIt = s_decodedImageCache.find(cacheKey);
-		if (decodedIt == s_decodedImageCache.end()) {
-			DecodedImage entry;
-			// stbi_ldr_to_hdr_gamma is process-global mutable state (see
-			// rtw_stb_image.h's identical CPU-side use for the full
-			// rationale) - mutated for the duration of this one
-			// stbi_loadf() call, then restored. A separate, narrower mutex
-			// than s_decodedImageCacheMutex above: this one only needs to
-			// bracket the global-gamma-state mutation itself, not the whole
-			// cache lookup/insert.
-			static std::mutex gammaMutex;
-			int width = 0, height = 0, channels = 0;
-			float* fdata = nullptr;
-			// The default gamma stands for sRGB: keep the file's own 8-bit bytes and let the GPU
-			// decode each texel exactly (srgb8_to_linear, optix_types.h) as pbrt-v4 does. The
-			// float decode below would pow(c, 2.2) and requantize to 8-bit LINEAR, which crushes
-			// dark texels to zero and bands the darks. invert and HDR sources keep that path.
-			bool done = false;
-			if (gamma == kGpuImagemapDefaultGamma && !invert && !stbi_is_hdr(resolvedPath.c_str())) {
-				unsigned char* raw = stbi_load(resolvedPath.c_str(), &width, &height, &channels, 3);
-				if (raw) {
-					entry.width = width;
-					entry.height = height;
-					entry.pixels.assign(raw, raw + static_cast<std::size_t>(width) * height * 3);
-					entry.srgb = true;
-					stbi_image_free(raw);
-					done = true;
-				}
-			}
-			if (!done) {
-				std::lock_guard<std::mutex> gammaLock(gammaMutex);
-				stbi_ldr_to_hdr_gamma(gamma);
-				fdata = stbi_loadf(resolvedPath.c_str(), &width, &height, &channels, 3);
-				stbi_ldr_to_hdr_gamma(kGpuImagemapDefaultGamma);
-			}
-			entry.found = done || (fdata != nullptr);
-			if (fdata) {
-				entry.width = width;
-				entry.height = height;
-				const std::size_t total = static_cast<std::size_t>(width) * height * 3;
-				entry.pixels.resize(total);
-				for (std::size_t i = 0; i < total; ++i) {
-					const float v = fdata[i];
-					unsigned char q = (v <= 0.0f) ? 0 : (v >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * v));
-					// Matches CPU's own quantize-then-invert order exactly
-					// (mipmap_texture::build_from(), texture.h): CPU reads
-					// the ALREADY-quantized byte back via rtw_image::
-					// pixel_data(), reconstructs a [0,1] value via /255
-					// (not /256 - see build_from()'s own `scale`), and only
-					// then applies invert (1-c, clamped at 0) - inverting
-					// the raw pre-quantization float here instead (as an
-					// earlier version of this code did) diverges from CPU
-					// by 1 LSB whenever the decoded value lands exactly on
-					// a multiple of 1/256. Baked in here, once per unique
-					// cache key, rather than at use time below, since
-					// invert is already part of the cache key (a file
-					// requested both inverted and non-inverted gets two
-					// independently-decoded entries either way).
-					if (invert) {
-						const float reconstructed = q / 255.0f;
-						const float inverted = fmaxf(0.0f, 1.0f - reconstructed);
-						q = (inverted <= 0.0f) ? 0 : (inverted >= 1.0f ? 255 : static_cast<unsigned char>(256.0f * inverted));
-					}
-					entry.pixels[i] = q;
-				}
-				stbi_image_free(fdata);
-			}
-			decodedIt = s_decodedImageCache.emplace(cacheKey, std::move(entry)).first;
-		}
+		if (decodedIt == s_decodedImageCache.end())
+			decodedIt = s_decodedImageCache.emplace(cacheKey, gpu_scene_textures::decodeColourImage(resolvedPath, gamma, invert)).first;
 		decoded = &decodedIt->second;
 	}
 
@@ -402,9 +321,8 @@ inline int getOrBuildPbrtAlphaMaskTexture(const std::string& resolvedPath, Scene
 	const auto it = cache.find(resolvedPath);
 	if (it != cache.end()) return it->second;
 
-	int width = 0, height = 0, channels = 0;
-	unsigned char* bdata = stbi_load(resolvedPath.c_str(), &width, &height, &channels, 3);
-	if (!bdata) {
+	gpu_scene_textures::DecodedImage mask = gpu_scene_textures::decodeAlphaMask(resolvedPath);
+	if (!mask.found) {
 		cache.emplace(resolvedPath, -1);
 		return -1;
 	}
@@ -413,18 +331,12 @@ inline int getOrBuildPbrtAlphaMaskTexture(const std::string& resolvedPath, Scene
 	tex.kind = TextureKind::Image;
 	tex.noiseScale = 0.0f;
 	tex.pixelOffset = static_cast<int>(out.texturePixels.size());
-	tex.width = width;
-	tex.height = height;
+	tex.width = mask.width;
+	tex.height = mask.height;
 	// pbrt-v4 reads the alpha texture with its default Repeat wrap; TextureData's zero-init Clamp
 	// collapsed tiled foliage UVs onto the image border.
 	tex.wrapMode = GpuWrapMode::Repeat;
-	const std::size_t total = static_cast<std::size_t>(width) * height * 3;
-	// pbrt-v4 reads the mask as the mean of the channels, sRGB-decoded by default (textures.cpp:436,
-	// mipmap.cpp:396-405); stored decoded and replicated, so the GPU's red-channel lookup sees it.
-	const std::vector<unsigned char> mask = srgb_decode::alphaMaskFromRgb8(bdata, static_cast<std::size_t>(width) * height);
-	out.texturePixels.resize(out.texturePixels.size() + total);
-	std::memcpy(out.texturePixels.data() + tex.pixelOffset, mask.data(), total);
-	stbi_image_free(bdata);
+	out.texturePixels.insert(out.texturePixels.end(), mask.pixels.begin(), mask.pixels.end());
 
 	const int idx = static_cast<int>(out.textures.size());
 	out.textures.push_back(tex);
@@ -432,28 +344,12 @@ inline int getOrBuildPbrtAlphaMaskTexture(const std::string& resolvedPath, Scene
 	return idx;
 }
 
-// Duplicates scene_builder.cpp's own is_grayscale_texture_gpu() exactly
-// (same 8x8-grid pixel-content sample, same threshold) for the same reason
-// getOrBuildPbrtImageTexture() above duplicates load_image_texture_gpu(): a
-// link-order constraint, not a design choice - that function lives in
-// scene_builder.cpp's own file-local anonymous namespace, defined AFTER
-// this header is #include'd there.
+// Whether an already-built Image texture is a grayscale height map or a colour (normal-map) image: the shared 8x8-grid test (gpu_scene_textures.h), read from the texture table.
 inline bool isPbrtTextureGrayscale(const SceneData& scene, int texIdx) {
 	if (texIdx < 0 || texIdx >= static_cast<int>(scene.textures.size())) return true;
 	const TextureData& tex = scene.textures[texIdx];
 	if (tex.width <= 0 || tex.height <= 0) return true;
-	constexpr int kGrid = 8;
-	int max_diff = 0;
-	for (int sy = 0; sy < kGrid; ++sy) {
-		int y = (sy * tex.height) / kGrid;
-		for (int sx = 0; sx < kGrid; ++sx) {
-			int x = (sx * tex.width) / kGrid;
-			std::size_t idx = static_cast<std::size_t>(tex.pixelOffset) + (static_cast<std::size_t>(y) * tex.width + x) * 3;
-			int r = scene.texturePixels[idx], g = scene.texturePixels[idx + 1], b = scene.texturePixels[idx + 2];
-			max_diff = std::max({max_diff, std::abs(r - g), std::abs(g - b), std::abs(r - b)});
-		}
-	}
-	return max_diff <= 10;
+	return gpu_scene_textures::isGrayscaleRgb8(scene.texturePixels.data() + tex.pixelOffset, tex.width, tex.height);
 }
 
 // Resolves a material's own effective flat colour for use as one side of a

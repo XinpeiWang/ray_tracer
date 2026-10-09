@@ -147,3 +147,20 @@ Two things I fixed on the way, both MSVC-only name lookups that clang accepts: a
 `MetalPocApp::loadPbrtScene()` now calls `gpu_tessellate::tessellateForBackend(scene, TessellationCaps::all(), &pbrtTriangleFiberTangent)` and `gpu_scene_frame::computeSceneFrame(scene)`; `tessellateGrid`, `normalize3`, `tessellateUnsupportedShapes` and the bounding-box / scale / centre / offset block are gone from `gpu/metal/metal_poc_pbrt_loader.mm` (about 215 lines fewer). `pbrtTriangleFiberTangent` is now `std::unordered_map<int, std::array<float, 3>>`. `toWorld` stays a `float3` lambda over the frame's three numbers, so the arithmetic is the one it was. Checked with `scripts/metal_render_hash.sh`: all 108 seeded renders (the 95 scenes plus option variants) are byte-identical to the pre-change binary; `ctest` 13/13. F7 (hair curves) renders differently from run to run on the unchanged binary too (3 distinct hashes in 6 runs), so the script retries a differing scene a few times before counting it as changed.
 
 Next on the Mac side: stage 1 (image and alpha-mask decoding, sRGB) once the Windows half exists.
+
+## Stage 1, Windows half: done (2026-10-08)
+
+`src/shared/gpu_scene_textures.h` (namespace `gpu_scene_textures`, tests in `tests/unit/gpu_scene_textures_tests.cpp`):
+
+* `decodeColourImage(path, gamma, invert) -> DecodedImage {found, srgb, width, height, pixels}`: the default gamma without invert keeps the file's own sRGB bytes (`srgb = true`, the GPU decodes per texel); any other gamma, invert or an HDR source is decoded as floats and baked into linear bytes, with invert applied after the quantization as the CPU's mipmap does. It is the cache-miss body of OptiX's `getOrBuildPbrtImageTexture`, moved with the arithmetic unchanged.
+* `decodeAlphaMask(path)`: pbrt's alpha-cutout rule (mean of the sRGB-decoded channels, replicated in R, G, B). It is `getOrBuildPbrtAlphaMaskTexture`'s decode.
+* `isGrayscaleImage(w, h, pixelAt)` / `isGrayscaleRgb8(rgb, w, h)`: the 8x8-grid "height map or normal map" test (channel spread <= 10). There were three copies of it (CPU `is_grayscale_image`, OptiX `isPbrtTextureGrayscale`, and Metal's inline loop in `applyImageBump`); the CPU and OptiX ones now call the shared one.
+
+What stays per backend: the cache, and where the pixels go (OptiX appends to its shared byte buffer and records an offset; Metal binds the first image that asks for a slot). `averageTextureColor` also stays in OptiX: it decodes with the device's own `srgb8_to_linear` (powf), which is not the same float arithmetic as `srgb_decode::byteToLinear`, so sharing it would move a light-selection weight.
+
+Checked: 22 seeded OptiX renders (11 textured, normal-mapped, bump-mapped and alpha-cutout scenes, recursive and wavefront, `--seed 7`) are byte-identical before and after.
+
+**Stage 1, Mac half: for the Mac session.** It is smaller than the proposal expected, because Metal reads colour images through `pbrt_load::detail::decodeInfiniteLightImage` (floats, not bytes) and does not read alpha masks at all:
+
+1. `applyImageBump` in `metal_poc_pbrt_loader.mm`: replace the 8x8 loop with `gpu_scene_textures::isGrayscaleRgb8(px, w, h)`. Check with `scripts/metal_render_hash.sh` (the bump and normal-map scenes).
+2. The Windows session found no alpha-mask reading in the Metal loader (no `alphaTextureFilename` anywhere under `gpu/metal`; PBRT_SUPPORT.md describes the alpha path for OptiX and CPU). If that is a gap on Metal rather than something handled elsewhere, `decodeAlphaMask` is the shared decode to start from; it would be a feature, not a refactor, so it needs the parity sweep, not the byte-identical gate.
