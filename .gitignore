@@ -303,6 +303,8 @@ END_TO_END_TEST_SUMMARY.md
 EXIT_STATUS_FIX.md
 FIX_*.md
 GPU_*.md
+# (docs/GPU_SCENE_COMMON.md is a real document: the rule above is for scratch notes)
+!docs/GPU_SCENE_COMMON.md
 LOG_TAB_ADDED.md
 MIS_ADOPTION_STATUS.md
 OPTIX_*.md

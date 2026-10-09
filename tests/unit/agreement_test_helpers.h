@@ -3,6 +3,7 @@
 // integrators against each other and against closed forms). Header-only, CPU-only (no OptiX), so the portable CMake target can use it too.
 
 #include <gtest/gtest.h>
+#include "test_accelerator.h"   // the accelerator choice a Debug build of the scene registry asserts was made
 #include "../../src/external/tinyexr.h"
 #include <algorithm>
 #include <cmath>

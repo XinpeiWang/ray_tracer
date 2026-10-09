@@ -304,5 +304,9 @@ add_executable(cpu_integrator_tests
     ${CMAKE_SOURCE_DIR}/../src/external/miniz.c
 )
 target_include_directories(cpu_integrator_tests PRIVATE ${COMMON_INCLUDES})
+# A Debug MSVC build of these heavily templated sources exceeds the default object-file section limit (error C1128).
+if(MSVC)
+    target_compile_options(cpu_integrator_tests PRIVATE /bigobj)
+endif()
 target_link_libraries(cpu_integrator_tests PRIVATE GTest::gtest_main)
 gtest_discover_tests(cpu_integrator_tests)
