@@ -380,6 +380,24 @@ TEST(PbrtBackendAgreementTest, ChromaticRgbGridFurnaceStaysInvisibleInEveryChann
 	expectChannelMeans("chromatic-rgbgrid-furnace", 128, 24, expected, 0.015, 0.015);
 }
 
+// A NanoVDB fog sphere that only scatters is invisible under a uniform sky on every backend (energy conservation, whatever the density field). This
+// is a check on lost or invented energy (a scattering scale applied twice, weights that do not average out), not on the density: any purely scattering
+// medium passes it, even with a wrong majorant (checked by breaking the GPU majorant, which this test did not notice). See nanovdb-furnace.pbrt.
+TEST(PbrtBackendAgreementTest, NanoVdbFurnaceStaysInvisibleOnEveryBackend) {
+	const double expected[3] = {1.0, 1.0, 1.0};
+	expectChannelMeans("nanovdb-furnace", 128, 40, expected, 0.015, 0.02);
+}
+
+// The density check the furnace cannot make: a thin uniform NanoVDB cube lit by a distant light on a black background has a closed form,
+// L = sigma_s * (integral of density along the ray) * E / (4 pi) = 0.1 * 0.09375 / (4 pi) = 7.46e-4, where the 0.09375 (not 0.5 * 0.2) is pbrt's
+// SampledGrid reading at voxel centres with zero outside (the outer half-voxels fade from 0.5 to 0.25). CPU and both OptiX renderers measure
+// 7.41 to 7.47e-4. Breaking the GPU majorant to 0.4x of its value moved this to 3.2e-4 while the furnace still read 1.000. See nanovdb-thin-slab.pbrt.
+TEST(PbrtBackendAgreementTest, NanoVdbThinCubeReadsItsSingleScatterClosedForm) {
+	const double L = 0.1 * 0.09375 / (4.0 * 3.14159265358979323846);
+	const double expected[3] = {L, L, L};
+	expectChannelMeans("nanovdb-thin-slab", 256, 8, expected, 0.03, 0.05);
+}
+
 // A fog whose scattering differs by colour but absorbs nothing is invisible under a uniform sky in every channel. A collision weight
 // that does not average to the transmittance (the balance heuristic across channels, volume_scattering.h) shows up here as a cast.
 // A measured-BSDF sphere under a uniform white sky: each pixel's radiance is the table's directional albedo for that view angle. Two
