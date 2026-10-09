@@ -522,6 +522,7 @@ struct MetalPocApp {
     TriangleMaterial mapPbrtMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth);
     bool mapPbrtPerHitMix(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth, TriangleMaterial& out);
     int bssrdfTableOffset(PbrtMaterialMapState& st, double g, double eta);
+    TriangleMaterial mapPbrtSubsurfaceMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m);
     TriangleMaterial mapPbrtDiffuseMaterial(const pbrt_flatten::Material& m, float sceneScale, float3 bboxCenter, float3 sceneOffset);
     // Area lights ("single quad, 2 triangles" shape only) - populates
     // `lights`, and the two out-params the very next phase

@@ -285,6 +285,24 @@ TriangleMaterial MetalPocApp::mapPbrtDiffuseMaterial(const pbrt_flatten::Materia
 // own 66,532-triangle "coateddiffuse" mesh) used to print that exact
 // line 66,532 times.
 // `depth` guards a Mix material that (wrongly) refers back to itself.
+// pbrt SubsurfaceMaterial -> materialType 34: a smooth dielectric interface over a tabulated BSSRDF (shadeSubsurface). color = sigma_a and
+// transmitColor = sigma_s per channel, both divided by the scene scale (a coefficient is per unit length, and the scene was rescaled); ior = eta;
+// roughness = the NormalizedFresnel constant c of the exit BSDF (as for materialType 18); conductorEta.x = the BSSRDF table's offset in the shared
+// float buffer, stored as a float.
+TriangleMaterial MetalPocApp::mapPbrtSubsurfaceMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m) {
+    const float eta = (float)m.ior;
+    float nfC = 1.0f - 2.0f * fresnelMoment1(1.0f / eta);
+    if (nfC <= 0.0f) nfC = 1e-6f;
+    const float invScale = 1.0f / st.sceneScale;
+    TriangleMaterial mat{PackedFloat3{(float)m.sigma_a[0] * invScale, (float)m.sigma_a[1] * invScale, (float)m.sigma_a[2] * invScale},
+                         /*materialType=*/METAL_MAT_SUBSURFACE, /*ior=*/eta,
+                         PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/nfC};
+    mat.transmitColor = PackedFloat3{(float)m.sigma_s[0] * invScale, (float)m.sigma_s[1] * invScale, (float)m.sigma_s[2] * invScale};
+    const int tableOffset = bssrdfTableOffset(st, m.g, m.ior);
+    mat.conductorEta.x = (float)tableOffset;   // exact below 2^24 floats; an int's bits would be a denormal, which the GPU may flush to zero
+    return mat;
+}
+
 // The tabulated BSSRDF for a (g, eta) pair, computed once (the same CPU ComputeBeamDiffusionBSSRDF that OptiX and the CPU use) and stored in the shared
 // float buffer in the layout metal_poc_bssrdf.metal reads: n_rho, n_radius, rho samples, radius samples, profile, profile CDF. Returns its element offset.
 int MetalPocApp::bssrdfTableOffset(PbrtMaterialMapState& st, double g, double eta) {
@@ -404,23 +422,8 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
             setConductorOptics(mat, m);
             return mat;
         }
-        case pbrt_flatten::MaterialKind::Subsurface: {
-            // pbrt SubsurfaceMaterial -> materialType 34: a smooth dielectric interface over a tabulated BSSRDF (shadeSubsurface). color = sigma_a and
-            // transmitColor = sigma_s per channel, both divided by the scene scale (a coefficient is per unit length, and the scene was rescaled);
-            // ior = eta; roughness = the NormalizedFresnel constant c of the exit BSDF (as for materialType 18); conductorEta.x = the BSSRDF table's
-            // offset in the shared float buffer, an int stored bit for bit.
-            const float eta = (float)m.ior;
-            float nfC = 1.0f - 2.0f * fresnelMoment1(1.0f / eta);
-            if (nfC <= 0.0f) nfC = 1e-6f;
-            const float invScale = 1.0f / st.sceneScale;
-            TriangleMaterial mat{PackedFloat3{(float)m.sigma_a[0] * invScale, (float)m.sigma_a[1] * invScale, (float)m.sigma_a[2] * invScale},
-                                 /*materialType=*/METAL_MAT_SUBSURFACE, /*ior=*/eta,
-                                 PackedFloat3{0, 0, 0}, /*lightId=*/-1, /*roughness=*/nfC};
-            mat.transmitColor = PackedFloat3{(float)m.sigma_s[0] * invScale, (float)m.sigma_s[1] * invScale, (float)m.sigma_s[2] * invScale};
-            const int tableOffset = bssrdfTableOffset(st, m.g, m.ior);
-            std::memcpy(&mat.conductorEta.x, &tableOffset, sizeof(float));
-            return mat;
-        }
+        case pbrt_flatten::MaterialKind::Subsurface:
+            return mapPbrtSubsurfaceMaterial(st, m);
         case pbrt_flatten::MaterialKind::NormalizedFresnel: {
             // materialType 18: `ior` = eta, `roughness` = the precomputed normalisation constant
             // c = 1 - 2*FresnelMoment1(1/eta) (a fixed function of eta, so computed here once; the
