@@ -46,6 +46,7 @@ Before this, see `git log`. Each item has a commit with the measurements behind 
 
 ### Rendering correctness
 
+* **Mix materials blend per hit on a Mac.** A pbrt `mix` of two materials used to render as just one of them on Metal (B15's sphere was pure copper instead of red-and-copper). The shader now picks one of the two at every hit, the second with probability `amount`, like the CPU and OptiX; B15 matches the CPU to 1%.
 * **Dispersion on a Mac.** A pbrt dielectric with `"float abbenumber"` (the glass prisms B23 and B24) now selects Metal's dispersive glass: B23 shows the colour fan the CPU's `--spectral` render has, using three wavelengths like the OptiX recursive backend. The shader had it all along; the loader never chose it.
 * **Clouds now render on a Mac.** A pbrt scene's `cloud` medium (E2, E5) showed no cloud on Metal at all: the loader had no case for it. It does now, and the picture matches the CPU's (the body to about 2%; the top edge, viewed from below, is still darker than the CPU's) and its density has the CPU's wispiness warp. Three shader faults it exposed are fixed in the same change: rays that had just left the cloud's box re-entered the shader without moving (a dark fringe), the sky-light rays used the box's maximum density instead of the real one (a black cloud), and the sky light was counted twice after a scatter (too bright).
 * **Path tracers add the last continuation ray.** The CPU and both OptiX backends stopped one segment early, so the emission or sky seen by the last
