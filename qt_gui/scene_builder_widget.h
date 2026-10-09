@@ -60,6 +60,9 @@ public:
 	bool dragObject3dForTest(int index, const QPointF &deltaPx);
 	QPointF shiftPanBackground3dForTest(int index, const QPointF &deltaPx);
 	bool dragAxis3dForTest(int index, int axis, double pixels);
+	// Selects the object, presses on the inner part of its `axis` arrow (a `fraction` of the way to the tip: that is the object itself, not the arrow) and drags by
+	// `deltaPx`; true if it moved in both X and Z, on the floor.
+	bool dragInnerArrow3dForTest(int index, int axis, double fraction, const QPointF &deltaPx);
 	bool dragRotate3dForTest(int index, int axis, double degrees);
 	bool dragScale3dForTest(int index, int axis, double ratio);
 	void orbit3dForTest(double yawDeg, double pitchDeg);

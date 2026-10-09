@@ -139,3 +139,20 @@ TEST(PickTipTest, OnlyTheSquareAtTheEndIsAHandle) {
 	const bool noZ[3] = {true, true, false};
 	EXPECT_EQ(pickTip({145, 145}, tips, noZ, 13), -1);
 }
+
+TEST(PickArrowTest, OnlyTheOuterPartOfAShaftIsAnArrowTheInnerPartIsTheObject) {
+	const P2 base{100, 100}, tips[3] = {{180, 100}, {100, 20}, {145, 145}};
+	// Past the dead zone and right on the shafts, but in the inner 45%: a free move, not an axis drag.
+	EXPECT_EQ(pickArrow({125, 100}, base, tips, kAll, 14, 9), -1) << "31% along X";
+	EXPECT_EQ(pickArrow({100, 75}, base, tips, kAll, 14, 9), -1) << "31% along Y";
+	EXPECT_EQ(pickArrow({118, 118}, base, tips, kAll, 14, 9), -1) << "40% along Z";
+	// From 45% out it is the arrow, to the tip and a little beyond it.
+	EXPECT_EQ(pickArrow({137, 100}, base, tips, kAll, 14, 9), 0) << "46% along X";
+	EXPECT_EQ(pickArrow({100, 24}, base, tips, kAll, 14, 9), 1);
+	EXPECT_EQ(pickArrow({184, 100}, base, tips, kAll, 14, 9), 0) << "just past the tip";
+	// A different fraction can be asked for.
+	EXPECT_EQ(pickArrow({125, 100}, base, tips, kAll, 14, 9, 0.2), 0);
+	// An arrow that points straight at the camera has no length on screen: nothing to pick (and no division by zero).
+	const P2 flat[3] = {{100, 100}, {100, 20}, {145, 145}};
+	EXPECT_EQ(pickArrow({100, 100}, base, flat, kAll, 0, 9), -1);
+}
