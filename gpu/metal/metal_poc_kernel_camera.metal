@@ -226,6 +226,7 @@ inline void initPathState(thread const KernelRes& R, thread PathState& P, float 
     // per-sample clamp (40) - it is applied only to paths that touched hair, so every other material
     // stays unclamped.
     pathTouchedHair = false;
+    envLightSampled = false;   // PathState lives across the pixel's samples: every sample starts with the environment not yet sampled
     // Glass-bounded medium state (a dielectric/thin/rough SPHERE whose material carries a homogeneous
     // medium in conductorEta = (sigma_t, g, 1) and transmitColor = albedo): true while this path
     // travels inside such a sphere. Updated after every dielectric event from the NEW direction vs the
