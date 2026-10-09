@@ -19,7 +19,7 @@ This page is the overview. The detail lives in:
 | **Materials**: diffuse, conductor, dielectric (smooth, rough, thin), diffuse transmission, coated diffuse / coated conductor, hair, principled, mix | Y | Y | Y | Y |
 | subsurface (tabulated BSSRDF) | Y | Y | Y | - (the loader says so and uses a grey diffuse) |
 | measured (`.bsdf`) | Y | Y | Y | Y (measured-brdf-showroom: means within 1% of the CPU) |
-| dispersion | Y | approx (3 wavelengths) | Y | - (the shader has it, but the pbrt loader never selects it: B23 renders with no colour fan, the CPU's `--spectral` render has one) |
+| dispersion | Y | approx (3 wavelengths) | Y | approx (3 wavelengths, like OptiX recursive: B23's colour fan matches the CPU's `--spectral` render; each path picks one of three channels at its first dispersive hit) |
 | **Textures**: image, checker, marble, fbm, windy, wrinkled, dots, bilerp | Y | Y | Y | Y |
 | **Lights**: point, spot, distant, goniometric, projection, area (all samplable shapes), infinite (constant and image), portal | Y | Y | Y | Y |
 | **Media**: homogeneous (incl. per-channel), cloud, RGB grid | Y | Y | Y | homogeneous and RGB grid Y (rgbgrid-medium matches the CPU); cloud Y (E2 cloud-medium-scene and E5 cloud-medium: the body matches the CPU to about 2%; the GPU density has no "wispiness" warp (as on OptiX), so the cloud's top is a little denser and sharper-edged than the CPU's) |
