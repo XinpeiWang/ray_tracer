@@ -37,6 +37,7 @@
 #include <utility>
 
 #include "../../src/shared/srgb_decode.h"   // srgb8 helpers used with the texture table
+#include "../../src/shared/gpu_scene_materials.h"   // reflectanceToConductorK(), shared with the CPU builder and the Metal loader
 #include "../../src/shared/gpu_scene_textures.h"   // image / alpha-mask decode and the grayscale test, shared with the Metal loader
 #include <vector>
 

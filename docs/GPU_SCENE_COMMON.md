@@ -164,3 +164,14 @@ Checked: 22 seeded OptiX renders (11 textured, normal-mapped, bump-mapped and al
 
 1. `applyImageBump` in `metal_poc_pbrt_loader.mm`: replace the 8x8 loop with `gpu_scene_textures::isGrayscaleRgb8(px, w, h)`. Check with `scripts/metal_render_hash.sh` (the bump and normal-map scenes).
 2. The Windows session found no alpha-mask reading in the Metal loader (no `alphaTextureFilename` anywhere under `gpu/metal`; PBRT_SUPPORT.md describes the alpha path for OptiX and CPU). If that is a gap on Metal rather than something handled elsewhere, `decodeAlphaMask` is the shared decode to start from; it would be a feature, not a refactor, so it needs the parity sweep, not the byte-identical gate.
+
+## Stage 2, Windows half: done (2026-10-08)
+
+Looked at line by line, stage 2 is much smaller than "the material decisions that really are common" suggested, and the honest result is one function.
+
+* **Shared: `gpu_scene_materials::reflectanceToConductorK<T>(r)`** in `src/shared/gpu_scene_materials.h` (tests in `gpu_scene_materials_tests.cpp`): a conductor that gives only a reflectance gets eta = 1 and k = 2 sqrt(r) / sqrt(1 - r), r clamped to [0, 0.9999], denominator floored at 1e-4. It was written out three times (CPU `pbrt_cpu_detail.h` in double, OptiX `pbrt_gpu_builder_materials.h` in float, and the lambda `reflectanceToK` inside `setConductorOptics` in `metal_poc_pbrt_materials.mm`). The CPU and OptiX ones call the template now.
+* **Not shared, on purpose:** the procedural average colour is already one function (`nestedProceduralAverageColor` in `pbrt_flatten_materials.h`), consumed by all three. The chromatic-medium test is different by design: OptiX uses `is_chromatic()` (relative 1e-6, then carries three extinctions), Metal reduces to one scalar plus a flag with its own thresholds (2% at one site, 1% at another, in `metal_poc_pbrt_loader.mm`). Making them agree would change Metal's images, so it is a decision for the Mac side, not a refactor. The device shader's own reflectance conductor in `materials.h` solves the same relation per hit with a different floor and stays as it is.
+
+Checked: seeded renders of the CPU and the OptiX recursive backend are byte-identical before and after, on six conductor scenes plus two with reflectance-only conductors and coated conductors (made for this check, since no bundled scene uses that path). The wavefront backend is not reproducible run to run on several conductor scenes, so it is not a byte gate there.
+
+**Stage 2, Mac half:** in `setConductorOptics`, replace the `reflectanceToK` lambda with `gpu_scene_materials::reflectanceToConductorK(color.x)` (and y, z). Gate: `scripts/metal_render_hash.sh`. Separate question for the Mac session: should the two chromatic-medium thresholds (2% and 1%) be one named constant?

@@ -22,17 +22,11 @@ inline float2 f2(const double *v) {
 	return make_float2(static_cast<float>(v[0]), static_cast<float>(v[1]));
 }
 
-// Mirrors pbrt_cpu_builder.h's reflectanceToConductorK() - see its comment
-// for why (a reflectance-only conductor, eta=1 solved for k via the
-// normal-incidence Schlick relation). Kept in sync by hand since one is
-// CPU-only (double, color) and the other GPU-only (float, float3); a shared
-// header for six lines was judged not worth the indirection.
+// A reflectance-only conductor: eta = 1, k solved from the normal-incidence reflectance. The per-channel rule is shared with the CPU builder and the Metal loader
+// (gpu_scene_materials.h); this only applies it to a float3.
 inline float3 reflectanceToConductorK(const float3 &r) {
-	const auto k1 = [](float x) {
-		x = x < 0.0f ? 0.0f : (x > 0.9999f ? 0.9999f : x);
-		return 2.0f * sqrtf(x) / sqrtf(fmaxf(1e-4f, 1.0f - x));
-	};
-	return make_float3(k1(r.x), k1(r.y), k1(r.z));
+	using gpu_scene_materials::reflectanceToConductorK;
+	return make_float3(reflectanceToConductorK(r.x), reflectanceToConductorK(r.y), reflectanceToConductorK(r.z));
 }
 
 // Builds (or looks up, if an earlier material already asked for the same

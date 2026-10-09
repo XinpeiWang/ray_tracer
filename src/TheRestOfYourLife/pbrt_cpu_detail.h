@@ -28,7 +28,8 @@
 #include "hair_material.h"
 #include "hittable_list.h"
 #include "material.h"
-#include "mesh_mtl.h"        // is_grayscale_image() - see the displacement-map bump-vs-normal dispatch
+#include "../shared/gpu_scene_materials.h"   // reflectanceToConductorK()
+#include "mesh_mtl.h"       // is_grayscale_image() - see the displacement-map bump-vs-normal dispatch
 #include "principled_material.h"
 #include "../shared/srgb_decode.h"
 #include "rtw_stb_image.h"     // stbi_load() - see alphaMaskFor()'s own comment
@@ -58,11 +59,8 @@ namespace detail {
 // coated metal rendered from its base colour instead of exact spectra,
 // clearly better than the flat Lambertian this used to fall back to.
 inline color reflectanceToConductorK(const color& r) {
-	const auto k1 = [](double x) {
-		x = x < 0.0 ? 0.0 : (x > 0.9999 ? 0.9999 : x);
-		return 2.0 * std::sqrt(x) / std::sqrt(std::fmax(1e-4, 1.0 - x));
-	};
-	return color(k1(r.x()), k1(r.y()), k1(r.z()));
+	using gpu_scene_materials::reflectanceToConductorK;   // the per-channel rule, shared with both GPU loaders
+	return color(reflectanceToConductorK(r.x()), reflectanceToConductorK(r.y()), reflectanceToConductorK(r.z()));
 }
 
 // One decoded mipmap per (file, options), shared by every material that names it.
