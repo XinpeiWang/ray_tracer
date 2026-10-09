@@ -28,6 +28,11 @@ Scene3DView::Hit Scene3DView::hitTest(const QPointF &px) const {
 		double bx, by;
 		if (v.project(base, bx, by)) {
 			const GizmoMode mode = effectiveGizmo();
+			if (mode == GizmoMode::Move && std::hypot(bx - px.x(), by - px.y()) <= kFreeHandlePx) {   // the dot in the middle: a free move (comes before the arrows that start there)
+				h.kind = Hit::Kind::FreeHandle;
+				h.sel = m_sel;
+				return h;
+			}
 			if (mode == GizmoMode::Move || mode == GizmoMode::Scale) {
 				// Arrows (Move) or squares at the same ends (Scale, along the object's own axes).
 				const Object *o = selectedObject();
@@ -137,6 +142,15 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 		m_axisT0 = t;
 		return;
 	}
+	if (h.kind == Hit::Kind::FreeHandle || (e->modifiers() & Qt::ControlModifier)) {
+		// A free move: the item follows the pointer on the plane through it that faces the camera, so it goes up, down, sideways, nearer or further as the mouse
+		// goes (the white dot in the middle of the Move tool, or Ctrl - Command on a Mac - while dragging anything).
+		m_mode = Mode::Free;
+		V3 hit;
+		if (scene_view::rayPlane(ray, m_dragStart, v.cam.forward(), hit)) m_grabOffset = m_dragStart - hit;
+		else m_mode = Mode::None;
+		return;
+	}
 	if (e->modifiers() & Qt::ShiftModifier) {
 		m_mode = Mode::Vertical;
 		double t = 0;
@@ -185,6 +199,13 @@ void Scene3DView::applyDrag(const QPointF &px, Qt::KeyboardModifiers mods) {
 		w.x = snap ? snapQuarter(target.x) : target.x;
 		w.z = snap ? snapQuarter(target.z) : target.z;
 		w.y = m_dragStart.y;
+	} else if (m_mode == Mode::Free) {
+		V3 hit;
+		if (!scene_view::rayPlane(ray, m_dragStart, v.cam.forward(), hit)) return;
+		const V3 target = hit + m_grabOffset;
+		w.x = snap ? snapQuarter(target.x) : target.x;
+		w.y = snap ? snapQuarter(target.y) : target.y;
+		w.z = snap ? snapQuarter(target.z) : target.z;
 	} else if (m_mode == Mode::Axis || m_mode == Mode::Vertical) {
 		const int axis = m_mode == Mode::Vertical ? 1 : m_drag.axis;
 		double t = 0;

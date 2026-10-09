@@ -37,6 +37,7 @@ const V3 kRingRef[3] = {{0, 1, 0}, {1, 0, 0}, {1, 0, 0}};
 constexpr int kRingSegments = 64;
 constexpr double kArrowDeadPx = 14.0;   // the middle of the selected object is for moving it freely, not for the arrows that start there
 constexpr double kArrowPickPx = 9.0;
+constexpr double kFreeHandlePx = 11.0;   // the white dot in the middle of the selected item's Move tool: drag it to move the item in any direction
 constexpr double kHandlePickPx = 13.0;
 constexpr double kMeshRecheckMs = 1500.0;   // a mesh file's date is looked at this often, not at every repaint
 constexpr double kMaxDropDistance = 1.5;    // a new object is dropped within this many camera distances of what the camera looks at

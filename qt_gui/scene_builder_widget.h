@@ -57,7 +57,7 @@ public:
 	// The 3D view, for the self-test: show it (or go back to the 2D views), drag an object on the floor, or along one axis arrow of the selected item.
 	void show3dView(bool on);
 	void resetPaneSizes();   // View > Reset Window Layout
-	bool dragObject3dForTest(int index, const QPointF &deltaPx);
+	bool dragObject3dForTest(int index, const QPointF &deltaPx, Qt::KeyboardModifiers mods = Qt::NoModifier);
 	QPointF shiftPanBackground3dForTest(int index, const QPointF &deltaPx);
 	bool dragAxis3dForTest(int index, int axis, double pixels);
 	// Selects the object, presses on the inner part of its `axis` arrow (a `fraction` of the way to the tip: that is the object itself, not the arrow) and drags by

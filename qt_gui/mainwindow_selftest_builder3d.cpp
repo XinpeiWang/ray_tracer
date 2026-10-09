@@ -106,9 +106,16 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 		{
 			sb->selectObject(2);
 			const scene_doc::Float3 b0 = sb->document().objects[2].position;
-			check(sb->dragObject3dForTest(2, QPointF(70, 45)), "dragging the middle of the selected ball moves it");
+			check(sb->dragObject3dForTest(2, QPointF(70, 45)), "dragging the white dot in the middle of the selected ball moves it");
 			const scene_doc::Float3 b1 = sb->document().objects[2].position;
-			check(b1.x != b0.x && b1.z != b0.z && b1.y == b0.y, "on the floor in both X and Z, not locked to one axis by an arrow");
+			check(b1.x != b0.x && b1.y != b0.y && b1.z != b0.z, "freely: in X, Y and Z at once (it follows the pointer on the plane facing the camera)");
+			check(sb->undo(), "undo");
+			// Dragging up the screen with the dot lifts the ball: a free move is not stuck on the floor or on an axis.
+			check(sb->dragObject3dForTest(2, QPointF(0, -60)), "dragging the dot straight up the screen");
+			check(sb->document().objects[2].position.y > b0.y, "lifts the ball");
+			check(sb->undo(), "undo");
+			// Ctrl (Command on a Mac) while dragging, anywhere on the ball and not only the dot, is the same free move.
+			check(sb->dragObject3dForTest(2, QPointF(0, -60), Qt::ControlModifier) && sb->document().objects[2].position.y > b0.y, "Ctrl-dragging up lifts it too");
 			check(sb->undo(), "undo");
 			// ...and so is a press anywhere on the body of the selected object, over the inner part of an arrow: only the outer part of an arrow is an axis drag.
 			for (int axis = 0; axis < 3; ++axis) {
@@ -214,6 +221,10 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			if (!open.isEmpty()) {
 				QString err;
 				log(sb->openFile(open, &err) ? "opened " + open : "FAIL: could not open " + open + ": " + err);
+				if (qEnvironmentVariableIsSet("RT_GUI_SELFTEST_OPEN_SELECT")) {   // (to see its tool: the Move tool)
+					sb->selectObject(qEnvironmentVariableIntValue("RT_GUI_SELFTEST_OPEN_SELECT"));
+					if (Scene3DView *view = sb->findChild<Scene3DView *>()) view->setGizmoMode(Scene3DView::GizmoMode::Move);
+				}
 				QTimer::singleShot(500, this, [this, shot, log, ok]() {
 					shot("builder3d_open");
 					log(ok ? "RESULT: OK" : "RESULT: FAIL");
