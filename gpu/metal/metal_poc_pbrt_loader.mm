@@ -14,6 +14,8 @@
 #import <Foundation/Foundation.h>
 #include "metal_poc_app.h"
 #include "../../src/shared/curve_tessellate.h"
+#include "../../src/shared/gpu_tessellate.h"
+#include "../../src/shared/gpu_scene_frame.h"
 #include "../../src/shared/srgb_decode.h"
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
 #include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
@@ -53,156 +55,10 @@
 // None of this needed any changes to buildGPUResources() below - see
 // buildScene()'s own call-site comment for why (additive onto the
 // existing hardcoded room, never leaves any vector newly empty).
-// --- Shapes the Metal POC has no intersection primitive for, tessellated into triangles -----
-// bilinearmesh, cone, paraboloid and curve were skipped outright ("shapes skipped" warning), so
-// scenes using them (F1, F4, F7, F8, F14) rendered without that geometry. They are instead
-// converted, once at load time and BEFORE the scene bounding box / materials are processed, into
-// ordinary triangles appended to the flattened scene - so scale, materials, area lights and
-// instancing all treat them like any other mesh. Same approach pbrt-v4's own GPU path and this
-// project's OptiX builder take for curves (src/shared/curve_tessellate.h). The tessellation is a
-// close approximation, not exact geometry: smooth analytic vertex normals for the quadrics and
-// patches, flat-shaded 8-sided tubes for curves.
-namespace {
-
-void tessellateGrid(std::vector<pbrt_flatten::Triangle>& out, int nu, int nv, int material, int areaLight,
-                    const std::function<void(double, double, double*, double*)>& eval) {
-    for (int j = 0; j < nv; ++j) {
-        for (int i = 0; i < nu; ++i) {
-            const double u0 = (double)i / nu, u1 = (double)(i + 1) / nu;
-            const double v0 = (double)j / nv, v1 = (double)(j + 1) / nv;
-            double p[4][3], n[4][3];
-            const double us[4] = {u0, u1, u0, u1}, vs[4] = {v0, v0, v1, v1};   // p00 p10 p01 p11
-            for (int k = 0; k < 4; ++k) eval(us[k], vs[k], p[k], n[k]);
-            const int tris[2][3] = {{0, 1, 3}, {0, 3, 2}};
-            for (const auto& t : tris) {
-                pbrt_flatten::Triangle tri;
-                for (int c = 0; c < 3; ++c) {
-                    for (int a = 0; a < 3; ++a) { tri.v[c * 3 + a] = p[t[c]][a]; tri.n[c * 3 + a] = n[t[c]][a]; }
-                    tri.uv[c * 2 + 0] = us[t[c]]; tri.uv[c * 2 + 1] = vs[t[c]];
-                }
-                tri.hasNormals = true;
-                tri.hasUVs = true;
-                tri.material = material;
-                tri.areaLight = areaLight;
-                out.push_back(tri);
-            }
-        }
-    }
-}
-
-void normalize3(double* v) {
-    const double l = std::sqrt(v[0] * v[0] + v[1] * v[1] + v[2] * v[2]);
-    if (l > 1e-300) { v[0] /= l; v[1] /= l; v[2] /= l; }
-}
-
-// Returns how many triangles were added (0 when the scene has none of these shapes).
-size_t tessellateUnsupportedShapes(pbrt_flatten::FlatScene& scene,
-                                std::unordered_map<int, PackedFloat3>& fiberTangent) {
-    std::vector<pbrt_flatten::Triangle> out;
-    std::vector<std::pair<size_t, PackedFloat3>> outTangents;   // (index into `out`, fibre direction)
-    // A shape with `Material "interface"` only bounds a participating medium: skip it (transparent)
-    // rather than turning it into an opaque gray mesh - same rule the sphere/disk/cylinder loaders use.
-    auto isInterface = [&scene](int m) {
-        return m >= 0 && m < (int)scene.materials.size() &&
-               scene.materials[m].kind == pbrt_flatten::MaterialKind::Interface;
-    };
-
-    // Bilinear patch: p(u,v) = (1-u)(1-v)p00 + u(1-v)p10 + (1-u)v p01 + uv p11; normal = dpdu x dpdv.
-    for (const pbrt_flatten::BilinearPatch& bp : scene.bilinearPatches) {
-        if (isInterface(bp.material)) continue;
-        const double (*P)[3] = bp.p;
-        tessellateGrid(out, 16, 16, bp.material, bp.areaLight, [&](double u, double v, double* p, double* n) {
-            double dpdu[3], dpdv[3];
-            for (int a = 0; a < 3; ++a) {
-                p[a] = (1 - u) * (1 - v) * P[0][a] + u * (1 - v) * P[1][a] + (1 - u) * v * P[2][a] + u * v * P[3][a];
-                dpdu[a] = (1 - v) * (P[1][a] - P[0][a]) + v * (P[3][a] - P[2][a]);
-                dpdv[a] = (1 - u) * (P[2][a] - P[0][a]) + u * (P[3][a] - P[1][a]);
-            }
-            n[0] = dpdu[1] * dpdv[2] - dpdu[2] * dpdv[1];
-            n[1] = dpdu[2] * dpdv[0] - dpdu[0] * dpdv[2];
-            n[2] = dpdu[0] * dpdv[1] - dpdu[1] * dpdv[0];
-            normalize3(n);
-        });
-    }
-
-    // Cone (open, no base cap): object space z in [0,height], radius R*(1 - z/height).
-    for (const pbrt_flatten::Cone& c : scene.cones) {
-        if (isInterface(c.material)) continue;
-        pbrt_scene::Matrix4 xf;
-        for (int i = 0; i < 16; ++i) xf.m[i] = c.xform[i];
-        const double phiMax = c.phiMaxDeg * M_PI / 180.0;
-        tessellateGrid(out, 48, 4, c.material, c.areaLight, [&](double u, double v, double* p, double* n) {
-            const double ph = u * phiMax, rad = c.radius * (1.0 - v);
-            const double po[3] = {rad * std::cos(ph), rad * std::sin(ph), v * c.height};
-            pbrt_flatten::flatten_detail::transformPoint(xf, po[0], po[1], po[2], p);
-            pbrt_flatten::flatten_detail::transformNormal(xf, c.height * std::cos(ph), c.height * std::sin(ph), c.radius, n);
-            normalize3(n);
-        });
-    }
-
-    // Paraboloid: z in [zMin,zMax], radius R*sqrt(z/zMax); outward normal is the gradient of
-    // x^2 + y^2 - (R^2/zMax) z.
-    for (const pbrt_flatten::Paraboloid& pa : scene.paraboloids) {
-        if (isInterface(pa.material)) continue;
-        pbrt_scene::Matrix4 xf;
-        for (int i = 0; i < 16; ++i) xf.m[i] = pa.xform[i];
-        const double phiMax = pa.phiMaxDeg * M_PI / 180.0;
-        tessellateGrid(out, 48, 24, pa.material, pa.areaLight, [&](double u, double v, double* p, double* n) {
-            const double ph = u * phiMax;
-            const double z = pa.zMin + v * (pa.zMax - pa.zMin);
-            const double rad = pa.radius * std::sqrt(std::max(z, 0.0) / pa.zMax);
-            const double x = rad * std::cos(ph), y = rad * std::sin(ph);
-            pbrt_flatten::flatten_detail::transformPoint(xf, x, y, z, p);
-            pbrt_flatten::flatten_detail::transformNormal(xf, 2.0 * x, 2.0 * y, -pa.radius * pa.radius / pa.zMax, n);
-            normalize3(n);
-        });
-    }
-
-    // Curve: every Bezier segment becomes a tapered 8-sided tube (the same dicing density OptiX
-    // uses); width interpolates across the WHOLE curve, as in pbrt-v4. Flat-shaded.
-    for (const pbrt_flatten::Curve& cv : scene.curves) {
-        if (isInterface(cv.material)) continue;
-        std::vector<curve_tessellate::Quad> quads;
-        for (int seg = 0; seg < cv.nSegments; ++seg) {
-            float cp[4][3];
-            for (int i = 0; i < 4; ++i)
-                for (int a = 0; a < 3; ++a) cp[i][a] = (float)cv.cp[((size_t)seg * 4 + i) * 3 + a];
-            const double t0 = (double)seg / cv.nSegments, t1 = (double)(seg + 1) / cv.nSegments;
-            quads.clear();
-            curve_tessellate::tessellate(cp, 0.0f, 1.0f, (float)(cv.width0 + (cv.width1 - cv.width0) * t0),
-                                         (float)(cv.width0 + (cv.width1 - cv.width0) * t1), 10, 8, quads);
-            for (const curve_tessellate::Quad& q : quads) {
-                const float* c4[4] = {q.p00, q.p10, q.p01, q.p11};
-                const int tris[2][3] = {{0, 1, 3}, {0, 3, 2}};
-                for (const auto& t : tris) {
-                    pbrt_flatten::Triangle tri;
-                    for (int c = 0; c < 3; ++c)
-                        for (int a = 0; a < 3; ++a) tri.v[c * 3 + a] = c4[t[c]][a];
-                    tri.material = cv.material;
-                    tri.areaLight = cv.areaLight;
-                    // Fibre direction = along the tube (ring i -> ring i+1), for the hair shader.
-                    {
-                        float tx = q.p10[0] - q.p00[0], ty = q.p10[1] - q.p00[1], tz = q.p10[2] - q.p00[2];
-                        const float tl = std::sqrt(tx * tx + ty * ty + tz * tz);
-                        if (tl > 1e-20f) outTangents.push_back({out.size(), PackedFloat3{tx / tl, ty / tl, tz / tl}});
-                    }
-                    out.push_back(tri);
-                }
-            }
-        }
-    }
-
-    const size_t baseIndex = scene.triangles.size();
-    for (const auto& tp : outTangents) fiberTangent[(int)(baseIndex + tp.first)] = tp.second;
-    scene.triangles.insert(scene.triangles.end(), out.begin(), out.end());
-    scene.bilinearPatches.clear();
-    scene.cones.clear();
-    scene.paraboloids.clear();
-    scene.curves.clear();
-    return out.size();
-}
-
-}  // namespace
+// Shapes the Metal POC has no intersection primitive for (bilinear patches, cones, paraboloids, curves) are tessellated into
+// triangles at load time, before the scene's bounding box, materials, area lights and instancing look at it:
+// gpu_tessellate::tessellateForBackend() in src/shared/gpu_tessellate.h (moved there from this file so OptiX shares it; the numbers
+// are unchanged).
 
 void MetalPocApp::loadPbrtScene() {
     pbrt_load::LoadResult result = pbrt_load::loadFile(pbrtScenePath);
@@ -217,7 +73,7 @@ void MetalPocApp::loadPbrtScene() {
         return;
     }
     pbrtTriangleFiberTangent.clear();
-    if (const size_t added = tessellateUnsupportedShapes(result.scene, pbrtTriangleFiberTangent))
+    if (const size_t added = gpu_tessellate::tessellateForBackend(result.scene, gpu_tessellate::TessellationCaps::all(), &pbrtTriangleFiberTangent))
         fprintf(stderr, "loadPbrtScene: tessellated bilinear patch/cone/paraboloid/curve shapes into %zu triangle(s)\n", added);
     const pbrt_flatten::FlatScene& scene = result.scene;
     for (const pbrt_scene::Warning& w : scene.warnings) {
@@ -255,87 +111,18 @@ void MetalPocApp::loadPbrtScene() {
     // INPUT geometry once, here, at load time - computed from the
     // scene's own bounding box (triangles + spheres) so this generalizes
     // to any pbrt scene's own authored scale, not just this one file's.
-    float3 bboxMin{FLT_MAX, FLT_MAX, FLT_MAX}, bboxMax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
-    auto growBounds = [&](float3 p) {
-        bboxMin = simd::min(bboxMin, p);
-        bboxMax = simd::max(bboxMax, p);
-    };
-    for (const pbrt_flatten::Triangle& t : scene.triangles) {
-        for (int c = 0; c < 3; ++c)
-            growBounds(float3{(float)t.v[c * 3 + 0], (float)t.v[c * 3 + 1], (float)t.v[c * 3 + 2]});
-    }
-    for (const pbrt_flatten::Sphere& s : scene.spheres) {
-        const float3 c{(float)s.center[0], (float)s.center[1], (float)s.center[2]};
-        const float r = (float)s.radius;
-        growBounds(c - float3{r, r, r});
-        growBounds(c + float3{r, r, r});
-    }
-    // A huge ground-plane-as-a-sphere (the common `Translate 0 -1000 0` + radius-1000
-    // idiom, e.g. A2/A3/A5/A7/F2) would make the extent ~2000 and the rescale ~0.001,
-    // shrinking every real object to ~0.001 units - the SAME size as the shaders'
-    // fixed 0.001 ray offsets - so reflection/refraction rays off a radius-1 sphere
-    // were displaced by a full radius (mirror sphere's lower half rendered black).
-    // So: if excluding spheres whose diameter is >= 60% of the full extent shrinks the
-    // extent by more than 4x, size the scene from that "content" box instead. The
-    // huge sphere is still loaded, just no longer allowed to set the scale.
-    {
-        const float3 fullExtent = bboxMax - bboxMin;
-        const float fullMax = fmaxf(fullExtent.x, fmaxf(fullExtent.y, fullExtent.z));
-        float3 coreMin{FLT_MAX, FLT_MAX, FLT_MAX}, coreMax{-FLT_MAX, -FLT_MAX, -FLT_MAX};
-        bool anyCore = false, droppedGiant = false;
-        for (const pbrt_flatten::Triangle& t : scene.triangles) {
-            for (int c = 0; c < 3; ++c) {
-                const float3 p{(float)t.v[c * 3 + 0], (float)t.v[c * 3 + 1], (float)t.v[c * 3 + 2]};
-                coreMin = simd::min(coreMin, p); coreMax = simd::max(coreMax, p); anyCore = true;
-            }
-        }
-        for (const pbrt_flatten::Sphere& s : scene.spheres) {
-            const float r = (float)s.radius;
-            if (2.0f * r >= 0.6f * fullMax) { droppedGiant = true; continue; }
-            const float3 c{(float)s.center[0], (float)s.center[1], (float)s.center[2]};
-            coreMin = simd::min(coreMin, c - float3{r, r, r}); coreMax = simd::max(coreMax, c + float3{r, r, r}); anyCore = true;
-        }
-        if (droppedGiant && anyCore) {
-            const float3 coreExtent = coreMax - coreMin;
-            const float coreMaxExtent = fmaxf(coreExtent.x, fmaxf(coreExtent.y, coreExtent.z));
-            if (coreMaxExtent > 1e-6f && coreMaxExtent < 0.25f * fullMax) {
-                fprintf(stderr, "loadPbrtScene: ignoring a huge ground-like sphere when sizing the scene "
-                                "(extent %.1f -> %.1f)\n", fullMax, coreMaxExtent);
-                bboxMin = coreMin; bboxMax = coreMax;
-            }
-        }
-    }
-    const float3 bboxExtent = bboxMax - bboxMin;
-    const float maxExtent = fmaxf(bboxExtent.x, fmaxf(bboxExtent.y, bboxExtent.z));
-    // Target: the loaded scene's own largest dimension maps to 2.0 units -
-    // matching the hardcoded room's own [-1,1] (2-unit-across) scale, so
-    // every one of those existing epsilons is meaningful again. Falls
-    // back to 1.0 (no rescale) for a degenerate/empty scene rather than
-    // dividing by ~0.
-    const float sceneScale = (maxExtent > 1e-6f) ? (2.0f / maxExtent) : 1.0f;
-    // Recentre on the scene's own bounding-box centre, THEN push it well
-    // clear of the hardcoded room's own occupied [-1,1] region (+60 in X
-    // as of section 169 - was +8, "more than enough given the loaded
-    // scene's own rescaled extent is ~2 units" turned out to be true only
-    // for camera-frustum overlap, not for an OPEN scene's own shadow rays
-    // reaching the room's own always-present, zero-falloff directional
-    // light unoccluded, or a specular/mirror material reflecting the
-    // room's own geometry from 8 units away - both real, found via G25/
-    // G19 respectively, not assumed) - the pbrt scene's own coordinate
-    // origin has no
-    // reason to relate to the hardcoded room's at all (e.g. this classic
-    // Cornell box is authored spanning x/y/z ~[0,555], not centred at its
-    // own origin), so simply rescaling in place (this function's own
-    // first attempt) left the two scenes - and the camera, repositioned
-    // to the loaded scene's own - confusingly overlapping in the SAME
-    // small region of world space, with the render showing a hard-to-
-    // interpret mix of both. Recentre + offset keeps this purely
-    // ADDITIVE (see buildScene()'s own call-site comment on why - no
-    // buildGPUResources() changes needed) while keeping the two scenes
-    // visually and spatially separate, exactly as if they were two
-    // different rooms.
-    const float3 bboxCenter = 0.5f * (bboxMin + bboxMax);
-    const float3 sceneOffset{60.0f, 0.0f, 0.0f};
+    // The rule itself (bounding box of the triangles and spheres, ignoring a huge ground-like sphere; largest dimension -> 2 units;
+    // recentred and moved +60 in X, clear of the hardcoded room's [-1, 1]) is gpu_scene_frame::computeSceneFrame() in
+    // src/shared/gpu_scene_frame.h, moved there from this function with the arithmetic unchanged. Live Preview converts the GUI's
+    // camera and first-hit positions with the same three numbers (scale, centre, offset).
+    const gpu_scene_frame::Frame frame = gpu_scene_frame::computeSceneFrame(scene);
+    if (frame.ignoredGiantSphere)
+        fprintf(stderr, "loadPbrtScene: ignoring a huge ground-like sphere when sizing the scene "
+                        "(extent %.1f -> %.1f)\n", frame.fullExtent, frame.extent);
+    const float maxExtent = frame.extent;
+    const float sceneScale = frame.scale;
+    const float3 bboxCenter{frame.centre[0], frame.centre[1], frame.centre[2]};
+    const float3 sceneOffset{frame.offset[0], frame.offset[1], frame.offset[2]};
     auto toWorld = [=](float3 p) { return (p - bboxCenter) * sceneScale + sceneOffset; };
     fprintf(stderr, "loadPbrtScene: scene bounding box extent %.1f units, rescaling by %.5f, "
                     "recentred and offset to +X\n", maxExtent, sceneScale);
@@ -660,7 +447,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
         if (t.material >= 0 && t.material < (int)scene.materials.size()) applyImageBump(mat, scene.materials[t.material]);
         if (mat.materialType == METAL_MAT_HAIR) {
             auto tanIt = pbrtTriangleFiberTangent.find(i);
-            if (tanIt != pbrtTriangleFiberTangent.end()) mat.conductorK = tanIt->second;   // real fibre tangent (curves)
+            if (tanIt != pbrtTriangleFiberTangent.end()) mat.conductorK = PackedFloat3{tanIt->second[0], tanIt->second[1], tanIt->second[2]};   // real fibre tangent (curves)
         }
         auto unhandledIt = unhandledLightEmission.find(i);
         if (unhandledIt != unhandledLightEmission.end()) {
