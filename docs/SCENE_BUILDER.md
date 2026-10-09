@@ -30,12 +30,12 @@ Each drag is one undo step. In the flat views, the wheel zooms and right-drag (o
 | Wheel | Zoom |
 | Click an object, light or the camera | Select it (the camera is the little box with its view frame; a spotlight, sun or the camera also has a target you can drag) |
 | **Move** tool (W): drag a selected item | Move it on the floor (Shift-drag: up and down) |
-| **Move**: drag one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
+| **Move**: drag the outer half of one of its coloured arrows (X red, Y green, Z blue) | Move it along that axis only |
 | **Rotate** tool (E): drag a coloured ring | Turn the object about that world axis (in steps of 5 degrees; Alt or Option for free); the three Rotation numbers are worked out for you |
 | **Scale** tool (R): drag a square handle | Stretch the object along that one of its own axes (steps of 5 %): a box's size, a cylinder's or cone's height or radius, a quad's width or depth. A sphere, a disk and a mesh scale all round |
 | **Frame all** | Bring everything back into view |
 
-Rotate and Scale apply to objects; for a light or the camera the Move tool stays.  In the Move tool, a press on the very middle of the selected object (where the three arrows start) is a free move on the floor, not an arrow; in the
+Rotate and Scale apply to objects; for a light or the camera the Move tool stays.  In the Move tool only the outer part of an arrow takes hold (from about half way to its tip); a press anywhere else on the selected object, the middle and the inner part of the arrows included, is a free move on the floor, not an arrow; in the
 Scale tool only the square at the end of a handle takes hold (so the scale starts at 1 and does not jump); a ring seen almost edge-on holds still instead of
 spinning the object. The Rotate and Scale buttons are greyed while a light or the camera is selected, and Move shows pressed. A new object is dropped on the
 floor under the middle of the view, or under what the camera looks at when the camera is nearly level (so it never lands far off-screen). A mesh file is read in

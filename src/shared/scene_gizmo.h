@@ -63,15 +63,19 @@ inline double distanceToSegment(const P2& p, const P2& a, const P2& b) {
 	return std::hypot(p.x - (a.x + abx * t), p.y - (a.y + aby * t));
 }
 
-// Which axis arrow (a segment on screen from `base` to tips[a]) a press at `p` means, or -1. A press within `deadPx` of `base` is none of them: the three
-// arrows all start at the middle of the selected object, so without a dead zone any click on that middle would be taken as an axis drag instead of the free
-// move it was meant to start. Otherwise the nearest used arrow within `tolPx`.
-inline int pickArrow(const P2& p, const P2& base, const P2 tips[3], const bool used[3], double deadPx, double tolPx) {
+// Which axis arrow (a segment on screen from `base` to tips[a]) a press at `p` means, or -1. Only the outer part of an arrow, from `minAlong` (a fraction of
+// its length) out to the tip, takes hold: the three arrows all start at the middle of the selected object and fan out over its body, so if the whole shaft
+// were an arrow most of the object would be an axis drag, and "drag the object" would only ever move it along an axis. The inner part and the middle (within
+// `deadPx` of `base`, whatever the arrow's length on screen) start the free move on the floor instead. Otherwise the nearest used arrow within `tolPx`.
+inline int pickArrow(const P2& p, const P2& base, const P2 tips[3], const bool used[3], double deadPx, double tolPx, double minAlong = 0.45) {
 	if (std::hypot(p.x - base.x, p.y - base.y) < deadPx) return -1;
 	int best = -1;
 	double bestD = tolPx;
 	for (int a = 0; a < 3; ++a) {
 		if (!used[a]) continue;
+		const double abx = tips[a].x - base.x, aby = tips[a].y - base.y, len2 = abx * abx + aby * aby;
+		if (len2 < 1.0) continue;   // an arrow that points at the camera has no length on screen: nothing to grab
+		if (((p.x - base.x) * abx + (p.y - base.y) * aby) / len2 < minAlong) continue;   // the inner part of the shaft: the object itself
 		const double d = distanceToSegment(p, base, tips[a]);
 		if (d < bestD) { bestD = d; best = a; }
 	}

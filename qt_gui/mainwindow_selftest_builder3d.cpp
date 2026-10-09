@@ -110,6 +110,11 @@ void MainWindow::runBuilder3dSelfTest(const std::function<void(const QString &)>
 			const scene_doc::Float3 b1 = sb->document().objects[2].position;
 			check(b1.x != b0.x && b1.z != b0.z && b1.y == b0.y, "on the floor in both X and Z, not locked to one axis by an arrow");
 			check(sb->undo(), "undo");
+			// ...and so is a press anywhere on the body of the selected object, over the inner part of an arrow: only the outer part of an arrow is an axis drag.
+			for (int axis = 0; axis < 3; ++axis) {
+				check(sb->dragInnerArrow3dForTest(2, axis, 0.3, QPointF(60, 40)), QString("a press on the inner part of the %1 arrow, on the object, moves it freely on the floor").arg(names[axis]));
+				check(sb->undo(), "undo");
+			}
 		}
 		// The tool buttons follow what can be turned: a light or the camera has only Move, so Rotate and Scale are greyed and Move shows pressed.
 		{

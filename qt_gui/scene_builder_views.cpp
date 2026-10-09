@@ -268,6 +268,18 @@ bool SceneBuilderWidget::dragAxis3dForTest(int index, int axis, double pixels) {
 	return std::abs(d[axis]) > 1e-9;
 }
 
+bool SceneBuilderWidget::dragInnerArrow3dForTest(int index, int axis, double fraction, const QPointF &deltaPx) {
+	if (index < 0 || index >= static_cast<int>(m_doc.objects.size())) return false;
+	setSelection({SelKind::Object, index});
+	const Float3 before = m_doc.objects[index].position;
+	const QPointF from = m_view3d->axisArrowPoint(axis, fraction);
+	sendMouse(m_view3d, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+	for (int step = 1; step <= 4; ++step) sendMouse(m_view3d, QEvent::MouseMove, from + deltaPx * (step / 4.0), Qt::NoButton, Qt::LeftButton);
+	sendMouse(m_view3d, QEvent::MouseButtonRelease, from + deltaPx, Qt::LeftButton, Qt::NoButton);
+	const Float3 after = m_doc.objects[index].position;
+	return after.x != before.x && after.z != before.z && after.y == before.y;
+}
+
 // Selects the object, then drags its `axis` ring from 45 degrees round (halfway between where the three rings cross) to 45 + `degrees`; true if the object now has the angles a turn of (about) that much
 // about that world axis gives.
 bool SceneBuilderWidget::dragRotate3dForTest(int index, int axis, double degrees) {
