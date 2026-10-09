@@ -171,6 +171,10 @@ Checked: 22 seeded OptiX renders (11 textured, normal-mapped, bump-mapped and al
 
 The alpha-mask question stands: the Metal loader reads no alpha masks (`alphaTextureFilename` is not used under `gpu/metal`), so a pbrt `"alpha"` / `"texture alpha"` cutout renders as solid geometry on Metal (the bundled environment scenes sponza, bistro-exterior and the like use it, 11 of 132 shapes in bistro-exterior). It is a feature, not a refactor: Metal's hardware triangles would need an alpha test in an intersection function, then `decodeAlphaMask` as the shared decode. Not started.
 
+## Mix on Metal: per-hit now (2026-10-09)
+
+The Mac side did the shader work after all, so the "load-time approximation" answer above no longer holds. A pbrt `mix` of two plain surface materials is now `METAL_MAT_MIX`: the loader maps both sub-materials and stores them whole in the shared float buffer; `resolveHit` picks one at every hit, the second with probability `amount`, using the path's own random stream (OptiX and the CPU hash the hit point instead; the average is the same). B15's sphere matches the CPU's red-and-copper blend to 1% (before: pure copper); `named-material-and-texture.pbrt` agrees to 0.4%. A nested mix, a mix with a medium-bounding sub-material, and a texture-bound `amount` keep the old behaviour (a single material picked at load time). This does not change the IR the proposal wants: it still carries (A, B, weight) and each packer decides.
+
 ## Stage 2, Windows half: done (2026-10-08)
 
 Looked at line by line, stage 2 is much smaller than "the material decisions that really are common" suggested, and the honest result is one function.

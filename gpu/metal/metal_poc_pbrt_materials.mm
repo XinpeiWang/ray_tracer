@@ -283,6 +283,38 @@ TriangleMaterial MetalPocApp::mapPbrtDiffuseMaterial(const pbrt_flatten::Materia
 // own 66,532-triangle "coateddiffuse" mesh) used to print that exact
 // line 66,532 times.
 // `depth` guards a Mix material that (wrongly) refers back to itself.
+// A pbrt `mix` of two plain surface materials as one METAL_MAT_MIX entry: both sub-materials are mapped and stored whole in the shared float
+// buffer, and resolveHit() picks one at each hit, the second with probability `amount`, as pbrt-v4's MixMaterial does (and OptiX and the CPU).
+// `amount` <= 0 or >= 1 is just one material, left to the caller. Returns false (leaving `out` alone) for a nested Mix or a medium-bounding
+// sub-material, which keep the older load-time pick.
+bool MetalPocApp::mapPbrtPerHitMix(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth, TriangleMaterial& out) {
+    const pbrt_flatten::FlatScene& scene = st.scene;
+    constexpr int kMaxMixDepth = 8;
+    auto validIdx = [&](int i) { return i >= 0 && i < (int)scene.materials.size(); };
+    if (depth >= kMaxMixDepth || !validIdx(m.mixMaterialA) || !validIdx(m.mixMaterialB) || !(m.mixWeight > 0.0 && m.mixWeight < 1.0)) return false;
+    auto cached = st.mixCache.find(&m);
+    if (cached != st.mixCache.end()) { out = cached->second; return true; }
+    const TriangleMaterial a = mapPbrtMaterial(st, scene.materials[m.mixMaterialA], depth + 1);
+    const TriangleMaterial b = mapPbrtMaterial(st, scene.materials[m.mixMaterialB], depth + 1);
+    auto plainSurface = [](const TriangleMaterial& t) {
+        return t.materialType != METAL_MAT_MIX && !(t.materialType >= METAL_MAT_MEDIUM_HOMOGENEOUS && t.materialType <= METAL_MAT_MEDIUM_RGB_GRID);
+    };
+    if (!plainSurface(a) || !plainSurface(b)) return false;
+    static_assert(sizeof(TriangleMaterial) % sizeof(float) == 0, "TriangleMaterial is stored in the float buffer");
+    constexpr size_t kFloats = sizeof(TriangleMaterial) / sizeof(float);
+    TriangleMaterial mix{};
+    mix.materialType = METAL_MAT_MIX;
+    mix.lightId = -1;
+    mix.bumpOffset = (int32_t)rgbGridData.size();
+    mix.roughness = (float)m.mixWeight;
+    rgbGridData.resize(rgbGridData.size() + 2 * kFloats);
+    std::memcpy(&rgbGridData[(size_t)mix.bumpOffset], &a, sizeof(a));
+    std::memcpy(&rgbGridData[(size_t)mix.bumpOffset + kFloats], &b, sizeof(b));
+    st.mixCache.emplace(&m, mix);
+    out = mix;
+    return true;
+}
+
 TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth) {
     const pbrt_flatten::FlatScene& scene = st.scene;
     const float sceneScale = st.sceneScale;
@@ -591,8 +623,10 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
             // recursion into such a scene would stack-overflow this
             // loader before any render starts - a real bug found by
             // code review, not exercised by any bundled scene.
-            const int chosenIdx = (m.mixWeight >= 0.5) ? m.mixMaterialB : m.mixMaterialA;
             constexpr int kMaxMixDepth = 8;
+            // A real per-hit mix where both sub-materials are plain surfaces (see mapPbrtPerHitMix); otherwise the older load-time pick below.
+            if (TriangleMaterial perHit; mapPbrtPerHitMix(st, m, depth, perHit)) return perHit;
+            const int chosenIdx = (m.mixWeight >= 0.5) ? m.mixMaterialB : m.mixMaterialA;
             if (depth < kMaxMixDepth && chosenIdx >= 0 && chosenIdx < (int)scene.materials.size())
                 return mapPbrtMaterial(st, scene.materials[chosenIdx], depth + 1);
             // Both indices invalid (shouldn't happen - flatten()'s
