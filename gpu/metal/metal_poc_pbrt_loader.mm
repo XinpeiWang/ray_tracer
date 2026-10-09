@@ -17,6 +17,12 @@
 #include "../../src/shared/gpu_tessellate.h"
 #include "../../src/shared/gpu_scene_frame.h"
 #include "../../src/shared/gpu_scene_textures.h"   // isGrayscaleRgb8
+
+// When an RGB extinction counts as chromatic (so the kernel follows one colour channel per path instead of one grey scalar): the spread
+// (max - min) over this fraction of the maximum. A glass sphere's medium and the camera fog have always used different values here;
+// they are named in one place, not unified, because that would move pictures (docs/GPU_SCENE_COMMON.md, stage 2).
+constexpr double kChromaticGlassMediumSpread = 0.02;
+constexpr double kChromaticFogSpread = 0.01;
 #include "../../src/shared/srgb_decode.h"
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
 #include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
@@ -663,7 +669,7 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             // needs no such colour noise.
             const double gMaxSig = std::max(gSigmaT[0], std::max(gSigmaT[1], gSigmaT[2]));
             const double gMinSig = std::min(gSigmaT[0], std::min(gSigmaT[1], gSigmaT[2]));
-            const bool chromatic = (gMaxSig - gMinSig) > 0.02 * std::max(gMaxSig, 1e-12);
+            const bool chromatic = (gMaxSig - gMinSig) > kChromaticGlassMediumSpread * std::max(gMaxSig, 1e-12);
             mat.conductorEta = PackedFloat3{(float)(gSigmaT[0] / sceneScale), (float)(gSigmaT[1] / sceneScale), (float)(gSigmaT[2] / sceneScale)};
             mat.conductorK = PackedFloat3{(float)gm.g, 1.0f, chromatic ? 1.0f : 0.0f};
             (void)gMeanSigmaT;
@@ -1338,7 +1344,7 @@ void MetalPocApp::loadPbrtMedium(const pbrt_flatten::FlatScene& scene, float sce
         {
             double lo = sigmaT[0], hi = sigmaT[0];
             for (int c = 1; c < 3; ++c) { lo = std::min(lo, sigmaT[c]); hi = std::max(hi, sigmaT[c]); }
-            pbrtFogChromatic = hi > 0.0 && (hi - lo) > 0.01 * hi;
+            pbrtFogChromatic = hi > 0.0 && (hi - lo) > kChromaticFogSpread * hi;
         }
         // fogAlbedo is single-scattering albedo (sigma_s/sigma_t) PER
         // CHANNEL (metal_poc.metal's own field comment) - unlike sigmaT

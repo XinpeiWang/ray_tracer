@@ -10,6 +10,7 @@
 #include "metal_poc_app.h"
 #include "../../src/shared/curve_tessellate.h"
 #include "../../src/shared/fresnel.h"   // CauchyCoefficientsFromAbbe
+#include "../../src/shared/gpu_scene_materials.h"   // reflectanceToConductorK
 #include "../../src/shared/srgb_decode.h"
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
 #include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
@@ -334,12 +335,9 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
             mat.conductorEta = PackedFloat3{(float)cm.conductorEta[0], (float)cm.conductorEta[1], (float)cm.conductorEta[2]};
             mat.conductorK = PackedFloat3{(float)cm.conductorK[0], (float)cm.conductorK[1], (float)cm.conductorK[2]};
         } else {
-            auto reflectanceToK = [](float r) {
-                r = r < 0.0f ? 0.0f : (r > 0.9999f ? 0.9999f : r);
-                return 2.0f * sqrtf(r) / sqrtf(std::max(1e-4f, 1.0f - r));
-            };
             mat.conductorEta = PackedFloat3{1.0f, 1.0f, 1.0f};
-            mat.conductorK = PackedFloat3{reflectanceToK(color.x), reflectanceToK(color.y), reflectanceToK(color.z)};
+            mat.conductorK = PackedFloat3{gpu_scene_materials::reflectanceToConductorK(color.x), gpu_scene_materials::reflectanceToConductorK(color.y),
+                                          gpu_scene_materials::reflectanceToConductorK(color.z)};
         }
     };
     switch (m.kind) {
