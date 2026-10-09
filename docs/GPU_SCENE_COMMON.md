@@ -185,3 +185,9 @@ Looked at line by line, stage 2 is much smaller than "the material decisions tha
 Checked: seeded renders of the CPU and the OptiX recursive backend are byte-identical before and after, on six conductor scenes plus two with reflectance-only conductors and coated conductors (made for this check, since no bundled scene uses that path). The wavefront backend is not reproducible run to run on several conductor scenes, so it is not a byte gate there.
 
 **Stage 2, Mac half:** in `setConductorOptics`, replace the `reflectanceToK` lambda with `gpu_scene_materials::reflectanceToConductorK(color.x)` (and y, z). Gate: `scripts/metal_render_hash.sh`. Separate question for the Mac session: should the two chromatic-medium thresholds (2% and 1%) be one named constant?
+
+## Stage 2, Mac half: done (2026-10-09)
+
+`setConductorOptics` in `gpu/metal/metal_poc_pbrt_materials.mm` calls `gpu_scene_materials::reflectanceToConductorK` for the three channels instead of its own lambda; all 108 hash-panel renders are byte-identical to before (apart from B15, B23, B24, E2, E5, which changed in the earlier, intended PRs of the same day).
+
+On the question about the chromatic-medium thresholds (2% for a glass sphere's medium, 1% for the camera fog): Metal names them now (`kChromaticGlassMediumSpread`, `kChromaticFogSpread` at the top of `metal_poc_pbrt_loader.mm`) but keeps both values. Making them one number would move the picture of any fog whose extinction spread is between 1% and 2%, and nothing shows the two were meant to differ or to agree, so it is a behaviour decision for whoever next touches chromatic media, not part of this refactor.
