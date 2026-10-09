@@ -7,11 +7,11 @@
 //
 // The material (TriangleMaterial, written by MetalPocApp::mapPbrtMaterial): color = sigma_a and transmitColor = sigma_s per colour channel, both
 // per Metal-scene unit (the pbrt values divided by the scene scale), ior = eta, roughness = the NormalizedFresnel constant c of the exit BSDF,
-// conductorEta.x = the table's element offset in the shared float buffer (an int stored bit for bit).
+// conductorEta.x = the table's element offset in the shared float buffer (an integer-valued float: a bit-cast int would be a denormal).
 
 // "The same material" for the probe walk: pbrt compares the material objects; here, the parameters that define it.
 inline bool sameSubsurfaceMaterial(TriangleMaterial a, TriangleMaterial b) {
-    return b.materialType == METAL_MAT_SUBSURFACE && as_type<int>(a.conductorEta.x) == as_type<int>(b.conductorEta.x) &&
+    return b.materialType == METAL_MAT_SUBSURFACE && a.conductorEta.x == b.conductorEta.x &&
            a.ior == b.ior && all(float3(a.color) == float3(b.color)) && all(float3(a.transmitColor) == float3(b.transmitColor));
 }
 
@@ -24,7 +24,7 @@ inline bool subsurfaceProbeWalk(thread const KernelRes& R, thread PathState& P, 
     KERNEL_RES_ALIASES(R)
     constexpr int kMaxProbeSteps = 100;
     const TriangleMaterial surface = B.mat;
-    const BssrdfTableView tab = bssrdfTableAt(rgbGridData + as_type<int>(surface.conductorEta.x));
+    const BssrdfTableView tab = bssrdfTableAt(rgbGridData + int(surface.conductorEta.x));
     const float3 sigmaA = float3(surface.color), sigmaS = float3(surface.transmitColor);
     const float3 sigmaT = sigmaA + sigmaS;
     float3 rho = float3(0.0);
