@@ -60,11 +60,10 @@ void LiveObjectEditor::frameShown() {
 }
 
 // The camera of the picture on screen (it moves while the user orbits or flies), or, before the first frame, the one the object was picked with.
-bool LiveObjectEditor::currentBasis(camera_math::CameraBasis &basis) const {
+void LiveObjectEditor::currentBasis(camera_math::CameraBasis &basis) const {
 	double b[12];
 	if (!m_session || !m_session->cameraBasisNow(b)) std::copy(m_selected.cameraBasis, m_selected.cameraBasis + 12, b);
 	basis = camera_math::CameraBasis{{b[0], b[1], b[2]}, {b[3], b[4], b[5]}, {b[6], b[7], b[8]}, {b[9], b[10], b[11]}};
-	return true;
 }
 
 bool LiveObjectEditor::nudge(int forwardSteps, int rightSteps, int upSteps, double step) {
