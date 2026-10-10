@@ -304,6 +304,8 @@ bool metal_live_export_arrangement(const char* scene_id, const char* out_path, c
     if (!out) { say(std::string("cannot write ") + out_path); return false; }
     std::string summary = std::to_string(objectsMoved) + " object(s) moved";
     if (result.skippedShapes > 0) summary += "; " + std::to_string(result.skippedShapes) + " shape(s) sit in included files and stayed where they were";
+    if (result.builderDocumentUpdated) summary += "; the Scene Builder opens it with the objects where they are now";
+    else if (result.builderDocumentDropped) summary += "; the Scene Builder cannot edit this copy";
     say(summary);
     return true;
 }

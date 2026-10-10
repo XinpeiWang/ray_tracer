@@ -6,6 +6,7 @@
 #include <gtest/gtest.h>
 
 #include "pbrt_arrangement.h"
+#include "scene_document.h"
 
 #include <array>
 #include <cmath>
@@ -131,4 +132,59 @@ TEST(PbrtArrangementTest, AdjacentShapesWithNoWhitespaceBetweenThemStillNest) {
 	expectSavedMatchesTranslated(
 		"WorldBegin\nShape \"sphere\" \"float radius\" [ 1 ]Shape \"sphere\" \"float radius\" [ 2 ]\n",
 		{{1.0, 0.0, 0.0}, {0.0, 2.0, 0.0}}, 2);
+}
+
+// A Scene Builder scene: its embedded document is moved too, and the directives of the saved file put every primitive where regenerating the file from the moved
+// document does.
+TEST(PbrtArrangementTest, ASceneBuilderSceneKeepsItsDocumentInStepWithTheDirectives) {
+	scene_doc::Document doc = scene_doc::makeStarterScene();
+	ASSERT_GE(doc.objects.size(), 3u);
+	const std::string original = scene_doc::toPbrt(doc);
+	const pbrt_flatten::FlatScene flat = flattenText(original);
+	const live_objects::ObjectList objects = live_objects::objectsOf(flat);
+	ASSERT_EQ(objects.size(), doc.objects.size()) << "the Builder writes one block per object";
+	std::vector<std::array<double, 3>> offsets(objects.size(), {0.0, 0.0, 0.0});
+	offsets[1] = {1.25, 0.0, -0.5};
+	offsets[2] = {-0.75, 0.5, 2.0};
+	const Result saved = write(original, flat.shapeRanges, objects, offsets, "", [](const std::string&) { return false; }, "");
+	EXPECT_TRUE(saved.builderDocumentUpdated);
+	EXPECT_FALSE(saved.builderDocumentDropped);
+
+	scene_doc::Document reread;
+	std::string err;
+	ASSERT_TRUE(scene_doc::fromPbrt(saved.text, reread, err)) << err;
+	ASSERT_EQ(reread.objects.size(), doc.objects.size());
+	for (std::size_t i = 0; i < doc.objects.size(); ++i) {
+		EXPECT_NEAR(reread.objects[i].position.x, doc.objects[i].position.x + offsets[i][0], 1e-9) << "object " << i;
+		EXPECT_NEAR(reread.objects[i].position.y, doc.objects[i].position.y + offsets[i][1], 1e-9);
+		EXPECT_NEAR(reread.objects[i].position.z, doc.objects[i].position.z + offsets[i][2], 1e-9);
+	}
+	// The saved directives and a file regenerated from the moved document draw the same scene.
+	scene_doc::Document moved = doc;
+	for (std::size_t i = 0; i < moved.objects.size(); ++i) {
+		moved.objects[i].position.x += offsets[i][0];
+		moved.objects[i].position.y += offsets[i][1];
+		moved.objects[i].position.z += offsets[i][2];
+	}
+	const std::vector<double> fromDirectives = allCoordinates(flattenText(saved.text)), fromDocument = allCoordinates(flattenText(scene_doc::toPbrt(moved)));
+	ASSERT_EQ(fromDirectives.size(), fromDocument.size());
+	for (std::size_t i = 0; i < fromDocument.size(); ++i) EXPECT_NEAR(fromDirectives[i], fromDocument[i], 1e-6) << "coordinate " << i;
+}
+
+TEST(PbrtArrangementTest, ABuilderDocumentThatDoesNotLineUpIsRemovedSoTheBuilderDoesNotOpenAStaleCopy) {
+	scene_doc::Document doc = scene_doc::makeStarterScene();
+	std::string text = scene_doc::toPbrt(doc);
+	// A scene edited by hand after the Builder wrote it: one more shape than the document knows.
+	text += "\nShape \"sphere\" \"float radius\" [ 0.2 ]\n";
+	const pbrt_flatten::FlatScene flat = flattenText(text);
+	const live_objects::ObjectList objects = live_objects::objectsOf(flat);
+	ASSERT_NE(objects.size(), doc.objects.size());
+	std::vector<std::array<double, 3>> offsets(objects.size(), {0.0, 0.0, 0.0});
+	offsets[1] = {1.0, 0.0, 0.0};
+	const Result saved = write(text, flat.shapeRanges, objects, offsets, "", [](const std::string&) { return false; }, "");
+	EXPECT_TRUE(saved.builderDocumentDropped);
+	scene_doc::Document reread;
+	std::string err;
+	EXPECT_FALSE(scene_doc::fromPbrt(saved.text, reread, err)) << "the Builder must not open a copy whose document is stale";
+	EXPECT_EQ(saved.text.find("@rt-builder-doc"), std::string::npos);
 }
