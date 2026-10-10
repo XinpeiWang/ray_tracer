@@ -46,9 +46,12 @@ public:
 signals:
 	// "Save arrangement" wrote a scene file (into the per-user scenes folder); the main window lists it.
 	void arrangementSaved(QString path);
+	// "Edit in Builder": open the arrangement that was just saved in the Scene Builder.
+	void editInBuilderRequested(QString path);
 
 private slots:
 	void onSaveClicked();
+	void onEditInBuilderClicked();
 	void onHovered(double s, double t);
 	void onHoverTimer();
 	void onHoverPicked(LiveObjectPick pick);
@@ -73,6 +76,8 @@ private:
 	QPushButton *m_toggle = nullptr;
 	QPushButton *m_reset = nullptr;
 	QPushButton *m_save = nullptr;
+	QPushButton *m_editInBuilder = nullptr;   // shown after a save when the Scene Builder can open the copy
+	QString m_savedPath;
 	QLabel *m_hint = nullptr;
 	LiveObjectPick m_selected;   // the object grabbed or last grabbed: where it was when the drag began, and the camera that drew that picture
 	bool m_haveSelection = false;

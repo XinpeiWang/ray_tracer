@@ -747,37 +747,47 @@
         <translation>オブジェクトを今の位置に置いたシーンを、シーン一覧（マイシーン）に新しいシーンとして保存します。元のシーンは変更されません。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="72"/>
+        <location filename="../live_object_editor.cpp" line="45"/>
+        <source>Edit in Builder</source>
+        <translation>ビルダーで編集</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="47"/>
+        <source>Open the arrangement you just saved in the Scene Builder, to carry on editing it there.</source>
+        <translation>保存したばかりの配置をシーンビルダーで開き、そこで編集を続けます。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="78"/>
         <source>Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.</source>
         <translation>オブジェクトをクリックしてドラッグします（Shift：上下）。その後は W A S D と上下キーでも動かせます。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="123"/>
+        <location filename="../live_object_editor.cpp" line="129"/>
         <source>Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.</source>
         <translation>選択中：%1。ドラッグで移動（Shift：上下）。W A S D と上下キーでも動かせます。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="166"/>
+        <location filename="../live_object_editor.cpp" line="172"/>
         <source>Cannot save: there is no scenes folder to write to.</source>
         <translation>保存できません：書き込めるシーンフォルダがありません。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="176"/>
+        <location filename="../live_object_editor.cpp" line="184"/>
         <source>Not saved: %1.</source>
         <translation>保存されていません：%1。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="179"/>
+        <location filename="../live_object_editor.cpp" line="187"/>
         <source>Saved as %1 (%2). It is in the scene list under My Scenes.</source>
         <translation>%1 として保存しました（%2）。シーン一覧の「マイシーン」にあります。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="113"/>
+        <location filename="../live_object_editor.cpp" line="119"/>
         <source>Nothing movable there: drag to orbit.</source>
         <translation>そこには動かせるものがありません。ドラッグでカメラを周回します。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="158"/>
+        <location filename="../live_object_editor.cpp" line="164"/>
         <source>Every object is back where the scene file puts it.</source>
         <translation>すべてのオブジェクトをシーンファイルの位置に戻しました。</translation>
     </message>
@@ -857,50 +867,50 @@
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1284"/>
+        <location filename="../mainwindow.cpp" line="1285"/>
         <location filename="../mainwindow_slots.cpp" line="342"/>
         <source>START &amp;RENDER</source>
         <translation>レンダリング開始(&amp;R)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1293"/>
+        <location filename="../mainwindow.cpp" line="1294"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>現在の設定で選択したシーンをレンダリングします
 (すでにレンダリング中の場合はキューに追加されます)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1304"/>
+        <location filename="../mainwindow.cpp" line="1305"/>
         <source>S&amp;TOP RENDER</source>
         <translation>レンダリング停止(&amp;T)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1310"/>
+        <location filename="../mainwindow.cpp" line="1311"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>実行中のレンダリングを停止し、出力を破棄します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1323"/>
+        <location filename="../mainwindow.cpp" line="1324"/>
         <location filename="../mainwindow_queue.cpp" line="348"/>
         <location filename="../mainwindow_slots.cpp" line="120"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>レンダリングを一時停止(&amp;P)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1328"/>
+        <location filename="../mainwindow.cpp" line="1329"/>
         <location filename="../mainwindow_actions.cpp" line="80"/>
         <location filename="../mainwindow_slots.cpp" line="122"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>実行中のレンダリングをその場で一時停止します - 「再開」は全く同じピクセルから続行します</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1337"/>
+        <location filename="../mainwindow.cpp" line="1338"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>破棄して次へ進む(&amp;N)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1343"/>
+        <location filename="../mainwindow.cpp" line="1344"/>
         <location filename="../mainwindow_actions.cpp" line="85"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>実行中のレンダリングの出力を破棄し、キュー内の次のジョブをただちに開始します</translation>
@@ -944,7 +954,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="88"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="332"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="347"/>
         <source>Open Output &amp;Folder</source>
         <translation>出力フォルダーを開く(&amp;F)</translation>
     </message>
@@ -955,7 +965,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="98"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="344"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="359"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>既定のビューアーで開く(&amp;V)</translation>
     </message>
@@ -1625,7 +1635,7 @@ Use the pause/stop controls if a category turns out to take too long.</source>
         <translation>単一画像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="158"/>
+        <location filename="../mainwindow_live_preview.cpp" line="164"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
@@ -4416,17 +4426,22 @@ Off by default (genuinely random every render).</source>
         <translation>シーンビルダー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="335"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="141"/>
+        <source>The preview copy could not be opened in Live Preview.</source>
+        <translation>プレビュー用のコピーをライブプレビューで開けませんでした。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="350"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>アクティブなタブのレンダリング結果が格納されているフォルダをエクスプローラーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="347"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="362"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>アクティブなタブのレンダリング結果をシステムのビューアーで開く</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="373"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="388"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
     </message>
@@ -4445,55 +4460,55 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>配置をシーン %1 として保存しました（設定タブ、マイシーン）。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="154"/>
+        <location filename="../mainwindow_live_preview.cpp" line="160"/>
         <source>Live Preview — %1</source>
         <translation>ライブプレビュー — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="159"/>
+        <location filename="../mainwindow_live_preview.cpp" line="165"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>インタラクティブな GPU プレビュー——ドラッグで視点回転、スクロールまたは +/- でズーム、WASD で移動、上/下で上昇・下降、左/右で回転</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="185"/>
+        <location filename="../mainwindow_live_preview.cpp" line="191"/>
         <source>Select a scene first</source>
         <translation>先にシーンを選択してください</translation>
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="263"/>
+        <location filename="../mainwindow_live_preview.cpp" line="269"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>開始中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="279"/>
+        <location filename="../mainwindow_live_preview.cpp" line="285"/>
         <source>Stopped</source>
         <translation>停止しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="306"/>
+        <location filename="../mainwindow_live_preview.cpp" line="312"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>ライブ（デノイズ済み、累積なし）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="308"/>
+        <location filename="../mainwindow_live_preview.cpp" line="314"/>
         <source>%1 samples</source>
         <translation>%1 サンプル</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="333"/>
+        <location filename="../mainwindow_live_preview.cpp" line="339"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[ライブプレビュー] エラー: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="416"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="431"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;なぜこのように見えるのか&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="542"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="557"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="570"/>
         <location filename="../mainwindow_tabs_settings_groups.cpp" line="278"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
@@ -4501,12 +4516,12 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>一時停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="570"/>
         <source>Play</source>
         <translation>再生</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="565"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="580"/>
         <source>Video playback error (%1): %2</source>
         <translation>動画再生エラー(%1): %2</translation>
     </message>
@@ -5938,14 +5953,6 @@ The scenes in the other categories are not touched. You can get them back from %
         <translation>Command</translation>
     </message>
     <message>
-        <source>Wheel: zoom. Drag the background or right-drag: pan.</source>
-        <translation type="vanished">ホイール: ズーム。背景のドラッグまたは右ドラッグ: 移動。</translation>
-    </message>
-    <message>
-        <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.</source>
-        <translation type="vanished">背景をドラッグ: 軌道回転 (Shift + ドラッグ: 平行移動)。右ドラッグでも平行移動します。ホイール: ズーム。移動・回転・拡大縮小 (W, E, R) を選び、矢印・リング・四角形をドラッグします。オブジェクトをドラッグすると床の上を滑らせ、Shift + ドラッグで持ち上げ、白い点をドラッグする (または %1 を押しながらドラッグする) と好きな方向に動かせます。</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_common.h" line="80"/>
         <source>Wheel: zoom. Drag the background or right-drag: pan. %1- or Shift-click adds an item to what is picked or takes it out; %1- or Shift-drag the background picks what a box holds.</source>
         <translation>ホイール: ズーム。背景のドラッグまたは右ドラッグ: 画面移動。%1 または Shift を押しながらクリックすると項目を選択に追加または除外します。%1 または Shift を押しながら背景をドラッグすると、枠の中のものをまとめて選択します。</translation>
@@ -6681,7 +6688,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="453"/>
-        <location filename="../scene_builder_widget.cpp" line="644"/>
+        <location filename="../scene_builder_widget.cpp" line="648"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>メッシュ (*.ply *.obj)</translation>
     </message>
@@ -6875,26 +6882,36 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="131"/>
+        <source>Preview live</source>
+        <translation>ライブでプレビュー</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="131"/>
+        <source>Open this scene in Live Preview: walk around it and move things. It is saved as a separate &quot;(live preview)&quot; scene in the scene list; your scene and its own listing are not changed.</source>
+        <translation>このシーンをライブプレビューで開きます。歩き回ったり、物を動かしたりできます。シーン一覧には別のシーン「（ライブプレビュー）」として保存され、元のシーンとその登録は変更されません。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="134"/>
         <source>Undo</source>
         <translation>元に戻す</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="132"/>
+        <location filename="../scene_builder_widget.cpp" line="135"/>
         <source>Redo</source>
         <translation>やり直し</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="137"/>
+        <location filename="../scene_builder_widget.cpp" line="140"/>
         <source>Scene name</source>
         <translation>シーン名</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="138"/>
+        <location filename="../scene_builder_widget.cpp" line="141"/>
         <source>The name of this scene, shown in the scene list</source>
         <translation>このシーンの名前です。シーンリストに表示されます</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="158"/>
+        <location filename="../scene_builder_widget.cpp" line="161"/>
         <source>Name:</source>
         <translation>名前:</translation>
     </message>
@@ -6935,7 +6952,7 @@ From: %3</source>
     </message>
     <message>
         <location filename="../scene_builder_models.cpp" line="118"/>
-        <location filename="../scene_builder_widget.cpp" line="180"/>
+        <location filename="../scene_builder_widget.cpp" line="184"/>
         <source>Add</source>
         <translation>追加</translation>
     </message>
@@ -6950,82 +6967,82 @@ From: %3</source>
         <translation>そのモデルを読み込めませんでした。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="183"/>
+        <location filename="../scene_builder_widget.cpp" line="187"/>
         <source>Objects</source>
         <translation>オブジェクト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="186"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Props (several objects at once)</source>
         <translation>小道具 (複数のオブジェクトをまとめて追加)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="193"/>
         <source>Blocky (several objects at once)</source>
         <translation>ブロック風 (複数のオブジェクトを一度に)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="190"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Blocks</source>
         <translation>ブロック</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="190"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Creatures</source>
         <translation>生き物</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="190"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Things</source>
         <translation>もの</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="193"/>
+        <location filename="../scene_builder_widget.cpp" line="197"/>
         <source>More</source>
         <translation>その他</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="194"/>
+        <location filename="../scene_builder_widget.cpp" line="198"/>
         <source>Model library...</source>
         <translation>モデルライブラリ...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="195"/>
+        <location filename="../scene_builder_widget.cpp" line="199"/>
         <source>Object from a photo...</source>
         <translation>写真からオブジェクトを作成...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="196"/>
+        <location filename="../scene_builder_widget.cpp" line="200"/>
         <source>Light panel (emitting quad)</source>
         <translation>ライトパネル (発光する四角形)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="205"/>
+        <location filename="../scene_builder_widget.cpp" line="209"/>
         <source>Lights</source>
         <translation>ライト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="209"/>
+        <location filename="../scene_builder_widget.cpp" line="213"/>
         <source>Duplicate</source>
         <translation>複製</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="210"/>
+        <location filename="../scene_builder_widget.cpp" line="214"/>
         <source>Make a copy of the selected item beside it (%1)</source>
         <translation>選択した項目のコピーをその横に作ります (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="211"/>
+        <location filename="../scene_builder_widget.cpp" line="215"/>
         <source>Array...</source>
         <translation>配列...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="212"/>
+        <location filename="../scene_builder_widget.cpp" line="216"/>
         <source>Make many copies of the selected object: a grid, a ring round a point, or a random scatter</source>
         <translation>選択したオブジェクトのコピーをたくさん作ります。グリッド、点のまわりのリング、またはランダムな散布</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="213"/>
+        <location filename="../scene_builder_widget.cpp" line="217"/>
         <source>Delete</source>
         <translation>削除</translation>
     </message>
@@ -7157,53 +7174,53 @@ From: %3</source>
         <translation>すべてを表示</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="270"/>
+        <location filename="../scene_builder_widget.cpp" line="274"/>
         <source>Draft</source>
         <translation>ドラフト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="271"/>
+        <location filename="../scene_builder_widget.cpp" line="275"/>
         <source>Good</source>
         <translation>標準</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="272"/>
+        <location filename="../scene_builder_widget.cpp" line="276"/>
         <source>Best</source>
         <translation>最高</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="275"/>
+        <location filename="../scene_builder_widget.cpp" line="279"/>
         <source>Use the GPU</source>
         <translation>GPU を使用</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="276"/>
+        <location filename="../scene_builder_widget.cpp" line="280"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>グラフィックスカードでレンダリングします (Windows では NVIDIA OptiX、Mac では Metal)。大きな画像ではずっと高速ですが、対応する GPU が必要です。</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="157"/>
-        <location filename="../scene_builder_widget.cpp" line="277"/>
+        <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="279"/>
+        <location filename="../scene_builder_widget.cpp" line="283"/>
         <source>Render picture...</source>
         <translation>画像をレンダリング...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="281"/>
+        <location filename="../scene_builder_widget.cpp" line="285"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>カメラで設定した画像サイズとサンプル数でレンダリングし、PNG として保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="283"/>
+        <location filename="../scene_builder_widget.cpp" line="287"/>
         <source>Quality:</source>
         <translation>品質:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="296"/>
+        <location filename="../scene_builder_widget.cpp" line="300"/>
         <source>Press Preview to see the scene.</source>
         <translation>「プレビュー」を押すとシーンが表示されます。</translation>
     </message>
@@ -7235,13 +7252,14 @@ From: %3</source>
     </message>
     <message>
         <location filename="../scene_builder_files.cpp" line="157"/>
+        <location filename="../scene_builder_files.cpp" line="270"/>
         <source>Cannot open the scene</source>
         <translation>シーンを開けません</translation>
     </message>
     <message>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
-        <location filename="../scene_builder_files.cpp" line="255"/>
+        <location filename="../scene_builder_files.cpp" line="301"/>
         <source>Cannot save</source>
         <translation>保存できません</translation>
     </message>
@@ -7249,6 +7267,7 @@ From: %3</source>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
         <location filename="../scene_builder_files.cpp" line="222"/>
+        <location filename="../scene_builder_files.cpp" line="248"/>
         <location filename="../scene_builder_render.cpp" line="112"/>
         <source>Could not write %1.</source>
         <translation>%1 に書き込めませんでした。</translation>
@@ -7265,32 +7284,42 @@ From: %3</source>
         <translation>シーンを保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="235"/>
+        <location filename="../scene_builder_files.cpp" line="238"/>
+        <source>There is no scenes folder to write the preview copy to.</source>
+        <translation>プレビュー用のコピーを書き込むシーンフォルダがありません。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_files.cpp" line="259"/>
+        <source>Cannot preview</source>
+        <translation>プレビューできません</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_files.cpp" line="281"/>
         <source>No scenes folder</source>
         <translation>シーンフォルダーがありません</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="242"/>
+        <location filename="../scene_builder_files.cpp" line="288"/>
         <source>Add to the scene list</source>
         <translation>シーンリストに追加</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="243"/>
+        <location filename="../scene_builder_files.cpp" line="289"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>このシーンは「%1」としてすでにリストにあります。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="244"/>
+        <location filename="../scene_builder_files.cpp" line="290"/>
         <source>Add as a new scene</source>
         <translation>新しいシーンとして追加</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="245"/>
+        <location filename="../scene_builder_files.cpp" line="291"/>
         <source>Update the existing one</source>
         <translation>既存のものを更新</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="260"/>
+        <location filename="../scene_builder_files.cpp" line="306"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -7299,12 +7328,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 シーンリスト（設定タブの「マイシーン」）に追加されました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="752"/>
+        <location filename="../scene_builder_widget.cpp" line="756"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  オブジェクト %3 個、ライト %4 個</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="644"/>
+        <location filename="../scene_builder_widget.cpp" line="648"/>
         <source>Choose a mesh</source>
         <translation>メッシュを選択</translation>
     </message>
@@ -7319,52 +7348,52 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>シーンをシーンフォルダーに保存し、設定タブに表示されるようにする</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="131"/>
+        <location filename="../scene_builder_widget.cpp" line="134"/>
         <source>Undo the last change (%1)</source>
         <translation>直前の変更を元に戻す (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="132"/>
+        <location filename="../scene_builder_widget.cpp" line="135"/>
         <source>Redo (%1)</source>
         <translation>やり直し (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="274"/>
+        <location filename="../scene_builder_widget.cpp" line="278"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>ドラフト: 幅 480 ピクセル、16 サンプル。標準: 幅 720、64 サンプル。最高: 幅 960、256 サンプル。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="259"/>
+        <location filename="../scene_builder_files.cpp" line="305"/>
         <source>Added to the scene list</source>
         <translation>シーンリストに追加しました</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="486"/>
+        <location filename="../scene_builder_widget.cpp" line="490"/>
         <source>Camera and image</source>
         <translation>カメラと画像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="514"/>
+        <location filename="../scene_builder_widget.cpp" line="518"/>
         <source>, light</source>
         <translation>、ライト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="746"/>
+        <location filename="../scene_builder_widget.cpp" line="750"/>
         <source>not saved yet</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="780"/>
+        <location filename="../scene_builder_widget.cpp" line="784"/>
         <source>No problems found.</source>
         <translation>問題は見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="786"/>
+        <location filename="../scene_builder_widget.cpp" line="790"/>
         <source>Fix this:</source>
         <translation>修正してください:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="786"/>
+        <location filename="../scene_builder_widget.cpp" line="790"/>
         <source>Note:</source>
         <translation>注意:</translation>
     </message>

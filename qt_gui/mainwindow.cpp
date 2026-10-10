@@ -1169,6 +1169,7 @@ void MainWindow::setupUI() {
 	{ startup_profile::Stage s("Preview tab"); createPreviewTab(); }
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	initLivePreviewSession();
+	if (m_sceneBuilder) m_sceneBuilder->setLivePreviewAvailable(m_livePreviewSession != nullptr);   // the Builder's "Preview live" button
 #endif
 	{ startup_profile::Stage s("Progress, Log and Diagnostics tabs"); createProgressTab(); createLogTab(); createDiagnosticsTab(); }
 

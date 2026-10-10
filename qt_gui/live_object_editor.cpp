@@ -42,15 +42,21 @@ QWidget *LiveObjectEditor::createControls(QWidget *parent) {
 	m_save = new QPushButton(tr("Save arrangement"), row);
 	m_save->setObjectName("liveSaveArrangementButton");
 	m_save->setToolTip(tr("Save the scene with the objects where they are now as a new scene in the scene list (My Scenes). The original scene is not changed."));
+	m_editInBuilder = new QPushButton(tr("Edit in Builder"), row);
+	m_editInBuilder->setObjectName("liveEditInBuilderButton");
+	m_editInBuilder->setToolTip(tr("Open the arrangement you just saved in the Scene Builder, to carry on editing it there."));
+	m_editInBuilder->setVisible(false);
 	m_hint = new QLabel(row);
 	m_hint->setWordWrap(true);
 	layout->addWidget(m_toggle);
 	layout->addWidget(m_reset);
 	layout->addWidget(m_save);
+	layout->addWidget(m_editInBuilder);
 	layout->addWidget(m_hint, /*stretch=*/1);
 	connect(m_toggle, &QPushButton::toggled, this, &LiveObjectEditor::onModeToggled);
 	connect(m_reset, &QPushButton::clicked, this, &LiveObjectEditor::onResetClicked);
 	connect(m_save, &QPushButton::clicked, this, &LiveObjectEditor::onSaveClicked);
+	connect(m_editInBuilder, &QPushButton::clicked, this, &LiveObjectEditor::onEditInBuilderClicked);
 	return row;
 }
 
@@ -166,7 +172,9 @@ void LiveObjectEditor::onSaveClicked() {
 		setHint(tr("Cannot save: there is no scenes folder to write to."));
 		return;
 	}
-	QString name = m_sceneName.trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
+	QString name = m_sceneName;
+	name.remove(QStringLiteral(" (live preview)"));   // an arrangement of a Preview live copy is named after the scene, not after the copy
+	name = name.trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
 	name.remove(QRegularExpression("^-+|-+$"));
 	if (name.isEmpty()) name = "scene";
 	QString path = folder + "/" + name + "-arranged.pbrt";
@@ -177,7 +185,14 @@ void LiveObjectEditor::onSaveClicked() {
 		return;
 	}
 	setHint(tr("Saved as %1 (%2). It is in the scene list under My Scenes.").arg(QFileInfo(path).completeBaseName(), message));
+	// The Scene Builder can open the copy when it says so (the library's summary) - a Scene Builder scene with its document in step.
+	m_savedPath = path;
+	m_editInBuilder->setVisible(message.contains(QStringLiteral("Scene Builder opens it")));
 	emit arrangementSaved(path);
+}
+
+void LiveObjectEditor::onEditInBuilderClicked() {
+	if (!m_savedPath.isEmpty()) emit editInBuilderRequested(m_savedPath);
 }
 
 // The 12 edges of the selected object's box (plus the drag so far), as the picture on screen shows them.

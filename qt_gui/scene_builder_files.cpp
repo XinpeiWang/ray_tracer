@@ -227,6 +227,52 @@ QString SceneBuilderWidget::addToSceneList(QString *error, bool update) {
 	return path;
 }
 
+void SceneBuilderWidget::setLivePreviewAvailable(bool available) {
+	if (m_liveButton) m_liveButton->setVisible(available);
+}
+
+QString SceneBuilderWidget::writeLivePreviewCopy(QString *error) {
+	const QString folder = sceneListFolder();
+	flushEditLog();
+	if (folder.isEmpty()) {
+		if (error) *error = tr("There is no scenes folder to write the preview copy to.");
+		return QString();
+	}
+	QString name = QString::fromStdString(m_doc.title).trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
+	name.remove(QRegularExpression("^-+|-+$"));
+	if (name.isEmpty()) name = "my-scene";
+	const QString path = folder + "/" + name + "-live-preview.pbrt";
+	Document copy = m_doc;
+	copy.title += " (live preview)";
+	if (!writeSceneText(copy, path)) {
+		if (error) *error = tr("Could not write %1.").arg(path);
+		return QString();
+	}
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("preview live: wrote %1").arg(path));
+	return path;
+}
+
+void SceneBuilderWidget::onPreviewLiveClicked() {
+	QString error;
+	const QString path = writeLivePreviewCopy(&error);
+	if (path.isEmpty()) {
+		QMessageBox::warning(this, tr("Cannot preview"), error);
+		return;
+	}
+	emit sceneListed(path);   // the main window lists the copy ...
+	emit livePreviewRequested(path);   // ... and opens it in Live Preview
+}
+
+bool SceneBuilderWidget::openForEditing(const QString &path) {
+	if (!confirmDiscard()) return false;
+	QString error;
+	if (!openFile(path, &error)) {
+		QMessageBox::warning(this, tr("Cannot open the scene"), error);
+		return false;
+	}
+	return true;
+}
+
 void SceneBuilderWidget::onSaveToSceneListClicked() {
 	const QString folder = sceneListFolder();
 	if (folder.isEmpty()) {

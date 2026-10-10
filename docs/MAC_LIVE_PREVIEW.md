@@ -66,7 +66,7 @@ everything back. Moves are for looking at a different arrangement: they are not 
   `RealtimeBackendFeatures::objectEditing` (appended; both libraries say true now, and a library that says false makes the GUI show no button).
 * Tests: unit tests for the ranges, grouping, pick and translate (`live_object_edit_tests.cpp`) and the drag arithmetic (`object_drag_math_tests.cpp`);
   `ctest -R metal_live_edit` (every visible surface point belongs to an object; a move changes the picture and the pick follows; a reset restores it exactly) and
-  `metal_realtime_dylib` (the same through the exported functions); `RT_GUI_SELFTEST=livepreview_arrange` (the Scene Builder's starter scene is added to the scene list, previewed, an object is dragged with real mouse events, Save arrangement is pressed, and the Scene Builder opens the saved file: exactly the moved object's position differs from the original document), `RT_GUI_SELFTEST=livepreview_objects` (real mouse events: press on the tall box of A1, drag,
+  `metal_realtime_dylib` (the same through the exported functions); `RT_GUI_SELFTEST=livepreview_arrange` (the Builder's "Preview live" button opens the starter scene in Live Preview, an object is dragged with real mouse events, Save arrangement is pressed, "Edit in Builder" opens the arrangement in the Scene Builder: exactly the moved object's position differs from the original document; then a changed scene is previewed live again), `RT_GUI_SELFTEST=livepreview_objects` (real mouse events: press on the tall box of A1, drag,
   the picture changes, Reset brings it back; part of `gui_selftest.py --live-preview` on a Mac).
 
 ## Samples per frame while still

@@ -36,6 +36,9 @@ struct LiveSession {
     // that is on screen, and a click on that picture is picked against the same scene it shows.
     std::vector<std::array<double, 3>> builtOffsets;
     bool stale = false;
+    // The scene file as it was when the session was built: a Live Preview of a scene the Scene Builder saves again (Preview live) must show the new file, not the old one.
+    std::filesystem::file_time_type fileTime{};
+    std::uintmax_t fileSize = 0;
 };
 
 // Object moves for the current scene: one offset (pbrt world units) per object (see live_object_edit.h), applied while the scene is built.
@@ -89,6 +92,13 @@ std::string resolveSceneFile(const std::string& rel, std::string& tried) {
     return rel;   // not found: the loader reports it
 }
 
+bool fileChanged(const LiveSession& s) {
+    std::error_code ec;
+    const auto time = std::filesystem::last_write_time(s.pbrtPath, ec);
+    const auto size = std::filesystem::file_size(s.pbrtPath, ec);
+    return !ec && (time != s.fileTime || size != s.fileSize);
+}
+
 std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int height, int spp, int maxDepth) {
     const char* pbrtPath = cpu_scene_pbrt_path_by_id(sceneId);
     if (!pbrtPath || !pbrtPath[0]) {
@@ -108,6 +118,11 @@ std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int h
     if (!std::filesystem::exists(s->pbrtPath)) {
         fail(std::string("cannot find the scene file ") + pbrtPath + " (looked in: " + tried + ")");
         return nullptr;
+    }
+    {
+        std::error_code ec;
+        s->fileTime = std::filesystem::last_write_time(s->pbrtPath, ec);
+        s->fileSize = std::filesystem::file_size(s->pbrtPath, ec);
     }
     static const char* kOutPath = "live_preview.png";   // never written: a live session renders into memory only
     const char* args[8] = {"metal_live_preview", s->widthStr.c_str(), s->heightStr.c_str(), kOutPath,
@@ -153,7 +168,7 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
     if (!scene_id || !out_rgb || width <= 0 || height <= 0) return fail("bad arguments");
     std::lock_guard<std::mutex> lock(gMutex);
     @autoreleasepool {
-        if (!gSession || gSession->stale || gSession->sceneId != scene_id || gSession->width != width || gSession->height != height) {
+        if (!gSession || gSession->stale || fileChanged(*gSession) || gSession->sceneId != scene_id || gSession->width != width || gSession->height != height) {
             gSession.reset();   // free the old session's GPU memory before building the new one
             gSession = createSession(scene_id, width, height, spp, max_depth);
             if (!gSession) return false;
