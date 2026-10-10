@@ -57,6 +57,32 @@ inline Vec3 cross(const Vec3 &a, const Vec3 &b) {
 inline double dot(const Vec3 &a, const Vec3 &b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 // Distance from the look-at point to the camera.
+// ---------------------------------------------------------------------------
+// Free-fly step and closest zoom, in proportion to the scene
+// ---------------------------------------------------------------------------
+// A key press used to move a flat 20 units and the zoom stopped 1 unit from its pivot: numbers tuned on the 555-unit Cornell box that threw the camera clear of
+// any small scene (a 6-unit room) and stopped a zoom too far out in a big one. Both are fractions of the scene's size now. The size is what the scene's file
+// declares ("# @rt-size", see src/shared/scene_size.h), else the camera's distance to its target.
+constexpr double kReferenceSceneSize = 555.0;               // the Cornell box the two fractions were tuned on; used before a scene is known
+constexpr double kStepFractionOfScene = 0.02;               // one WASD / Up / Down press at 1.0x sensitivity moves this fraction of the scene
+constexpr double kMinOrbitRadiusFractionOfScene = 0.002;    // the camera never zooms closer than this to its pivot
+
+// The size to scale by: `declared` if the scene gives one, else the camera's distance to its target, else 0 (unknown).
+inline double effectiveSceneSize(double declared, double cameraToTargetDistance) {
+	if (declared > 0.0) return declared;
+	return cameraToTargetDistance > 1e-6 ? cameraToTargetDistance : 0.0;
+}
+
+// `sceneSize` of 0 (unknown) means the reference scene.
+inline double sceneSizeOrReference(double sceneSize) { return sceneSize > 0.0 ? sceneSize : kReferenceSceneSize; }
+
+// World-space distance of one key press.
+inline double keyboardStep(double sceneSize, double keyboardSensitivity) {
+	return kStepFractionOfScene * sceneSizeOrReference(sceneSize) * keyboardSensitivity;
+}
+
+inline double minOrbitRadius(double sceneSize) { return kMinOrbitRadiusFractionOfScene * sceneSizeOrReference(sceneSize); }
+
 inline double distanceFromTarget(const Vec3 &camera, const Vec3 &lookAt) {
 	const double dx = camera.x - lookAt.x;
 	const double dy = camera.y - lookAt.y;

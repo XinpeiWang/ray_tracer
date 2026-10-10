@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A glowing 2 x 2 quad, lit by nothing else. --lightpath, --bdpt and the path tracer must read the same.
 # @rt-performance Fast
+# @rt-size 2
 # lightpath-visible-quad-light.pbrt -- a 2 x 2 quad that is itself the picture, lit by nothing else: --lightpath, --bdpt and the path tracer must read the same.
 #
 # The only light is the emitter the camera looks at, so the frame mean is L times the area it covers - the path tracer sees it directly, --lightpath only through its

@@ -1,3 +1,4 @@
+# @rt-size 2
 # cylinder-medium.pbrt -- exercises MediumInterface on Shape "cylinder",
 # now real on GPU (both backends): the cylinder's own entry/exit roots are
 # recomputed for Beer-Lambert free-path sampling through a homogeneous fog,

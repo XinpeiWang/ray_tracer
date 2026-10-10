@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-orthographic.pbrt -- migration of the native "D6 Orthographic
 # Camera Cornell Box" demo scene (src/TheRestOfYourLife/scene_registry_data.h's
 # D6 entry - the exact same build_cornell_box()/build_cornell_box_lights()

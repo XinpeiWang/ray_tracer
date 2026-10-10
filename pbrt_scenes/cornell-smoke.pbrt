@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-smoke.pbrt -- migration of the native "A8 Cornell Smoke" demo
 # scene (src/TheRestOfYourLife/scenes_book.h's build_cornell_smoke()) to a
 # pbrt-backed scene, part of this project's GPU scene-construction-

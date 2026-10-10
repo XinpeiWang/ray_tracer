@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-rough-metal.pbrt -- migration of the native "B2 Cornell Rough Metal"
 # scene (scenes_materials.h's build_cornell_rough_metal(), its GPU case, and
 # Metal's hand-authored copy) to a pbrt-backed scene.

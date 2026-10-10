@@ -1,3 +1,4 @@
+# @rt-size 14
 # camera-medium.pbrt -- exercises pbrt-v4's "camera medium" idiom: a plain
 # MediumInterface directive issued BEFORE the Camera directive, naming the
 # homogeneous medium the camera itself sits inside via its SECOND ("outside")

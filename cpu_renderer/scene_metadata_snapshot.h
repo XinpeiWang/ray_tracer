@@ -69,6 +69,10 @@ struct SceneMetadataSnapshot {
 	// isn't a SceneDescriptor field. Never empty (falls back to "orbit"),
 	// unlike recommended_integrator/sampler/light_sampler above.
 	const char* recommended_camera_path;
+	// How big the scene is: the largest side of its bounding box in the scene's own units, from the "# @rt-size" line of its .pbrt header (cpu_scene_size_by_id()).
+	// 0 = the scene does not say. The Live Preview's keyboard step is a fraction of it, so one key press is a sensible distance in a 6-unit room and in the
+	// 555-unit Cornell box alike.
+	double scene_size;
 };
 
 #ifdef __cplusplus

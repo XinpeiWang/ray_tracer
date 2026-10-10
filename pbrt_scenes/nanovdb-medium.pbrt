@@ -1,3 +1,4 @@
+# @rt-size 1300
 # nanovdb-medium.pbrt -- exercises MakeNamedMedium "nanovdb" (a real
 # NanoVDB-format sparse density grid read from an external .nvdb file,
 # src/shared/sampled_grid.h's GridMediumData via pbrt_cpu_builder.h's own

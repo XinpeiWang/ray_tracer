@@ -1,3 +1,4 @@
+# @rt-size 40
 # checkered-spheres.pbrt -- migration of the native "A3 Checkered Spheres"
 # demo scene (src/TheRestOfYourLife/scenes_book.h's build_checkered_spheres())
 # to a pbrt-backed scene, part of this project's GPU scene-construction-

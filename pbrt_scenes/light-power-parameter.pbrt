@@ -1,3 +1,4 @@
+# @rt-size 12
 # light-power-parameter.pbrt -- exercises the pbrt-v4 "float power" param on
 # LightSource "point"/"spot" and AreaLightSource "diffuse" (real total-flux
 # specification, inverted into an intensity/radiance scale - pbrt_flatten.h),

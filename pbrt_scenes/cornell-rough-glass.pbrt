@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-rough-glass.pbrt -- migration of the native "B3 Cornell Rough
 # Glass" demo scene (src/TheRestOfYourLife/scenes_materials.h's
 # build_cornell_rough_glass(), gpu/optix/scene_builder.cpp's

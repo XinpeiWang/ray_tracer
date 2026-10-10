@@ -1,3 +1,4 @@
+# @rt-size 14
 # principled-showcase.pbrt -- migration of the native "B10 Principled
 # Showcase" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_principled_showcase()) to a pbrt-backed scene, part of this

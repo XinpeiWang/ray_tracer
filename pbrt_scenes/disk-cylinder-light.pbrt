@@ -1,3 +1,4 @@
+# @rt-size 12
 # disk-cylinder-light.pbrt -- exercises Shape "disk"/"cylinder" as real
 # NEE-samplable area lights (GpuLightKind::Disk/Cylinder), now wired on both
 # GPU backends (previously an emissive disk/cylinder still emitted when

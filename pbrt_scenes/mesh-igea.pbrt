@@ -1,3 +1,4 @@
+# @rt-size 9.99
 # mesh-igea.pbrt -- migration of the native "G21" mesh-gallery scene (scenes_mesh_gallery.h's
 # build_igea() + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Every number
 # below was transcribed by a one-off generator from those builders and the registry row, not

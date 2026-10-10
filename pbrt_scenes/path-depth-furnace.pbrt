@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A diffuse sphere under a white sky. At depth 1 every pixel reads exactly the albedo times the sky: 0.5.
 # @rt-performance Fast
+# @rt-size 6
 # path-depth-furnace.pbrt -- a diffuse sphere under a uniform white sky: every pixel is exactly its one-bounce radiance, rho * L = 0.5.
 #
 # A convex sphere under a uniform sky has no interreflection, so its radiance is 0.5 at every point and at every maximum depth from 1 up. A path

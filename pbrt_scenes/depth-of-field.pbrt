@@ -1,3 +1,4 @@
+# @rt-size 570
 # depth-of-field.pbrt -- exercises a perspective camera's "lensradius"/
 # "focaldistance" (pbrt-v4's thin-lens depth-of-field model). No bundled
 # example scene set either parameter before this one - every camera in this

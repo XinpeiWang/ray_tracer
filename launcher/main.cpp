@@ -1384,6 +1384,19 @@ static int render_single_image(const LaunchArgs &args, const RenderSetup &s) {
 }
 
 int main(int argc, char** argv) {
+	// `ray_tracer --print-scene-size <scene id, name or .pbrt path>`: prints the scene's size (the largest side of its bounding box, in its own units) and
+	// nothing else, for scripts/stamp_scene_sizes.py and for people who want the "# @rt-size" line for a scene of their own. Handled before the banner and the
+	// argument parser: it is a measurement, not a render. Exit 0 and a number on success (0 means a scene with nothing to measure), exit 1 if it cannot be loaded.
+	if (argc >= 2 && std::string(argv[1]) == "--print-scene-size") {
+		if (argc < 3) {
+			std::cerr << "usage: " << argv[0] << " --print-scene-size <scene id, name or .pbrt path>\n";
+			return EXIT_FAILURE;
+		}
+		const double size = cpu_scene_measure_size(argv[2]);
+		if (size < 0.0) return EXIT_FAILURE;
+		std::printf("%.6g\n", size);
+		return EXIT_SUCCESS;
+	}
 	std::cout << "========================================" << std::endl;
 	std::cout << "RAY TRACER LAUNCHER (Unified GPU/CPU)" << std::endl;
 	std::cout << "========================================" << std::endl;

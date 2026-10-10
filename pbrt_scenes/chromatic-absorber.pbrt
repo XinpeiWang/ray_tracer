@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A pure absorber that is thicker for blue than for red, seen end-on under a white sky. Each colour channel must follow exp(-sigma x distance): 0.82, 0.45, 0.17.
 # @rt-performance Fast
+# @rt-size 2
 # chromatic-absorber.pbrt -- a pure absorber that is thicker in blue than in red, seen end-on under a uniform sky.
 #
 # sigma_a = (0.1, 0.4, 0.9) per unit length, no scattering, a unit sphere bounded with Material "interface". The camera looks

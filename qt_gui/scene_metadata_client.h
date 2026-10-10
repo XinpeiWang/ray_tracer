@@ -192,6 +192,9 @@ struct SceneMetadata {
 	// the curated per-scene choice. Never empty - defaults to "orbit" the
 	// same way the underlying C field does.
 	QString recommendedCameraPath = QStringLiteral("orbit");
+	// The scene's size in its own world units (the largest side of its bounding box, from the "# @rt-size" line of its header); 0 when the scene does not say.
+	// The Live Preview's keyboard step is a fraction of it.
+	double sceneSize = 0.0;
 };
 
 // Fills `out` with everything SceneMetadata holds for scene_id in one DLL

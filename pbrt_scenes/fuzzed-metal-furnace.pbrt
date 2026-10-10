@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A rough (fuzzed) metal sphere under a white sky. Checks fuzzed-metal sampling on the GPU.
 # @rt-performance Fast
+# @rt-size 200
 # fuzzed-metal-furnace.pbrt -- regression scene for the recursive GPU backend's fuzzed-metal sampling.
 #
 # A huge plane of "conductor, reflectance 0.9, roughness 1" under a uniform white sky, seen at an angle.

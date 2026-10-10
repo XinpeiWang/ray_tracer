@@ -1,3 +1,4 @@
+# @rt-size 6
 # thin-dielectric-medium.pbrt -- exercises Material "thindielectric" fused
 # with MediumInterface on Shape "sphere", now real on GPU (both backends):
 # MaterialType::DielectricMedium's entry/exit boundary now dispatches to

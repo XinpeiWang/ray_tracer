@@ -1,3 +1,4 @@
+# @rt-size 555
 # normal-mapped-cornell.pbrt -- migration of the native "B12 Normal Mapped
 # Cornell Box" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_normal_mapped_cornell()) to a pbrt-backed scene, part of this

@@ -1,3 +1,4 @@
+# @rt-size 7
 # perlin-spheres.pbrt -- migration of the native "A5 Perlin Spheres" book scene
 # (scenes_book.h's build_perlin_spheres()/build_perlin_spheres_lights(), its GPU
 # case, and Metal's hand-authored copy) to a pbrt-backed scene.

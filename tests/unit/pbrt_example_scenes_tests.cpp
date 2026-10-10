@@ -623,8 +623,9 @@ TEST(PbrtBackendAgreementTest, FogPointLightAgreesAcrossBackends) {
 // A medium that absorbs as well as scatters: the GPU builder dropped the sigma_s/sigma_t factor, so every
 // collision scattered at full strength (the fog came out ~14% too bright in this scene, a pure absorber 2.2x).
 TEST(PbrtBackendAgreementTest, AbsorbingFogAgreesAcrossBackends) {
-	// Wavefront reads 101.0-101.1% alone and 101.6% inside a full-suite run (recursive 100.5%), so +-1.5% sat on the edge of its own noise.
-	expectBackendsAgree("absorbing-fog", 128, 0.985, 1.02);
+	// Wavefront reads 101.0-101.1% alone and anywhere from 100.2% to 102.0% inside a full-suite run, depending on which tests ran before it (recursive
+	// 100.5% throughout), so +-1.5% and then +2% sat on the edge of its own noise. +3% leaves room; a real regression here is the 14% of the bug above.
+	expectBackendsAgree("absorbing-fog", 128, 0.985, 1.03);
 }
 
 // A fuzzed metal (the GPU loader's build for a conductor given only a reflectance) has to absorb the rays its

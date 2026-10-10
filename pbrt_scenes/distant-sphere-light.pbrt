@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A floor and a wall lit only by a small sphere light about 500 units away. Every backend must read what the CPU reads.
 # @rt-performance Fast
+# @rt-size 2000
 # distant-sphere-light.pbrt -- a floor and a wall lit only by a small sphere light about 500 units away; the GPU backends must read what the CPU reads.
 #
 # The GPU light samplers recovered the sampled point on a sphere light with b^2 - c, two float numbers around |oc|^2 = 2.5e5 here, and 1 - cos(theta_max) as

@@ -1,3 +1,4 @@
+# @rt-size 3.5
 # nested-texture-2level.pbrt -- exercises a SECOND level of procedural
 # texture nesting: "checkerboard" tex1 bound to ANOTHER "checkerboard"
 # whose OWN tex1 is bound to a real imagemap (level2 -> level1 -> image),

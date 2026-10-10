@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A checker-textured diffuse sphere under a plain sky. GPU SPPM must agree with the path tracer.
 # @rt-performance Fast
+# @rt-size 2
 # sppm-textured-sky.pbrt -- a checker-textured diffuse sphere under a uniform sky and nothing else; GPU SPPM must agree with the path tracer.
 #
 # GPU SPPM read mat.albedo for every diffuse surface and never sampled the material's texture (a textured sphere rendered in whatever flat colour the

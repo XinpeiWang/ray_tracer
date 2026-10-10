@@ -1,3 +1,4 @@
+# @rt-size 2000
 # final-scene.pbrt -- migration of the native "A9 Final Scene" demo scene
 # (src/TheRestOfYourLife/scenes_book.h's build_final_scene(), the "Ray
 # Tracing: The Next Week" book's own finale) to a pbrt-backed scene, part

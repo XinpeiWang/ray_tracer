@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A closed shell of diffuse-transmitting material under a white sky, with an exact answer at every depth: 0.2, 0.56, 0.632 and on towards 0.65.
 # @rt-performance Fast
+# @rt-size 2
 # diffuse-transmission-furnace.pbrt -- a closed diffuse-transmission shell under a uniform white sky, with a closed form at every depth.
 #
 # The shell reflects R = 0.2 and transmits T = 0.6. Inside it is a cavity whose wall radiance B satisfies B = T * 1 + R * B (the wall transmits the sky and

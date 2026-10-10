@@ -1,3 +1,4 @@
+# @rt-size 700
 # frosted-prism-dispersion.pbrt -- migration of the native "B24 Frosted
 # Prism Dispersion" demo scene (src/TheRestOfYourLife/scenes_materials.h's
 # build_prism_dispersion_rough()) to a pbrt-backed scene, part of this

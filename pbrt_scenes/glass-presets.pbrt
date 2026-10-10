@@ -1,3 +1,4 @@
+# @rt-size 16
 # glass-presets.pbrt -- exercises Material "dielectric"'s named glass IOR
 # presets ("spectrum eta" "glass-<NAME>"), resolved via FindGlassPreset()
 # (src/shared/glass_data.h). Previously untested by any bundled scene - only

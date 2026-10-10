@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-light-sampler-comparison.pbrt -- migration of the native "I8 Light Sampler
 # Comparison" Education scene (cornell_box_scene.h's build_light_sampler_comparison()/
 # build_light_sampler_comparison_lights()) to a pbrt-backed scene.

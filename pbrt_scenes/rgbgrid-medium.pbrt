@@ -1,3 +1,4 @@
+# @rt-size 1300
 # rgbgrid-medium.pbrt -- exercises MakeNamedMedium "rgbgrid" (a 6x6x6 flat
 # "rgb sigma_s" voxel grid, src/shared/rgb_grid_medium.h) plus
 # MediumInterface, both loader-side (pbrt_scene.h/pbrt_flatten.h's

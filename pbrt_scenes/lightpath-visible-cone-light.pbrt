@@ -2,6 +2,7 @@
 # @rt-description A glowing cone seen from the side, lit by nothing else. --lightpath, --bdpt and the path tracer must read the same.
 # @rt-gpu no
 # @rt-performance Fast
+# @rt-size 2
 # lightpath-visible-cone-light.pbrt -- a cone (apex towards the camera... seen from the side) that is itself the picture, lit by nothing else: --lightpath, --bdpt and the path tracer must read the same.
 # See lightpath-visible-sphere-light.pbrt.
 #

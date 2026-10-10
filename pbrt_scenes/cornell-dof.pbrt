@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-dof.pbrt -- migration of the native "D5 Depth of Field Cornell
 # Box" demo scene (src/TheRestOfYourLife/scene_registry_data.h's D5 entry -
 # the exact same build_cornell_box()/build_cornell_box_lights() world as

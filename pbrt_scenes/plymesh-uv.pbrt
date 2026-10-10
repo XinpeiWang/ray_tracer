@@ -1,3 +1,4 @@
+# @rt-size 3.5
 # plymesh-uv.pbrt -- exercises Shape "plymesh" real per-vertex UV, read
 # straight out of a PLY file's "u"/"v" vertex properties
 # (geometry/uv-quad.ply) and threaded through pbrt_flatten::MeshResolver ->

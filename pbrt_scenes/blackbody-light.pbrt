@@ -1,3 +1,4 @@
+# @rt-size 8
 # blackbody-light.pbrt -- exercises "blackbody L" colour-temperature area
 # lights (previously silently defaulted to flat white regardless of the
 # requested Kelvin value - ParamList::getVec3 requires >=3 numbers, and a

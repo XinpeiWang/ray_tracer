@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-camera-motion-blur.pbrt -- migration of the native "D13 Camera
 # Motion Blur" demo scene (scene_registry_data.h's own D13 entry, which
 # reuses build_cornell_box()/build_cornell_box_lights() - A1's exact world -

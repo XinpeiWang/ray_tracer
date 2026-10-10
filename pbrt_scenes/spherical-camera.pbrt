@@ -1,3 +1,4 @@
+# @rt-size 555
 # spherical-camera.pbrt -- exercises pbrt-v4's "spherical" camera
 # (equal-area concentric-octahedral mapping). No bundled example scene used
 # anything but "perspective"/"orthographic" before this one. Positioned at

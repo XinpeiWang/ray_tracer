@@ -1,3 +1,4 @@
+# @rt-size 8
 # colorspace-blackbody.pbrt -- exercises the "ColorSpace" directive
 # (previously unrecognized and silently dropped; see docs/FEATURE_INVENTORY.md
 # and Scene::colorSpaceName's own comment in pbrt_scene.h).

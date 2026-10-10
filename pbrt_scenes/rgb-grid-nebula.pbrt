@@ -1,3 +1,4 @@
+# @rt-size 13
 # rgb-grid-nebula.pbrt -- migration of the native "E4 RGB Grid Medium"
 # demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_rgb_grid_medium_scene()) to a pbrt-backed scene, part of this

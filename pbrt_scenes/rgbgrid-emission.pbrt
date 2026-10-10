@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A glowing colour voxel grid in an otherwise black scene, with no lights. Checks per-voxel emission.
 # @rt-performance Fast
+# @rt-size 3.6
 # rgbgrid-emission.pbrt -- a self-glowing RGB voxel grid (pbrt-v4's per-voxel "rgb Le" plus "Lescale") in an otherwise black scene, no lights.
 #
 # The only light is the medium's own emission, which differs per voxel: the x = 0 side glows orange, the x = 1 side blue-green. pbrt weights

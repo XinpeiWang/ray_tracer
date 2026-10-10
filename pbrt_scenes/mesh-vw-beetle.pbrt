@@ -1,3 +1,4 @@
+# @rt-size 10
 # mesh-vw-beetle.pbrt -- migration of the native "G15" mesh-gallery scene (scenes_mesh_gallery.h's
 # build_beetle() + its GPU twin in scene_builder_mesh_gallery.h) to a pbrt-backed scene. Every number
 # below was transcribed by a one-off generator from those builders and the registry row, not

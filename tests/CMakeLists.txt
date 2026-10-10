@@ -51,6 +51,7 @@ add_executable(unit_tests
     unit/snapshot_history_tests.cpp
     unit/gpu_tessellate_tests.cpp
     unit/gpu_scene_frame_tests.cpp
+    unit/scene_size_tests.cpp
     unit/gpu_scene_textures_tests.cpp
     unit/gpu_scene_materials_tests.cpp
     unit/nanovdb_dense_tests.cpp

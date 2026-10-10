@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-coated-diffuse.pbrt -- migration of the native "B5 Cornell Coated
 # Diffuse" demo scene (src/TheRestOfYourLife/scenes_materials.h's
 # build_cornell_coated_diffuse(), gpu/optix/scene_builder.cpp's own

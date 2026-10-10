@@ -1,3 +1,4 @@
+# @rt-size 555
 # orthographic-camera.pbrt -- exercises pbrt-v4's "orthographic" camera
 # (parallel projection, no perspective foreshortening). No bundled example
 # scene used anything but "perspective" before this one, so the loaded-

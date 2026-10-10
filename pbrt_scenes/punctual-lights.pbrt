@@ -1,3 +1,4 @@
+# @rt-size 555
 # punctual-lights.pbrt -- exercises all 5 of pbrt-v4's punctual (delta-
 # distribution) light kinds in one scene: point, spot, distant, goniometric,
 # and projection. Every other bundled example scene lit its room with

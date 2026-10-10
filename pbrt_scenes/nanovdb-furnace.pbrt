@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A NanoVDB fog sphere that scatters without absorbing, under a white sky. It must be invisible: every pixel reads exactly 1.
 # @rt-performance Fast
+# @rt-size 6.4
 # nanovdb-furnace.pbrt -- a white furnace for the NanoVDB medium.
 #
 # pbrt_scenes/nanovdb-sphere.nvdb is a soft fog-volume sphere (native radius 1.5, density falling off toward the edge). With sigma_a = 0 it scatters

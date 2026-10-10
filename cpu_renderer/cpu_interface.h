@@ -561,6 +561,13 @@ int cpu_scene_legacy_id_by_id(const char* scene_id);
 const char* cpu_scene_performance_by_id(const char* scene_id);
 int cpu_scene_recommended_spp_by_id(const char* scene_id);
 int cpu_scene_requires_files_by_id(const char* scene_id);
+/// How big the scene is, in its own world units: the largest side of its bounding box, as its .pbrt file declares it in a "# @rt-size" header line. 0 when the
+/// file does not say (or the scene is not file-backed): a caller then falls back to something else, such as the camera's distance to its target. The
+/// interactive camera controls scale their step by it (src/shared/scene_size.h).
+double cpu_scene_size_by_id(const char* scene_id);
+/// Measures a scene by loading it: `scene_id_or_path` is a scene id or name, or a .pbrt path. The largest side of the bounding box, 0 for a scene with nothing
+/// to measure, negative if it cannot be loaded. This is what `ray_tracer --print-scene-size` prints and scripts/stamp_scene_sizes.py writes into the headers.
+double cpu_scene_measure_size(const char* scene_id_or_path);
 /// For a scene flagged requires_files that is backed by a .pbrt file: checks whether the files that
 /// scene refers to are actually on disk. "" when nothing is missing (or the scene is not pbrt-backed,
 /// so there is nothing to check); otherwise five tab-separated fields - the directory the missing

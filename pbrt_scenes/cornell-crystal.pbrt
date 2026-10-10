@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-crystal.pbrt -- migration of the native "B9 Cornell Crystal" demo
 # scene (src/TheRestOfYourLife/scenes_materials.h's build_cornell_crystal())
 # to a pbrt-backed scene, part of this project's GPU scene-construction-

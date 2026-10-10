@@ -1,3 +1,4 @@
+# @rt-size 14
 # object-motion-blur.pbrt -- exercises Shape "sphere" object motion blur via
 # ActiveTransform "StartTime"/"EndTime" bracketing two different Translate
 # CTMs (baked into Sphere::center1 in pbrt_flatten.h, sampled per-ray by

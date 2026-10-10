@@ -1,3 +1,4 @@
+# @rt-size 13
 # cloud-medium-scene.pbrt -- migration of the native "E2 Cloud Medium" demo
 # scene (src/TheRestOfYourLife/scenes_advanced.h's build_cloud_medium_scene())
 # to a pbrt-backed scene, part of this project's GPU scene-construction-

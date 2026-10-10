@@ -1,3 +1,4 @@
+# @rt-size 555
 # instanced-spheres.pbrt -- object instancing with spheres in the definition.
 #
 # example-cornell.pbrt already covers instanced TRIANGLES. This one exists for

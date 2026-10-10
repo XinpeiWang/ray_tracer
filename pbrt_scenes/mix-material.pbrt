@@ -1,3 +1,4 @@
+# @rt-size 555
 # mix-material.pbrt -- exercises pbrt-v4's "mix" material. Originally
 # written to keep watch on this loader's largest CPU/GPU material gap: CPU
 # did a real recursive stochastic blend between the two named sub-materials

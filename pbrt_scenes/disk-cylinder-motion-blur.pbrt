@@ -1,3 +1,4 @@
+# @rt-size 12
 # disk-cylinder-motion-blur.pbrt -- exercises Shape "disk"/Shape "cylinder"
 # object motion blur via ActiveTransform "StartTime"/"EndTime" (baked into
 # the shape's own xformEnd in pbrt_flatten.h, unlike the moving sphere's

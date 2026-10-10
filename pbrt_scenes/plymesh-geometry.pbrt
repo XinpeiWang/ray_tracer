@@ -1,3 +1,4 @@
+# @rt-size 555
 # plymesh-geometry.pbrt -- exercises Shape "plymesh", loading a real
 # external .ply file (geometry/synthetic-pyramid.ply) via
 # src/shared/ply_mesh.h. No bundled example scene referenced a .ply file

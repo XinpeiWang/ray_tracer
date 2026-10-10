@@ -1,3 +1,4 @@
+# @rt-size 290
 # cloud-furnace.pbrt -- a white furnace for the cloud medium.
 #
 # A scattering-only cloud (no absorption, albedo 1) alone under a uniform sky: by energy conservation every pixel must come out as the

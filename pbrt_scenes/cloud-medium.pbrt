@@ -1,3 +1,4 @@
+# @rt-size 1300
 # cloud-medium.pbrt -- exercises MakeNamedMedium "cloud" (Perlin-noise-driven
 # heterogeneous scattering, src/shared/cloud_medium.h) plus MediumInterface,
 # both loader-side (pbrt_scene.h/pbrt_flatten.h) and both render backends

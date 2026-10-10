@@ -1,3 +1,4 @@
+# @rt-size 555
 # two-sphere-lights.pbrt -- more than one sphere area light in one scene.
 #
 # Written to pin down a specific failure rather than to look good: the GPU

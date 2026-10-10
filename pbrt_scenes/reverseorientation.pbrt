@@ -1,3 +1,4 @@
+# @rt-size 6.2
 # reverseorientation.pbrt -- exercises the bare ReverseOrientation directive
 # (pbrt_scene.h's gs_.reverseOrientation flag, consumed by pbrt_flatten.h
 # for trianglemesh/plymesh/loopsubdiv/bilinearmesh - any other shape type

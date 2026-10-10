@@ -1,3 +1,4 @@
+# @rt-size 12
 # curve-tuft.pbrt -- exercises Shape "curve" (a cubic Bezier hair/fiber
 # strand, src/shared/shapes.h's CurveShape<T> on CPU, tessellated into
 # bilinear-patch quads on GPU - src/shared/curve_tessellate.h; neither GPU

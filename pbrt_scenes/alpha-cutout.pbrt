@@ -1,3 +1,4 @@
+# @rt-size 12
 # alpha-cutout.pbrt -- regression scene for a Shape's "texture alpha" cutout mask (pbrt-v4's stochastic alpha test).
 #
 # A red diffuse square carries images/alpha-cutout-mask.png as its "alpha": a 64x64 mask whose black texels are transparent (a round

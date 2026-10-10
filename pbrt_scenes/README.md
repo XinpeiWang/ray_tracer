@@ -20,7 +20,10 @@ The bundled test scenes begin with comment lines that tell the renderer about th
 # @rt-category Test Scenes
 # @rt-description A fog ball that scatters but does not absorb, under a white sky.
 # @rt-performance Fast
+# @rt-size 6.4
 ```
+
+`@rt-size` is the scene's size: the largest side of its bounding box in the scene's own units. The Live Preview scales its keyboard step by it. `python scripts/stamp_scene_sizes.py` writes it for a scene you add (see [docs/SCENE_SELECTION.md](../docs/SCENE_SELECTION.md)).
 
 A scene of your own can do the same (`@rt-category` must be one of the categories in
 [docs/SCENE_SELECTION.md](../docs/SCENE_SELECTION.md); without one it is a Custom Scene). A file

@@ -1,3 +1,4 @@
+# @rt-size 555
 # triangle-fan-light.pbrt -- an area light that is not a parallelogram.
 #
 # Almost every pbrt area light is a rectangle written as two triangles, and

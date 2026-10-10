@@ -1,3 +1,4 @@
+# @rt-size 9
 # portal-light.pbrt -- exercises the REAL pbrt-v4 PortalImageInfiniteLight
 # (LightSource "infinite" "point3 portal" [4 corner points] "string
 # filename" [equal-area env image], pbrt_flatten.h/pbrt_cpu_builder.h),

@@ -1,3 +1,4 @@
+# @rt-size 12
 # rough-metal-spheres.pbrt -- migration of the native "B1 Rough Metal Spheres" scene
 # (scenes_materials.h's build_rough_metal_spheres(), its GPU case, and Metal's
 # hand-authored copy) to a pbrt-backed scene.

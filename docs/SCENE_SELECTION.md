@@ -86,9 +86,10 @@ Any `.pbrt` file placed in `pbrt_scenes/` (or in the folder named by the `RAY_TR
 # @rt-description A fog ball that scatters but does not absorb, under a white sky.
 # @rt-performance Fast
 # @rt-gpu no
+# @rt-size 555
 ```
 
-`@rt-category` must be one of the categories above (an unknown one is reported and the scene stays a Custom Scene), `@rt-description` may be repeated (the lines are joined), `@rt-performance` is one of the four words, and `@rt-gpu no` marks a scene that uses something the GPU backends lack (cone and paraboloid shapes), so it is not offered a GPU render. Without a description, a scene file gets one that gives its resolution and samples. A `.pbrt` file that a built-in scene already uses is listed once, as the built-in scene. See [`PBRT_SUPPORT.md`](PBRT_SUPPORT.md) for which pbrt-v4 directives the loader reads, and [`pbrt_scenes/README.md`](../pbrt_scenes/README.md) for the folder.
+`@rt-category` must be one of the categories above (an unknown one is reported and the scene stays a Custom Scene), `@rt-description` may be repeated (the lines are joined), `@rt-performance` is one of the four words, and `@rt-gpu no` marks a scene that uses something the GPU backends lack (cone and paraboloid shapes), so it is not offered a GPU render. Without a description, a scene file gets one that gives its resolution and samples. `@rt-size` is how big the scene is: the largest side of its bounding box, in the scene's own units (555 for the Cornell box, 6.4 for a small room). The Live Preview moves the camera by 2% of it per keyboard press (W, A, S, D, Up, Down), so a press is a sensible distance in a 6-unit room and in a 555-unit one; a scene that does not say gets the camera's distance to its target instead. `python scripts/stamp_scene_sizes.py` measures the scenes in `pbrt_scenes/` and writes the line (`--check` lists any that are missing or out of date, and `ray_tracer --print-scene-size <scene id, name or file>` prints one scene's size); the Scene Builder writes it for its own scenes. A `.pbrt` file that a built-in scene already uses is listed once, as the built-in scene. See [`PBRT_SUPPORT.md`](PBRT_SUPPORT.md) for which pbrt-v4 directives the loader reads, and [`pbrt_scenes/README.md`](../pbrt_scenes/README.md) for the folder.
 
 ## Adding a built-in scene
 

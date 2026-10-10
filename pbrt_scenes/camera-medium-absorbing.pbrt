@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description The camera sits inside a thin fog that absorbs as well as scatters, lit by a point light with a bright emitter far away. Checks fog around the camera on all three backends.
 # @rt-performance Fast
+# @rt-size 6
 # camera-medium-absorbing.pbrt -- regression scene for pbrt's camera medium (a MediumInterface before the Camera
 # directive: the camera sits inside an unbounded fog) on all three backends.
 #

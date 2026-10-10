@@ -1,3 +1,4 @@
+# @rt-size 4.5
 # conductor-rgb-eta-k.pbrt -- exercises Material "conductor"'s explicit
 # "rgb eta"/"rgb k" parameters and Material "coatedconductor"'s named-metal-
 # spectrum resolution, real complex-IOR GGX models on both (previously both

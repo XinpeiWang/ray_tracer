@@ -97,6 +97,54 @@ void MainWindow::runLivePreviewSweepSelfTest(const std::function<void(const QStr
 
 	// Simulates a mouse drag (many small orbit steps over ~1.5 s) and writes a filmstrip of the displayed tile before, during and after
 	// it: <out>_drag_strip.png. For judging what a user sees while orbiting: ghosting, streaks, how fast the picture settles.
+// Starts Live Preview on each scene in turn (RT_GUI_SELFTEST_SCENES=id1,id2,...; default A1, the 555-unit Cornell box) and presses the Up key and the W key once: the
+// camera must move by the step camera_math::keyboardStep() gives for that scene (2% of its size), and for a scene of any size that is a small fraction of it.
+// Logs the scene's size, the distance moved and that distance as a percentage of the size; exits 1 if a press moved anything else or more than 5% of the scene.
+void MainWindow::runLivePreviewKeysSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &, const QString &) {
+	const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
+	if (idx < 0) { log("Live Preview mode missing"); QApplication::exit(2); return; }
+	m_modeCombo->setCurrentIndex(idx);
+	QStringList ids = qEnvironmentVariable("RT_GUI_SELFTEST_SCENES").split(',', Qt::SkipEmptyParts);
+	if (ids.isEmpty()) ids << "A1";
+	auto index = std::make_shared<int>(0);
+	auto bad = std::make_shared<int>(0);
+	auto step = std::make_shared<std::function<void()>>();
+	*step = [this, ids, index, bad, step, log]() {
+		if (*index >= ids.size()) {
+			log(QString("keys done: %1 of %2 scenes flagged").arg(*bad).arg(ids.size()));
+			stopLivePreview();
+			QApplication::exit(*bad ? 1 : 0);
+			return;
+		}
+		const QString id = ids[*index];
+		stopLivePreview();
+		selectSceneById(id);
+		startLivePreview();
+		QTimer::singleShot(2500, this, [this, id, index, bad, step, log]() {
+			if (!m_livePreviewRunning) { log(QString("FLAG %1: the preview did not start").arg(id)); ++*bad; ++*index; (*step)(); return; }
+			SceneMetadataClient::SceneMetadata meta;
+			SceneMetadataClient::sceneMetadata(id, meta);
+			const camera_math::Vec3 before = m_livePreviewLookAt;
+			onLivePreviewTranslate(0, 0, 1);   // the Up key
+			const double up = camera_math::length(m_livePreviewLookAt - before);
+			const camera_math::Vec3 mid = m_livePreviewLookAt;
+			onLivePreviewTranslate(1, 0, 0);   // the W key
+			const double forward = camera_math::length(m_livePreviewLookAt - mid);
+			const double expected = camera_math::keyboardStep(m_livePreviewSceneSize, m_keyboardSensitivity);
+			const double size = m_livePreviewSceneSize;
+			const bool flagged = std::abs(up - expected) > 1e-6 * std::max(1.0, expected) || std::abs(forward - expected) > 1e-6 * std::max(1.0, expected)
+				|| (size > 0.0 && up > 0.05 * size);
+			if (flagged) ++*bad;
+			log(QString("%1 %2: declared size %3, size used %4, one press moves %5 (%6% of the scene), expected %7")
+				.arg(flagged ? "FLAG" : "ok  ", id).arg(meta.sceneSize, 0, 'g', 5).arg(size, 0, 'g', 5).arg(up, 0, 'g', 5)
+				.arg(size > 0.0 ? 100.0 * up / size : 0.0, 0, 'f', 2).arg(expected, 0, 'g', 5));
+			++*index;
+			(*step)();
+		});
+	};
+	(*step)();
+}
+
 void MainWindow::runLivePreviewDragSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix) {
 	const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
 	if (idx < 0) { QApplication::exit(2); return; }

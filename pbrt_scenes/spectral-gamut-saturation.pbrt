@@ -1,3 +1,4 @@
+# @rt-size 10
 # spectral-gamut-saturation.pbrt -- exercises the spectral film accumulation
 # fix (a real per-sample XYZ->RGB gamut-clamp bias, fixed by deferring the
 # XYZ->RGB conversion to per-PIXEL instead of per-sample - see

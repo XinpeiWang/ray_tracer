@@ -1,3 +1,4 @@
+# @rt-size 9
 # simple-light.pbrt -- migration of the native "A7 Simple Light" book scene
 # (scenes_book.h's build_simple_light(), its GPU case, and Metal's hand-authored
 # copy) to a pbrt-backed scene.

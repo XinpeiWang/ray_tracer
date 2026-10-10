@@ -1,3 +1,4 @@
+# @rt-size 15
 # cone-paraboloid-gallery.pbrt -- exercises Shape "cone"/Shape "paraboloid"
 # (this codebase's own pbrt-v3-compatibility extension, NOT part of real
 # pbrt-v4 - see docs/PBRT_SUPPORT.md), including both as an AreaLightSource

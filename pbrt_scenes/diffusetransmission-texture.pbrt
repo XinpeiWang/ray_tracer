@@ -1,3 +1,4 @@
+# @rt-size 5
 # diffusetransmission-texture.pbrt -- exercises Material "diffusetransmission"'s
 # "texture reflectance"/"texture transmittance" parameters, real per-point
 # image decoding on both backends (previously both silently fell back to a

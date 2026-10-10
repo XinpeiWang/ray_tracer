@@ -1,3 +1,4 @@
+# @rt-size 9.8
 # realistic-camera-scene.pbrt -- migration of the native "D4 Realistic
 # Camera" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_realistic_camera_scene()) to a pbrt-backed scene, part of this

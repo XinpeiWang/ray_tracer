@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A thin uniform NanoVDB cube lit by a distant light, seen on a black background: the single-scattered radiance has a closed form.
 # @rt-performance Fast
+# @rt-size 0.4
 # nanovdb-thin-slab.pbrt -- the absolute check of the NanoVDB medium's density, size and placement.
 #
 # A white furnace cannot see the density: a medium that only scatters is invisible under a uniform sky whatever its density, so the furnace passes

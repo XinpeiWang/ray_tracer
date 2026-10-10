@@ -1,3 +1,4 @@
+# @rt-size 6
 # rough-dielectric-medium.pbrt -- exercises Material "dielectric" with a
 # nonzero roughness fused with MediumInterface on Shape "sphere", now real
 # on GPU (both backends): MaterialType::DielectricMedium's entry/exit

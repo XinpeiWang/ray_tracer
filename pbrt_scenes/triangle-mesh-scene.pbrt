@@ -1,3 +1,4 @@
+# @rt-size 8.78
 # triangle-mesh-scene.pbrt -- migration of the native "F2 Triangle Mesh"
 # demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_triangle_mesh_scene()) to a pbrt-backed scene, part of this

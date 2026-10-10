@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-thin-glass.pbrt -- migration of the native "B6 Cornell Thin Glass"
 # demo scene (src/TheRestOfYourLife/scenes_materials.h's
 # build_cornell_thin_glass(), gpu/optix/scene_builder.cpp's own

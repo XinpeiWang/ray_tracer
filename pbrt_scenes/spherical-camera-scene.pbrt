@@ -1,3 +1,4 @@
+# @rt-size 10
 # spherical-camera-scene.pbrt -- migration of the native "D3 Spherical
 # Camera" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_spherical_camera_scene()/build_spherical_sky()) to a pbrt-backed

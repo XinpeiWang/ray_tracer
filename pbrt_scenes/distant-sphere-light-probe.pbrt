@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description One point on a floor lit by a small sphere light about 480 units away. The exact answer is known, and it catches float precision errors.
 # @rt-performance Fast
+# @rt-size 2000
 # distant-sphere-light-probe.pbrt -- one floor point lit by a small sphere light about 480 units away, with a closed form.
 #
 # Radiance of a diffuse floor point under a small sphere light (radius r, distance d, radiance L, floor reflectance rho, cosine c at the floor):

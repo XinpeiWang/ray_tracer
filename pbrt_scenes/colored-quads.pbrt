@@ -1,3 +1,4 @@
+# @rt-size 6
 # colored-quads.pbrt -- migration of the native "A6 Colored Quads" demo scene
 # (src/TheRestOfYourLife/scenes_book.h's build_quads()/build_quads_lights(),
 # gpu/optix/scene_builder.cpp's build_quads_scene()) to a pbrt-backed scene,

@@ -1,3 +1,4 @@
+# @rt-size 555
 # pixel-filter-box.pbrt -- exercises the "PixelFilter" directive end-to-end
 # on both backends (pbrt_scene.h/pbrt_flatten.h parsing, CPU's
 # PixelFilterDispatch in camera.h, and the new GPU port -

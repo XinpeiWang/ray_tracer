@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-wax-slab.pbrt -- migration of the native "B8 Cornell Wax Slab"
 # demo scene (src/TheRestOfYourLife/scenes_materials.h's
 # build_cornell_wax_slab(), gpu/optix/scene_builder.cpp's own

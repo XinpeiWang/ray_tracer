@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-conductor.pbrt -- migration of the native "B4 Cornell Conductor"
 # demo scene (src/TheRestOfYourLife/scenes_materials.h's build_cornell_conductor(),
 # gpu/optix/scene_builder.cpp's build_cornell_conductor_gpu()) to a

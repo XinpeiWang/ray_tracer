@@ -206,6 +206,13 @@ void MainWindow::startLivePreview() {
 	const camera_math::Vec3 camera = currentCameraPosition();
 	m_livePreviewLookAt = currentLookAt();
 	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
+	// How big this scene is, which the keyboard step (WASD, Up/Down) is a fraction of: the size its file declares ("# @rt-size", a bounding-box side in the
+	// scene's own units), else the camera's distance to its target, which is at least the right order of magnitude for any scene whose author framed it.
+	{
+		SceneMetadataClient::SceneMetadata sizeMeta;
+		const double declared = SceneMetadataClient::sceneMetadata(sceneId, sizeMeta) ? sizeMeta.sceneSize : 0.0;
+		m_livePreviewSceneSize = camera_math::effectiveSceneSize(declared, m_orbit.radius);
+	}
 	// Exposure and SVGF tuning aren't part of start()'s own parameter list
 	// (neither has an accumulation-structure side effect - see setExposure()'s
 	// own comment - so it's simplest to push them separately); pushed BEFORE
@@ -490,7 +497,8 @@ void MainWindow::applyOrbitDelta(double azimuthDelta, double elevationDelta) {
 // mouse-wheel and keyboard +/- paths.
 void MainWindow::applyZoomDelta(double factor) {
 	m_orbit.radius *= factor;
-	constexpr double kMinRadius = 1.0;
+	// Closest the camera may get to its pivot: 1 unit in the 555-unit Cornell box, in proportion for any other scene (a fixed 1 unit was most of a small room).
+	const double kMinRadius = camera_math::minOrbitRadius(m_livePreviewSceneSize);
 	if (m_orbit.radius < kMinRadius) m_orbit.radius = kMinRadius;
 	updateLivePreviewCameraFromOrbit();
 }
@@ -593,14 +601,12 @@ void MainWindow::onLivePreviewKeyZoom(int radiusSteps) {
 
 void MainWindow::onLivePreviewTranslate(int forwardSteps, int rightSteps, int upSteps) {
 	if (!m_livePreviewRunning) return;
-	// World-space distance per step - tuned against the Cornell Box's own
-	// ~555-unit scale (a comfortable walking pace across the room takes a
-	// handful of presses, not one giant leap or an imperceptible creep).
-	// Scaled here rather than inside applyTranslateDelta(), matching
-	// onLivePreviewKeyOrbit()/onLivePreviewKeyZoom()'s own "resolve steps to
-	// a real delta before calling the shared apply* helper" convention.
-	constexpr double kUnitsPerStep = 20.0;
-	const double scale = kUnitsPerStep * m_keyboardSensitivity;
+	// World-space distance per step: a fraction of the scene's size, so one press is a sensible distance in a 6-unit room and in the 555-unit Cornell box alike.
+	// (It used to be a flat 20 units, tuned on the Cornell box, which flew straight out of any small scene.) 2% of the scene is about 11 units in the Cornell box,
+	// a little over half the old step: a handful of presses crosses the room. The Settings tab's keyboard sensitivity still scales it, 0.25x to 3x.
+	// Scaled here rather than inside applyTranslateDelta(), matching onLivePreviewKeyOrbit()/onLivePreviewKeyZoom()'s own "resolve steps to a real delta before
+	// calling the shared apply* helper" convention.
+	const double scale = camera_math::keyboardStep(m_livePreviewSceneSize, m_keyboardSensitivity);
 	applyTranslateDelta(forwardSteps * scale, rightSteps * scale, upSteps * scale);
 }
 

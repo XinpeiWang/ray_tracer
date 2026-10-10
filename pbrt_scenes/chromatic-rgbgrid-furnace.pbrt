@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A 2x2x2 colour voxel grid that scatters without absorbing, with different scattering per colour, under a white sky. It must be invisible.
 # @rt-performance Fast
+# @rt-size 3.6
 # chromatic-rgbgrid-furnace.pbrt -- a 2x2x2 RGB voxel grid that scatters without absorbing, different per colour, under a uniform sky.
 #
 # sigma_s = (0.2, 0.35, 0.5) in every voxel, sigma_a = 0, so albedo is 1 in every channel and the grid is invisible against the sky: every channel

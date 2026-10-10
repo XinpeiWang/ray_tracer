@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-spherical.pbrt -- migration of the native "D7 Spherical Camera
 # Cornell Box" demo scene (src/TheRestOfYourLife/scene_registry_data.h's D7
 # entry - the exact same build_cornell_box()/build_cornell_box_lights()

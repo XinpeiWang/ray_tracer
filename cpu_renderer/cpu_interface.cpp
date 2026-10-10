@@ -21,6 +21,8 @@
 
 #include "cpu_interface.h"
 #include <unordered_set>
+#include <map>
+#include <mutex>
 #include "../src/TheRestOfYourLife/rtweekend.h"
 #include "../src/TheRestOfYourLife/camera.h"
 #include "../src/TheRestOfYourLife/scene_registry.h"
@@ -41,6 +43,7 @@
 #include "../src/TheRestOfYourLife/animated_transform_instance.h"
 #include "../src/shared/exr_writer.h"
 #include "../src/shared/pbrt_asset_check.h"
+#include "../src/shared/scene_size.h"
 #include "../src/shared/light_sampler_resolution.h"
 #include <iostream>
 #include <fstream>
@@ -1088,6 +1091,39 @@ extern "C" const char* cpu_scene_missing_assets_by_id(const char* scene_id) {
 	return report.c_str();
 }
 
+// The size a scene's own header declares ("# @rt-size", scene_size.h), 0 when it does not say. Read once per scene id and kept: the file's first 64 KB is cheap,
+// but the GUI asks every time a Live Preview starts.
+extern "C" double cpu_scene_size_by_id(const char* scene_id) {
+	static std::mutex mutex;
+	static std::map<std::string, double> cache;
+	if (!scene_id) return 0.0;
+	const char* path = cpu_scene_pbrt_path_by_id(scene_id);
+	if (!path || !path[0]) return 0.0;
+	std::lock_guard<std::mutex> lock(mutex);
+	const std::string key = std::string(scene_id) + "|" + path;
+	const auto it = cache.find(key);
+	if (it != cache.end()) return it->second;
+	const double size = pbrt_discover::detail::sceneSizeOfFile(path);
+	cache.emplace(key, size);
+	return size;
+}
+
+// Measures the scene named by `scene_id_or_path` (a scene id or name, or a .pbrt path) by loading it, as `ray_tracer --print-scene-size` does. Negative when it
+// cannot be loaded; 0 when it has nothing to measure.
+extern "C" double cpu_scene_measure_size(const char* scene_id_or_path) {
+	if (!scene_id_or_path || !scene_id_or_path[0]) return -1.0;
+	std::string path = scene_id_or_path;
+	if (!std::filesystem::exists(path)) {
+		const char* known = cpu_scene_pbrt_path_by_id(scene_id_or_path);
+		if (!known || !known[0]) return -1.0;
+		path = known;
+	}
+	std::string error;
+	const double size = scene_size::ofFile(path, &error);
+	if (size < 0.0) std::cerr << "cannot measure " << path << ": " << error << "\n";
+	return size;
+}
+
 extern "C" int cpu_scene_requires_files_by_id(const char* scene_id) {
 	const SceneDescriptor* s = find_scene(scene_id);
 	return (s && s->requires_files) ? 1 : 0;
@@ -1140,5 +1176,6 @@ extern "C" int cpu_scene_metadata_snapshot(const char* scene_id, SceneMetadataSn
 	out->cam_lookat_y = cc.lookat_y;
 	out->cam_lookat_z = cc.lookat_z;
 	out->recommended_camera_path = recommended_camera_path_for(s->id);
+	out->scene_size = cpu_scene_size_by_id(s->id.c_str());
 	return 1;
 }

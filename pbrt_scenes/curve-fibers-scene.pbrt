@@ -1,3 +1,4 @@
+# @rt-size 5
 # curve-fibers-scene.pbrt -- migration of the native "F4 Curve Fibers" demo
 # scene (src/TheRestOfYourLife/scenes_advanced.h's build_curve_fibers_scene())
 # to a pbrt-backed scene, part of this project's GPU scene-construction-

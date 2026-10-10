@@ -309,3 +309,32 @@ TEST(CameraMathTest, ProjectToScreenHandlesAnAsymmetricScreenWindow) {
 	EXPECT_NEAR(p.s, 0.0, 1e-9);
 	EXPECT_NEAR(p.t, 0.5, 1e-9);
 }
+
+// ---- the free-fly step and the closest zoom scale with the scene --------------------------------------------------------------------
+
+TEST(CameraMathSceneScaleTest, TheStepIsAFractionOfTheScene) {
+	EXPECT_NEAR(keyboardStep(555.0, 1.0), 11.1, 1e-9) << "the Cornell box: a little over half the old flat 20";
+	EXPECT_NEAR(keyboardStep(6.0, 1.0), 0.12, 1e-12) << "a small room no longer flies away on one press";
+	EXPECT_NEAR(keyboardStep(6.0, 3.0), 0.36, 1e-12) << "keyboard sensitivity still scales it";
+	EXPECT_NEAR(keyboardStep(6.0, 0.25), 0.03, 1e-12);
+	EXPECT_NEAR(keyboardStep(0.0, 1.0), keyboardStep(kReferenceSceneSize, 1.0), 1e-12) << "an unknown size behaves as the reference scene";
+	EXPECT_NEAR(keyboardStep(-5.0, 1.0), keyboardStep(kReferenceSceneSize, 1.0), 1e-12);
+}
+
+TEST(CameraMathSceneScaleTest, TheClosestZoomIsAFractionOfTheScene) {
+	EXPECT_NEAR(minOrbitRadius(555.0), 1.11, 1e-9);
+	EXPECT_NEAR(minOrbitRadius(6.0), 0.012, 1e-12);
+	EXPECT_NEAR(minOrbitRadius(0.0), minOrbitRadius(kReferenceSceneSize), 1e-12);
+}
+
+TEST(CameraMathSceneScaleTest, TheDeclaredSizeWinsThenTheCameraDistance) {
+	EXPECT_DOUBLE_EQ(effectiveSceneSize(555.0, 800.0), 555.0);
+	EXPECT_DOUBLE_EQ(effectiveSceneSize(0.0, 800.0), 800.0);
+	EXPECT_DOUBLE_EQ(effectiveSceneSize(-1.0, 8.0), 8.0);
+	EXPECT_EQ(effectiveSceneSize(0.0, 0.0), 0.0) << "nothing known: the caller uses the reference scene";
+}
+
+TEST(CameraMathSceneScaleTest, AFewPressesCrossAnyScene) {
+	// The point of the change: about 50 presses cross a scene of any size, where the old flat 20 units took 5 presses in a 100-unit room and 1000 in a 20000-unit one.
+	for (double size : {0.4, 6.0, 555.0, 11500.0}) EXPECT_NEAR(size / keyboardStep(size, 1.0), 50.0, 1e-9) << size;
+}

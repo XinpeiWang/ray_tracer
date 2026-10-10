@@ -311,9 +311,9 @@ step now, not "root cause unknown."
 Homogeneous, cloud (procedural Perlin-FBm), RGB grid (per-voxel RGB
 sigma_a/sigma_s), uniform grid (single-channel density × RGB sigma_s) — all
 four real, on CPU and GPU, DDA majorant-grid delta tracking
-(`src/shared/grid_medium.h`). NanoVDB (below) makes a fifth, CPU-only.
+(`src/shared/grid_medium.h`). NanoVDB (below) makes a fifth (CPU and both OptiX backends).
 
-**Gap (narrowed)**: `MakeNamedMedium "nanovdb"` is now real, **CPU only** —
+**Gap (narrowed)**: `MakeNamedMedium "nanovdb"` is now real, on the **CPU and both OptiX backends** —
 pbrt-v4's primary real-world-volumetric-data path (VDB files from
 Houdini/etc.), previously the clearest gap in this codebase versus
 pbrt-v4. `pbrt_cpu_builder.h` reads the named float density grid from the

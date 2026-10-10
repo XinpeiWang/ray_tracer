@@ -1,3 +1,4 @@
+# @rt-size 28
 # textured-twosided-lights.pbrt -- exercises AreaLightSource "filename"
 # (real spatially-varying emission) and "twosided" on Shape "disk"/
 # "cylinder" GPU lights, both NEE-sampled and directly hit - previously a

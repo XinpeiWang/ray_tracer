@@ -1,3 +1,4 @@
+# @rt-size 555
 # layered-materials.pbrt -- exercises 4 more pbrt-v4 material kinds no
 # other bundled example scene touched: thindielectric, coatedconductor,
 # diffusetransmission, and subsurface (via a named measured-scattering

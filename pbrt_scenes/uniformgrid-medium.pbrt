@@ -1,3 +1,4 @@
+# @rt-size 1300
 # uniformgrid-medium.pbrt -- exercises MakeNamedMedium "uniformgrid" (a
 # single-channel 8x8x8 flat "float density" voxel grid,
 # src/shared/sampled_grid.h's GridMediumData) plus MediumInterface, both

@@ -1,3 +1,4 @@
+# @rt-size 12
 # ortho-camera-scene.pbrt -- migration of the native "D2 Orthographic
 # Camera" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_ortho_camera_scene()/build_ortho_sky()) to a pbrt-backed scene, part

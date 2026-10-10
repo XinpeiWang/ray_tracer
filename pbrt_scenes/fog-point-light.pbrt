@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A fog ball lit by a point light, with a closed-form answer. Checks scattering and absorption inside a medium.
 # @rt-performance Fast
+# @rt-size 20
 # fog-point-light.pbrt -- regression scene for two participating-medium bugs, with a closed-form check.
 #
 # A fog sphere (radius 10, sigma_s 0.05, optical depth ~1 across the diameter, isotropic) lit only by a

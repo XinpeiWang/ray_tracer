@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-projection.pbrt -- migration of the native "C6 Projection Light
 # Cornell" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_projection_light_scene()/build_projection_punct()) to a pbrt-backed

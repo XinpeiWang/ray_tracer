@@ -151,11 +151,43 @@ inline void writeShape(std::ostringstream& os, const Object& o, const std::strin
 // The triangle mesh of one of the generated shapes (isGeneratedShape), in the object's own space; the GUI's previews draw it too.
 inline ShapeMesh generatedMesh(const Object& o) { return detail::meshOfShape(o); }
 
+// How big the scene is, in its own units, for the "# @rt-size" line: the largest side of the box around the objects, each counted as a sphere that holds it
+// (rotation then cannot matter, and a mesh, whose size the document does not know, counts as its scale). 0 for a document with no objects. Rounded to three
+// significant digits. The Live Preview's keyboard step is a fraction of this (src/shared/scene_size.h has the same measure for any pbrt file).
+inline double documentSize(const Document& d) {
+	if (d.objects.empty()) return 0.0;
+	double lo[3] = {1e300, 1e300, 1e300}, hi[3] = {-1e300, -1e300, -1e300};
+	for (const Object& o : d.objects) {
+		double r = 0.5;
+		switch (o.shape) {
+			case ShapeKind::Sphere: r = o.radius; break;
+			case ShapeKind::Box:
+			case ShapeKind::Wedge:
+			case ShapeKind::Stairs: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.size.y * o.size.y + o.size.z * o.size.z); break;
+			case ShapeKind::Quad: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.size.z * o.size.z); break;
+			case ShapeKind::Pyramid: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.height * o.height + o.size.z * o.size.z); break;
+			case ShapeKind::Mesh: r = std::fabs(o.meshScale); break;
+			default: r = std::sqrt((o.radius + o.radius2) * (o.radius + o.radius2) + o.height * o.height); break;   // disk, cylinder, cone, capsule, dome, torus, tube
+		}
+		r = std::fabs(r);
+		const double p[3] = {o.position.x, o.position.y, o.position.z};
+		for (int a = 0; a < 3; ++a) {
+			lo[a] = std::min(lo[a], p[a] - r);
+			hi[a] = std::max(hi[a], p[a] + r);
+		}
+	}
+	const double size = std::max({hi[0] - lo[0], hi[1] - lo[1], hi[2] - lo[2]});
+	if (!(size > 1e-9) || !std::isfinite(size)) return 0.0;
+	const double unit = std::pow(10.0, std::floor(std::log10(size)) - 2.0);
+	return std::round(size / unit) * unit;
+}
+
 inline std::string toPbrt(const Document& d) {
 	std::ostringstream os;
 	os.imbue(std::locale::classic());
 	os << "# " << detail::commentText(d.title) << "\n";
 	os << "# Written by the ray_tracer Scene Builder. It is an ordinary pbrt-v4 scene; the line below lets the Scene Builder open it again for editing.\n";
+	if (const double size = documentSize(d); size > 0.0) os << "# @rt-size " << detail::num(size) << "\n";
 	os << "# @rt-builder-doc " << toJson(d) << "\n\n";
 
 	const Camera& c = d.camera;

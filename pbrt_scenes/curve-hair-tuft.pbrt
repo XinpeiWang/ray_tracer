@@ -1,3 +1,4 @@
+# @rt-size 12
 # curve-hair-tuft.pbrt -- pairs Shape "curve" (genuine cubic-Bezier fiber
 # geometry - see curve-tuft.pbrt) with Material "hair" (real Marschner/
 # Chiang fiber scattering - see hair-material.pbrt) for the first time,

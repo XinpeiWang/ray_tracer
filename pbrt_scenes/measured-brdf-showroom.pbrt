@@ -1,3 +1,4 @@
+# @rt-size 12
 # measured-brdf-showroom.pbrt -- migration of the native "B14 Measured
 # BRDF" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_measured_brdf_scene()) to a pbrt-backed scene, part of this

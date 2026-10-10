@@ -1,3 +1,4 @@
+# @rt-size 11
 # dielectric-medium-showcase.pbrt -- migration of the native "E3 Dielectric
 # Medium Showcase" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_dielectric_medium_scene()) to a pbrt-backed scene, part of this

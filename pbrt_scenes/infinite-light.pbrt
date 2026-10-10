@@ -1,3 +1,4 @@
+# @rt-size 1200
 # infinite-light.pbrt -- exercises "infinite" (constant-colour) infinite
 # light. No bundled example scene used one before this - every other scene
 # in this folder is an enclosed room lit by AreaLightSource/LightSource, so

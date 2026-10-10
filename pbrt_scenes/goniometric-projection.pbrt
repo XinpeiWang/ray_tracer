@@ -1,3 +1,4 @@
+# @rt-size 28
 # goniometric-projection.pbrt -- exercises LightSource "goniometric"/
 # "projection" real "filename" image decoding (previously both backends
 # always synthesized a uniform isotropic/white-beam pattern regardless of

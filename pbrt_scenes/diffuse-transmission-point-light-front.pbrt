@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A translucent plate lit by a point light on the camera's side. The centre of the picture must read 0.3/pi x 10 = 0.955.
 # @rt-performance Fast
+# @rt-size 40
 # diffuse-transmission-point-light-front.pbrt -- the light-in-front twin of diffuse-transmission-point-light.pbrt (see its header): the point light at z = +3
 # lights the plate on the camera's side, so the picture is the reflection R/pi * E = 0.3 / pi * 10 = 0.9549 at the centre.
 #

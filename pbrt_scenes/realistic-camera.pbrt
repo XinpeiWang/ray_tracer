@@ -1,3 +1,4 @@
+# @rt-size 555
 # realistic-camera.pbrt -- exercises pbrt-v4's "realistic" camera (a real
 # multi-element lens simulation, not the thin-lens approximation
 # "lensradius"/depth-of-field.pbrt already covers). No bundled example

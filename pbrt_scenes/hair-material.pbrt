@@ -1,3 +1,4 @@
+# @rt-size 20
 # hair-material.pbrt -- exercises Material "hair" (Marschner/Chiang fiber
 # scattering, src/shared/bxdfs_hair.h's HairBxDF<T>, real on CPU -
 # src/TheRestOfYourLife/hair_material.h - and both GPU backends -

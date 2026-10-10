@@ -1,3 +1,4 @@
+# @rt-size 555
 # subsurface-slab.pbrt -- migration of the native "B13 Subsurface Slab"
 # demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_subsurface_slab()) to a pbrt-backed scene, part of this project's

@@ -1,3 +1,4 @@
+# @rt-size 20
 # projection-light-nonsquare.pbrt -- exercises LightSource "projection"
 # with a NON-square slide image (nonsquare-checker.bmp, 8x4, hand-authored
 # alongside this scene - the existing goniometric-projection.pbrt only ever

@@ -235,9 +235,8 @@ public:
 	void runUiSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot);
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	void runLivePreviewSweepSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
-#endif
-#ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	void runLivePreviewDragSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
+	void runLivePreviewKeysSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 #endif
 #ifdef RT_GUI_HAVE_LIVE_PREVIEW
 	void runLivePreviewSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
@@ -1137,6 +1136,7 @@ private:
 	// comments (mainwindow_tabs_render.cpp).
 	double m_mouseSensitivity = 1.0;
 	double m_keyboardSensitivity = 1.0;
+	double m_livePreviewSceneSize = 0.0;   // the running Live Preview's scene size in its own units (0 = not set yet): the keyboard step and closest zoom are fractions of it
 	QDoubleSpinBox *m_mouseSensitivitySpinBox = nullptr;
 	QDoubleSpinBox *m_keyboardSensitivitySpinBox = nullptr;
 	// Live Preview's own OptiX AI denoiser toggle - same denoiser/blend

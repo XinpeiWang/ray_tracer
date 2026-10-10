@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A fog ball that scatters but does not absorb, under a white sky. It must be invisible: every pixel reads the sky.
 # @rt-performance Fast
+# @rt-size 2
 # fog-furnace.pbrt -- a non-absorbing fog sphere under a uniform sky, bounded the pbrt-v4 way with
 # Material "interface" (the shape has no BSDF of its own; the ray passes straight through).
 #

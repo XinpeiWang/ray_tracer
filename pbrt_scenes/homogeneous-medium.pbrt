@@ -1,3 +1,4 @@
+# @rt-size 555
 # homogeneous-medium.pbrt -- migration of the native "E1 Homogeneous
 # Medium" demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_homogeneous_medium_scene()) to a pbrt-backed scene, part of this

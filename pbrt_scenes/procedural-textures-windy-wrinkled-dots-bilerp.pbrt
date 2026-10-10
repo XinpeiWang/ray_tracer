@@ -1,3 +1,4 @@
+# @rt-size 4.5
 # procedural-textures-windy-wrinkled-dots-bilerp.pbrt -- exercises 4 pbrt-v4
 # procedural Texture classes wired into pbrt_cpu_builder.h but never used by
 # any bundled scene: "windy" (parameterless turbulence), "wrinkled" (Perlin

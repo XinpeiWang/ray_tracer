@@ -25,6 +25,7 @@
 
 #include <algorithm>
 #include <cctype>
+#include <cmath>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -152,6 +153,9 @@ inline std::string headerOf(const std::string &text) {
 struct HeaderTags {
 	std::string category, description, performance;
 	bool gpuCompatible = true;   // "# @rt-gpu no": the scene uses something the GPU backends do not support, so it renders on the CPU only
+	// "# @rt-size 555": how big the scene is, as the largest side of its bounding box in the scene's own units (scene_size.h). The interactive camera controls
+	// scale their step by it. 0 = the file does not say.
+	double sceneSize = 0.0;
 };
 inline HeaderTags readHeaderTags(const std::string &text) {
 	HeaderTags tags;
@@ -170,9 +174,25 @@ inline HeaderTags readHeaderTags(const std::string &text) {
 		if (key == "category") tags.category = value;
 		else if (key == "performance") tags.performance = value;
 		else if (key == "gpu") tags.gpuCompatible = value != "no";
+		else if (key == "size") {
+			char *end = nullptr;
+			const double v = std::strtod(value.c_str(), &end);
+			if (end != value.c_str() && std::isfinite(v) && v > 0.0) tags.sceneSize = v;
+		}
 		else if (key == "description") tags.description += (tags.description.empty() ? "" : " ") + value;
 	}
 	return tags;
+}
+
+// The "# @rt-size" of a scene file, 0 when the file does not say or cannot be read. Only the start of the file is read (the tags sit in the comment lines at the
+// top, before WorldBegin), so this is cheap even for a scene whose geometry is hundreds of megabytes.
+inline double sceneSizeOfFile(const std::string &path) {
+	std::ifstream in(path, std::ios::binary);
+	if (!in) return 0.0;
+	std::string head(65536, '\0');
+	in.read(&head[0], static_cast<std::streamsize>(head.size()));
+	head.resize(static_cast<std::size_t>(in.gcount()));
+	return readHeaderTags(head).sceneSize;
 }
 
 inline std::string stemOf(const std::string &path) {

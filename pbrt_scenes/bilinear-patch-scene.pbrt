@@ -1,3 +1,4 @@
+# @rt-size 555
 # bilinear-patch-scene.pbrt -- migration of the native "F1 Bilinear Patch"
 # demo scene (src/TheRestOfYourLife/scenes_advanced.h's
 # build_bilinear_patch_scene()) to a pbrt-backed scene, part of this

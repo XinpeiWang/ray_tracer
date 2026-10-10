@@ -729,6 +729,25 @@ TEST(CpuSceneApiTest, MetadataSnapshotRecommendedCameraPathMatchesById) {
 	}
 }
 
+// The size a scene declares in its header ("# @rt-size", src/shared/scene_size.h), through the C API the GUI uses. Run from the repository root.
+TEST(SceneSizeApiTest, ASceneReportsTheSizeItsFileDeclaresAndTheSnapshotCarriesIt) {
+	if (!std::filesystem::exists("pbrt_scenes/cornell-box-native.pbrt")) GTEST_SKIP() << "run from the repository root";
+	EXPECT_NEAR(cpu_scene_size_by_id("A1"), 555.0, 1.0) << "the Cornell box, as pbrt_scenes/cornell-box-native.pbrt says";
+	SceneMetadataSnapshot snap{};
+	ASSERT_EQ(cpu_scene_metadata_snapshot("A1", &snap), 1);
+	EXPECT_DOUBLE_EQ(snap.scene_size, cpu_scene_size_by_id("A1"));
+	EXPECT_EQ(cpu_scene_size_by_id("NotARealId"), 0.0);
+	EXPECT_EQ(cpu_scene_size_by_id(nullptr), 0.0);
+}
+
+TEST(SceneSizeApiTest, MeasuringAScenePrintsWhatTheStampedLineSays) {
+	if (!std::filesystem::exists("pbrt_scenes/cornell-box-native.pbrt")) GTEST_SKIP() << "run from the repository root";
+	EXPECT_NEAR(cpu_scene_measure_size("pbrt_scenes/cornell-box-native.pbrt"), 555.0, 1e-3);
+	EXPECT_NEAR(cpu_scene_measure_size("A1"), 555.0, 1e-3) << "a scene id works too";
+	EXPECT_LT(cpu_scene_measure_size("NotARealId"), 0.0);
+	EXPECT_LT(cpu_scene_measure_size(""), 0.0);
+}
+
 TEST(CpuSceneApiTest, RequiresFilesByIndexMatchesCppRegistry) {
 	for (int i = 0; i < cpu_scene_count(); ++i) {
 		int expected = get_scene_registry()[i].requires_files ? 1 : 0;

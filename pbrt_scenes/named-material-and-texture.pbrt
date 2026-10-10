@@ -1,3 +1,4 @@
+# @rt-size 555
 # named-material-and-texture.pbrt -- exercises 3 directives no other
 # bundled example scene used standalone:
 #  - MakeNamedMaterial/NamedMaterial OUTSIDE of a "mix" material (mix-

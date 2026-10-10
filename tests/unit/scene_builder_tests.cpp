@@ -12,6 +12,7 @@
 #include "../../src/shared/scene_document.h"
 #include "../../src/shared/scene_props.h"
 #include "../../src/shared/pbrt_load.h"
+#include "../../src/shared/pbrt_discover.h"
 
 #include <cstdio>
 #include <cstdlib>
@@ -942,4 +943,52 @@ TEST(SceneBuilderRegistryTest, ADeletedUserSceneLeavesTheListOnTheNextRefresh) {
 	else unsetenv("RAY_TRACER_USER_ASSETS");
 #endif
 	fs::remove_all(root);
+}
+
+// ---- the "# @rt-size" line of a builder file -----------------------------------------------------------------------------------------
+
+TEST(SceneDocumentTest, TheFileSaysHowBigTheSceneIs) {
+	Document d;
+	d.objects.clear();
+	Object floor;
+	floor.shape = ShapeKind::Quad;
+	floor.size = {14.0, 1.0, 14.0};
+	d.objects.push_back(floor);
+	Object ball;
+	ball.shape = ShapeKind::Sphere;
+	ball.radius = 1.0;
+	ball.position = {0.0, 1.0, -4.0};
+	d.objects.push_back(ball);
+	// The floor counts as a sphere around it (half its diagonal, 9.9), so the box is about 19.8 across, and it is rounded to three digits.
+	const double size = documentSize(d);
+	EXPECT_NEAR(size, 19.8, 0.05);
+	EXPECT_NE(toPbrt(d).find("# @rt-size 19.8\n"), std::string::npos);
+	// It is part of the header, so any renderer's scene list reads it (and the Scene Builder's own reader ignores it).
+	EXPECT_NEAR(pbrt_discover::detail::readHeaderTags(toPbrt(d)).sceneSize, size, 1e-9);
+	Document back;
+	std::string err;
+	ASSERT_TRUE(fromPbrt(toPbrt(d), back, err)) << err;
+	EXPECT_EQ(toPbrt(back), toPbrt(d)) << "reading a file back and saving it again writes the same text";
+}
+
+TEST(SceneDocumentTest, ASceneWithNothingInItHasNoSizeLine) {
+	Document d;
+	d.objects.clear();
+	EXPECT_EQ(documentSize(d), 0.0);
+	EXPECT_EQ(toPbrt(d).find("@rt-size"), std::string::npos);
+}
+
+TEST(SceneDocumentTest, TheSizeFollowsTheObjects) {
+	Document d;
+	d.objects.clear();
+	Object a;
+	a.shape = ShapeKind::Sphere;
+	a.radius = 2.0;
+	a.position = {-10.0, 0.0, 0.0};
+	Object b = a;
+	b.position = {10.0, 0.0, 0.0};
+	d.objects = {a, b};
+	EXPECT_NEAR(documentSize(d), 24.0, 1e-9) << "from -12 to 12 along x";
+	d.objects[1].position = {10.0, 100.0, 0.0};
+	EXPECT_NEAR(documentSize(d), 104.0, 1e-9) << "the largest side wins";
 }

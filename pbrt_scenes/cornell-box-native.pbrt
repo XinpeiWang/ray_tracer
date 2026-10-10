@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-box-native.pbrt -- migration of the native "A1 Cornell Box" demo
 # scene (src/shared/cornell_box_data.h, shared verbatim by both
 # src/TheRestOfYourLife/scenes_book.h's build_cornell_box() (CPU) and

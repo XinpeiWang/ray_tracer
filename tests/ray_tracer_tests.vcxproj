@@ -203,6 +203,7 @@
     <ClCompile Include="unit\snapshot_history_tests.cpp" />
     <ClCompile Include="unit\gpu_tessellate_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_frame_tests.cpp" />
+    <ClCompile Include="unit\scene_size_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_textures_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_materials_tests.cpp" />
     <ClCompile Include="unit\nanovdb_dense_tests.cpp" />

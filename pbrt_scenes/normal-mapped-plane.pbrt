@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A diffuse plane shaded with a tangent-space normal map. Checks image normal mapping.
 # @rt-performance Fast
+# @rt-size 11
 # normal-mapped-plane.pbrt -- regression scene for image normal maps (a tangent-space RGB "texture displacement").
 #
 # A diffuse plane lit grazing from one side by a tall area light, like bump-mapped-plane.pbrt, but its displacement image is an RGB

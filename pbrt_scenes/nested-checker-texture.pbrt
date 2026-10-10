@@ -1,3 +1,4 @@
+# @rt-size 3.5
 # nested-checker-texture.pbrt -- exercises a "checkerboard" Texture whose
 # own "tex1" is bound to ANOTHER Texture (a bare "imagemap") instead of a
 # flat literal, one level of nesting, real per-point image decoding on both

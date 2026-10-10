@@ -1,3 +1,4 @@
+# @rt-size 3.5
 # trianglemesh-uv.pbrt -- exercises Shape "trianglemesh"'s "point2 uv"
 # parameter (pbrt_flatten::Triangle::uv/hasUVs), now threaded through both
 # CPU (triangle_mesh_data::uvs, the same field OBJ/MTL "vt" data already

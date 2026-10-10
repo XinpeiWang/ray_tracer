@@ -1,3 +1,4 @@
+# @rt-size 555
 # cornell-realistic.pbrt -- migration of the native "D8 Realistic Camera
 # Cornell Box" demo scene (src/TheRestOfYourLife/scene_registry_data.h's D8
 # entry - the exact same build_cornell_box()/build_cornell_box_lights()

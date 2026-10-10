@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A scene that picks the BVH split method in its Accelerator line. The picture is the same whichever method builds the tree.
 # @rt-performance Fast
+# @rt-size 13
 # bvh-aggregate-splitmethod.pbrt -- exercises the Accelerator "bvh"
 # "string splitmethod" directive (BvhAggregate wiring, pbrt_flatten.h's
 # FlatScene::acceleratorSplitMethod, real Accelerator::SplitMethod dispatch

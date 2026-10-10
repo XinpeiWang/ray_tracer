@@ -1,6 +1,7 @@
 # @rt-category Test Scenes
 # @rt-description A closed room lit only by a 1x1 light that sits just below the ceiling, the way a lamp fixture does. Checks shadow rays that start very close to a surface.
 # @rt-performance Fast
+# @rt-size 5
 # flush-ceiling-light.pbrt -- regression scene for a GPU shadow-ray bug: a closed 5-unit room lit only by a
 # 1x1 ceiling light that sits 0.005 units below the ceiling, the way a lamp fixture does.
 #
