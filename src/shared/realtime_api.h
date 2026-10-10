@@ -102,3 +102,7 @@ using RealtimeSetObjectOffsetFn = decltype(&realtime_set_object_offset);
 // Puts every object of the scene back.
 RT_REALTIME_API void realtime_reset_objects(const char* scene_id);
 using RealtimeResetObjectsFn = decltype(&realtime_reset_objects);
+// Writes the scene's pbrt file to `out_path` with the moved objects where they now are (the rest of the file as it is; relative file names made absolute, so the copy
+// works from another folder). False with the reason in `message`; true with a one-line summary there.
+RT_REALTIME_API bool realtime_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size);
+using RealtimeExportArrangementFn = decltype(&realtime_export_arrangement);

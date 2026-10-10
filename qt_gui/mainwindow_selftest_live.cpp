@@ -25,6 +25,7 @@
 #include <QPlainTextEdit>
 #include <QRegularExpression>
 #include <QSpinBox>
+#include <QStatusBar>
 #include <functional>
 #include <memory>
 #include <cmath>
@@ -219,14 +220,41 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 		m_orbit.azimuth -= 0.3;   // back to the camera of the first picture
 		updateLivePreviewCameraFromOrbit();
 		m_liveObjectEditor->setMode(false);
+	});
+	// Save arrangement, then Reset: the saved scene is listed, has the object moved, and the picture of the original scene goes back.
+	auto arranged = std::make_shared<QImage>();
+	auto savedId = std::make_shared<QString>();
+	QTimer::singleShot(13500, this, [this, shown, arranged, savedId, log, fail]() {
+		*arranged = shown();
+		if (auto *button = m_livePreviewPage->findChild<QPushButton *>("liveSaveArrangementButton")) button->click();
+		const QString hint = m_liveObjectEditor->hint();
+		log("after Save arrangement: \"" + hint + "\"");
+		if (!hint.startsWith("Saved as")) { fail("Save arrangement did not save"); return; }
+		const QRegularExpression idPattern("scene (\\S+) \\(");
+		const auto match = idPattern.match(statusBar()->currentMessage());
+		if (!match.hasMatch()) { fail("the saved arrangement was not listed: \"" + statusBar()->currentMessage() + "\""); return; }
+		*savedId = match.captured(1);
+		log("listed as scene " + *savedId);
 		if (auto *button = m_livePreviewPage->findChild<QPushButton *>("liveResetObjectsButton")) button->click();
 	});
-	QTimer::singleShot(15000, this, [this, shown, before, moved, diff, outPrefix, log, fail]() {
+	QTimer::singleShot(16500, this, [this, shown, before, moved, diff, outPrefix, log, fail]() {
 		const QImage reset = shown();
 		reset.save(outPrefix + "_objects_reset.png");
 		const double back = diff(*before, reset), away = diff(*moved, reset);
 		log(QString("after Reset objects: %1 from the first picture, %2 from the moved one").arg(back, 0, 'f', 3).arg(away, 0, 'f', 3));
 		if (!(back < away)) { fail("Reset objects did not bring the first picture back"); return; }
+	});
+	QTimer::singleShot(17000, this, [this, savedId, fail]() {
+		stopLivePreview();
+		selectSceneById(*savedId);
+		startLivePreview();   // the saved scene, drawn from its own file
+	});
+	QTimer::singleShot(22000, this, [this, shown, before, arranged, diff, outPrefix, log, fail]() {
+		const QImage fromSaved = shown();
+		fromSaved.save(outPrefix + "_objects_saved_scene.png");
+		const double likeArranged = diff(*arranged, fromSaved), likeOriginal = diff(*before, fromSaved);
+		log(QString("the saved scene is %1 from the arrangement it was saved from, %2 from the original").arg(likeArranged, 0, 'f', 3).arg(likeOriginal, 0, 'f', 3));
+		if (!(likeArranged < likeOriginal)) { fail("the saved scene does not show the arrangement"); return; }
 		stopLivePreview();
 		log("objects ok");
 		QApplication::exit(0);

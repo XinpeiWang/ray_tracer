@@ -522,42 +522,67 @@
 <context>
     <name>LiveObjectEditor</name>
     <message>
-        <location filename="../live_object_editor.cpp" line="22"/>
+        <location filename="../live_object_editor.cpp" line="27"/>
         <source>Move objects</source>
         <translation>Mover objetos</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="24"/>
+        <location filename="../live_object_editor.cpp" line="29"/>
         <source>Click an object in the picture and drag it to move it. Hold Shift while dragging to lift or lower it. Drag on empty space to orbit as usual.</source>
         <translation>Haz clic en un objeto de la imagen y arrástralo para moverlo. Mantén pulsado Mayús mientras arrastras para subirlo o bajarlo. Arrastra sobre un espacio vacío para orbitar como siempre.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="26"/>
+        <location filename="../live_object_editor.cpp" line="31"/>
         <source>Reset objects</source>
         <translation>Restablecer objetos</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="28"/>
+        <location filename="../live_object_editor.cpp" line="33"/>
         <source>Put every object back where the scene file puts it.</source>
         <translation>Devuelve cada objeto a donde lo coloca el archivo de la escena.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="54"/>
+        <location filename="../live_object_editor.cpp" line="34"/>
+        <source>Save arrangement</source>
+        <translation>Guardar disposición</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="36"/>
+        <source>Save the scene with the objects where they are now as a new scene in the scene list (My Scenes). The original scene is not changed.</source>
+        <translation>Guarda la escena con los objetos donde están ahora como una escena nueva de la lista (Mis escenas). La escena original no cambia.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="64"/>
         <source>Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.</source>
         <translation>Haz clic en un objeto y arrástralo (Mayús: arriba y abajo). Después, W A S D y Arriba/Abajo también lo mueven.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="104"/>
+        <location filename="../live_object_editor.cpp" line="113"/>
         <source>Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.</source>
         <translation>Seleccionado: %1. Arrástralo para moverlo (Mayús: arriba y abajo); W A S D y Arriba/Abajo también lo mueven.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="95"/>
+        <location filename="../live_object_editor.cpp" line="156"/>
+        <source>Cannot save: there is no scenes folder to write to.</source>
+        <translation>No se puede guardar: no hay carpeta de escenas donde escribir.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="166"/>
+        <source>Not saved: %1.</source>
+        <translation>No guardado: %1.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="169"/>
+        <source>Saved as %1 (%2). It is in the scene list under My Scenes.</source>
+        <translation>Guardado como %1 (%2). Está en la lista de escenas, en Mis escenas.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="104"/>
         <source>Nothing movable there: drag to orbit.</source>
         <translation>Ahí no hay nada que mover: arrastra para orbitar.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="139"/>
+        <location filename="../live_object_editor.cpp" line="148"/>
         <source>Every object is back where the scene file puts it.</source>
         <translation>Todos los objetos están de nuevo donde los coloca el archivo de la escena.</translation>
     </message>
@@ -1409,7 +1434,7 @@ Use los controles de pausa/detener si una categoría resulta tardar demasiado.</
         <translation>Imagen única</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="152"/>
+        <location filename="../mainwindow_live_preview.cpp" line="158"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
@@ -4226,6 +4251,7 @@ Desactivado por defecto (aleatorio genuino en cada renderizado).</translation>
         <translation>Opciones de renderizado</translation>
     </message>
     <message>
+        <location filename="../mainwindow_live_preview.cpp" line="142"/>
         <location filename="../mainwindow_tabs_render.cpp" line="129"/>
         <source>Saved, but the scene list could not list it until the program is restarted.</source>
         <translation>Guardado, pero la lista de escenas no podrá mostrarlo hasta que se reinicie el programa.</translation>
@@ -4265,44 +4291,49 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/Abajo para volar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="148"/>
+        <location filename="../mainwindow_live_preview.cpp" line="143"/>
+        <source>Saved the arrangement as scene %1 (Settings tab, My Scenes).</source>
+        <translation>Disposición guardada como escena %1 (pestaña Ajustes, Mis escenas).</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_live_preview.cpp" line="154"/>
         <source>Live Preview — %1</source>
         <translation>Vista previa en vivo — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="153"/>
+        <location filename="../mainwindow_live_preview.cpp" line="159"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>Vista previa interactiva por GPU - arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/Abajo para volar, Izquierda/Derecha para orbitar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="179"/>
+        <location filename="../mainwindow_live_preview.cpp" line="185"/>
         <source>Select a scene first</source>
         <translation>Selecciona primero una escena</translation>
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="257"/>
+        <location filename="../mainwindow_live_preview.cpp" line="263"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="273"/>
+        <location filename="../mainwindow_live_preview.cpp" line="279"/>
         <source>Stopped</source>
         <translation>Detenido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="300"/>
+        <location filename="../mainwindow_live_preview.cpp" line="306"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En vivo (con ruido eliminado, sin acumular)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="302"/>
+        <location filename="../mainwindow_live_preview.cpp" line="308"/>
         <source>%1 samples</source>
         <translation>%1 muestras</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="327"/>
+        <location filename="../mainwindow_live_preview.cpp" line="333"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[Vista previa en vivo] ERROR: %1</translation>
     </message>
@@ -4611,7 +4642,7 @@ Una velocidad de 0.5x renderiza el doble de fotogramas para cubrir el mismo reco
         <translation>Elegir fuente</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1261"/>
+        <location filename="../mainwindow_style.cpp" line="1263"/>
         <source>The general-purpose way this app simulates light, used everywhere else in the program. At each bounce it both aims a ray straight at a light (so straightforward lighting cleans up quickly) and sends a ray off in a direction chosen to match how the surface reflects light, then blends the two results together so the image converges with less speckly noise than either approach alone. It&apos;s the well-tested default; start here unless you have a specific reason not to.
 
 The alternates below trade that general-purpose approach for a specific technique - simulating light as bouncing particles, tracing extra paths starting from the light itself, or a handful of plain reference/debug modes used mainly for testing. All of them run on the CPU only except one (SPPM), and none can be combined with Generate Video mode. The Sampler/Spectral/Exposure/Tonemap/Stats settings above only affect this default Path Tracer.</source>
@@ -4620,7 +4651,7 @@ The alternates below trade that general-purpose approach for a specific techniqu
 Las alternativas de abajo cambian ese enfoque general por una técnica específica: simular la luz como partículas que rebotan, trazar trayectorias adicionales que empiezan desde la propia luz, o un puñado de modos de referencia/depuración sencillos usados sobre todo para pruebas. Todas ellas funcionan solo en CPU, salvo una (SPPM), y ninguna se puede combinar con el modo Generar vídeo. Los ajustes de Muestreador/Espectral/Exposición/Mapeo tonal/Estadísticas de arriba solo afectan a este Trazador de rayos predeterminado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1279"/>
+        <location filename="../mainwindow_style.cpp" line="1281"/>
         <source>Simulates light as a spray of particles that bounce around the scene and settle near the camera. It&apos;s especially good at rendering the bright, focused patterns of light you see through glass or in water (like the shimmer at the bottom of a pool) - scenes ordinary path tracing has a hard time cleaning up.
 
 CPU: confirmed to work correctly on the Cornell Rough Glass scene; other scenes haven&apos;t been checked and only support matte surfaces plus perfectly mirror-like or glass-like materials.
@@ -4633,7 +4664,7 @@ CPU: se ha comprobado que funciona correctamente en la escena Cornell Rough Glas
 GPU: solo se admiten ciertos materiales, comprobados escena por escena: superficies mate y fuentes de luz simples, además de los tipos de material Rough Dielectric, Metal, Dielectric, Conductor, Rough Metal y Diffuse Transmission (y solo con luces que tengan un tamaño o forma físicos, no luces puntuales ni de cielo). Una escena que use cualquier otra cosa muestra un error; en ese caso, usa la versión de CPU de este modo.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1298"/>
+        <location filename="../mainwindow_style.cpp" line="1300"/>
         <source>Builds partial light paths starting from both the camera and the light source, then connects every pair of them together. This can handle some tricky lighting setups - like light squeezing through a narrow gap - better than tracing from the camera alone.
 
 CPU only. Only works with lights that have a physical size or shape (point lights and a sky/environment light aren&apos;t supported yet). Confirmed to work correctly on the Cornell Box scene only; other scenes haven&apos;t been checked.</source>
@@ -4642,7 +4673,7 @@ CPU only. Only works with lights that have a physical size or shape (point light
 Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos (las luces puntuales y la luz de cielo/entorno todavía no son compatibles). Se ha comprobado que funciona correctamente solo en la escena Cornell Box; el resto de escenas no se han verificado.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1309"/>
+        <location filename="../mainwindow_style.cpp" line="1311"/>
         <source>Builds on the same path-connecting approach as Bidirectional Path Tracing above, but once it finds a light path that actually contributes, it keeps taking small random steps nearby to find more paths like it. Useful for scenes where most of the light arrives through just a few hard-to-find routes.
 
 CPU only. Same lights-must-have-a-physical-size-or-shape limitation and single-scene (Cornell Box) verification as Bidirectional Path Tracing above.</source>
@@ -4651,7 +4682,7 @@ CPU only. Same lights-must-have-a-physical-size-or-shape limitation and single-s
 Solo en CPU. Tiene la misma limitación de que las luces deban tener un tamaño o forma físicos, y la misma verificación limitada a una sola escena (Cornell Box), que BDPT.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1320"/>
+        <location filename="../mainwindow_style.cpp" line="1322"/>
         <source>A bare-bones renderer that bounces rays off surfaces in completely random directions, without any of the shortcuts the default Path Tracer uses to clean up noise faster. It&apos;s simpler, but the image stays grainy for much longer - useful mainly as a trustworthy reference to double-check that other modes are producing correct results.
 
 CPU only.</source>
@@ -4660,7 +4691,7 @@ CPU only.</source>
 Solo en CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1329"/>
+        <location filename="../mainwindow_style.cpp" line="1331"/>
         <source>A visualization/debug mode rather than a finished picture - it shows how enclosed or exposed each point on a surface is based on nearby objects blocking it, similar to the soft shadows you see in the corners of a room. It ignores material colors and any bounced light entirely.
 
 CPU only.</source>
@@ -4669,7 +4700,7 @@ CPU only.</source>
 Solo en CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1337"/>
+        <location filename="../mainwindow_style.cpp" line="1339"/>
         <source>A straightforward reference path tracer with two optional shortcuts, both on by default (see the toggles below): aiming some rays directly at lights to clean up noise faster, and biasing bounce directions toward the angles that matter most for how the surface reflects light.
 
 CPU only. When &quot;aim at lights&quot; is on, it only works with lights that have a physical size or shape - the same limitation as Bidirectional Path Tracing and Metropolis Light Transport above.</source>
@@ -4678,7 +4709,7 @@ CPU only. When &quot;aim at lights&quot; is on, it only works with lights that h
 Solo en CPU. Cuando &quot;apuntar a las luces&quot; está activado, solo funciona con luces que tengan un tamaño o forma físicos, la misma limitación que BDPT y MLT.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1348"/>
+        <location filename="../mainwindow_style.cpp" line="1350"/>
         <source>The simplest mode for rendering see-through volumes like smoke or fog - it steps through empty space until it randomly hits something. It doesn&apos;t aim rays at lights, doesn&apos;t do any of the noise-cleanup blending the default Path Tracer uses, and doesn&apos;t handle solid surfaces at all.
 
 This app doesn&apos;t currently have any smoke/fog to render with it, so on ordinary solid-object scenes it mostly produces a black image, except where a camera ray happens to look straight at a light source - that matches the underlying renderer&apos;s normal behavior when there&apos;s nothing to render.
@@ -4691,7 +4722,7 @@ Esta aplicación no tiene actualmente ningún humo o niebla con el que renderiza
 Solo en CPU.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1361"/>
+        <location filename="../mainwindow_style.cpp" line="1363"/>
         <source>Works backwards compared to every other mode here: instead of starting each ray at the camera, it starts at a light source and traces outward, adding its contribution to the image whenever a path happens to connect back to the camera.
 
 CPU only. Only works with lights that have a physical size or shape.</source>
@@ -4700,158 +4731,158 @@ CPU only. Only works with lights that have a physical size or shape.</source>
 Solo en CPU. Solo funciona con luces que tengan un tamaño o forma físicos.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1382"/>
+        <location filename="../mainwindow_style.cpp" line="1384"/>
         <source>Denoiser: on (blend %1)</source>
         <translation>Eliminador de ruido: activado (mezcla %1)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1383"/>
+        <location filename="../mainwindow_style.cpp" line="1385"/>
         <source>Denoiser: on</source>
         <translation>Eliminador de ruido: activado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1385"/>
+        <location filename="../mainwindow_style.cpp" line="1387"/>
         <source>Stats: on</source>
         <translation>Estadísticas: activado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1386"/>
+        <location filename="../mainwindow_style.cpp" line="1388"/>
         <source>OptiX validation: on</source>
         <translation>Validación de OptiX: activado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1387"/>
+        <location filename="../mainwindow_style.cpp" line="1389"/>
         <source>Exposure: %1</source>
         <translation>Exposición: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1393"/>
+        <location filename="../mainwindow_style.cpp" line="1395"/>
         <source>Sampler: %1</source>
         <translation>Muestreador: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1394"/>
+        <location filename="../mainwindow_style.cpp" line="1396"/>
         <source>Light Sampler: %1</source>
         <translation>Muestreador de luces: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1395"/>
+        <location filename="../mainwindow_style.cpp" line="1397"/>
         <source>Accelerator: %1</source>
         <translation>Acelerador: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1396"/>
+        <location filename="../mainwindow_style.cpp" line="1398"/>
         <source>Split method: %1</source>
         <translation>Método de división: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1399"/>
+        <location filename="../mainwindow_style.cpp" line="1401"/>
         <source>Adaptive sampling: on (threshold %1)</source>
         <translation>Muestreo adaptativo: activado (umbral %1)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1400"/>
+        <location filename="../mainwindow_style.cpp" line="1402"/>
         <source>Adaptive sampling: on</source>
         <translation>Muestreo adaptativo: activado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1402"/>
+        <location filename="../mainwindow_style.cpp" line="1404"/>
         <source>Time limit: %1s</source>
         <translation>Límite de tiempo: %1s</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1403"/>
+        <location filename="../mainwindow_style.cpp" line="1405"/>
         <source>Spectral: on</source>
         <translation>Espectral: activado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1404"/>
+        <location filename="../mainwindow_style.cpp" line="1406"/>
         <source>Tonemap: %1</source>
         <translation>Mapeo tonal: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1405"/>
+        <location filename="../mainwindow_style.cpp" line="1407"/>
         <source>Regularize: on</source>
         <translation>Regularización: activada</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1406"/>
+        <location filename="../mainwindow_style.cpp" line="1408"/>
         <source>Firefly clamp: %1</source>
         <translation>Límite de píxeles atípicos: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1408"/>
+        <location filename="../mainwindow_style.cpp" line="1410"/>
         <source>Crop: (%1,%2)-(%3,%4)</source>
         <translation>Recorte: (%1,%2)-(%3,%4)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1411"/>
+        <location filename="../mainwindow_style.cpp" line="1413"/>
         <source>Seed: %1</source>
         <translation>Semilla: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1422"/>
+        <location filename="../mainwindow_style.cpp" line="1424"/>
         <source>Iterations: %1</source>
         <translation>Iteraciones: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1423"/>
+        <location filename="../mainwindow_style.cpp" line="1425"/>
         <source>Photons/iter: %1</source>
         <translation>Fotones/iteración: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1426"/>
-        <location filename="../mainwindow_style.cpp" line="1431"/>
+        <location filename="../mainwindow_style.cpp" line="1428"/>
+        <location filename="../mainwindow_style.cpp" line="1433"/>
         <source>Max depth: %1</source>
         <translation>Profundidad máxima: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1429"/>
+        <location filename="../mainwindow_style.cpp" line="1431"/>
         <source>Bootstrap: %1</source>
         <translation>Muestras de arranque: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1430"/>
+        <location filename="../mainwindow_style.cpp" line="1432"/>
         <source>Mutations: %1</source>
         <translation>Mutaciones: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1437"/>
+        <location filename="../mainwindow_style.cpp" line="1439"/>
         <source>Max distance: %1</source>
         <translation>Distancia máxima: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1438"/>
+        <location filename="../mainwindow_style.cpp" line="1440"/>
         <source>Uniform-hemisphere sampling</source>
         <translation>Muestreo de hemisferio uniforme</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1439"/>
+        <location filename="../mainwindow_style.cpp" line="1441"/>
         <source>Illumination scale: %1</source>
         <translation>Escala de iluminación: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1441"/>
+        <location filename="../mainwindow_style.cpp" line="1443"/>
         <source>Occlusion color: (%1, %2, %3)</source>
         <translation>Color de oclusión: (%1, %2, %3)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1444"/>
+        <location filename="../mainwindow_style.cpp" line="1446"/>
         <source>NEE disabled</source>
         <translation>NEE desactivada</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1445"/>
+        <location filename="../mainwindow_style.cpp" line="1447"/>
         <source>BSDF importance sampling disabled</source>
         <translation>Muestreo por importancia del BSDF desactivado</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1462"/>
+        <location filename="../mainwindow_style.cpp" line="1464"/>
         <source>&lt;b&gt;Rendering technique&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Técnica de renderizado&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1472"/>
+        <location filename="../mainwindow_style.cpp" line="1474"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Settings used&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;Ajustes utilizados&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
@@ -7405,12 +7436,12 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1220"/>
+        <location filename="../mainwindow_widgets.h" line="953"/>
         <source>No renders yet</source>
         <translation>Aún no hay renderizados</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1228"/>
+        <location filename="../mainwindow_widgets.h" line="961"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>

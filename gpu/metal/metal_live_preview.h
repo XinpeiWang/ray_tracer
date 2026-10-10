@@ -37,6 +37,9 @@ int metal_live_pick_object(const char* scene_id, double x, double y, double z,
 bool metal_live_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz);
 // Puts every object back.
 void metal_live_reset_objects(const char* scene_id);
+// Writes the scene's pbrt file to `out_path` with the moved objects moved (everything else as it is; relative file names made absolute). False with the reason in
+// `message` (nothing moved, nothing drawn yet, cannot write); true with a one-line summary there.
+bool metal_live_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size);
 
 const char* metal_live_last_error();
 

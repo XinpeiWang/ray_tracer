@@ -135,7 +135,13 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 	layout->addWidget(m_livePreviewStatusLabel);
 	m_liveObjectEditor = nullptr;
 	if (m_livePreviewSession && RealtimePreviewSession::objectEditingAvailable()) {
-		m_liveObjectEditor = new LiveObjectEditor(m_livePreviewSession, m_livePreviewLabel, m_livePreviewSceneSize, page);
+		m_liveObjectEditor = new LiveObjectEditor(m_livePreviewSession, m_livePreviewLabel, sceneId, sceneName, m_livePreviewSceneSize, page);
+		connect(m_liveObjectEditor, &LiveObjectEditor::arrangementSaved, this, [this](const QString &path) {
+			SceneMetadataClient::refreshUserScenes();   // list it now; it is not selected, so the running preview is left alone
+			const QString id = SceneMetadataClient::sceneIdForFile(path);
+			statusBar()->showMessage(id.isEmpty() ? tr("Saved, but the scene list could not list it until the program is restarted.")
+			                                      : tr("Saved the arrangement as scene %1 (Settings tab, My Scenes).").arg(id), 8000);
+		});
 		layout->addWidget(m_liveObjectEditor->createControls(page));
 	}
 

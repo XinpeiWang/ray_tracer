@@ -30,6 +30,7 @@ struct DllHandle {
 	RealtimePickObjectFn pickObjectFn = nullptr;               // the three object editing functions: only in a library whose features say objectEditing
 	RealtimeSetObjectOffsetFn setObjectOffsetFn = nullptr;
 	RealtimeResetObjectsFn resetObjectsFn = nullptr;
+	RealtimeExportArrangementFn exportArrangementFn = nullptr;
 };
 
 #ifdef Q_OS_WIN
@@ -67,6 +68,8 @@ DllHandle& handle() {
 			cross_abi_library::lookupSymbol(h.module, "realtime_set_object_offset"));
 		h.resetObjectsFn = reinterpret_cast<RealtimeResetObjectsFn>(
 			cross_abi_library::lookupSymbol(h.module, "realtime_reset_objects"));
+		h.exportArrangementFn = reinterpret_cast<RealtimeExportArrangementFn>(
+			cross_abi_library::lookupSymbol(h.module, "realtime_export_arrangement"));
 	});
 	return h;
 }
@@ -79,7 +82,7 @@ bool RealtimePreviewSession::isAvailable() {
 
 bool RealtimePreviewSession::objectEditingAvailable() {
 	const DllHandle& h = handle();
-	return h.pickObjectFn && h.setObjectOffsetFn && h.resetObjectsFn && backendFeatures().objectEditing;
+	return h.pickObjectFn && h.setObjectOffsetFn && h.resetObjectsFn && h.exportArrangementFn && backendFeatures().objectEditing;
 }
 
 RealtimeBackendFeatures RealtimePreviewSession::backendFeatures() {
@@ -1628,6 +1631,18 @@ bool RealtimePreviewSession::cameraBasisNow(double out[12]) const {
 void RealtimePreviewSession::setObjectOffset(int object, double dx, double dy, double dz) {
 	QMetaObject::invokeMethod(m_worker, "setObjectOffset", Qt::QueuedConnection,
 		Q_ARG(int, object), Q_ARG(double, dx), Q_ARG(double, dy), Q_ARG(double, dz));
+}
+
+bool RealtimePreviewSession::exportArrangement(const QString &sceneId, const QString &path, QString *message) {
+	const auto exportFn = handle().exportArrangementFn;
+	if (!exportFn || sceneId.isEmpty()) {
+		if (message) *message = QStringLiteral("this library cannot save arrangements");
+		return false;
+	}
+	char text[512] = {0};
+	const bool ok = exportFn(sceneId.toStdString().c_str(), path.toUtf8().constData(), text, static_cast<int>(sizeof text));
+	if (message) *message = QString::fromUtf8(text);
+	return ok;
 }
 
 void RealtimePreviewSession::resetObjects() {

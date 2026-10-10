@@ -51,3 +51,7 @@ RT_REALTIME_API bool realtime_set_object_offset(const char* scene_id, int object
 RT_REALTIME_API void realtime_reset_objects(const char* scene_id) {
 	metal_live_reset_objects(scene_id);
 }
+
+RT_REALTIME_API bool realtime_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size) {
+	return metal_live_export_arrangement(scene_id, out_path, message, message_size);
+}
