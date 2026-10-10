@@ -6381,12 +6381,12 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="377"/>
+        <location filename="../scene_3d_view.cpp" line="395"/>
         <source>Through the camera (%1 x %2). Orbit, pan or zoom to leave.</source>
         <translation>透过相机观看（%1 x %2）。环绕、平移或缩放即可退出。</translation>
     </message>
     <message>
-        <location filename="../scene_3d_view.cpp" line="529"/>
+        <location filename="../scene_3d_view.cpp" line="547"/>
         <source>Camera</source>
         <translation>相机</translation>
     </message>
@@ -6705,6 +6705,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_multi.cpp" line="298"/>
         <location filename="../scene_builder_views.cpp" line="50"/>
         <source>Scale</source>
         <translation>缩放</translation>
@@ -7179,63 +7180,93 @@ From: %3</source>
         <translation>请选中两个或更多对象再进行编组。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="162"/>
+        <location filename="../scene_builder_multi.cpp" line="183"/>
+        <source>Scale by a factor between 0.01 and 100.</source>
+        <translation>缩放系数须在 0.01 到 100 之间。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="197"/>
         <source>&lt;b&gt;%1 items picked&lt;/b&gt;</source>
         <translation>&lt;b&gt;已选中 %1 个项目&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="168"/>
+        <location filename="../scene_builder_multi.cpp" line="203"/>
         <source>, and %1 more</source>
         <translation>，以及另外 %1 个</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="172"/>
+        <location filename="../scene_builder_multi.cpp" line="207"/>
         <source>Drag any of them to move them all. Delete and Duplicate act on all of them.</source>
         <translation>拖动其中任何一个即可一起移动。删除和复制会作用于所有选中项。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="185"/>
+        <location filename="../scene_builder_multi.cpp" line="220"/>
         <source>Group:</source>
         <translation>组：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="189"/>
+        <location filename="../scene_builder_multi.cpp" line="224"/>
         <source>Group</source>
         <translation>编组</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="190"/>
+        <location filename="../scene_builder_multi.cpp" line="225"/>
         <source>Make the picked objects one group: clicking one in a view picks them all (%1)</source>
         <translation>把选中的对象编为一组：在视图中单击其中一个就会选中全部（%1）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="192"/>
+        <location filename="../scene_builder_multi.cpp" line="227"/>
         <source>Ungroup</source>
         <translation>取消编组</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="193"/>
+        <location filename="../scene_builder_multi.cpp" line="228"/>
         <source>Dissolve the group (%1)</source>
         <translation>解散该组（%1）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="220"/>
+        <location filename="../scene_builder_multi.cpp" line="255"/>
         <location filename="../scene_builder_views.cpp" line="48"/>
         <source>Move</source>
         <translation>移动</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="223"/>
+        <location filename="../scene_builder_multi.cpp" line="258"/>
         <source>Move all by:</source>
         <translation>整体移动：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="231"/>
+        <location filename="../scene_builder_multi.cpp" line="280"/>
+        <source>Turn all by:</source>
+        <translation>整体旋转：</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="281"/>
+        <source>Turn</source>
+        <translation>旋转</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="282"/>
+        <source>Turn them as one about the middle of them, about the world&apos;s X, then Y, then Z axis</source>
+        <translation>以它们的中心为轴，依次绕世界的 X、Y、Z 轴整体旋转</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="297"/>
+        <source>Scale all to:</source>
+        <translation>整体缩放到：</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="299"/>
+        <source>Make them all bigger or smaller, about the middle of them (200 % is twice the size, 50 % half)</source>
+        <translation>以它们的中心为基准整体放大或缩小（200 % 为两倍大小，50 % 为一半）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="309"/>
         <source>Use %1&apos;s look for all</source>
         <translation>将 %1 的外观用于全部</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="232"/>
+        <location filename="../scene_builder_multi.cpp" line="310"/>
         <source>Give the other picked objects the same material and light settings as this one (the main one: the first you picked)</source>
         <translation>让其他选中的对象使用与此对象相同的材质和发光设置（主对象：你最先选中的那个）</translation>
     </message>

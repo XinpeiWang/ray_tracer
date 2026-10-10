@@ -22,8 +22,8 @@ Scene3DView::Hit Scene3DView::hitTest(const QPointF &px) const {
 	};
 
 	// The selected item's tool first: it overlaps the item it belongs to.
-	if (const Float3 *p = handle(m_sel, 0)) {
-		const V3 base = toV3(*p);
+	V3 base;
+	if (gizmoOrigin(base)) {
 		const double len = gizmoLength(v, base);
 		double bx, by;
 		if (v.project(base, bx, by)) {
@@ -35,7 +35,7 @@ Scene3DView::Hit Scene3DView::hitTest(const QPointF &px) const {
 			}
 			if (mode == GizmoMode::Move || mode == GizmoMode::Scale) {
 				// Arrows (Move) or squares at the same ends (Scale, along the object's own axes).
-				const Object *o = selectedObject();
+				const Object *o = multi() ? nullptr : selectedObject();
 				scene_gizmo::P2 tips[3];
 				bool used[3] = {true, true, true};
 				for (int a = 0; a < 3; ++a) {
@@ -137,6 +137,7 @@ void Scene3DView::beginHit(const Hit &h, const QPointF &px, Qt::KeyboardModifier
 	const Float3 *pos = handle(h.sel, h.which);
 	if (!pos) { m_mode = Mode::None; return; }
 	m_dragStart = toV3(*pos);
+	if (multi() && (h.kind == Hit::Kind::Ring || h.kind == Hit::Kind::ScaleHandle)) gizmoOrigin(m_dragStart);   // a turn or a stretch of several is about their middle
 	emit dragBegan();
 	const scene_view::View v = view();
 	const scene_view::Ray ray = v.ray(px.x(), px.y());
@@ -149,16 +150,17 @@ void Scene3DView::beginHit(const Hit &h, const QPointF &px, Qt::KeyboardModifier
 	}
 	if (h.kind == Hit::Kind::Ring) {
 		m_mode = Mode::Rotate;
-		m_dragObject = *selectedObject();
+		if (!multi() && selectedObject()) m_dragObject = *selectedObject();
 		if (!scene_view::angleAround(ray, m_dragStart, kAxisDir[h.axis], kRingRef[h.axis], m_angle0)) m_mode = Mode::None;
 		return;
 	}
 	if (h.kind == Hit::Kind::ScaleHandle) {
 		// Only the square at the end of a handle starts this (see pickTip), so t is about the handle's length and the scale starts at 1.
 		m_mode = Mode::Scale;
-		m_dragObject = *selectedObject();
+		if (!multi() && selectedObject()) m_dragObject = *selectedObject();
 		double t = 0;
-		if (!scene_view::closestOnLine(ray, m_dragStart, localAxis(m_dragObject, h.axis), t) || std::abs(t) < 0.25 * gizmoLength(v, m_dragStart)) m_mode = Mode::None;
+		const V3 along = multi() ? kAxisDir[h.axis] : localAxis(m_dragObject, h.axis);
+		if (!scene_view::closestOnLine(ray, m_dragStart, along, t) || std::abs(t) < 0.25 * gizmoLength(v, m_dragStart)) m_mode = Mode::None;
 		m_axisT0 = t;
 		return;
 	}
@@ -194,6 +196,10 @@ void Scene3DView::applyDrag(const QPointF &px, Qt::KeyboardModifiers mods) {
 		if (!scene_view::angleAround(ray, m_dragStart, kAxisDir[m_drag.axis], kRingRef[m_drag.axis], angle)) return;  // the ring is seen too edge-on: hold still
 		double delta = scene_view::angleDelta(m_angle0, angle);
 		if (snap) delta = std::round(delta / 5.0) * 5.0;
+		if (multi()) {
+			emit groupTurned(m_drag.axis, delta);
+			return;
+		}
 		Object o = m_dragObject;
 		const V3 turned = scene_view::turnAboutWorldAxis(toV3(m_dragObject.rotation), kAxisDir[m_drag.axis], delta);
 		o.rotation = toFloat3(turned);
@@ -202,9 +208,13 @@ void Scene3DView::applyDrag(const QPointF &px, Qt::KeyboardModifiers mods) {
 	}
 	if (m_mode == Mode::Scale) {
 		double t = 0;
-		if (!scene_view::closestOnLine(ray, m_dragStart, localAxis(m_dragObject, m_drag.axis), t)) return;
+		if (!scene_view::closestOnLine(ray, m_dragStart, multi() ? kAxisDir[m_drag.axis] : localAxis(m_dragObject, m_drag.axis), t)) return;
 		double factor = std::clamp(t / m_axisT0, 0.05, 50.0);
 		if (snap) factor = std::max(0.05, std::round(factor * 20.0) / 20.0);  // steps of 5 %
+		if (multi()) {
+			emit groupScaled(factor);
+			return;
+		}
 		emit objectEdited(m_drag.sel, scene_gizmo::scaledObject(m_dragObject, m_drag.axis, factor));
 		return;
 	}

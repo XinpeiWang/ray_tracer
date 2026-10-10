@@ -1,6 +1,7 @@
 // scene_selection_tests.cpp - src/shared/scene_selection.h: acting on several Scene Builder items at once (move, copy, delete, group, copy a look).
 #include <gtest/gtest.h>
 
+#include <cmath>
 #include <set>
 #include <string>
 #include <vector>
@@ -214,4 +215,130 @@ TEST(SceneSelection, AUnitThatWasNotOneGroupMakesNoGroups) {
 	std::vector<Object> alone = {d.objects[0]};
 	std::vector<Object> aloneCopies = alone;
 	EXPECT_EQ(groupCopies(d, aloneCopies, alone), 0) << "one part is not a group";
+}
+
+// ---- turning and scaling several things as one ------------------------------------------------------------------------------------------
+
+namespace {
+
+double dist(const Float3& a, const Float3& b) { return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z)); }
+
+void expectNearFloat3(const Float3& a, const Float3& b, double eps = 1e-9) {
+	EXPECT_NEAR(a.x, b.x, eps);
+	EXPECT_NEAR(a.y, b.y, eps);
+	EXPECT_NEAR(a.z, b.z, eps);
+}
+
+// The turn an object's three angles stand for, as a matrix (so two sets of angles can be compared whatever form they are in).
+scene_view::Mat3 orientation(const Object& o) { return scene_view::rotationXYZ({o.rotation.x, o.rotation.y, o.rotation.z}); }
+
+void expectSameOrientation(const Object& a, const Object& b) {
+	const scene_view::Mat3 x = orientation(a), y = orientation(b);
+	for (int i = 0; i < 3; ++i)
+		for (int j = 0; j < 3; ++j) EXPECT_NEAR(x.m[i][j], y.m[i][j], 1e-9);
+}
+
+}  // namespace
+
+TEST(SceneSelection, TheCentroidIsTheMeanOfThePositionsLightsIncluded) {
+	Document d = sceneWithTable();   // tops and legs at x 0, 0.5, -0.5 (y 0.5), the ball at x 5, a lamp at (1, 4, 0)
+	expectNearFloat3(centroidOf(d, makeItemSet(d, {0, 1, 2})), {0.0, 0.5, 0.0});
+	expectNearFloat3(centroidOf(d, makeItemSet(d, {1, 3}, {0})), {(0.5 + 5.0 + 1.0) / 3.0, (0.5 + 0.5 + 4.0) / 3.0, 0.0});
+	expectNearFloat3(centroidOf(d, ItemSet{}), {0.0, 0.0, 0.0});
+}
+
+TEST(SceneSelection, RotatingMovesPositionsRoundThePivotAndTurnsEveryObjectTheSame) {
+	Document d = sceneWithTable();
+	d.objects[1].rotation = {10.0, 20.0, 30.0};
+	const Object before1 = d.objects[1];
+	const ItemSet table = makeItemSet(d, {0, 1, 2});
+	const Float3 pivot = centroidOf(d, table);
+	rotateItems(d, table, 1, 90.0, pivot);   // a quarter turn about the vertical
+	// A leg at +x of the pivot goes to -z (counter-clockwise looking down the axis towards the origin: x -> -z).
+	expectNearFloat3(d.objects[1].position, {0.0, 0.5, -0.5});
+	expectNearFloat3(d.objects[2].position, {0.0, 0.5, 0.5});
+	expectNearFloat3(d.objects[0].position, {0.0, 0.5, 0.0});
+	expectNearFloat3(centroidOf(d, table), pivot, 1e-12);
+	// The orientation is the quarter turn on top of what it was, whatever angles say so.
+	const scene_view::Mat3 turn = scene_view::axisAngle({0, 1, 0}, 90.0), was = orientation(before1), now = orientation(d.objects[1]);
+	const scene_view::Mat3 expected = turn * was;
+	for (int i = 0; i < 3; ++i)
+		for (int j = 0; j < 3; ++j) EXPECT_NEAR(now.m[i][j], expected.m[i][j], 1e-9);
+	EXPECT_DOUBLE_EQ(d.objects[3].position.x, 5.0) << "not picked: not moved";
+}
+
+TEST(SceneSelection, ARotationKeepsEveryDistanceAndUndoesWithTheOppositeTurn) {
+	Document d = sceneWithTable();
+	d.objects[3].position = {5.0, 2.0, -1.0};
+	const Document original = d;
+	const ItemSet all = makeItemSet(d, {0, 1, 2, 3}, {0});
+	const Float3 pivot = centroidOf(d, all);
+	for (int axis = 0; axis < 3; ++axis) {
+		d = original;
+		rotateItems(d, all, axis, 37.0, pivot);
+		for (int i = 0; i < 4; ++i)
+			for (int j = i + 1; j < 4; ++j) EXPECT_NEAR(dist(d.objects[i].position, d.objects[j].position), dist(original.objects[i].position, original.objects[j].position), 1e-9);
+		EXPECT_NEAR(dist(d.lights[0].position, d.lights[0].target), dist(original.lights[0].position, original.lights[0].target), 1e-9) << "a spot keeps its length";
+		rotateItems(d, all, axis, -37.0, pivot);
+		for (int i = 0; i < 4; ++i) {
+			expectNearFloat3(d.objects[i].position, original.objects[i].position, 1e-9);
+			expectSameOrientation(d.objects[i], original.objects[i]);
+		}
+		expectNearFloat3(d.lights[0].target, original.lights[0].target, 1e-9);
+	}
+	d = original;
+	rotateItems(d, all, 2, 360.0, pivot);
+	expectNearFloat3(d.objects[3].position, original.objects[3].position, 1e-9);
+}
+
+TEST(SceneSelection, ARotationOfALightTurnsItsTargetAndLeavesTheSkyAlone) {
+	Document d = sceneWithTable();
+	Light sky;
+	sky.name = "Sky";
+	sky.kind = LightKind::Infinite;
+	sky.position = {9, 9, 9};
+	d.lights.push_back(sky);
+	rotateItems(d, makeItemSet(d, {}, {0}), 1, 180.0, {0.0, 0.0, 0.0});   // the lamp at (1, 4, 0) aiming at (1, 0, 0), half a turn about the vertical
+	expectNearFloat3(d.lights[0].position, {-1.0, 4.0, 0.0});
+	expectNearFloat3(d.lights[0].target, {-1.0, 0.0, 0.0});
+	rotateItems(d, makeItemSet(d, {}, {1}), 1, 90.0, {0.0, 0.0, 0.0});
+	expectNearFloat3(d.lights[1].target, Light{}.target);   // a sky has no target to turn
+}
+
+TEST(SceneSelection, ScalingGrowsPositionsAndObjectsAboutThePivot) {
+	Document d = sceneWithTable();
+	d.objects[0].shape = ShapeKind::Box;
+	d.objects[0].size = {2.0, 0.2, 1.0};
+	d.objects[1].shape = ShapeKind::Mesh;
+	d.objects[1].meshScale = 0.5;
+	const Object ball = d.objects[2];
+	const ItemSet table = makeItemSet(d, {0, 1, 2});
+	const Float3 pivot = centroidOf(d, table);
+	EXPECT_TRUE(scaleItems(d, table, 2.0, pivot));
+	EXPECT_NEAR(dist(d.objects[1].position, d.objects[2].position), 2.0 * 1.0, 1e-9) << "the legs were 1 apart";
+	expectNearFloat3(centroidOf(d, table), pivot, 1e-12);
+	EXPECT_DOUBLE_EQ(d.objects[0].size.x, 4.0);
+	EXPECT_DOUBLE_EQ(d.objects[0].size.y, 0.4);
+	EXPECT_DOUBLE_EQ(d.objects[1].meshScale, 1.0);
+	EXPECT_DOUBLE_EQ(d.objects[2].radius, ball.radius * 2.0);
+	EXPECT_DOUBLE_EQ(d.objects[3].radius, 0.5) << "not picked: not scaled";
+	EXPECT_TRUE(scaleItems(d, table, 0.5, pivot));
+	expectNearFloat3(d.objects[2].position, ball.position, 1e-12);
+	EXPECT_DOUBLE_EQ(d.objects[2].radius, ball.radius);
+}
+
+TEST(SceneSelection, ScalingAlsoMovesALightAndItsTargetButNotItsBrightness) {
+	Document d = sceneWithTable();
+	const double intensity = d.lights[0].intensity;
+	EXPECT_TRUE(scaleItems(d, makeItemSet(d, {}, {0}), 3.0, {0.0, 0.0, 0.0}));
+	expectNearFloat3(d.lights[0].position, {3.0, 12.0, 0.0});
+	expectNearFloat3(d.lights[0].target, {3.0, 0.0, 0.0});
+	EXPECT_DOUBLE_EQ(d.lights[0].intensity, intensity);
+}
+
+TEST(SceneSelection, ScalingRefusesAFactorThatWouldFlipOrVanish) {
+	Document d = sceneWithTable();
+	const Document original = d;
+	for (double factor : {0.0, -1.0, 0.001, 1000.0, std::nan("")}) EXPECT_FALSE(scaleItems(d, makeItemSet(d, {0, 1}), factor, {0.0, 0.0, 0.0})) << factor;
+	EXPECT_EQ(toJson(d), toJson(original));
 }

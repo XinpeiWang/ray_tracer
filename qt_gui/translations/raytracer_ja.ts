@@ -6375,12 +6375,12 @@ Output:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="377"/>
+        <location filename="../scene_3d_view.cpp" line="395"/>
         <source>Through the camera (%1 x %2). Orbit, pan or zoom to leave.</source>
         <translation>カメラ越しの表示 (%1 x %2)。回り込み・画面移動・ズームで解除されます。</translation>
     </message>
     <message>
-        <location filename="../scene_3d_view.cpp" line="529"/>
+        <location filename="../scene_3d_view.cpp" line="547"/>
         <source>Camera</source>
         <translation>カメラ</translation>
     </message>
@@ -6699,6 +6699,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_multi.cpp" line="298"/>
         <location filename="../scene_builder_views.cpp" line="50"/>
         <source>Scale</source>
         <translation>スケール</translation>
@@ -7173,63 +7174,93 @@ From: %3</source>
         <translation>グループにするには 2 つ以上のオブジェクトを選択してください。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="162"/>
+        <location filename="../scene_builder_multi.cpp" line="183"/>
+        <source>Scale by a factor between 0.01 and 100.</source>
+        <translation>倍率は 0.01 から 100 の間で指定してください。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="197"/>
         <source>&lt;b&gt;%1 items picked&lt;/b&gt;</source>
         <translation>&lt;b&gt;%1 個の項目を選択中&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="168"/>
+        <location filename="../scene_builder_multi.cpp" line="203"/>
         <source>, and %1 more</source>
         <translation>、ほか %1 個</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="172"/>
+        <location filename="../scene_builder_multi.cpp" line="207"/>
         <source>Drag any of them to move them all. Delete and Duplicate act on all of them.</source>
         <translation>どれか 1 つをドラッグするとすべて一緒に動きます。削除と複製もすべてに対して行われます。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="185"/>
+        <location filename="../scene_builder_multi.cpp" line="220"/>
         <source>Group:</source>
         <translation>グループ:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="189"/>
+        <location filename="../scene_builder_multi.cpp" line="224"/>
         <source>Group</source>
         <translation>グループ化</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="190"/>
+        <location filename="../scene_builder_multi.cpp" line="225"/>
         <source>Make the picked objects one group: clicking one in a view picks them all (%1)</source>
         <translation>選択したオブジェクトを 1 つのグループにします。ビューでどれか 1 つをクリックするとすべて選択されます (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="192"/>
+        <location filename="../scene_builder_multi.cpp" line="227"/>
         <source>Ungroup</source>
         <translation>グループ解除</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="193"/>
+        <location filename="../scene_builder_multi.cpp" line="228"/>
         <source>Dissolve the group (%1)</source>
         <translation>グループを解除します (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="220"/>
+        <location filename="../scene_builder_multi.cpp" line="255"/>
         <location filename="../scene_builder_views.cpp" line="48"/>
         <source>Move</source>
         <translation>移動</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="223"/>
+        <location filename="../scene_builder_multi.cpp" line="258"/>
         <source>Move all by:</source>
         <translation>まとめて移動:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="231"/>
+        <location filename="../scene_builder_multi.cpp" line="280"/>
+        <source>Turn all by:</source>
+        <translation>まとめて回転:</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="281"/>
+        <source>Turn</source>
+        <translation>回転</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="282"/>
+        <source>Turn them as one about the middle of them, about the world&apos;s X, then Y, then Z axis</source>
+        <translation>全体の中心を軸に、ワールドの X、Y、Z 軸の順にまとめて回転します</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="297"/>
+        <source>Scale all to:</source>
+        <translation>まとめて拡大縮小:</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="299"/>
+        <source>Make them all bigger or smaller, about the middle of them (200 % is twice the size, 50 % half)</source>
+        <translation>全体の中心を基準にまとめて拡大・縮小します (200 % で 2 倍、50 % で半分)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="309"/>
         <source>Use %1&apos;s look for all</source>
         <translation>%1 の見た目をすべてに使う</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="232"/>
+        <location filename="../scene_builder_multi.cpp" line="310"/>
         <source>Give the other picked objects the same material and light settings as this one (the main one: the first you picked)</source>
         <translation>ほかの選択中のオブジェクトにも、このオブジェクト (メイン: 最初に選んだもの) と同じ素材と光の設定を適用します</translation>
     </message>

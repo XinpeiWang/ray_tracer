@@ -11,6 +11,7 @@
 
 #include "scene_array.h"
 #include "scene_document.h"
+#include "scene_view_math.h"
 
 #include <algorithm>
 #include <cmath>
@@ -140,6 +141,76 @@ inline void translateItems(Document& d, const ItemSet& s, const Float3& delta) {
 			l.target.z += delta.z;
 		}
 	}
+}
+
+// The middle of the items: the mean of their positions (a spot or sun counts by where it is, not what it points at). Turning or scaling a set about this point leaves
+// the point where it is, so a tool drawn there does not drift while it is dragged. (0, 0, 0) for an empty set.
+inline Float3 centroidOf(const Document& d, const ItemSet& wanted) {
+	const ItemSet s = makeItemSet(d, wanted.objects, wanted.lights);
+	Float3 sum{};
+	for (int i : s.objects) {
+		sum.x += d.objects[i].position.x;
+		sum.y += d.objects[i].position.y;
+		sum.z += d.objects[i].position.z;
+	}
+	for (int i : s.lights) {
+		sum.x += d.lights[i].position.x;
+		sum.y += d.lights[i].position.y;
+		sum.z += d.lights[i].position.z;
+	}
+	const double n = static_cast<double>(s.size());
+	return n > 0 ? Float3{sum.x / n, sum.y / n, sum.z / n} : Float3{};
+}
+
+namespace selection_detail {
+
+inline Float3 turned(const Float3& p, const Float3& pivot, const scene_view::Mat3& r) {
+	const scene_view::V3 v = r * scene_view::V3{p.x - pivot.x, p.y - pivot.y, p.z - pivot.z};
+	return {pivot.x + v.x, pivot.y + v.y, pivot.z + v.z};
+}
+
+inline Float3 scaledAbout(const Float3& p, const Float3& pivot, double k) {
+	return {pivot.x + (p.x - pivot.x) * k, pivot.y + (p.y - pivot.y) * k, pivot.z + (p.z - pivot.z) * k};
+}
+
+}  // namespace selection_detail
+
+// Turns the items `degrees` about the world axis (0 X, 1 Y, 2 Z) through `pivot`, as one rigid body: every position goes round the pivot and every object turns by the
+// same amount about the same world axis (so the set keeps its shape); a spot's or sun's target goes round the pivot too. Nothing else about an item changes.
+inline void rotateItems(Document& d, const ItemSet& wanted, int axis, double degrees, const Float3& pivot) {
+	if (axis < 0 || axis > 2) return;
+	const ItemSet s = makeItemSet(d, wanted.objects, wanted.lights);
+	const scene_view::V3 about = axis == 0 ? scene_view::V3{1, 0, 0} : axis == 1 ? scene_view::V3{0, 1, 0} : scene_view::V3{0, 0, 1};
+	const scene_view::Mat3 r = scene_view::axisAngle(about, degrees);
+	for (int i : s.objects) {
+		Object& o = d.objects[i];
+		o.position = selection_detail::turned(o.position, pivot, r);
+		const scene_view::V3 angles = scene_view::turnAboutWorldAxis({o.rotation.x, o.rotation.y, o.rotation.z}, about, degrees);
+		o.rotation = {angles.x, angles.y, angles.z};
+	}
+	for (int i : s.lights) {
+		Light& l = d.lights[i];
+		l.position = selection_detail::turned(l.position, pivot, r);
+		if (l.kind == LightKind::Spot || l.kind == LightKind::Distant) l.target = selection_detail::turned(l.target, pivot, r);
+	}
+}
+
+// Scales the items by `factor` (> 0) about `pivot`, uniformly: every position moves along the line from the pivot and every object grows or shrinks by the same
+// factor in all directions (a mesh's scale included); a light's target follows. A light's brightness is left alone. A factor outside [0.01, 100] is refused.
+inline bool scaleItems(Document& d, const ItemSet& wanted, double factor, const Float3& pivot) {
+	if (!(factor >= 0.01 && factor <= 100.0)) return false;
+	const ItemSet s = makeItemSet(d, wanted.objects, wanted.lights);
+	for (int i : s.objects) {
+		Object& o = d.objects[i];
+		o.position = selection_detail::scaledAbout(o.position, pivot, factor);
+		scaleObject(o, factor);
+	}
+	for (int i : s.lights) {
+		Light& l = d.lights[i];
+		l.position = selection_detail::scaledAbout(l.position, pivot, factor);
+		if (l.kind == LightKind::Spot || l.kind == LightKind::Distant) l.target = selection_detail::scaledAbout(l.target, pivot, factor);
+	}
+	return true;
 }
 
 // Copies of the items, added at the end of the document and returned as the set of the new indices. The copies keep their places relative to each other and are

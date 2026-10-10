@@ -64,6 +64,10 @@ public:
 	void groupSelected();                      // the picked objects become one group (Ctrl+G); needs two or more
 	void ungroupSelected();                    // dissolves the groups of the picked objects (Ctrl+Shift+G)
 	void moveSelectedBy(const scene_doc::Float3 &delta);   // the picked items, together, one undo step
+	// Turn or scale the picked items as one about the middle of them (scene_selection.h). One undo step each; while a ring or handle is dragged (transformPicked) the
+	// whole drag is one step and every update is worked out from the items as they were when the drag began.
+	void turnSelectedBy(int axis, double degrees);
+	void scaleSelectedBy(double factor);
 	void useLookOfMainObject();                // the other picked objects get the main one's material
 	// Saved camera views (scene_builder_camera_views.cpp). Each change is one undo step.
 	int saveCameraViewNamed(const QString &name, bool sceneCamera = false);   // the 3D view's place (or the camera, looking through it; or always the camera if `sceneCamera`); the new index, -1 if full
@@ -97,6 +101,11 @@ public:
 	// `deltaPx`; true if it moved in both X and Z, on the floor.
 	bool dragInnerArrow3dForTest(int index, int axis, double fraction, const QPointF &deltaPx);
 	bool dragRotate3dForTest(int index, int axis, double degrees);
+	// With several picked (the picking is left alone): drag the Rotate ring of world axis `axis` by `degrees`, or the Scale handle of `axis` to `ratio` times its distance
+	// from the middle of them, with real mouse events; true if the picked items changed.
+	bool dragPickedRing3dForTest(int axis, double degrees);
+	bool dragPickedScale3dForTest(int axis, double ratio);
+	void setGizmoToolForTest(int tool) { m_view3d->setGizmoMode(static_cast<Scene3DView::GizmoMode>(tool)); }   // 0 Move, 1 Rotate, 2 Scale
 	bool dragScale3dForTest(int index, int axis, double ratio);
 	void orbit3dForTest(double yawDeg, double pitchDeg);
 	scene_doc::Float3 dropPointForTest() const { return dropPoint(); }
@@ -193,6 +202,9 @@ private:
 	void togglePicked(const BuilderSelection &s);      // Ctrl- or Shift-click: add or remove (a group goes in or out whole)
 	void boxPicked(const QList<BuilderSelection> &items, bool additive);
 	void inspectMultiple(QFormLayout *f);
+	void transformPicked(bool turn, int axis, double amount);   // a drag in the 3D view: the total turn or factor since it began
+	scene_doc::Document m_groupBase;                            // the document when the current group turn or stretch began
+	int m_groupBaseDrag = -1;                                   // m_editCounter of that drag
 	void inspectCameraViews(QFormLayout *f);
 	void createCameraBar(QWidget *layoutBox);
 	void refreshViewCombo();

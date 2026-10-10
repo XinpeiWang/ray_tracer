@@ -6426,12 +6426,12 @@ Salida:
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="377"/>
+        <location filename="../scene_3d_view.cpp" line="395"/>
         <source>Through the camera (%1 x %2). Orbit, pan or zoom to leave.</source>
         <translation>A través de la cámara (%1 x %2). Orbita, desplaza o haz zoom para salir.</translation>
     </message>
     <message>
-        <location filename="../scene_3d_view.cpp" line="529"/>
+        <location filename="../scene_3d_view.cpp" line="547"/>
         <source>Camera</source>
         <translation>Cámara</translation>
     </message>
@@ -6750,6 +6750,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_multi.cpp" line="298"/>
         <location filename="../scene_builder_views.cpp" line="50"/>
         <source>Scale</source>
         <translation>Escala</translation>
@@ -7165,7 +7166,7 @@ Procedencia: %3</translation>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="104"/>
         <source>Saved the view &quot;%1&quot;.</source>
-        <translation>Vista "%1" guardada.</translation>
+        <translation>Vista &quot;%1&quot; guardada.</translation>
     </message>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="146"/>
@@ -7224,63 +7225,93 @@ Procedencia: %3</translation>
         <translation>Selecciona dos o más objetos para agruparlos.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="162"/>
+        <location filename="../scene_builder_multi.cpp" line="183"/>
+        <source>Scale by a factor between 0.01 and 100.</source>
+        <translation>Escala con un factor entre 0,01 y 100.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="197"/>
         <source>&lt;b&gt;%1 items picked&lt;/b&gt;</source>
         <translation>&lt;b&gt;%1 elementos seleccionados&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="168"/>
+        <location filename="../scene_builder_multi.cpp" line="203"/>
         <source>, and %1 more</source>
         <translation>, y %1 más</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="172"/>
+        <location filename="../scene_builder_multi.cpp" line="207"/>
         <source>Drag any of them to move them all. Delete and Duplicate act on all of them.</source>
         <translation>Arrastra cualquiera de ellos para moverlos todos. Eliminar y Duplicar actúan sobre todos.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="185"/>
+        <location filename="../scene_builder_multi.cpp" line="220"/>
         <source>Group:</source>
         <translation>Grupo:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="189"/>
+        <location filename="../scene_builder_multi.cpp" line="224"/>
         <source>Group</source>
         <translation>Agrupar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="190"/>
+        <location filename="../scene_builder_multi.cpp" line="225"/>
         <source>Make the picked objects one group: clicking one in a view picks them all (%1)</source>
         <translation>Convierte los objetos seleccionados en un grupo: al hacer clic en uno en una vista se seleccionan todos (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="192"/>
+        <location filename="../scene_builder_multi.cpp" line="227"/>
         <source>Ungroup</source>
         <translation>Desagrupar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="193"/>
+        <location filename="../scene_builder_multi.cpp" line="228"/>
         <source>Dissolve the group (%1)</source>
         <translation>Deshace el grupo (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="220"/>
+        <location filename="../scene_builder_multi.cpp" line="255"/>
         <location filename="../scene_builder_views.cpp" line="48"/>
         <source>Move</source>
         <translation>Mover</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="223"/>
+        <location filename="../scene_builder_multi.cpp" line="258"/>
         <source>Move all by:</source>
         <translation>Mover todo en:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="231"/>
+        <location filename="../scene_builder_multi.cpp" line="280"/>
+        <source>Turn all by:</source>
+        <translation>Girar todo en:</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="281"/>
+        <source>Turn</source>
+        <translation>Girar</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="282"/>
+        <source>Turn them as one about the middle of them, about the world&apos;s X, then Y, then Z axis</source>
+        <translation>Los gira como uno solo alrededor de su centro, sobre el eje X, luego Y y luego Z del mundo</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="297"/>
+        <source>Scale all to:</source>
+        <translation>Escalar todo a:</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="299"/>
+        <source>Make them all bigger or smaller, about the middle of them (200 % is twice the size, 50 % half)</source>
+        <translation>Los hace a todos más grandes o más pequeños, alrededor de su centro (200 % es el doble de tamaño, 50 % la mitad)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="309"/>
         <source>Use %1&apos;s look for all</source>
         <translation>Usar el aspecto de %1 para todos</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="232"/>
+        <location filename="../scene_builder_multi.cpp" line="310"/>
         <source>Give the other picked objects the same material and light settings as this one (the main one: the first you picked)</source>
         <translation>Da a los demás objetos seleccionados el mismo material y los mismos ajustes de luz que a este (el principal: el primero que seleccionaste)</translation>
     </message>

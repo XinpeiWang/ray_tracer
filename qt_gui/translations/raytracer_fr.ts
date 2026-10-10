@@ -6478,12 +6478,12 @@ Sortie :
 <context>
     <name>Scene3DView</name>
     <message>
-        <location filename="../scene_3d_view.cpp" line="377"/>
+        <location filename="../scene_3d_view.cpp" line="395"/>
         <source>Through the camera (%1 x %2). Orbit, pan or zoom to leave.</source>
         <translation>À travers la caméra (%1 x %2). Orbitez, déplacez ou zoomez pour quitter.</translation>
     </message>
     <message>
-        <location filename="../scene_3d_view.cpp" line="529"/>
+        <location filename="../scene_3d_view.cpp" line="547"/>
         <source>Camera</source>
         <translation>Caméra</translation>
     </message>
@@ -6802,6 +6802,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="455"/>
+        <location filename="../scene_builder_multi.cpp" line="298"/>
         <location filename="../scene_builder_views.cpp" line="50"/>
         <source>Scale</source>
         <translation>Échelle</translation>
@@ -7157,7 +7158,7 @@ Origine : %3</translation>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="38"/>
         <source>Look at the scene from the camera, with the picture&apos;s frame drawn over it. Orbit, pan or zoom to leave.</source>
-        <translation>Regardez la scène depuis la caméra, avec le cadre de l'image dessiné par-dessus. Orbitez, déplacez ou zoomez pour quitter.</translation>
+        <translation>Regardez la scène depuis la caméra, avec le cadre de l&apos;image dessiné par-dessus. Orbitez, déplacez ou zoomez pour quitter.</translation>
     </message>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="39"/>
@@ -7212,7 +7213,7 @@ Origine : %3</translation>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="100"/>
         <source>There are already %1 saved views: delete one first.</source>
-        <translation>Il y a déjà %1 vues enregistrées : supprimez-en une d'abord.</translation>
+        <translation>Il y a déjà %1 vues enregistrées : supprimez-en une d&apos;abord.</translation>
     </message>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="104"/>
@@ -7227,7 +7228,7 @@ Origine : %3</translation>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="150"/>
         <source>None yet. Save the camera as a view to come back to it: a front view, a close-up, a bird&apos;s-eye shot.</source>
-        <translation>Aucune pour l'instant. Enregistrez la caméra comme vue pour y revenir : une vue de face, un gros plan, une vue plongeante.</translation>
+        <translation>Aucune pour l&apos;instant. Enregistrez la caméra comme vue pour y revenir : une vue de face, un gros plan, une vue plongeante.</translation>
     </message>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="169"/>
@@ -7247,7 +7248,7 @@ Origine : %3</translation>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="170"/>
         <source>Save the camera as it is now over this view</source>
-        <translation>Enregistre la caméra telle qu'elle est maintenant à la place de cette vue</translation>
+        <translation>Enregistre la caméra telle qu&apos;elle est maintenant à la place de cette vue</translation>
     </message>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="171"/>
@@ -7268,7 +7269,7 @@ Origine : %3</translation>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="176"/>
         <source>Remember the camera as it is now under a name (a saved view can be used from the 3D view&apos;s list too)</source>
-        <translation>Mémorise la caméra telle qu'elle est maintenant sous un nom (une vue enregistrée peut aussi être utilisée depuis la liste de la vue 3D)</translation>
+        <translation>Mémorise la caméra telle qu&apos;elle est maintenant sous un nom (une vue enregistrée peut aussi être utilisée depuis la liste de la vue 3D)</translation>
     </message>
     <message>
         <location filename="../scene_builder_multi.cpp" line="123"/>
@@ -7276,63 +7277,93 @@ Origine : %3</translation>
         <translation>Sélectionnez au moins deux objets pour les grouper.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="162"/>
+        <location filename="../scene_builder_multi.cpp" line="183"/>
+        <source>Scale by a factor between 0.01 and 100.</source>
+        <translation>Utilisez un facteur d'échelle compris entre 0,01 et 100.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="197"/>
         <source>&lt;b&gt;%1 items picked&lt;/b&gt;</source>
         <translation>&lt;b&gt;%1 éléments sélectionnés&lt;/b&gt;</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="168"/>
+        <location filename="../scene_builder_multi.cpp" line="203"/>
         <source>, and %1 more</source>
         <translation> et %1 autres</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="172"/>
+        <location filename="../scene_builder_multi.cpp" line="207"/>
         <source>Drag any of them to move them all. Delete and Duplicate act on all of them.</source>
         <translation>Faites glisser l&apos;un d&apos;eux pour les déplacer tous. Supprimer et Dupliquer agissent sur tous.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="185"/>
+        <location filename="../scene_builder_multi.cpp" line="220"/>
         <source>Group:</source>
         <translation>Groupe :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="189"/>
+        <location filename="../scene_builder_multi.cpp" line="224"/>
         <source>Group</source>
         <translation>Grouper</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="190"/>
+        <location filename="../scene_builder_multi.cpp" line="225"/>
         <source>Make the picked objects one group: clicking one in a view picks them all (%1)</source>
         <translation>Réunit les objets sélectionnés en un groupe : un clic sur l&apos;un d&apos;eux dans une vue les sélectionne tous (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="192"/>
+        <location filename="../scene_builder_multi.cpp" line="227"/>
         <source>Ungroup</source>
         <translation>Dissocier</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="193"/>
+        <location filename="../scene_builder_multi.cpp" line="228"/>
         <source>Dissolve the group (%1)</source>
         <translation>Dissout le groupe (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="220"/>
+        <location filename="../scene_builder_multi.cpp" line="255"/>
         <location filename="../scene_builder_views.cpp" line="48"/>
         <source>Move</source>
         <translation>Déplacer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="223"/>
+        <location filename="../scene_builder_multi.cpp" line="258"/>
         <source>Move all by:</source>
         <translation>Tout déplacer de :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="231"/>
+        <location filename="../scene_builder_multi.cpp" line="280"/>
+        <source>Turn all by:</source>
+        <translation>Tout faire pivoter de :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="281"/>
+        <source>Turn</source>
+        <translation>Pivoter</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="282"/>
+        <source>Turn them as one about the middle of them, about the world&apos;s X, then Y, then Z axis</source>
+        <translation>Les fait pivoter ensemble autour de leur centre, autour de l'axe X, puis Y, puis Z du monde</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="297"/>
+        <source>Scale all to:</source>
+        <translation>Tout mettre à l'échelle à :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="299"/>
+        <source>Make them all bigger or smaller, about the middle of them (200 % is twice the size, 50 % half)</source>
+        <translation>Les agrandit ou les réduit tous, par rapport à leur centre (200 % : deux fois la taille, 50 % : la moitié)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_multi.cpp" line="309"/>
         <source>Use %1&apos;s look for all</source>
         <translation>Appliquer l&apos;aspect de %1 à tous</translation>
     </message>
     <message>
-        <location filename="../scene_builder_multi.cpp" line="232"/>
+        <location filename="../scene_builder_multi.cpp" line="310"/>
         <source>Give the other picked objects the same material and light settings as this one (the main one: the first you picked)</source>
         <translation>Donne aux autres objets sélectionnés le même matériau et les mêmes réglages de lumière que celui-ci (l&apos;objet principal : le premier sélectionné)</translation>
     </message>

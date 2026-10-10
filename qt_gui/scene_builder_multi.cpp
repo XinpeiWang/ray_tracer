@@ -149,6 +149,41 @@ void SceneBuilderWidget::moveSelectedBy(const Float3 &delta) {
 	refreshInspectorValues();
 }
 
+// One update of a ring or handle being dragged: the items go back to how they were when the drag began and are turned (or scaled) by the TOTAL so far, so the
+// result does not depend on how many mouse events it took and does not drift. The whole drag is one undo step (the edit key names the drag).
+void SceneBuilderWidget::transformPicked(bool turn, int axis, double amount) {
+	const ItemSet items = pickedItems();
+	if (items.empty()) return;
+	if (m_groupBaseDrag != m_editCounter) {
+		m_groupBase = m_doc;
+		m_groupBaseDrag = m_editCounter;
+	}
+	const Float3 pivot = scene_doc::centroidOf(m_groupBase, items);
+	edit(QString("drag#%1").arg(m_editCounter), [&]() {
+		m_doc.objects = m_groupBase.objects;
+		m_doc.lights = m_groupBase.lights;
+		if (turn) scene_doc::rotateItems(m_doc, items, axis, amount, pivot);
+		else scene_doc::scaleItems(m_doc, items, amount, pivot);
+	});
+	refreshInspectorValues();
+}
+
+void SceneBuilderWidget::turnSelectedBy(int axis, double degrees) {
+	const ItemSet items = pickedItems();
+	if (items.empty() || degrees == 0.0) return;
+	edit(QString(), [&]() { scene_doc::rotateItems(m_doc, items, axis, degrees, scene_doc::centroidOf(m_doc, items)); });
+	refreshInspectorValues();
+}
+
+void SceneBuilderWidget::scaleSelectedBy(double factor) {
+	const ItemSet items = pickedItems();
+	if (items.empty() || factor == 1.0) return;
+	bool done = false;
+	edit(QString(), [&]() { done = scene_doc::scaleItems(m_doc, items, factor, scene_doc::centroidOf(m_doc, items)); });
+	if (!done) emit statusMessage(tr("Scale by a factor between 0.01 and 100."));
+	refreshInspectorValues();
+}
+
 void SceneBuilderWidget::useLookOfMainObject() {
 	if (m_sel.kind != SelKind::Object) return;
 	const ItemSet items = pickedItems();
@@ -225,6 +260,49 @@ void SceneBuilderWidget::inspectMultiple(QFormLayout *f) {
 	connect(move, &QPushButton::clicked, this, [this, amounts]() {
 		moveSelectedBy(Float3{amounts[0]->value(), amounts[1]->value(), amounts[2]->value()});
 		for (int a = 0; a < 3; ++a) amounts[a]->setValue(0.0);
+	});
+
+	// Turn and scale about the middle of them, by exact amounts (a ring or square handle in the 3D view does the same by dragging).
+	auto *turnRow = new QWidget;
+	auto *turnLayout = new QHBoxLayout(turnRow);
+	turnLayout->setContentsMargins(0, 0, 0, 0);
+	std::array<QDoubleSpinBox *, 3> angles{};
+	for (int a = 0; a < 3; ++a) {
+		angles[a] = new QDoubleSpinBox;
+		angles[a]->setRange(-360.0, 360.0);
+		angles[a]->setDecimals(1);
+		angles[a]->setSingleStep(15.0);
+		angles[a]->setPrefix(QString("%1 ").arg(axes[a]));
+		angles[a]->setSuffix(QString::fromUtf8(" \xC2\xB0"));
+		angles[a]->setKeyboardTracking(false);
+		turnLayout->addWidget(angles[a]);
+	}
+	f->addRow(tr("Turn all by:"), turnRow);
+	auto *turn = new QPushButton(tr("Turn"));
+	turn->setToolTip(tr("Turn them as one about the middle of them, about the world's X, then Y, then Z axis"));
+	turn->setAutoDefault(false);
+	compactStyle(turn);
+	f->addRow(turn);
+	connect(turn, &QPushButton::clicked, this, [this, angles]() {
+		for (int a = 0; a < 3; ++a) turnSelectedBy(a, angles[a]->value());
+		for (int a = 0; a < 3; ++a) angles[a]->setValue(0.0);
+	});
+	auto *scaleBox = new QDoubleSpinBox;
+	scaleBox->setRange(1.0, 10000.0);
+	scaleBox->setDecimals(0);
+	scaleBox->setSingleStep(10.0);
+	scaleBox->setValue(100.0);
+	scaleBox->setSuffix(QStringLiteral(" %"));
+	scaleBox->setKeyboardTracking(false);
+	f->addRow(tr("Scale all to:"), scaleBox);
+	auto *scale = new QPushButton(tr("Scale"));
+	scale->setToolTip(tr("Make them all bigger or smaller, about the middle of them (200 % is twice the size, 50 % half)"));
+	scale->setAutoDefault(false);
+	compactStyle(scale);
+	f->addRow(scale);
+	connect(scale, &QPushButton::clicked, this, [this, scaleBox]() {
+		scaleSelectedBy(scaleBox->value() / 100.0);
+		scaleBox->setValue(100.0);
 	});
 
 	if (m_sel.kind == SelKind::Object && items.objects.size() >= 2) {

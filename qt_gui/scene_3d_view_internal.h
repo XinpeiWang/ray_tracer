@@ -4,6 +4,7 @@
 
 #include "scene_3d_view.h"
 #include "scene_builder_common.h"
+#include "../src/shared/scene_selection.h"
 
 #include <QColor>
 #include <QFont>

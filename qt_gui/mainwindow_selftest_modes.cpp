@@ -212,6 +212,32 @@ static void selfTestMultiSelect(SceneBuilderWidget *sb, const std::function<void
 	sb->clickItemForTest(Sel{Sel::Kind::Object, 2});
 	check(objectsPicked() == std::vector<int>({2}), "a plain click on one of several leaves just that one");
 
+	// Turning and scaling several as one, about the middle of them.
+	{
+		sb->pickObjects({1, 2});
+		const scene_doc::Document before = sb->document();
+		const auto gap = [sb]() { const auto &a = sb->document().objects[1].position, &b = sb->document().objects[2].position; return std::sqrt((a.x - b.x) * (a.x - b.x) + (a.y - b.y) * (a.y - b.y) + (a.z - b.z) * (a.z - b.z)); };
+		const double gap0 = gap();
+		const scene_doc::Float3 centre0 = scene_doc::centroidOf(sb->document(), sb->pickedItems());
+		sb->turnSelectedBy(1, 90.0);
+		const scene_doc::Float3 centre1 = scene_doc::centroidOf(sb->document(), sb->pickedItems());
+		check(std::abs(gap() - gap0) < 1e-9 && std::abs(centre1.x - centre0.x) < 1e-9 && std::abs(centre1.z - centre0.z) < 1e-9 && std::abs(pos(1).x - before.objects[1].position.x) > 0.1 && std::abs(sb->document().objects[1].rotation.y - before.objects[1].rotation.y) > 1.0,
+		      "Turn all by turns the set about its middle: the gap and the middle stay, the objects turn");
+		check(sb->undo() && pos(1).x == before.objects[1].position.x && sb->document().objects[1].rotation.y == before.objects[1].rotation.y, "one undo puts them back");
+		const double radius0 = sb->document().objects[2].radius;
+		sb->scaleSelectedBy(2.0);
+		check(std::abs(gap() - 2.0 * gap0) < 1e-9 && std::abs(sb->document().objects[2].radius - 2.0 * radius0) < 1e-9, "Scale all to 200 % doubles the gap and every size");
+		check(sb->undo() && sb->document().objects[2].radius == radius0, "undone");
+		// The 3D view's ring and handle do the same with the mouse, one undo step for the whole drag.
+		sb->show3dView(true);
+		check(sb->gizmoButtonEnabled(1) && sb->gizmoButtonEnabled(2), "Rotate and Scale are available while several are picked");
+		check(sb->dragPickedRing3dForTest(1, 40.0) && std::abs(gap() - gap0) < 1e-6, "dragging the Rotate ring turns the set as one (the gap stays)");
+		check(sb->undo() && pos(1).x == before.objects[1].position.x && pos(2).x == before.objects[2].position.x, "the whole drag is one undo step");
+		check(sb->dragPickedScale3dForTest(0, 1.5) && gap() > gap0 * 1.2, "dragging a Scale handle stretches the set about its middle");
+		check(sb->undo() && std::abs(gap() - gap0) < 1e-9, "and that is one undo step too");
+		sb->show3dView(false);
+	}
+
 	// A box: whatever is inside it (computed from where the view draws things).
 	const QPointF a = sb->itemScreenPosForTest(Sel{Sel::Kind::Object, 1}), b = sb->itemScreenPosForTest(Sel{Sel::Kind::Object, 2});
 	const QPointF topLeft(std::min(a.x(), b.x()) - 12, std::min(a.y(), b.y()) - 12), bottomRight(std::max(a.x(), b.x()) + 12, std::max(a.y(), b.y()) + 12);
@@ -283,6 +309,15 @@ static void selfTestMultiSelect(SceneBuilderWidget *sb, const std::function<void
 		sb->pickObjects({1, 2, 3});
 		QApplication::processEvents();
 		sb->grab().save(picture);
+		sb->show3dView(true);
+		sb->setGizmoToolForTest(1);   // Rotate: the rings are drawn at the middle of the three
+		QApplication::processEvents();
+		sb->grab().save(picture + ".3d_rotate.png");
+		sb->setGizmoToolForTest(2);
+		QApplication::processEvents();
+		sb->grab().save(picture + ".3d_scale.png");
+		sb->setGizmoToolForTest(0);
+		sb->show3dView(false);
 	}
 	sb->selectObject(1);
 }

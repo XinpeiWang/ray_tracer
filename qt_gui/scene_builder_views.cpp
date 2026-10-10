@@ -174,6 +174,9 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	connect(m_view3d, &Scene3DView::selectionRequested, this, onSelection("3D view"));
 	connect(m_view3d, &Scene3DView::dragBegan, this, onDragBegan);
 	connect(m_view3d, &Scene3DView::positionDragged, this, onDragged);
+	// With several picked, a ring or handle turns or stretches them all, about their middle.
+	connect(m_view3d, &Scene3DView::groupTurned, this, [this](int axis, double degrees) { transformPicked(true, axis, degrees); });
+	connect(m_view3d, &Scene3DView::groupScaled, this, [this](double factor) { transformPicked(false, 0, factor); });
 	// A turn or a stretch arrives as the whole edited object; the angles and dimensions are taken from it.
 	connect(m_view3d, &Scene3DView::objectEdited, this, [this](const BuilderSelection &s, const scene_doc::Object &updated) {
 		if (s.kind != SelKind::Object || s.index < 0 || s.index >= static_cast<int>(m_doc.objects.size())) return;
@@ -222,7 +225,7 @@ void SceneBuilderWidget::selectInViews(const BuilderSelection &s) {
 // greyed and Move shows pressed, instead of a pressed Rotate beside arrows. The choice itself is kept for the next object picked.
 void SceneBuilderWidget::updateGizmoButtons(const BuilderSelection &s) {
 	if (!m_gizmoGroup) return;
-	const bool object = s.kind == SelKind::Object && m_extra.empty();   // a turn or a stretch is of one object
+	const bool object = s.kind == SelKind::Object || (s.kind == SelKind::Light && !m_extra.empty());   // several picked turn and stretch as one, whatever they are
 	for (int i = 1; i <= 2; ++i)
 		if (QAbstractButton *b = m_gizmoGroup->button(i)) b->setEnabled(object);
 	if (QAbstractButton *b = m_gizmoGroup->button(object ? static_cast<int>(m_view3d->gizmoMode()) : 0)) b->setChecked(true);
@@ -318,6 +321,26 @@ bool SceneBuilderWidget::dragRotate3dForTest(int index, int axis, double degrees
 	sendMouse(m_view3d, QEvent::MouseButtonRelease, m_view3d->ringPoint(axis, 45.0 + degrees), Qt::LeftButton, Qt::NoButton);
 	const Float3 after = m_doc.objects[index].rotation;
 	return before.x != after.x || before.y != after.y || before.z != after.z;
+}
+
+bool SceneBuilderWidget::dragPickedRing3dForTest(int axis, double degrees) {
+	m_view3d->setGizmoMode(Scene3DView::GizmoMode::Rotate);
+	const std::string before = scene_doc::toJson(m_doc);
+	const QPointF from = m_view3d->ringPoint(axis, 45.0);
+	sendMouse(m_view3d, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+	for (int step = 1; step <= 6; ++step) sendMouse(m_view3d, QEvent::MouseMove, m_view3d->ringPoint(axis, 45.0 + degrees * step / 6.0), Qt::NoButton, Qt::LeftButton);
+	sendMouse(m_view3d, QEvent::MouseButtonRelease, m_view3d->ringPoint(axis, 45.0 + degrees), Qt::LeftButton, Qt::NoButton);
+	return scene_doc::toJson(m_doc) != before;
+}
+
+bool SceneBuilderWidget::dragPickedScale3dForTest(int axis, double ratio) {
+	m_view3d->setGizmoMode(Scene3DView::GizmoMode::Scale);
+	const std::string before = scene_doc::toJson(m_doc);
+	const QPointF from = m_view3d->scaleHandlePoint(axis, 1.0);
+	sendMouse(m_view3d, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton);
+	for (int step = 1; step <= 4; ++step) sendMouse(m_view3d, QEvent::MouseMove, m_view3d->scaleHandlePoint(axis, 1.0 + (ratio - 1.0) * step / 4.0), Qt::NoButton, Qt::LeftButton);
+	sendMouse(m_view3d, QEvent::MouseButtonRelease, m_view3d->scaleHandlePoint(axis, ratio), Qt::LeftButton, Qt::NoButton);
+	return scene_doc::toJson(m_doc) != before;
 }
 
 // Selects the object, then drags the end of its `axis` handle to `ratio` times its distance from the object; true if something changed.

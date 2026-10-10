@@ -67,7 +67,27 @@ const Object *Scene3DView::selectedObject() const {
 	return &m_doc->objects[m_sel.index];
 }
 
-Scene3DView::GizmoMode Scene3DView::effectiveGizmo() const { return selectedObject() && m_extra.empty() ? m_gizmo : GizmoMode::Move; }
+Scene3DView::GizmoMode Scene3DView::effectiveGizmo() const { return (selectedObject() || multi()) ? m_gizmo : GizmoMode::Move; }
+
+bool Scene3DView::gizmoOrigin(V3 &out) const {
+	if (!m_doc) return false;
+	if (!multi()) {
+		const Float3 *p = handle(m_sel, 0);
+		if (!p) return false;
+		out = toV3(*p);
+		return true;
+	}
+	scene_doc::ItemSet picked;
+	const auto add = [&picked](const BuilderSelection &s) {
+		if (s.kind == BuilderSelection::Kind::Object) picked.objects.push_back(s.index);
+		else if (s.kind == BuilderSelection::Kind::Light) picked.lights.push_back(s.index);
+	};
+	add(m_sel);
+	for (const BuilderSelection &s : m_extra) add(s);
+	if (picked.empty()) return false;
+	out = toV3(scene_doc::centroidOf(*m_doc, picked));
+	return true;
+}
 
 bool Scene3DView::isPicked(const BuilderSelection &s) const {
 	if (s.kind == BuilderSelection::Kind::None) return false;
@@ -157,32 +177,30 @@ V3 Scene3DView::localAxis(const Object &o, int axis) const {
 }
 
 QPointF Scene3DView::axisArrowPoint(int axis, double fraction) const {
-	const Float3 *p = handle(m_sel, 0);
-	if (!p || axis < 0 || axis > 2) return QPointF();
+	V3 base;
+	if (!gizmoOrigin(base) || axis < 0 || axis > 2) return QPointF();
 	const scene_view::View v = view();
-	const V3 base = toV3(*p);
 	double sx, sy;
 	if (!v.project(base + kAxisDir[axis] * (gizmoLength(v, base) * fraction), sx, sy)) return QPointF();
 	return QPointF(sx, sy);
 }
 
 QPointF Scene3DView::ringPoint(int axis, double deg) const {
-	const Float3 *p = handle(m_sel, 0);
-	if (!p || axis < 0 || axis > 2) return QPointF();
+	V3 base;
+	if (!gizmoOrigin(base) || axis < 0 || axis > 2) return QPointF();
 	const scene_view::View v = view();
-	const V3 base = toV3(*p);
 	double sx, sy;
 	if (!v.project(ringAt(base, axis, gizmoLength(v, base) * 0.9, deg), sx, sy)) return QPointF();
 	return QPointF(sx, sy);
 }
 
 QPointF Scene3DView::scaleHandlePoint(int axis, double fraction) const {
-	const Object *o = selectedObject();
-	if (!o || axis < 0 || axis > 2) return QPointF();
+	const Object *o = multi() ? nullptr : selectedObject();   // several picked: the handles are on the world axes
+	V3 base;
+	if ((!o && !multi()) || axis < 0 || axis > 2 || !gizmoOrigin(base)) return QPointF();
 	const scene_view::View v = view();
-	const V3 base = toV3(o->position);
 	double sx, sy;
-	if (!v.project(base + localAxis(*o, axis) * (gizmoLength(v, base) * fraction), sx, sy)) return QPointF();
+	if (!v.project(base + (o ? localAxis(*o, axis) : kAxisDir[axis]) * (gizmoLength(v, base) * fraction), sx, sy)) return QPointF();
 	return QPointF(sx, sy);
 }
 
@@ -538,12 +556,11 @@ void Scene3DView::drawCamera(Ctx &c) const {
 
 // The selected item's tool: arrows (Move), rings (Rotate) or squares (Scale)
 void Scene3DView::drawTool(Ctx &c) const {
-	const Float3 *hp = handle(m_sel, 0);
-	if (!hp) return;
-	const V3 base = toV3(*hp);
+	V3 base;
+	if (!gizmoOrigin(base)) return;
 	const double len = gizmoLength(c.v, base);
 	const GizmoMode mode = effectiveGizmo();
-	const Object *o = selectedObject();
+	const Object *o = multi() ? nullptr : selectedObject();
 	QPointF b;
 	if (!c.pixel(base, b)) return;
 	for (int a = 0; a < 3; ++a) {

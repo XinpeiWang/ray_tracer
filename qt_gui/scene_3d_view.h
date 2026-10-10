@@ -37,8 +37,8 @@ public:
 
 	void setDocument(const scene_doc::Document *doc) { m_doc = doc; update(); }
 	void setSelection(const BuilderSelection &s) { m_sel = s; update(); }
-	// The other items picked along with the main one (Ctrl- or Shift-click, a box in the 2D view, a group): drawn like it, and dragged with it. While there are
-	// any, the tool is Move (a turn or a stretch is of one object).
+	// The other items picked along with the main one (Ctrl- or Shift-click, a box in the 2D view, a group): drawn like it, and dragged with it. With any, the tool
+	// is drawn at the middle of them all and turns or scales them as one (groupTurned, groupScaled), about that point.
 	void setExtraSelection(const std::vector<BuilderSelection> &extra) { m_extra = extra; update(); }
 	void setSnap(bool on) { m_snap = on; }
 	// Looks through the scene's camera: the view takes the camera's place, direction and field of view, with the picture's frame drawn over it (everything outside
@@ -74,6 +74,10 @@ signals:
 	void objectEdited(const BuilderSelection &s, const scene_doc::Object &updated);
 	void gizmoModeChanged(int mode);
 	void cameraViewLeft();   // the user orbited, panned or zoomed away from looking through the camera
+	// With several items picked, a Rotate ring or Scale handle dragged: the TOTAL turn (degrees, about world axis 0 X, 1 Y, 2 Z) or factor since the press, which the
+	// owner applies to the items as they were then (about the middle of them, scene_selection.h centroidOf()).
+	void groupTurned(int axis, double degrees);
+	void groupScaled(double factor);
 
 protected:
 	void paintEvent(QPaintEvent *) override;
@@ -114,6 +118,8 @@ private:
 	void applyDrag(const QPointF &px, Qt::KeyboardModifiers mods);
 	void beginHit(const Hit &h, const QPointF &px, Qt::KeyboardModifiers mods);   // what a press on an item or a tool handle starts
 	bool isPicked(const BuilderSelection &s) const;   // the main item or one of the extra ones
+	bool multi() const { return !m_extra.empty(); }
+	bool gizmoOrigin(scene_view::V3 &out) const;   // where the tool is drawn: the item's place, or the middle of everything picked
 
 	// paintEvent's parts
 	void drawGrid(Ctx &c) const;
