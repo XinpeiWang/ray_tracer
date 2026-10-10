@@ -77,7 +77,7 @@ RealtimeBackendFeatures RealtimePreviewSession::backendFeatures() {
 #ifdef Q_OS_MAC
 	f.depthOfFieldOverride = true;   // the Metal library's own set (an older library that cannot say)
 #else
-	f = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true};
+	f = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true, false};
 #endif
 	return f;
 }

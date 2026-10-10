@@ -41,5 +41,5 @@ RT_REALTIME_API const char* realtime_get_last_error() {
 
 // OptiX has every optional feature of realtime_render_frame().
 RT_REALTIME_API void realtime_backend_features(RealtimeBackendFeatures* out) {
-	if (out) *out = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true};
+	if (out) *out = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true, false};
 }

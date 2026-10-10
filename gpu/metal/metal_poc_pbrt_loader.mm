@@ -126,6 +126,7 @@ void MetalPocApp::loadPbrtScene() {
     if (frame.ignoredGiantSphere)
         fprintf(stderr, "loadPbrtScene: ignoring a huge ground-like sphere when sizing the scene "
                         "(extent %.1f -> %.1f)\n", frame.fullExtent, frame.extent);
+    if (pbrtSceneEdit) pbrtSceneEdit(result.scene);   // after the frame: an edit never changes the scale or the centre
     const float maxExtent = frame.extent;
     const float sceneScale = frame.scale;
     const float3 bboxCenter{frame.centre[0], frame.centre[1], frame.centre[2]};

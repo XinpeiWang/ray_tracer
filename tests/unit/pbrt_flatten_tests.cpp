@@ -4099,3 +4099,35 @@ TEST(FlattenBilinearMeshTest, MultiPatchIndexedFormFallsThroughToTheGenericWarni
 	EXPECT_TRUE(warnedAbout(s, "bilinearmesh"));
 }
 
+
+// FlatScene::shapeRanges: which primitives each top-level Shape made, for the Live Preview's object picking and moving.
+TEST(PbrtFlattenShapeRangesTest, EachTopLevelShapeGetsItsOwnRangeOfPrimitives) {
+	const FlatScene s = flattenSource(
+		"WorldBegin\n"
+		"Shape \"sphere\" \"float radius\" [ 1 ]\n"
+		"AttributeBegin\n  Translate 5 0 0\n" + std::string(kQuadMesh) + "AttributeEnd\n"
+		"Shape \"sphere\" \"float radius\" [ 2 ]\n"
+		"Shape \"disk\" \"float radius\" [ 1 ]\n"
+		+ std::string(kQuadMesh));
+	ASSERT_EQ(s.shapeRanges.size(), 5u);
+	EXPECT_EQ(s.shapeRanges[0].type, "sphere");
+	EXPECT_EQ(s.shapeRanges[0].sphereBegin, 0u);
+	EXPECT_EQ(s.shapeRanges[0].sphereEnd, 1u);
+	EXPECT_EQ(s.shapeRanges[1].type, "trianglemesh");
+	EXPECT_EQ(s.shapeRanges[1].triBegin, 0u);
+	EXPECT_EQ(s.shapeRanges[1].triEnd, 2u);   // a quad is two triangles
+	EXPECT_EQ(s.shapeRanges[2].sphereBegin, 1u);
+	EXPECT_EQ(s.shapeRanges[2].sphereEnd, 2u);
+	EXPECT_EQ(s.shapeRanges[3].type, "disk");
+	EXPECT_EQ(s.shapeRanges[3].diskEnd - s.shapeRanges[3].diskBegin, 1u);
+	EXPECT_EQ(s.shapeRanges[4].triBegin, 2u);
+	EXPECT_EQ(s.shapeRanges[4].triEnd, 4u);
+	// The ranges tile the primitive arrays exactly: nothing is left over or counted twice.
+	EXPECT_EQ(s.triangles.size(), 4u);
+	EXPECT_EQ(s.spheres.size(), 2u);
+}
+
+TEST(PbrtFlattenShapeRangesTest, AShapeThatMakesNothingGetsNoRange) {
+	const FlatScene s = flattenSource("WorldBegin\nShape \"sphere\" \"float radius\" [ 1 ]\nShape \"notashape\"\n");
+	EXPECT_EQ(s.shapeRanges.size(), 1u);
+}

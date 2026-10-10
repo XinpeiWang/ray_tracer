@@ -67,7 +67,7 @@ using RealtimeRenderFrameFn = decltype(&realtime_render_frame);
 using RealtimeGetLastErrorFn = decltype(&realtime_get_last_error);
 
 // Which of realtime_render_frame()'s optional features a backend really implements. A flag for a feature it lacks is accepted and ignored, so the GUI
-// should not offer the control. (The OptiX library does all of these; the Metal library does none of them yet.)
+// should not offer the control. (The OptiX library does all of these but objectEditing; the Metal library has depthOfFieldOverride and objectEditing.)
 struct RealtimeBackendFeatures {
 	bool aiDenoiser;
 	bool svgf;
@@ -80,8 +80,25 @@ struct RealtimeBackendFeatures {
 	bool neuralUpscale;
 	bool adaptiveSampling;
 	bool depthOfFieldOverride;
+	bool objectEditing;   // realtime_pick_object / realtime_set_object_offset / realtime_reset_objects below
 };
 
 // Fills `out` with what this library implements. (Absent from a library built before this existed: the GUI then assumes the OptiX set.)
 RT_REALTIME_API void realtime_backend_features(RealtimeBackendFeatures* out);
 using RealtimeBackendFeaturesFn = decltype(&realtime_backend_features);
+
+// Object editing (only where RealtimeBackendFeatures::objectEditing). An "object" is the shapes of one AttributeBegin/End block of the scene's pbrt file, or a
+// Shape outside any block, numbered in file order; moving one makes the next realtime_render_frame() draw the scene with it somewhere else. Positions are in
+// the scene's own (pbrt) coordinates, the same as the first-hit positions realtime_render_frame() returns in out_world_pos_buffer.
+//
+// The object whose surface contains the world point (x, y, z), or -1. Fills the object's box (lo, hi: 3 doubles each), its current offset from where the file puts
+// it (3 doubles) and a short name, for whichever of those are not null. Looks at the scene as the last frame drew it; -1 until a frame has been drawn.
+RT_REALTIME_API int realtime_pick_object(const char* scene_id, double x, double y, double z,
+	double* out_lo, double* out_hi, double* out_offset, char* out_label, int label_size);
+using RealtimePickObjectFn = decltype(&realtime_pick_object);
+// Puts the object at `offset` from where the file puts it (absolute, not a step). False for an unknown object.
+RT_REALTIME_API bool realtime_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz);
+using RealtimeSetObjectOffsetFn = decltype(&realtime_set_object_offset);
+// Puts every object of the scene back.
+RT_REALTIME_API void realtime_reset_objects(const char* scene_id);
+using RealtimeResetObjectsFn = decltype(&realtime_reset_objects);
