@@ -75,6 +75,9 @@ public:
 	void addObject(scene_doc::ShapeKind shape);
 	void addProp(scene_doc::PropKind kind);   // a few ordinary objects at once (a table, a tree...), one undo step
 	void addBlocky(scene_doc::BlockyKind kind);   // a block, creature or thing made of boxes (scene_blocks.h), one undo step
+	void duplicateSelected();                                  // a numbered copy beside the selected object or light (the Duplicate button, Ctrl+D)
+	void addCopies(const std::vector<scene_doc::Object> &copies);   // objects made from another one (an array, a scatter): one undo step, the first selected
+	void showArrayDialog();                                    // the Array... button: a grid, ring or scatter of copies of the selected object
 	void addParts(std::vector<scene_doc::Object> parts);   // the objects go in together at the drop point, named apart from what is there, the first selected
 	void addLight(scene_doc::LightKind kind);
 	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
@@ -231,6 +234,7 @@ private:
 	QPushButton *m_finalButton = nullptr;
 	QPushButton *m_deleteButton = nullptr;
 	QPushButton *m_duplicateButton = nullptr;
+	QPushButton *m_arrayButton = nullptr;
 	QPushButton *m_addButton = nullptr;
 	QWidget *m_inspectorPanel = nullptr;  // the properties column
 	QSplitter *m_mainSplit = nullptr;     // list | view and preview | properties; its sizes are remembered between runs (window_geometry.h)

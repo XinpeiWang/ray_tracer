@@ -158,18 +158,7 @@ inline double documentSize(const Document& d) {
 	if (d.objects.empty()) return 0.0;
 	double lo[3] = {1e300, 1e300, 1e300}, hi[3] = {-1e300, -1e300, -1e300};
 	for (const Object& o : d.objects) {
-		double r = 0.5;
-		switch (o.shape) {
-			case ShapeKind::Sphere: r = o.radius; break;
-			case ShapeKind::Box:
-			case ShapeKind::Wedge:
-			case ShapeKind::Stairs: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.size.y * o.size.y + o.size.z * o.size.z); break;
-			case ShapeKind::Quad: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.size.z * o.size.z); break;
-			case ShapeKind::Pyramid: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.height * o.height + o.size.z * o.size.z); break;
-			case ShapeKind::Mesh: r = std::fabs(o.meshScale); break;
-			default: r = std::sqrt((o.radius + o.radius2) * (o.radius + o.radius2) + o.height * o.height); break;   // disk, cylinder, cone, capsule, dome, torus, tube
-		}
-		r = std::fabs(r);
+		const double r = boundingRadius(o);
 		const double p[3] = {o.position.x, o.position.y, o.position.z};
 		for (int a = 0; a < 3; ++a) {
 			lo[a] = std::min(lo[a], p[a] - r);

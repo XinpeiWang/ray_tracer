@@ -96,6 +96,7 @@ SOURCES += \
 	scene_builder_inspector.cpp \
 	scene_builder_photo.cpp \
 	scene_builder_models.cpp \
+	scene_builder_array_dialog.cpp \
 	photo_import.cpp \
 	scene_builder_views.cpp \
 	scene_3d_view.cpp \
@@ -136,6 +137,7 @@ HEADERS += \
 	theme.h \
 	win_taskbar.h \
 	scene_builder_widget.h \
+	scene_builder_array_dialog.h \
 	scene_builder_common.h \
 	photo_import.h \
 	scene_3d_view.h \

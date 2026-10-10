@@ -76,6 +76,23 @@ struct Object {
 	bool twoSided = false;             // emits from both sides
 };
 
+// The radius of a sphere around the object's position that holds all of it, whatever its rotation (a mesh, whose size the document does not know, counts as its
+// scale). Used for the scene's size (scene_pbrt_writer.h documentSize) and for spacing copies (scene_array.h).
+inline double boundingRadius(const Object& o) {
+	double r = 0.5;
+	switch (o.shape) {
+		case ShapeKind::Sphere: r = o.radius; break;
+		case ShapeKind::Box:
+		case ShapeKind::Wedge:
+		case ShapeKind::Stairs: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.size.y * o.size.y + o.size.z * o.size.z); break;
+		case ShapeKind::Quad: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.size.z * o.size.z); break;
+		case ShapeKind::Pyramid: r = 0.5 * std::sqrt(o.size.x * o.size.x + o.height * o.height + o.size.z * o.size.z); break;
+		case ShapeKind::Mesh: r = std::fabs(o.meshScale); break;
+		default: r = std::sqrt((o.radius + o.radius2) * (o.radius + o.radius2) + o.height * o.height); break;   // disk, cylinder, cone, capsule, dome, torus, tube
+	}
+	return std::fabs(r);
+}
+
 enum class LightKind { Point, Spot, Distant, Infinite };
 
 // The Sun & sky option of an Infinite light (scene_sky.h): when `physicalSky` is on, the light's picture is a generated clear sky for this sun, and the scene's

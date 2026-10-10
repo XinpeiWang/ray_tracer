@@ -2,6 +2,7 @@
 #include "scene_builder_widget.h"
 
 #include "scene_builder_common.h"
+#include "scene_builder_array_dialog.h"
 #include "flow_layout.h"
 #include "app_log.h"
 #include "window_geometry.h"
@@ -206,14 +207,19 @@ void SceneBuilderWidget::buildUi() {
 		addMenu->addAction(lightLabel(k), this, [this, k]() { addLight(k); });
 	addB->setMenu(addMenu);
 	m_duplicateButton = new QPushButton(tr("Duplicate"), left);
+	m_duplicateButton->setToolTip(tr("Make a copy of the selected item beside it (%1)").arg(QKeySequence(Qt::CTRL | Qt::Key_D).toString(QKeySequence::NativeText)));
+	m_arrayButton = new QPushButton(tr("Array..."), left);
+	m_arrayButton->setToolTip(tr("Make many copies of the selected object: a grid, a ring round a point, or a random scatter"));
 	m_deleteButton = new QPushButton(tr("Delete"), left);
 	m_duplicateButton->setAutoDefault(false);
+	m_arrayButton->setAutoDefault(false);
 	m_deleteButton->setAutoDefault(false);
-	for (QPushButton *b : {addB, m_duplicateButton, m_deleteButton}) scene_builder_ui::compactStyle(b);   // compact, so the list column can be narrow
+	for (QPushButton *b : {addB, m_duplicateButton, m_arrayButton, m_deleteButton}) scene_builder_ui::compactStyle(b);   // compact, so the list column can be narrow
 	auto *listBar = new QWidget(left);   // wraps (Add / Duplicate / Delete on two lines) when the column is dragged narrow
 	auto *row = new FlowLayout(listBar, 0, 6, 6);
 	row->addWidget(addB);
 	row->addWidget(m_duplicateButton);
+	row->addWidget(m_arrayButton);
 	row->addWidget(m_deleteButton);
 	leftLayout->addWidget(listBar);
 	m_list = new QListWidget(left);
@@ -224,29 +230,12 @@ void SceneBuilderWidget::buildUi() {
 	m_addButton = addB;
 	connect(m_list, &QListWidget::currentRowChanged, this, [this](int) { onListSelectionChanged(); });
 	connect(m_deleteButton, &QPushButton::clicked, this, [this]() { deleteSelected(); });
-	connect(m_duplicateButton, &QPushButton::clicked, this, [this]() {
-		if (m_sel.kind == SelKind::Object && m_sel.index < static_cast<int>(m_doc.objects.size())) {
-			edit(QString(), [this]() {
-				Object o = m_doc.objects[m_sel.index];
-				o.name += " copy";
-				o.position.x += 0.5;
-				m_doc.objects.push_back(o);
-				m_sel.index = static_cast<int>(m_doc.objects.size()) - 1;
-			});
-		} else if (m_sel.kind == SelKind::Light && m_sel.index < static_cast<int>(m_doc.lights.size())) {
-			edit(QString(), [this]() {
-				Light l = m_doc.lights[m_sel.index];
-				l.name += " copy";
-				l.position.x += 0.5;
-				m_doc.lights.push_back(l);
-				m_sel.index = static_cast<int>(m_doc.lights.size()) - 1;
-			});
-		} else {
-			return;
-		}
-		rebuildList();
-		setSelection(m_sel);
-	});
+	connect(m_duplicateButton, &QPushButton::clicked, this, [this]() { duplicateSelected(); });
+	connect(m_arrayButton, &QPushButton::clicked, this, [this]() { showArrayDialog(); });
+	// Ctrl+D (Command+D on a Mac) duplicates from anywhere in the tab except a text box.
+	auto *duplicateKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_D), this);
+	duplicateKey->setContext(Qt::WidgetWithChildrenShortcut);
+	connect(duplicateKey, &QShortcut::activated, this, [this]() { if (!qobject_cast<QLineEdit *>(QApplication::focusWidget())) duplicateSelected(); });
 	// Delete and undo work from the list and the layout view (not inside a text box, where Delete edits text).
 	// (Backspace too: a Mac's "delete" key is Backspace, which the standard Delete shortcut does not include there.)
 	for (const QKeySequence &key : {QKeySequence(QKeySequence::Delete), QKeySequence(Qt::Key_Backspace)}) {
@@ -654,6 +643,49 @@ void SceneBuilderWidget::addLight(LightKind kind) {
 	setSelection(m_sel);
 }
 
+// A numbered copy of the selected object or light ("Chair" gives "Chair 2"), beside the original, which is selected afterwards. One undo step.
+void SceneBuilderWidget::duplicateSelected() {
+	if (m_sel.kind == SelKind::Object && m_sel.index < static_cast<int>(m_doc.objects.size())) {
+		edit(QString(), [this]() {
+			m_doc.objects.push_back(scene_doc::duplicateOf(m_doc.objects[m_sel.index], m_doc.objects));
+			m_sel.index = static_cast<int>(m_doc.objects.size()) - 1;
+		});
+	} else if (m_sel.kind == SelKind::Light && m_sel.index < static_cast<int>(m_doc.lights.size())) {
+		edit(QString(), [this]() {
+			Light l = m_doc.lights[m_sel.index];
+			QStringList names;
+			for (const Light &existing : m_doc.lights) names << QString::fromStdString(existing.name);
+			l.name = uniqueName(QString::fromStdString(l.name).remove(QRegularExpression(" copy$")).remove(QRegularExpression(" \\d+$")), names).toStdString();
+			l.position.x += 0.5;
+			m_doc.lights.push_back(l);
+			m_sel.index = static_cast<int>(m_doc.lights.size()) - 1;
+		});
+	} else {
+		return;
+	}
+	rebuildList();
+	setSelection(m_sel);
+}
+
+// Objects made from another one (scene_array.h: a grid, a ring, a scatter) go in together, as one undo step; the first is selected.
+void SceneBuilderWidget::addCopies(const std::vector<Object> &copies) {
+	if (copies.empty()) return;
+	edit(QString(), [&]() {
+		const int first = static_cast<int>(m_doc.objects.size());
+		for (const Object &o : copies) m_doc.objects.push_back(o);
+		m_sel = {SelKind::Object, first};
+	});
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("array: added %1 copies").arg(copies.size()));
+	rebuildList();
+	setSelection(m_sel);
+}
+
+void SceneBuilderWidget::showArrayDialog() {
+	if (m_sel.kind != SelKind::Object || m_sel.index >= static_cast<int>(m_doc.objects.size())) return;
+	ArrayDialog dialog(m_sel.index, m_doc.objects, this);
+	if (dialog.exec() == QDialog::Accepted) addCopies(dialog.copies());
+}
+
 void SceneBuilderWidget::deleteSelected() {
 	if (m_sel.kind == SelKind::Object && m_sel.index < static_cast<int>(m_doc.objects.size())) {
 		edit(QString(), [this]() { m_doc.objects.erase(m_doc.objects.begin() + m_sel.index); });
@@ -671,6 +703,7 @@ void SceneBuilderWidget::updateActions() {
 	const bool item = (m_sel.kind == SelKind::Object || m_sel.kind == SelKind::Light);
 	m_deleteButton->setEnabled(item);
 	m_duplicateButton->setEnabled(item);
+	m_arrayButton->setEnabled(m_sel.kind == SelKind::Object);
 	m_undoButton->setEnabled(m_history.canUndo());
 	m_redoButton->setEnabled(m_history.canRedo());
 	const bool ok = !scene_doc::hasErrors(m_problems);   // from the last refreshProblems(): the document has not changed since
