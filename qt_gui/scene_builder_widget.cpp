@@ -128,6 +128,9 @@ void SceneBuilderWidget::buildUi() {
 	auto *saveB = button(tr("Save"), tr("Save the scene as a .pbrt file"));
 	auto *saveAsB = button(tr("Save As..."), tr("Save the scene under a new name"));
 	auto *listB = button(tr("Add to scene list"), tr("Save the scene into the scenes folder so it shows up in the Settings tab"));
+	m_liveButton = button(tr("Preview live"), tr("Open this scene in Live Preview: walk around it and move things. It is saved as a separate \"(live preview)\" scene in the scene list; your scene and its own listing are not changed."));
+	m_liveButton->setObjectName("builderPreviewLiveButton");
+	m_liveButton->setVisible(false);
 	m_undoButton = button(tr("Undo"), tr("Undo the last change (%1)").arg(shortcutText(QKeySequence::Undo)));
 	m_redoButton = button(tr("Redo"), tr("Redo (%1)").arg(shortcutText(QKeySequence::Redo)));
 	m_titleLabel = new QLabel(this);
@@ -142,7 +145,7 @@ void SceneBuilderWidget::buildUi() {
 	// however long a translated label is. The status text keeps its tooltip with all of it.
 	auto *toolbar = new QWidget(this);
 	auto *flow = new FlowLayout(toolbar, 0, 6, 6);
-	for (QPushButton *b : {newB, openB, saveB, saveAsB, listB}) {
+	for (QPushButton *b : {newB, openB, saveB, saveAsB, listB, m_liveButton}) {
 		scene_builder_ui::compactStyle(b);
 		flow->addWidget(b);
 	}
@@ -167,6 +170,7 @@ void SceneBuilderWidget::buildUi() {
 	connect(saveB, &QPushButton::clicked, this, &SceneBuilderWidget::onSaveClicked);
 	connect(saveAsB, &QPushButton::clicked, this, &SceneBuilderWidget::onSaveAsClicked);
 	connect(listB, &QPushButton::clicked, this, &SceneBuilderWidget::onSaveToSceneListClicked);
+	connect(m_liveButton, &QPushButton::clicked, this, &SceneBuilderWidget::onPreviewLiveClicked);
 	connect(m_undoButton, &QPushButton::clicked, this, [this]() { undo(); });
 	connect(m_redoButton, &QPushButton::clicked, this, [this]() { redo(); });
 

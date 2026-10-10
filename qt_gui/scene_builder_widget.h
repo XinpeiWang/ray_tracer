@@ -142,6 +142,10 @@ public:
 	QString addToSceneList(QString *error, bool update = false);
 	// The scene-list file this document was last added as, or opened from (empty if none).
 	QString listedPath() const { return m_listedPath; }
+	// Shows or hides the "Preview live" button (the main window knows whether a Live Preview library is there).
+	void setLivePreviewAvailable(bool available);
+	// Opens a scene file the Scene Builder saved, asking first what to do with unsaved changes; false when the user cancels or the file cannot be opened (then a message says why).
+	bool openForEditing(const QString &path);
 	// The scene's name (its title), as typed in the toolbar; setSceneName() is an undoable edit like typing there.
 	QString sceneName() const { return QString::fromStdString(m_doc.title); }
 	void setSceneName(const QString &name);
@@ -150,6 +154,8 @@ signals:
 	void statusMessage(const QString &text);
 	// A copy of the scene was saved into the scene-list folder ("Add to scene list"); the main window lists it without a restart.
 	void sceneListed(const QString &path);
+	// "Preview live": the scene was saved as a listing of its own (livePreviewCopy()) and should be opened in Live Preview; the main window does that.
+	void livePreviewRequested(const QString &path);
 
 protected:
 	void resizeEvent(QResizeEvent *e) override;
@@ -162,6 +168,10 @@ private slots:
 	void onSaveClicked();
 	void onSaveAsClicked();
 	void onSaveToSceneListClicked();
+	void onPreviewLiveClicked();
+	// Saves the scene, titled "<name> (live preview)", as <name>-live-preview.pbrt in the scene-list folder (replaced each time: one preview copy per scene name), so
+	// Live Preview can open it by a scene id without touching the scene's own listing or file. Returns the path, or "" with `error` set.
+	QString writeLivePreviewCopy(QString *error);
 	void onRenderFinalClicked();
 	void onPreviewFinished(int exitCode);
 
@@ -289,6 +299,7 @@ private:
 	QSplitter *m_mainSplit = nullptr;     // list | view and preview | properties; its sizes are remembered between runs (window_geometry.h)
 	QSplitter *m_centreSplit = nullptr;   // view above preview
 	QWidget *m_leftPanel = nullptr;  // the list column; widened to fit its buttons when shown
+	QPushButton *m_liveButton = nullptr;   // "Preview live"; hidden until the main window says Live Preview is there
 	QPushButton *m_undoButton = nullptr;
 	QPushButton *m_redoButton = nullptr;
 

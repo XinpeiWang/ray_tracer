@@ -133,6 +133,21 @@ void MainWindow::createSceneBuilderTab() {
 		statusBar()->showMessage(tr("Added to the scene list as %1 (Settings tab).").arg(id), 8000);
 	});
 	m_tabWidget->addTab(m_sceneBuilder, tr("Scene Builder"));
+#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	// "Preview live": the Builder saved its preview copy and listed it; open it in Live Preview (restarting a preview that is already running, so it shows the new copy).
+	connect(m_sceneBuilder, &SceneBuilderWidget::livePreviewRequested, this, [this](const QString &path) {
+		const QString id = SceneMetadataClient::sceneIdForFile(path);
+		if (id.isEmpty() || !m_livePreviewSession) {
+			statusBar()->showMessage(tr("The preview copy could not be opened in Live Preview."), 8000);
+			return;
+		}
+		if (m_livePreviewRunning) stopLivePreview();
+		selectSceneById(id);
+		const int liveIndex = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
+		if (liveIndex >= 0) m_modeCombo->setCurrentIndex(liveIndex);
+		startLivePreview();
+	});
+#endif
 }
 
 // Single source of truth for m_samplerCombo/m_lightSamplerCombo/

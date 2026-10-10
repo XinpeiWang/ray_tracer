@@ -747,37 +747,47 @@
         <translation>Guarda la escena con los objetos donde están ahora como una escena nueva de la lista (Mis escenas). La escena original no cambia.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="72"/>
+        <location filename="../live_object_editor.cpp" line="45"/>
+        <source>Edit in Builder</source>
+        <translation>Editar en el Constructor</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="47"/>
+        <source>Open the arrangement you just saved in the Scene Builder, to carry on editing it there.</source>
+        <translation>Abre en el Constructor de escenas la disposición que acabas de guardar, para seguir editándola allí.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="78"/>
         <source>Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.</source>
         <translation>Haz clic en un objeto y arrástralo (Mayús: arriba y abajo). Después, W A S D y Arriba/Abajo también lo mueven.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="123"/>
+        <location filename="../live_object_editor.cpp" line="129"/>
         <source>Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.</source>
         <translation>Seleccionado: %1. Arrástralo para moverlo (Mayús: arriba y abajo); W A S D y Arriba/Abajo también lo mueven.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="166"/>
+        <location filename="../live_object_editor.cpp" line="172"/>
         <source>Cannot save: there is no scenes folder to write to.</source>
         <translation>No se puede guardar: no hay carpeta de escenas donde escribir.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="176"/>
+        <location filename="../live_object_editor.cpp" line="184"/>
         <source>Not saved: %1.</source>
         <translation>No guardado: %1.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="179"/>
+        <location filename="../live_object_editor.cpp" line="187"/>
         <source>Saved as %1 (%2). It is in the scene list under My Scenes.</source>
         <translation>Guardado como %1 (%2). Está en la lista de escenas, en Mis escenas.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="113"/>
+        <location filename="../live_object_editor.cpp" line="119"/>
         <source>Nothing movable there: drag to orbit.</source>
         <translation>Ahí no hay nada que mover: arrastra para orbitar.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="158"/>
+        <location filename="../live_object_editor.cpp" line="164"/>
         <source>Every object is back where the scene file puts it.</source>
         <translation>Todos los objetos están de nuevo donde los coloca el archivo de la escena.</translation>
     </message>
@@ -858,50 +868,50 @@
         <translation>Ray Tracer</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1284"/>
+        <location filename="../mainwindow.cpp" line="1285"/>
         <location filename="../mainwindow_slots.cpp" line="342"/>
         <source>START &amp;RENDER</source>
         <translation>INICIAR &amp;RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1293"/>
+        <location filename="../mainwindow.cpp" line="1294"/>
         <source>Render the selected scene with the current settings
 (queues behind it instead if a render is already running)</source>
         <translation>Renderiza la escena seleccionada con la configuración actual
 (se pondrá en cola si ya hay un renderizado en curso)</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1304"/>
+        <location filename="../mainwindow.cpp" line="1305"/>
         <source>S&amp;TOP RENDER</source>
         <translation>DE&amp;TENER RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1310"/>
+        <location filename="../mainwindow.cpp" line="1311"/>
         <location filename="../mainwindow_actions.cpp" line="71"/>
         <source>Stop the running render and discard its output</source>
         <translation>Detiene el renderizado en curso y descarta su resultado</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1323"/>
+        <location filename="../mainwindow.cpp" line="1324"/>
         <location filename="../mainwindow_queue.cpp" line="348"/>
         <location filename="../mainwindow_slots.cpp" line="120"/>
         <source>&amp;PAUSE RENDER</source>
         <translation>&amp;PAUSAR RENDERIZADO</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1328"/>
+        <location filename="../mainwindow.cpp" line="1329"/>
         <location filename="../mainwindow_actions.cpp" line="80"/>
         <location filename="../mainwindow_slots.cpp" line="122"/>
         <source>Pause the running render in place - Resume continues from the exact same pixels</source>
         <translation>Pausa el renderizado en curso tal cual está - Reanudar continúa desde exactamente los mismos píxeles</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1337"/>
+        <location filename="../mainwindow.cpp" line="1338"/>
         <source>ABANDON &amp;&amp; &amp;NEXT</source>
         <translation>DESCARTAR Y SIGUIE&amp;NTE</translation>
     </message>
     <message>
-        <location filename="../mainwindow.cpp" line="1343"/>
+        <location filename="../mainwindow.cpp" line="1344"/>
         <location filename="../mainwindow_actions.cpp" line="85"/>
         <source>Discard the running render&apos;s output and immediately start the next queued job</source>
         <translation>Descarta la salida del renderizado en curso e inicia inmediatamente el siguiente trabajo en cola</translation>
@@ -945,7 +955,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="88"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="332"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="347"/>
         <source>Open Output &amp;Folder</source>
         <translation>Abrir &amp;carpeta de salida</translation>
     </message>
@@ -956,7 +966,7 @@
     </message>
     <message>
         <location filename="../mainwindow_actions.cpp" line="98"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="344"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="359"/>
         <source>Open in Default &amp;Viewer</source>
         <translation>Abrir en el &amp;visor predeterminado</translation>
     </message>
@@ -1629,7 +1639,7 @@ Use los controles de pausa/detener si una categoría resulta tardar demasiado.</
         <translation>Imagen única</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="158"/>
+        <location filename="../mainwindow_live_preview.cpp" line="164"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
@@ -4462,17 +4472,22 @@ Desactivado por defecto (aleatorio genuino en cada renderizado).</translation>
         <translation>Constructor de escenas</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="335"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="141"/>
+        <source>The preview copy could not be opened in Live Preview.</source>
+        <translation>No se pudo abrir la copia de vista previa en la Vista previa en vivo.</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_tabs_render.cpp" line="350"/>
         <source>Show the folder containing the active tab&apos;s render in Explorer</source>
         <translation>Muestra en el Explorador la carpeta que contiene el renderizado de la pestaña activa</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="347"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="362"/>
         <source>Open the active tab&apos;s render in the system viewer</source>
         <translation>Abre el renderizado de la pestaña activa en el visor del sistema</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="373"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="388"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
@@ -4491,55 +4506,55 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>Disposición guardada como escena %1 (pestaña Ajustes, Mis escenas).</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="154"/>
+        <location filename="../mainwindow_live_preview.cpp" line="160"/>
         <source>Live Preview — %1</source>
         <translation>Vista previa en vivo — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="159"/>
+        <location filename="../mainwindow_live_preview.cpp" line="165"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>Vista previa interactiva por GPU - arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/Abajo para volar, Izquierda/Derecha para orbitar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="185"/>
+        <location filename="../mainwindow_live_preview.cpp" line="191"/>
         <source>Select a scene first</source>
         <translation>Selecciona primero una escena</translation>
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="263"/>
+        <location filename="../mainwindow_live_preview.cpp" line="269"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>Iniciando...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="279"/>
+        <location filename="../mainwindow_live_preview.cpp" line="285"/>
         <source>Stopped</source>
         <translation>Detenido</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="306"/>
+        <location filename="../mainwindow_live_preview.cpp" line="312"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En vivo (con ruido eliminado, sin acumular)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="308"/>
+        <location filename="../mainwindow_live_preview.cpp" line="314"/>
         <source>%1 samples</source>
         <translation>%1 muestras</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="333"/>
+        <location filename="../mainwindow_live_preview.cpp" line="339"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[Vista previa en vivo] ERROR: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="416"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="431"/>
         <source>&lt;b&gt;Why it looks this way&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;Por qué se ve así&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="542"/>
-        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="557"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="570"/>
         <location filename="../mainwindow_tabs_settings_groups.cpp" line="278"/>
         <location filename="../mainwindow_thumbnails.cpp" line="126"/>
         <location filename="../mainwindow_thumbnails.cpp" line="165"/>
@@ -4547,12 +4562,12 @@ Arrastra para orbitar, usa la rueda o +/- para zoom, WASD para moverte, Arriba/A
         <translation>Pausar</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="555"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="570"/>
         <source>Play</source>
         <translation>Reproducir</translation>
     </message>
     <message>
-        <location filename="../mainwindow_tabs_render.cpp" line="565"/>
+        <location filename="../mainwindow_tabs_render.cpp" line="580"/>
         <source>Video playback error (%1): %2</source>
         <translation>Error de reproducción de video (%1): %2</translation>
     </message>
@@ -5989,14 +6004,6 @@ Las escenas de las demás categorías no se tocan. Puedes recuperarlas desde %1.
         <translation>Comando</translation>
     </message>
     <message>
-        <source>Wheel: zoom. Drag the background or right-drag: pan.</source>
-        <translation type="vanished">Rueda: zoom. Arrastrar el fondo o arrastrar con el botón derecho: desplazar.</translation>
-    </message>
-    <message>
-        <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.</source>
-        <translation type="vanished">Arrastra el fondo: orbitar (Mayús + arrastrar: desplazar). El arrastre con el botón derecho también desplaza. Rueda: zoom. Elige Mover, Rotar o Escalar (W, E, R) y arrastra las flechas, los anillos o los cuadrados; arrastra un objeto para deslizarlo por el suelo, Mayús + arrastrar para elevarlo, y arrastra el punto blanco (o mantén %1 mientras arrastras) para moverlo en cualquier dirección.</translation>
-    </message>
-    <message>
         <location filename="../scene_builder_common.h" line="80"/>
         <source>Wheel: zoom. Drag the background or right-drag: pan. %1- or Shift-click adds an item to what is picked or takes it out; %1- or Shift-drag the background picks what a box holds.</source>
         <translation>Rueda: zoom. Arrastra el fondo o con el botón derecho: desplazar. %1 o Mayús + clic añade un elemento a la selección o lo quita; %1 o Mayús + arrastrar el fondo selecciona lo que encierra el recuadro.</translation>
@@ -6737,7 +6744,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="454"/>
-        <location filename="../scene_builder_widget.cpp" line="645"/>
+        <location filename="../scene_builder_widget.cpp" line="649"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Mallas (*.ply *.obj)</translation>
     </message>
@@ -6931,26 +6938,36 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="131"/>
+        <source>Preview live</source>
+        <translation>Vista previa en vivo</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="131"/>
+        <source>Open this scene in Live Preview: walk around it and move things. It is saved as a separate &quot;(live preview)&quot; scene in the scene list; your scene and its own listing are not changed.</source>
+        <translation>Abre esta escena en la Vista previa en vivo: recórrela y mueve cosas. Se guarda como una escena aparte «(vista previa en vivo)» en la lista de escenas; tu escena y su propia entrada no cambian.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="134"/>
         <source>Undo</source>
         <translation>Deshacer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="132"/>
+        <location filename="../scene_builder_widget.cpp" line="135"/>
         <source>Redo</source>
         <translation>Rehacer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="137"/>
+        <location filename="../scene_builder_widget.cpp" line="140"/>
         <source>Scene name</source>
         <translation>Nombre de la escena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="138"/>
+        <location filename="../scene_builder_widget.cpp" line="141"/>
         <source>The name of this scene, shown in the scene list</source>
         <translation>El nombre de esta escena, que se muestra en la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="158"/>
+        <location filename="../scene_builder_widget.cpp" line="161"/>
         <source>Name:</source>
         <translation>Nombre:</translation>
     </message>
@@ -6991,7 +7008,7 @@ Procedencia: %3</translation>
     </message>
     <message>
         <location filename="../scene_builder_models.cpp" line="118"/>
-        <location filename="../scene_builder_widget.cpp" line="180"/>
+        <location filename="../scene_builder_widget.cpp" line="184"/>
         <source>Add</source>
         <translation>Añadir</translation>
     </message>
@@ -7006,77 +7023,77 @@ Procedencia: %3</translation>
         <translation>No se pudo leer ese modelo.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="183"/>
+        <location filename="../scene_builder_widget.cpp" line="187"/>
         <source>Objects</source>
         <translation>Objetos</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="186"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Props (several objects at once)</source>
         <translation>Accesorios (varios objetos a la vez)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="193"/>
         <source>Blocky (several objects at once)</source>
         <translation>Estilo bloques (varios objetos a la vez)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="190"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Blocks</source>
         <translation>Bloques</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="190"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Creatures</source>
         <translation>Criaturas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="190"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Things</source>
         <translation>Cosas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="193"/>
+        <location filename="../scene_builder_widget.cpp" line="197"/>
         <source>More</source>
         <translation>Más</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="194"/>
+        <location filename="../scene_builder_widget.cpp" line="198"/>
         <source>Model library...</source>
         <translation>Biblioteca de modelos...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="195"/>
+        <location filename="../scene_builder_widget.cpp" line="199"/>
         <source>Object from a photo...</source>
         <translation>Objeto a partir de una foto...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="196"/>
+        <location filename="../scene_builder_widget.cpp" line="200"/>
         <source>Light panel (emitting quad)</source>
         <translation>Panel de luz (cuadrilátero emisor)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="205"/>
+        <location filename="../scene_builder_widget.cpp" line="209"/>
         <source>Lights</source>
         <translation>Luces</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="209"/>
+        <location filename="../scene_builder_widget.cpp" line="213"/>
         <source>Duplicate</source>
         <translation>Duplicar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="210"/>
+        <location filename="../scene_builder_widget.cpp" line="214"/>
         <source>Make a copy of the selected item beside it (%1)</source>
         <translation>Hace una copia del elemento seleccionado a su lado (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="211"/>
+        <location filename="../scene_builder_widget.cpp" line="215"/>
         <source>Array...</source>
         <translation>Matriz...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="212"/>
+        <location filename="../scene_builder_widget.cpp" line="216"/>
         <source>Make many copies of the selected object: a grid, a ring round a point, or a random scatter</source>
         <translation>Hace muchas copias del objeto seleccionado: una cuadrícula, un anillo alrededor de un punto o una dispersión al azar</translation>
     </message>
@@ -7182,7 +7199,7 @@ Procedencia: %3</translation>
     </message>
     <message>
         <location filename="../scene_builder_camera_views.cpp" line="171"/>
-        <location filename="../scene_builder_widget.cpp" line="213"/>
+        <location filename="../scene_builder_widget.cpp" line="217"/>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
@@ -7329,53 +7346,53 @@ Procedencia: %3</translation>
         <translation>Encuadrar todo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="270"/>
+        <location filename="../scene_builder_widget.cpp" line="274"/>
         <source>Draft</source>
         <translation>Borrador</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="271"/>
+        <location filename="../scene_builder_widget.cpp" line="275"/>
         <source>Good</source>
         <translation>Buena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="272"/>
+        <location filename="../scene_builder_widget.cpp" line="276"/>
         <source>Best</source>
         <translation>Óptima</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="275"/>
+        <location filename="../scene_builder_widget.cpp" line="279"/>
         <source>Use the GPU</source>
         <translation>Usar la GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="276"/>
+        <location filename="../scene_builder_widget.cpp" line="280"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>Renderizar en la tarjeta gráfica (NVIDIA OptiX en Windows, Metal en Mac). Mucho más rápido para imágenes grandes; requiere una GPU compatible.</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="157"/>
-        <location filename="../scene_builder_widget.cpp" line="277"/>
+        <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="279"/>
+        <location filename="../scene_builder_widget.cpp" line="283"/>
         <source>Render picture...</source>
         <translation>Renderizar imagen...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="281"/>
+        <location filename="../scene_builder_widget.cpp" line="285"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>Renderizar con el tamaño de imagen y el número de muestras fijados en Cámara, y guardar la imagen como PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="283"/>
+        <location filename="../scene_builder_widget.cpp" line="287"/>
         <source>Quality:</source>
         <translation>Calidad:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="296"/>
+        <location filename="../scene_builder_widget.cpp" line="300"/>
         <source>Press Preview to see the scene.</source>
         <translation>Pulsa Vista previa para ver la escena.</translation>
     </message>
@@ -7407,13 +7424,14 @@ Procedencia: %3</translation>
     </message>
     <message>
         <location filename="../scene_builder_files.cpp" line="157"/>
+        <location filename="../scene_builder_files.cpp" line="270"/>
         <source>Cannot open the scene</source>
         <translation>No se puede abrir la escena</translation>
     </message>
     <message>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
-        <location filename="../scene_builder_files.cpp" line="255"/>
+        <location filename="../scene_builder_files.cpp" line="301"/>
         <source>Cannot save</source>
         <translation>No se puede guardar</translation>
     </message>
@@ -7421,6 +7439,7 @@ Procedencia: %3</translation>
         <location filename="../scene_builder_files.cpp" line="165"/>
         <location filename="../scene_builder_files.cpp" line="175"/>
         <location filename="../scene_builder_files.cpp" line="222"/>
+        <location filename="../scene_builder_files.cpp" line="248"/>
         <location filename="../scene_builder_render.cpp" line="112"/>
         <source>Could not write %1.</source>
         <translation>No se pudo escribir %1.</translation>
@@ -7437,32 +7456,42 @@ Procedencia: %3</translation>
         <translation>Guardar la escena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="235"/>
+        <location filename="../scene_builder_files.cpp" line="238"/>
+        <source>There is no scenes folder to write the preview copy to.</source>
+        <translation>No hay una carpeta de escenas donde escribir la copia de vista previa.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_files.cpp" line="259"/>
+        <source>Cannot preview</source>
+        <translation>No se puede previsualizar</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_files.cpp" line="281"/>
         <source>No scenes folder</source>
         <translation>No hay carpeta de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="242"/>
+        <location filename="../scene_builder_files.cpp" line="288"/>
         <source>Add to the scene list</source>
         <translation>Añadir a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="243"/>
+        <location filename="../scene_builder_files.cpp" line="289"/>
         <source>This scene is already in the list as &quot;%1&quot;.</source>
         <translation>Esta escena ya está en la lista como «%1».</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="244"/>
+        <location filename="../scene_builder_files.cpp" line="290"/>
         <source>Add as a new scene</source>
         <translation>Añadir como escena nueva</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="245"/>
+        <location filename="../scene_builder_files.cpp" line="291"/>
         <source>Update the existing one</source>
         <translation>Actualizar la existente</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="260"/>
+        <location filename="../scene_builder_files.cpp" line="306"/>
         <source>Saved a copy as %1.
 
 It is in the scene list now (Settings tab, My Scenes).</source>
@@ -7471,12 +7500,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="753"/>
+        <location filename="../scene_builder_widget.cpp" line="757"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objetos, %4 luces</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="645"/>
+        <location filename="../scene_builder_widget.cpp" line="649"/>
         <source>Choose a mesh</source>
         <translation>Elegir una malla</translation>
     </message>
@@ -7491,52 +7520,52 @@ Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</transla
         <translation>Guardar la escena en la carpeta de escenas para que aparezca en la pestaña Configuración</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="131"/>
+        <location filename="../scene_builder_widget.cpp" line="134"/>
         <source>Undo the last change (%1)</source>
         <translation>Deshacer el último cambio (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="132"/>
+        <location filename="../scene_builder_widget.cpp" line="135"/>
         <source>Redo (%1)</source>
         <translation>Rehacer (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="274"/>
+        <location filename="../scene_builder_widget.cpp" line="278"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>Borrador: 480 píxeles de ancho, 16 muestras. Buena: 720 de ancho, 64 muestras. Óptima: 960 de ancho, 256 muestras.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_files.cpp" line="259"/>
+        <location filename="../scene_builder_files.cpp" line="305"/>
         <source>Added to the scene list</source>
         <translation>Añadida a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="487"/>
+        <location filename="../scene_builder_widget.cpp" line="491"/>
         <source>Camera and image</source>
         <translation>Cámara e imagen</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="515"/>
+        <location filename="../scene_builder_widget.cpp" line="519"/>
         <source>, light</source>
         <translation>, luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="747"/>
+        <location filename="../scene_builder_widget.cpp" line="751"/>
         <source>not saved yet</source>
         <translation>sin guardar todavía</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="781"/>
+        <location filename="../scene_builder_widget.cpp" line="785"/>
         <source>No problems found.</source>
         <translation>No se encontraron problemas.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="787"/>
+        <location filename="../scene_builder_widget.cpp" line="791"/>
         <source>Fix this:</source>
         <translation>Corrige esto:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="787"/>
+        <location filename="../scene_builder_widget.cpp" line="791"/>
         <source>Note:</source>
         <translation>Nota:</translation>
     </message>

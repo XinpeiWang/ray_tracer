@@ -10,6 +10,8 @@ Live Preview shows a scene while you move around in it. It renders over and over
 
 The preview has the proportions of the image size in Settings (its longer side is 400 pixels), so it frames the scene the way the final render will. A scene that needs files you have not downloaded (Sponza, Bistro, large environments) says so instead of starting: use the **Download missing files** button under the scene's description in the Settings tab.
 
+**From the Scene Builder:** the **Preview live** button in the Builder's toolbar (shown when Live Preview is available) opens the scene you are building in Live Preview with one click: no saving, no picking it from the list. It saves a copy of the scene as "<name> (live preview)" in the scene list (one copy per scene name, replaced each time, so your own scene and its own listing are not touched) and starts Live Preview on it. Change something in the Builder and press the button again to see the change.
+
 ## Moving the camera
 
 | To | Do this |
@@ -40,7 +42,7 @@ Under the picture there are three buttons. **Move objects** switches the mouse o
 * **Keys**: with an object selected, W / S, A / D and Up / Down move it instead of the camera, in the directions the picture shows (forward is away from you, along the floor). You can orbit, zoom or fly with it selected: the yellow box follows.
 * **Click on empty space** to let go of the object. Dragging there orbits the camera as usual.
 * **Reset objects** puts everything back where the scene file has it.
-* **Save arrangement** keeps what you have done: it saves the scene, with the objects where they are now, as a new scene in the scene list under **My Scenes**. Your original scene is not changed. A scene you made in the Scene Builder opens in the Builder with the objects in their new places, so you can carry on editing it there.
+* **Save arrangement** keeps what you have done: it saves the scene, with the objects where they are now, as a new scene in the scene list under **My Scenes**. Your original scene is not changed. For a scene you made in the Scene Builder, an **Edit in Builder** button appears after the save: it opens the arrangement in the Builder (with the objects in their new places, named "<name> (arranged)") so you can carry on editing it there.
 
 What counts as "an object": everything in one group of the scene file (a box written as six rectangles moves as one box), or a single shape that stands on its own. Things that are not plain shapes (hair, instanced copies, curves) cannot be picked; a click on one orbits instead. Moves are not saved unless you press **Save arrangement**, and every new Live Preview starts from the scene as its file has it. Each move rebuilds the scene (about a tenth of a second for a small one), so on a heavy scene the picture follows a drag a few times a second rather than smoothly.
 
