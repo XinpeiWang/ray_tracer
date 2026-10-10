@@ -14,7 +14,8 @@ A guide to this folder and the other documents. The repository's front page is t
 | [DENOISING.md](DENOISING.md) | The AI denoisers (OptiX on the GPU, Open Image Denoise on the CPU and Mac), how to turn them on, how well they work |
 | [RENDER_PASSES.md](RENDER_PASSES.md) | Albedo, normal, depth, uv and alpha passes for compositing |
 | [LOGGING.md](LOGGING.md) | The log file: where it is and what to send with a bug report |
-| [MAC_LIVE_PREVIEW.md](MAC_LIVE_PREVIEW.md) | The macOS interactive Live Preview |
+| [LIVE_PREVIEW.md](LIVE_PREVIEW.md) | Live Preview for users: starting it, camera controls, settings, moving objects and saving the arrangement |
+| [MAC_LIVE_PREVIEW.md](MAC_LIVE_PREVIEW.md) | The macOS interactive Live Preview, for developers |
 | [MAC_VERIFICATION.md](MAC_VERIFICATION.md) | What was checked on a real Mac after shared changes made on Windows |
 | [ERROR_CODE_REFERENCE.md](ERROR_CODE_REFERENCE.md) | Every error code, what it means, what to try |
 | [../pbrt_scenes/README.md](../pbrt_scenes/README.md) | The scene folder: names, header tags, the pbrt subset read |
