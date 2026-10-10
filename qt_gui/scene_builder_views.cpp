@@ -63,6 +63,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		if (auto *b = gizmoGroup->button(mode)) b->setChecked(true);  // the W / E / R keys
 	});
 	m_gizmoBar->setVisible(false);
+	createCameraBar(layoutBox);
 
 	const std::pair<QString, SceneLayoutView::Plane> planes[] = {{tr("Top"), SceneLayoutView::Plane::Top}, {tr("Front"), SceneLayoutView::Plane::Front}, {tr("Side"), SceneLayoutView::Plane::Side}};
 	for (const auto &pl : planes) {
@@ -78,6 +79,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 			m_view->setPlane(pl.second);
 			m_viewHint->setText(viewHint2d());
 			m_gizmoBar->setVisible(false);
+			m_cameraBar->setVisible(false);
 		});
 	}
 	auto *b3d = new QPushButton(tr("3D"), layoutBox);
@@ -91,6 +93,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		m_viewStack->setCurrentWidget(m_view3d);
 		m_viewHint->setText(viewHint3d());
 		m_gizmoBar->setVisible(true);
+		m_cameraBar->setVisible(true);
 	});
 
 	auto *snap = new QCheckBox(tr("Snap to grid"), layoutBox);
@@ -114,6 +117,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	// The tools get a row of their own (only in 3D), so neither row is wider than the column.
 	gizmoLayout->addStretch(1);
 	layoutLayout->addWidget(m_gizmoBar);
+	layoutLayout->addWidget(m_cameraBar);
 	layoutLayout->addWidget(m_viewStack, 1);
 	m_viewHint->setAlignment(Qt::AlignRight);  // on its own line: a translated hint is too long to share the button row
 	m_viewHint->setWordWrap(true);
@@ -238,6 +242,7 @@ void SceneBuilderWidget::show3dView(bool on) {
 	m_viewStack->setCurrentWidget(on ? static_cast<QWidget *>(m_view3d) : static_cast<QWidget *>(m_view));
 	m_viewHint->setText(on ? viewHint3d() : viewHint2d());
 	m_gizmoBar->setVisible(on);
+	m_cameraBar->setVisible(on);
 }
 
 static void sendMouse(QWidget *w, QEvent::Type type, const QPointF &pos, Qt::MouseButton button, Qt::MouseButtons buttons, Qt::KeyboardModifiers mods = Qt::NoModifier) {

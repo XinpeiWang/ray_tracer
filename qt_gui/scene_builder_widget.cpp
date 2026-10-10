@@ -465,6 +465,7 @@ void SceneBuilderWidget::syncSunAndSky() {
 void SceneBuilderWidget::documentChanged() {
 	m_skySignature = skySignature();
 	m_dirty = true;
+	refreshViewCombo();
 	refreshListLabels();
 	refreshProblems();
 	updateTitle();

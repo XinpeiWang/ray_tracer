@@ -47,6 +47,19 @@ drawn by their farthest point, so they no longer cover things standing in front 
 The 3D view draws flat-shaded shapes with the same size, position and rotation the renderer uses; it shows shape and placement, not materials or lighting (press
 **Preview** for that). A mesh is drawn at its real size: its bounding box (at the object's Scale) with a sample of its vertices, so you can see how big it is and which way it faces; a file that cannot be read, or one over 80 MB, shows a small marker instead.
 
+## Camera views
+
+The scene has one camera (select **Camera and image** in the list to edit it), and the 3D view has a row of camera buttons under its tools:
+
+| Button | Does |
+|---|---|
+| **Through camera** | The 3D view takes the camera's place, direction and field of view, with the picture's frame drawn over it (what is outside the frame is dimmed), so you see what a render will frame. It follows the camera while you edit its numbers or drag it. Orbiting, panning, zooming or Frame all leaves it, and the view stays where it is |
+| **Camera from view** | Puts the scene's camera where the 3D view is now, looking the same way. The lens (field of view, lens radius) stays; the focus distance follows what the camera looks at unless the lens radius is above 0 (you set that focus on purpose). One undo step |
+| **Save view...** | Asks for a name and remembers what you are looking at now (the 3D view's place, or the camera while looking through it) as a saved view |
+| the **Saved views** list | Pick a view to put the camera there; the 3D view then looks through it, so you see the change |
+
+The camera's properties also list the saved views, each with its name (edit it to rename) and **Use**, **Update** (save the camera as it is now over that view) and **Delete**, and a **Save camera as a view** button. A view is a whole camera (position, what it looks at, field of view, lens radius, focus distance); names are made unique ("Front", "Front 2"), there can be 100, and each of these is one undo step. Views are kept in the scene's JSON copy, so reopening the file brings them back; the `.pbrt` text has only the scene's one camera. Looking through the camera uses the world's up direction, so a camera with a tilted up vector shows level.
+
 ## Ready-made shapes
 
 Besides the sphere, box, quad, disk, cylinder, cone and mesh file, the Add menu has shapes with no pbrt primitive of their own. They are written into the scene as triangle meshes with smooth or sharp normals as fits the shape, so they render the same on the CPU, Metal and OptiX.
@@ -209,6 +222,8 @@ The scene model (`scene_model.h`), the JSON (`scene_json.h`), the checks (`scene
 * every shape, material and light loads in the renderer;
 * a name with a newline in it cannot add a directive to the file;
 * closed-form renders: a diffuse sphere of albedo (0.5, 0.25, 0.75) under a white sky of strength 1 reads exactly that at depth 1; a sphere light of radiance 20 and radius 0.5 four units over a quad of albedo 0.6 lights the point under it by `rho * L * (r/d)^2`; and each shape emits on the side this page says it does (and not from behind).
+
+The saved camera views (`scene_camera_views.h`) and the maths of looking through the camera (`orbitLookingFrom`, `pictureFrame`, `fovForFrame` in `scene_view_math.h`: the view's eye lands on the camera's, and the camera's top edge on the frame's) have unit tests, and the self-test looks through the camera, sets the camera from the view, and saves, uses, updates, renames and deletes a view.
 
 The selection operations (`scene_selection.h`: move, copy, delete, group, copy a look) have unit tests in `tests/unit/scene_selection_tests.cpp`, and the self-test picks by list, Ctrl-click and box, drags two objects with real mouse events, copies, groups, deletes and undoes each.
 

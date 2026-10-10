@@ -34,6 +34,11 @@ inline Fields fieldsOf(const Light& l) {
 inline Fields fieldsOf(const Camera& c) {
 	return {{"position", v(c.position)}, {"target", v(c.target)}, {"up", v(c.up)}, {"fov", v(c.fov)}, {"lensRadius", v(c.lensRadius)}, {"focusDistance", v(c.focusDistance)}};
 }
+inline Fields fieldsOf(const CameraView& v) {
+	Fields f = fieldsOf(v.camera);
+	f.insert(f.begin(), {"name", v.name});
+	return f;
+}
 inline Fields fieldsOf(const RenderSettings& r) {
 	return {{"width", std::to_string(r.width)}, {"height", std::to_string(r.height)}, {"samples", std::to_string(r.samples)}, {"maxDepth", std::to_string(r.maxDepth)}};
 }
@@ -84,6 +89,7 @@ inline std::string describeChange(const Document& a, const Document& b) {
 	if (const std::string c = changedFields(fieldsOf(a.render), fieldsOf(b.render)); !c.empty()) parts.push_back("render: " + c);
 	listChanges(parts, "object", a.objects, b.objects);
 	listChanges(parts, "light", a.lights, b.lights);
+	listChanges(parts, "camera view", a.cameraViews, b.cameraViews);
 	std::string out;
 	for (std::size_t i = 0; i < parts.size() && i < 6; ++i) out += (out.empty() ? "" : "; ") + parts[i];
 	if (parts.size() > 6) out += "; ... (+" + std::to_string(parts.size() - 6) + " more)";

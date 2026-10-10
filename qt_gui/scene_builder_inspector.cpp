@@ -311,6 +311,7 @@ void SceneBuilderWidget::inspectCamera(QFormLayout *f) {
 	f->addRow(tr("Aspect ratio"), aspect);
 	addInt(f, tr("Samples per pixel"), [this]() { return &m_doc.render.samples; }, 1, 100000);
 	addInt(f, tr("Light bounces (max depth)"), [this]() { return &m_doc.render.maxDepth; }, 1, 100);
+	inspectCameraViews(f);
 }
 
 void SceneBuilderWidget::inspectMaterial(QFormLayout *f, int i) {

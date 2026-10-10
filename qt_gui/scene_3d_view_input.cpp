@@ -243,11 +243,13 @@ void Scene3DView::mouseMoveEvent(QMouseEvent *e) {
 	const QPointF px = e->position();
 	const QPointF d = px - m_last;
 	if (m_mode == Mode::Orbit) {
+		leaveCameraView();
 		m_userView = true;
 		m_cam.orbit(-d.x() * 0.4, d.y() * 0.4);
 		m_last = px;
 		update();
 	} else if (m_mode == Mode::Pan) {
+		leaveCameraView();
 		m_userView = true;
 		const double upp = view().unitsPerPixel(m_cam.distance);
 		m_cam.pan(-d.x() * upp, d.y() * upp);
@@ -276,6 +278,7 @@ void Scene3DView::mouseReleaseEvent(QMouseEvent *) {
 }
 
 void Scene3DView::wheelEvent(QWheelEvent *e) {
+	leaveCameraView();
 	m_userView = true;
 	m_cam.dolly(std::pow(0.88, e->angleDelta().y() / 120.0));
 	update();

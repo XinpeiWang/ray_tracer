@@ -128,6 +128,12 @@ struct Camera {
 	double focusDistance = 8.0;
 };
 
+// A camera the user saved under a name, to come back to (scene_camera_views.h).
+struct CameraView {
+	std::string name = "View";
+	Camera camera;
+};
+
 struct RenderSettings {
 	int width = 800;
 	int height = 600;
@@ -141,6 +147,7 @@ struct Document {
 	RenderSettings render;
 	std::vector<Object> objects;
 	std::vector<Light> lights;
+	std::vector<CameraView> cameraViews;   // saved cameras, in the order they were saved
 };
 
 struct Problem {

@@ -277,3 +277,50 @@ TEST(SceneViewRotateTest, ARingSeenAlmostEdgeOnIsRefusedInsteadOfGivingAWildAngl
 	EXPECT_TRUE(angleAround(v.ray(sx, sy), centre, axis, ref, deg));
 	EXPECT_FALSE(angleAround(v.ray(sx, sy), centre, axis, ref, deg, 0.9));
 }
+
+// ---- looking through a scene camera ----------------------------------------------------------------------------------------------------
+
+TEST(SceneViewMath, OrbitLookingFromReproducesTheEyeAndTheTarget) {
+	const V3 eye{3.0, 2.5, 8.0}, target{0.0, 1.0, 0.0};
+	const OrbitCamera c = orbitLookingFrom(eye, target, 35);
+	expectNear(c.eye(), eye);
+	expectNear(c.target, target);
+	EXPECT_DOUBLE_EQ(c.fovDeg, 35);
+	for (const V3& e : {V3{-4, 1, -4}, V3{0, 9, 0.001}, V3{5, -3, 2}, V3{0.0, 1.0, -6.0}, V3{6, 1, 0}}) expectNear(orbitLookingFrom(e, {0.5, 1, 0.5}).eye(), e, 1e-7);
+}
+
+TEST(SceneViewMath, OrbitLookingFromStraightDownStaysInsideThePitchLimit) {
+	const OrbitCamera c = orbitLookingFrom({0, 10, 0}, {0, 0, 0});
+	EXPECT_LE(c.pitchDeg, 89.0);
+	EXPECT_GT(c.pitchDeg, 88.9);
+	EXPECT_NEAR(c.distance, 10.0, 1e-9);
+	EXPECT_GE(orbitLookingFrom({0, -10, 0}, {0, 0, 0}).pitchDeg, -89.0);
+	EXPECT_GE(orbitLookingFrom({1, 1, 1}, {1, 1, 1}).distance, 0.2) << "an eye on its target does not collapse the orbit";
+}
+
+TEST(SceneViewMath, ThePictureFrameFitsTheWidgetAtTheAspect) {
+	const FrameRect wide = pictureFrame(800, 600, 16.0 / 9.0, 1.0);   // wider than the widget: limited by the width
+	EXPECT_NEAR(wide.w, 800, 1e-9);
+	EXPECT_NEAR(wide.h, 450, 1e-9);
+	EXPECT_NEAR(wide.y, 75, 1e-9);
+	const FrameRect square = pictureFrame(800, 600, 1.0, 1.0);        // squarer: limited by the height
+	EXPECT_NEAR(square.h, 600, 1e-9);
+	EXPECT_NEAR(square.w, 600, 1e-9);
+	EXPECT_NEAR(square.x, 100, 1e-9);
+	EXPECT_EQ(pictureFrame(0, 600, 1.0).w, 0.0);
+	EXPECT_EQ(pictureFrame(800, 600, 0.0).w, 0.0);
+	EXPECT_NEAR(pictureFrame(800, 600, 1.0).h, 600 * 0.94, 1e-9);
+}
+
+TEST(SceneViewMath, TheViewFovShowsExactlyWhatTheCameraSeesInsideTheFrame) {
+	// A camera of 40 degrees and a frame two thirds of the view's height: the view needs a wider angle, and then the camera's top edge lands on the frame's.
+	const double fov = fovForFrame(40.0, 600.0, 400.0);
+	EXPECT_GT(fov, 40.0);
+	View v;
+	v.width = 800;
+	v.height = 600;
+	v.cam.fovDeg = fov;
+	EXPECT_NEAR(v.focal() * std::tan(40.0 * kPi / 360.0), 200.0, 1e-6) << "the camera's half height is half the frame's height in pixels";
+	EXPECT_NEAR(fovForFrame(40.0, 600.0, 600.0), 40.0, 1e-9) << "a frame as tall as the view needs no change";
+	EXPECT_DOUBLE_EQ(fovForFrame(40.0, 600.0, 0.0), 40.0) << "no frame: unchanged";
+}

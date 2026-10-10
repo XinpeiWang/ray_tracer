@@ -287,6 +287,61 @@ static void selfTestMultiSelect(SceneBuilderWidget *sb, const std::function<void
 	sb->selectObject(1);
 }
 
+// Saved camera views (scene_camera_views.h, scene_builder_camera_views.cpp): look through the camera, set it from the 3D view, save, use, update, rename and delete a
+// view, each one undo step. Leaves the document as it found it.
+static void selfTestCameraViews(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check) {
+	const auto near3 = [](const scene_doc::Float3 &a, const scene_doc::Float3 &b) { return std::abs(a.x - b.x) < 1e-6 && std::abs(a.y - b.y) < 1e-6 && std::abs(a.z - b.z) < 1e-6; };
+	const scene_doc::Camera camera0 = sb->document().camera;
+	const size_t views0 = sb->document().cameraViews.size();
+	sb->show3dView(true);
+	sb->lookThroughCamera(true);
+	check(sb->lookingThroughCameraForTest() && near3(sb->viewEyeForTest(), camera0.position), "Through camera puts the 3D view's eye at the scene's camera");
+	sb->orbit3dForTest(120.0, 10.0);
+	check(!sb->lookingThroughCameraForTest(), "orbiting the view leaves the camera's view");
+	check(!near3(sb->viewEyeForTest(), camera0.position), "and the view is somewhere else now");
+
+	const scene_doc::Float3 eye = sb->viewEyeForTest();
+	sb->cameraFromView();
+	check(near3(sb->document().camera.position, eye) && sb->document().camera.fov == camera0.fov, "Camera from view puts the camera where the view is, keeping its lens");
+	sb->lookThroughCamera(true);
+	check(near3(sb->viewEyeForTest(), eye), "looking through the camera now shows that place");
+	check(sb->undo() && near3(sb->document().camera.position, camera0.position), "one undo puts the camera back");
+
+	// Save, change the camera, use the view.
+	sb->cameraFromView();   // (back to the orbit's place first: through the camera, this does nothing)
+	sb->lookThroughCamera(false);
+	sb->orbit3dForTest(40.0, 30.0);
+	const scene_doc::Float3 farEye = sb->viewEyeForTest();
+	const int saved = sb->saveCameraViewNamed("Bird's eye");
+	check(saved == static_cast<int>(views0) && sb->document().cameraViews.size() == views0 + 1 && near3(sb->document().cameraViews.back().camera.position, farEye), "Save view remembers where the 3D view is");
+	check(sb->document().cameraViews.back().name == "Bird's eye" && sb->viewComboCountForTest() == static_cast<int>(views0) + 2, "under its name, which is in the list of saved views");
+	check(sb->saveCameraViewNamed("Bird's eye") >= 0 && sb->document().cameraViews.back().name == "Bird's eye 2", "a second view of the same name is numbered");
+	sb->deleteCameraView(static_cast<int>(views0) + 1);
+	check(sb->document().cameraViews.size() == views0 + 1, "a view can be deleted");
+	check(sb->undo() && sb->document().cameraViews.size() == views0 + 2 && sb->undo() && sb->document().cameraViews.size() == views0 + 1, "and each is one undo step");
+
+	sb->useCameraView(static_cast<int>(views0));
+	check(near3(sb->document().camera.position, farEye) && sb->lookingThroughCameraForTest(), "Use puts the camera at the saved view and looks through it");
+	sb->renameCameraView(static_cast<int>(views0), "Roof");
+	check(sb->document().cameraViews[views0].name == "Roof", "a view can be renamed");
+	sb->updateCameraViewFromNow(static_cast<int>(views0), true);
+	check(near3(sb->document().cameraViews[views0].camera.position, farEye), "Update saves the camera over it");
+	// RT_GUI_SELFTEST_CAMERA_PNG=<file> saves a picture of the tab looking through the camera, with the camera's properties (and its saved view) beside it.
+	const QString picture = qEnvironmentVariable("RT_GUI_SELFTEST_CAMERA_PNG");
+	if (!picture.isEmpty()) {
+		sb->selectCameraForTest();
+		sb->lookThroughCamera(true);
+		QApplication::processEvents();
+		sb->grab().save(picture);
+	}
+	// Back to how it was: three more undo steps (update changed nothing, so it took none of the log, but the edits above are still steps).
+	while (sb->document().cameraViews.size() > views0 && sb->undo()) {}
+	while (!near3(sb->document().camera.position, camera0.position) && sb->undo()) {}
+	check(sb->document().cameraViews.size() == views0 && near3(sb->document().camera.position, camera0.position), "everything undoes back to the scene as it was");
+	sb->lookThroughCamera(false);
+	sb->show3dView(false);
+}
+
 void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix) {
 	resize(qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") : 1500, qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") : 950);  // (..._WIDTH / ..._HEIGHT: a smaller window)
 	if (m_sceneBuilder) m_tabWidget->setCurrentWidget(m_sceneBuilder);  // by widget, so it works in every language
@@ -315,6 +370,7 @@ void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &
 	selfTestShapes(sb, check);
 	selfTestArray(sb, check);
 	selfTestMultiSelect(sb, check);
+	selfTestCameraViews(sb, check);
 	sb->selectObject(1);
 	check(sb->problemsText().isEmpty(), "the scene has no problems or notes");
 	const QString pbrt = outPrefix + "_builder.pbrt";

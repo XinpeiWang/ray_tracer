@@ -22,6 +22,7 @@
 #include "../src/shared/scene_props.h"
 #include "../src/shared/scene_blocks.h"
 #include "../src/shared/scene_selection.h"
+#include "../src/shared/scene_camera_views.h"
 
 class QButtonGroup;
 class QCheckBox;
@@ -39,6 +40,7 @@ class QVBoxLayout;
 class Scene3DView;
 class QTimer;
 
+#include "scene_3d_view.h"
 #include "scene_layout_view.h"
 
 
@@ -63,6 +65,20 @@ public:
 	void ungroupSelected();                    // dissolves the groups of the picked objects (Ctrl+Shift+G)
 	void moveSelectedBy(const scene_doc::Float3 &delta);   // the picked items, together, one undo step
 	void useLookOfMainObject();                // the other picked objects get the main one's material
+	// Saved camera views (scene_builder_camera_views.cpp). Each change is one undo step.
+	int saveCameraViewNamed(const QString &name, bool sceneCamera = false);   // the 3D view's place (or the camera, looking through it; or always the camera if `sceneCamera`); the new index, -1 if full
+	void useCameraView(int index);            // the scene's camera goes to the saved view
+	void updateCameraViewFromNow(int index, bool sceneCamera = false);
+	void deleteCameraView(int index);
+	void renameCameraView(int index, const QString &name);
+	void cameraFromView();                    // the scene's camera goes where the 3D view is
+	void lookThroughCamera(bool on);          // the 3D view looks through the scene's camera
+	bool lookingThroughCameraForTest() const { return m_view3d && m_view3d->throughCamera(); }
+	scene_doc::Float3 viewEyeForTest() const {   // where the 3D view's eye is now
+		const scene_view::V3 e = m_view3d->currentPose().eye();
+		return {e.x, e.y, e.z};
+	}
+	int viewComboCountForTest() const;
 	bool dragPickedForTest(int index, const QPointF &deltaPx);   // a real drag in the layout view of one picked object (moves them all)
 	void togglePickedForTest(const BuilderSelection &s) { togglePicked(s); }
 	void clickItemForTest(const BuilderSelection &s, Qt::KeyboardModifiers mods = Qt::NoModifier);   // a real click on an item in the layout view
@@ -167,6 +183,10 @@ private:
 	void togglePicked(const BuilderSelection &s);      // Ctrl- or Shift-click: add or remove (a group goes in or out whole)
 	void boxPicked(const QList<BuilderSelection> &items, bool additive);
 	void inspectMultiple(QFormLayout *f);
+	void inspectCameraViews(QFormLayout *f);
+	void createCameraBar(QWidget *layoutBox);
+	void refreshViewCombo();
+	scene_doc::Camera cameraNow() const;
 	void logSelection(const BuilderSelection &s, const char *where);   // what the user picked, and where (the list, the layout view, the 3D view)
 	void documentChanged();
 	void refreshProblems();
@@ -241,6 +261,9 @@ private:
 	QStackedWidget *m_viewStack = nullptr;  // m_view (Top / Front / Side) or m_view3d, one at a time
 	QLabel *m_viewHint = nullptr;
 	QWidget *m_gizmoBar = nullptr;           // the 3D view's Move / Rotate / Scale buttons
+	QWidget *m_cameraBar = nullptr;          // the 3D view's camera buttons: Through camera, Camera from view, the saved views
+	QPushButton *m_throughButton = nullptr;
+	QComboBox *m_viewCombo = nullptr;
 	// scene_builder_views.cpp: building the views, and doing one thing to both (they follow the same document and selection).
 	void createViews(QWidget *layoutBox, QVBoxLayout *layoutLayout);
 	void updateViews();

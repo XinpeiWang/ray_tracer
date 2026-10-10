@@ -41,6 +41,12 @@ public:
 	// any, the tool is Move (a turn or a stretch is of one object).
 	void setExtraSelection(const std::vector<BuilderSelection> &extra) { m_extra = extra; update(); }
 	void setSnap(bool on) { m_snap = on; }
+	// Looks through the scene's camera: the view takes the camera's place, direction and field of view, with the picture's frame drawn over it (everything outside
+	// the frame is dimmed), and follows the camera while it is edited. Orbiting, panning, zooming or Frame all leaves it (cameraViewLeft()).
+	void setThroughCamera(bool on);
+	bool throughCamera() const { return m_throughCamera; }
+	// Where the eye is and what it looks at now: the 3D view's own orbit, or the scene's camera while looking through it.
+	scene_view::OrbitCamera currentPose() const { return view().cam; }
 	void setGizmoMode(GizmoMode m);
 	GizmoMode gizmoMode() const { return m_gizmo; }
 	// Where a new object is dropped: the floor (y = 0) point under the middle of the view when that is near what the camera looks at, else the floor under
@@ -53,7 +59,7 @@ public:
 	QPointF ringPoint(int axis, double deg) const;
 	QPointF scaleHandlePoint(int axis, double fraction) const;
 	// For tests: set the camera's angles, and whether a mesh file's preview has been read yet.
-	void orbitForTest(double yawDeg, double pitchDeg) { m_cam.yawDeg = yawDeg; m_cam.pitchDeg = pitchDeg; m_userView = true; update(); }
+	void orbitForTest(double yawDeg, double pitchDeg) { leaveCameraView(); m_cam.yawDeg = yawDeg; m_cam.pitchDeg = pitchDeg; m_userView = true; update(); }
 	bool meshPreviewReady(const std::string &path) const { return meshPreview(path) != nullptr; }
 
 	QSize sizeHint() const override { return QSize(520, 380); }
@@ -67,6 +73,7 @@ signals:
 	// A turn or a stretch: the object as it now is (the owner takes its rotation, radius, height, size and meshScale).
 	void objectEdited(const BuilderSelection &s, const scene_doc::Object &updated);
 	void gizmoModeChanged(int mode);
+	void cameraViewLeft();   // the user orbited, panned or zoomed away from looking through the camera
 
 protected:
 	void paintEvent(QPaintEvent *) override;
@@ -116,6 +123,9 @@ private:
 	void drawLights(Ctx &c) const;
 	void drawCamera(Ctx &c) const;
 	void drawTool(Ctx &c) const;
+	void drawCameraFrame(QPainter &p) const;
+	scene_view::OrbitCamera cameraPose() const;   // the scene's camera as an orbit (with the field of view that makes the frame show what it sees)
+	void leaveCameraView();                        // out of looking through the camera, the view staying where it is
 
 	const scene_doc::Document *m_doc = nullptr;
 	BuilderSelection m_sel;
@@ -129,6 +139,7 @@ private:
 	bool m_snap = true;
 	GizmoMode m_gizmo = GizmoMode::Move;
 	bool m_userView = false;   // the user has orbited, panned or zoomed, so a resize keeps the view instead of re-framing the scene
+	bool m_throughCamera = false;   // the view is the scene's camera (m_cam is kept for when it is switched off)
 
 	Mode m_mode = Mode::None;
 	Hit m_drag;

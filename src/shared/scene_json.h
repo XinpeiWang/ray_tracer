@@ -301,16 +301,39 @@ inline bool readRgb(const Json& o, const char* k, Rgb& c) { return readTriple(o,
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Document <-> JSON
 // ---------------------------------------------------------------------------------------------------------------------------------
+namespace detail {
+
+inline Json cameraToJson(const Camera& c) {
+	Json cam = Json::object();
+	cam.set("position", toJson(c.position)).set("target", toJson(c.target)).set("up", toJson(c.up));
+	cam.set("fov", Json::number(c.fov)).set("lensRadius", Json::number(c.lensRadius)).set("focusDistance", Json::number(c.focusDistance));
+	return cam;
+}
+
+inline bool readCamera(const Json& cam, Camera& c) {
+	if (cam.type != Json::Type::Obj) return false;
+	return readVec(cam, "position", c.position) && readVec(cam, "target", c.target) && readVec(cam, "up", c.up) && readNum(cam, "fov", c.fov) &&
+	       readNum(cam, "lensRadius", c.lensRadius) && readNum(cam, "focusDistance", c.focusDistance);
+}
+
+}  // namespace detail
+
 inline std::string toJson(const Document& d) {
 	using detail::Json;
 	Json root = Json::object();
 	root.set("version", Json::number(1));
 	root.set("title", Json::string(d.title));
 
-	Json cam = Json::object();
-	cam.set("position", detail::toJson(d.camera.position)).set("target", detail::toJson(d.camera.target)).set("up", detail::toJson(d.camera.up));
-	cam.set("fov", Json::number(d.camera.fov)).set("lensRadius", Json::number(d.camera.lensRadius)).set("focusDistance", Json::number(d.camera.focusDistance));
-	root.set("camera", std::move(cam));
+	root.set("camera", detail::cameraToJson(d.camera));
+	if (!d.cameraViews.empty()) {
+		Json views = Json::array();
+		for (const CameraView& v : d.cameraViews) {
+			Json j = detail::cameraToJson(v.camera);
+			j.set("name", Json::string(v.name));
+			views.push(std::move(j));
+		}
+		root.set("cameraViews", std::move(views));
+	}
 
 	Json rs = Json::object();
 	rs.set("width", Json::number(d.render.width)).set("height", Json::number(d.render.height));
@@ -370,12 +393,15 @@ inline bool fromJson(const std::string& text, Document& out, std::string& err) {
 
 	Document d;
 	bool ok = detail::readStr(root, "title", d.title);
-	if (const Json* cam = root.find("camera")) {
-		if (cam->type != Json::Type::Obj) ok = false;
-		else {
-			ok = ok && detail::readVec(*cam, "position", d.camera.position) && detail::readVec(*cam, "target", d.camera.target) &&
-			     detail::readVec(*cam, "up", d.camera.up) && detail::readNum(*cam, "fov", d.camera.fov) &&
-			     detail::readNum(*cam, "lensRadius", d.camera.lensRadius) && detail::readNum(*cam, "focusDistance", d.camera.focusDistance);
+	if (const Json* cam = root.find("camera")) ok = ok && detail::readCamera(*cam, d.camera);
+	if (const Json* views = root.find("cameraViews")) {
+		if (views->type != Json::Type::Arr) ok = false;
+		else for (const Json& j : views->a) {
+			CameraView v;
+			v.camera = d.camera;   // a field a view does not carry is the scene camera's
+			ok = ok && detail::readCamera(j, v.camera) && detail::readStr(j, "name", v.name);
+			if (!ok) break;
+			d.cameraViews.push_back(v);
 		}
 	}
 	if (const Json* rs = root.find("render")) {

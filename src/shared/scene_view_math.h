@@ -4,6 +4,7 @@
 // Coordinates are the renderer's: X to the right, Y up, Z towards a viewer looking down -Z (right-handed).
 #pragma once
 
+#include <algorithm>
 #include <cmath>
 #include <vector>
 
@@ -59,6 +60,43 @@ struct OrbitCamera {
 		if (distance > 2000) distance = 2000;
 	}
 };
+
+// The orbit that puts the eye at `eye` looking at `target` (the inverse of OrbitCamera::eye()): the same pose, so the 3D view can look through a scene camera. A
+// camera looking straight up or down gets the nearest pitch the orbit allows; an eye on its target keeps the shortest distance.
+inline OrbitCamera orbitLookingFrom(const V3& eye, const V3& target, double fovDeg = 40) {
+	OrbitCamera c;
+	c.target = target;
+	c.fovDeg = fovDeg;
+	const V3 v = eye - target;
+	const double d = length(v);
+	c.distance = std::max(d, 0.2);
+	if (d > 1e-9) {
+		c.pitchDeg = std::max(-89.0, std::min(89.0, std::asin(std::max(-1.0, std::min(1.0, v.y / d))) * 180.0 / kPi));
+		if (std::hypot(v.x, v.z) > 1e-9) c.yawDeg = std::atan2(v.x, v.z) * 180.0 / kPi;
+	}
+	return c;
+}
+
+// The picture's frame inside a width x height widget: the largest rectangle of the picture's aspect (width / height) that fits, `fill` (0..1) of the way to the edges.
+struct FrameRect {
+	double x = 0, y = 0, w = 0, h = 0;
+};
+inline FrameRect pictureFrame(double width, double height, double aspect, double fill = 0.94) {
+	FrameRect r;
+	if (width <= 0 || height <= 0 || aspect <= 0) return r;
+	if (aspect >= width / height) { r.w = width * fill; r.h = r.w / aspect; }
+	else { r.h = height * fill; r.w = r.h * aspect; }
+	r.x = (width - r.w) / 2.0;
+	r.y = (height - r.h) / 2.0;
+	return r;
+}
+
+// The vertical field of view a view of the given height needs for a frame `frameHeight` tall to show exactly what a camera of `cameraFovDeg` (vertical) sees.
+inline double fovForFrame(double cameraFovDeg, double height, double frameHeight) {
+	if (frameHeight <= 0 || height <= 0) return cameraFovDeg;
+	const double t = std::tan(cameraFovDeg * kPi / 360.0) * (height / frameHeight);
+	return 2.0 * std::atan(t) * 180.0 / kPi;
+}
 
 // A camera seen through a width x height widget.
 struct View {

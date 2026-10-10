@@ -9,6 +9,7 @@
 #include <QMetaObject>
 #include <QMouseEvent>
 #include <QPainter>
+#include <QPainterPath>
 #include <QPointer>
 #include <QPolygonF>
 #include <QThreadPool>
@@ -29,10 +30,34 @@ Scene3DView::~Scene3DView() = default;
 
 scene_view::View Scene3DView::view() const {
 	scene_view::View v;
-	v.cam = m_cam;
+	v.cam = (m_throughCamera && m_doc) ? cameraPose() : m_cam;
 	v.width = std::max(1, width());
 	v.height = std::max(1, height());
 	return v;
+}
+
+scene_view::OrbitCamera Scene3DView::cameraPose() const {
+	const scene_doc::Camera &c = m_doc->camera;
+	const double aspect = m_doc->render.height > 0 ? double(m_doc->render.width) / m_doc->render.height : 1.0;
+	const scene_view::FrameRect frame = scene_view::pictureFrame(std::max(1, width()), std::max(1, height()), aspect);
+	return scene_view::orbitLookingFrom(toV3(c.position), toV3(c.target), scene_view::fovForFrame(c.fov, std::max(1, height()), frame.h));
+}
+
+void Scene3DView::setThroughCamera(bool on) {
+	if (on == m_throughCamera) return;
+	m_throughCamera = on && m_doc;
+	update();
+}
+
+// Out of the camera's view, staying where it is: the orbit carries on from the camera's place (at the usual field of view).
+void Scene3DView::leaveCameraView() {
+	if (!m_throughCamera) return;
+	m_cam = cameraPose();
+	m_cam.fovDeg = scene_view::OrbitCamera{}.fovDeg;
+	m_throughCamera = false;
+	m_userView = true;
+	emit cameraViewLeft();
+	update();
 }
 
 const Float3 *Scene3DView::handle(const BuilderSelection &s, int which) const { return builderHandle(m_doc, s, which); }
@@ -73,13 +98,14 @@ void Scene3DView::keyPressEvent(QKeyEvent *e) {
 
 void Scene3DView::resizeEvent(QResizeEvent *e) {
 	QWidget::resizeEvent(e);
-	if (!m_userView) frameAll();
+	if (!m_userView && !m_throughCamera) frameAll();
 }
 
 // ---------------------------------------------------------------------------------------------------------------------------------
 // Framing and positions
 // ---------------------------------------------------------------------------------------------------------------------------------
 void Scene3DView::frameAll() {
+	leaveCameraView();
 	m_userView = false;
 	if (!m_doc) return;
 	V3 lo{1e18, 1e18, 1e18}, hi{-1e18, -1e18, -1e18};
@@ -109,9 +135,9 @@ void Scene3DView::frameAll() {
 Float3 Scene3DView::centerInWorld() const {
 	const scene_view::View v = view();
 	V3 hit;
-	if (scene_view::rayPlane(v.ray(width() / 2.0, height() / 2.0), {0, 0, 0}, {0, 1, 0}, hit) && scene_view::length(hit - m_cam.target) <= kMaxDropDistance * m_cam.distance)
+	if (scene_view::rayPlane(v.ray(width() / 2.0, height() / 2.0), {0, 0, 0}, {0, 1, 0}, hit) && scene_view::length(hit - v.cam.target) <= kMaxDropDistance * v.cam.distance)
 		return toFloat3(hit);
-	return toFloat3(V3{m_cam.target.x, 0.0, m_cam.target.z});  // a level camera: the floor under what it looks at
+	return toFloat3(V3{v.cam.target.x, 0.0, v.cam.target.z});  // a level camera: the floor under what it looks at
 }
 
 QPointF Scene3DView::itemScreenPos(const BuilderSelection &s) const {
@@ -328,8 +354,27 @@ void Scene3DView::paintEvent(QPaintEvent *) {
 	drawFaces(c);
 	drawNames(c);
 	drawLights(c);
-	drawCamera(c);
+	if (!m_throughCamera) drawCamera(c);   // the eye is the camera
 	drawTool(c);
+	if (m_throughCamera) drawCameraFrame(p);
+}
+
+// The picture's frame over the view: what is outside it is dimmed, so what is inside is what a render shows.
+void Scene3DView::drawCameraFrame(QPainter &p) const {
+	const double aspect = m_doc->render.height > 0 ? double(m_doc->render.width) / m_doc->render.height : 1.0;
+	const scene_view::FrameRect f = scene_view::pictureFrame(std::max(1, width()), std::max(1, height()), aspect);
+	QPainterPath outside;
+	outside.addRect(rect());
+	QPainterPath inside;
+	inside.addRect(QRectF(f.x, f.y, f.w, f.h));
+	p.setPen(Qt::NoPen);
+	p.setBrush(QColor(0, 0, 0, 110));
+	p.drawPath(outside.subtracted(inside));
+	p.setBrush(Qt::NoBrush);
+	p.setPen(QPen(palette().color(QPalette::Highlight), 1.5));
+	p.drawRect(QRectF(f.x, f.y, f.w, f.h));
+	p.setPen(palette().color(QPalette::Text));
+	p.drawText(QPointF(f.x + 8, f.y + 18), tr("Through the camera (%1 x %2). Orbit, pan or zoom to leave.").arg(m_doc->render.width).arg(m_doc->render.height));
 }
 
 // Floor grid and the world axes
