@@ -1006,18 +1006,14 @@ bool RealtimePreviewWorker::renderOneFrame(bool cameraJustMoved, bool scheduleSp
 			m_sppScheduler.frameDone(cameraJustMoved, std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - renderStart).count());
 		}
 		if (!ok) {
+			// The library says why when it knows (rt_realtime_get_last_error(): "Scene contains no geometry", a mesh file it could not read, a caught CUDA/OptiX
+			// exception, the renderer failing to start); only a failure it cannot explain gets the generic guess.
 			QString message = QStringLiteral("Render failed - scene may not be GPU-supported, "
 											  "or the wavefront backend is unavailable");
-			// Extra detail when the failure was a caught exception (CUDA/OptiX
-			// error, etc.) - see rt_realtime_get_last_error()'s own comment.
-			// "" for an ordinary false return (already fully described by the
-			// generic message above), so no redundant empty parenthetical.
 			GetLastErrorFn getLastError = handle().getLastErrorFn;
 			if (getLastError) {
 				const char* detail = getLastError();
-				if (detail && *detail) {
-					message += QStringLiteral(" (%1)").arg(QString::fromUtf8(detail));
-				}
+				if (detail && *detail) message = QStringLiteral("Render failed: %1").arg(QString::fromUtf8(detail));
 			}
 			emit statusChanged(message);
 		}

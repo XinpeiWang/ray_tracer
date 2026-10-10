@@ -9,6 +9,7 @@ integration/gallery_scenes_render_test.cpp
 integration/gpu_recursive_dispersion_test.cpp
 integration/live_preview_adaptive_sampling_test.cpp
 integration/live_preview_checkerboard_test.cpp
+integration/live_preview_failure_message_test.cpp
 integration/live_preview_geometry_skip_test.cpp
 integration/live_preview_nrc_test.cpp
 integration/live_preview_restir_firefly_test.cpp

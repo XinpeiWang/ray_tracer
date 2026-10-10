@@ -204,6 +204,8 @@
     <ClCompile Include="unit\gpu_tessellate_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_frame_tests.cpp" />
     <ClCompile Include="unit\scene_size_tests.cpp" />
+    <ClCompile Include="unit\model_library_tests.cpp" />
+    <ClCompile Include="unit\scene_blocks_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_textures_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_materials_tests.cpp" />
     <ClCompile Include="unit\nanovdb_dense_tests.cpp" />
@@ -233,6 +235,7 @@
     <ClCompile Include="integration\live_preview_restir_light_bvh_test.cpp" />
     <ClCompile Include="integration\live_preview_svgf_test.cpp" />
     <ClCompile Include="integration\live_preview_checkerboard_test.cpp" />
+    <ClCompile Include="integration\live_preview_failure_message_test.cpp" />
     <ClCompile Include="integration\scene_loader_transform_cache_test.cpp" />
     <ClCompile Include="integration\pbrt_dof_override_test.cpp" />
     <ClCompile Include="integration\live_preview_geometry_skip_test.cpp" />

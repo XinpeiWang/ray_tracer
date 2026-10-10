@@ -40,6 +40,34 @@ static std::string g_uploaded_scene_id;
 // never see (or clobber) Live Preview's own last-error text, or vice versa.
 static thread_local std::string g_lastRealtimeError;
 
+// Sends std::cerr into a string for as long as it lives. The live-preview path runs every frame and wants no console spam, but when a build fails the lines the
+// builder wrote are the only explanation of why ("Scene contains no geometry", "every mesh file this scene needs could not be read: ..."), so they are kept.
+// Restores std::cerr even if the code in between throws.
+struct CerrCapture {
+	std::ostringstream text;
+	std::streambuf* previous;
+	CerrCapture() : previous(std::cerr.rdbuf(text.rdbuf())) {}
+	~CerrCapture() { std::cerr.rdbuf(previous); }
+	CerrCapture(const CerrCapture&) = delete;
+	CerrCapture& operator=(const CerrCapture&) = delete;
+};
+
+// The reason a build failed, from what it wrote to std::cerr: the last non-empty line (the builder says what went wrong last; earlier lines are warnings), without the
+// "[OptiX] " tag and with a long path-laden message cut to a readable length. `fallback` when the builder said nothing.
+static std::string reasonFrom(const std::string& cerrText, const char* fallback) {
+	std::string last;
+	std::istringstream in(cerrText);
+	for (std::string line; std::getline(in, line);) {
+		while (!line.empty() && (line.back() == '\r' || line.back() == ' ')) line.pop_back();
+		if (!line.empty()) last = line;
+	}
+	const std::string tag = "[OptiX] ";
+	if (last.compare(0, tag.size(), tag) == 0) last.erase(0, tag.size());
+	if (last.compare(0, 7, "Error: ") == 0) last.erase(0, 7);
+	if (last.size() > 400) last = last.substr(0, 397) + "...";
+	return last.empty() ? std::string(fallback) : last;
+}
+
 extern "C" bool optix_is_available() {
 	return OptiXRenderer::isAvailable();
 }
@@ -120,22 +148,23 @@ static bool prepareSceneAndCamera(
 	cameraExtra.maxComponentValue = 1e9f;
 
 	bool builtOk;
+	std::string buildDiagnostics;   // what build_scene() wrote to std::cerr when `verbose` is off (kept to explain a failure)
 	if (verbose) {
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
 							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
 							   has_custom_lookat, lookat_x, lookat_y, lookat_z,
 							   has_dof_override, aperture_override, focus_distance_override);
 	} else {
-		std::ostringstream discard;
-		std::streambuf* oldCerrBuf = std::cerr.rdbuf(discard.rdbuf());
+		CerrCapture capture;
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
 							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
 							   has_custom_lookat, lookat_x, lookat_y, lookat_z,
 							   has_dof_override, aperture_override, focus_distance_override);
-		std::cerr.rdbuf(oldCerrBuf);
+		buildDiagnostics = capture.text.str();
 	}
 
 	if (!builtOk) {
+		if (!verbose) g_lastRealtimeError = reasonFrom(buildDiagnostics, "this scene has no GPU implementation");
 		// build_scene() only ever returns false for an unrecognized/
 		// unimplemented scene_id (its default: case) - the other
 		// return-false path (a null camera_params buffer) is unreachable in
@@ -180,6 +209,9 @@ static bool prepareSceneAndCamera(
 		// PREVIOUS scene's placements around.
 		g_renderer->setInstanceData(scene.instanceTriangles, scene.instanceSpheres,
 									scene.instanceGroups, scene.instancePlacements);
+		// The GPU upload writes its own errors to std::cerr ("Scene contains no geometry"); kept, when not verbose, to say why this failed.
+		std::unique_ptr<CerrCapture> uploadCapture;
+		if (!verbose) uploadCapture = std::make_unique<CerrCapture>();
 		if (!g_renderer->buildScene(scene.spheres, scene.quads, scene.materials,
 									 scene.lightIndices, scene.lightKinds,
 									 scene.punctualLights, scene.bilinearPatches,
@@ -205,6 +237,7 @@ static bool prepareSceneAndCamera(
 								 scene.portalFrameX, scene.portalFrameY, scene.portalFrameZ,
 								 scene.portalP0, scene.portalP2)) {
 			if (verbose) std::cerr << "[OptiX] Failed to upload scene to GPU\n";
+			else g_lastRealtimeError = reasonFrom(uploadCapture->text.str(), "the scene could not be uploaded to the GPU");
 			errorCode = ERR_GPU_MEMORY_COPY_FAILED;
 			return false;
 		}
@@ -658,8 +691,13 @@ extern "C" bool rt_realtime_render_frame(
 
 	try {
 		if (!g_renderer) {
-			g_renderer.reset(new OptiXRenderer());
-			if (!g_renderer->initialize()) return false;
+			// Kept only once it has started: a renderer that failed to initialize must not be left as the global one, or every later call would use it unstarted.
+			std::unique_ptr<OptiXRenderer> fresh(new OptiXRenderer());
+			if (!fresh->initialize()) {
+				g_lastRealtimeError = "the OptiX renderer could not start (no compatible NVIDIA GPU or driver, or its program files are missing)";
+				return false;
+			}
+			g_renderer.reset(fresh.release());
 		}
 
 		static std::string s_cachedSceneId;
@@ -718,7 +756,10 @@ extern "C" bool rt_realtime_render_frame(
 										 aperture_override, focus_distance_override)) {
 				return false;
 			}
-			if (!g_renderer->isWavefrontActive()) return false;
+			if (!g_renderer->isWavefrontActive()) {
+				g_lastRealtimeError = "the wavefront renderer could not start (wavefront_programs.ptx is missing or the OptiX pipeline failed to build)";
+				return false;
+			}
 
 			s_cachedSceneId = scene_id;
 			s_cachedWidth = image_width;
