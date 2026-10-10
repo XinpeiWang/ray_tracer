@@ -543,21 +543,21 @@
     </message>
     <message>
         <location filename="../live_object_editor.cpp" line="54"/>
-        <source>Click an object and drag it. Shift: up and down.</source>
-        <translation>オブジェクトをクリックしてドラッグします。Shift：上下。</translation>
+        <source>Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.</source>
+        <translation>オブジェクトをクリックしてドラッグします（Shift：上下）。その後は W A S D と上下キーでも動かせます。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="70"/>
+        <location filename="../live_object_editor.cpp" line="104"/>
+        <source>Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.</source>
+        <translation>選択中：%1。ドラッグで移動（Shift：上下）。W A S D と上下キーでも動かせます。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="95"/>
         <source>Nothing movable there: drag to orbit.</source>
         <translation>そこには動かせるものがありません。ドラッグでカメラを周回します。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="78"/>
-        <source>Moving: %1. Shift: up and down.</source>
-        <translation>移動中：%1。Shift：上下。</translation>
-    </message>
-    <message>
-        <location filename="../live_object_editor.cpp" line="102"/>
+        <location filename="../live_object_editor.cpp" line="139"/>
         <source>Every object is back where the scene file puts it.</source>
         <translation>すべてのオブジェクトをシーンファイルの位置に戻しました。</translation>
     </message>
@@ -4246,17 +4246,17 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>停止しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="299"/>
+        <location filename="../mainwindow_live_preview.cpp" line="300"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>ライブ（デノイズ済み、累積なし）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="301"/>
+        <location filename="../mainwindow_live_preview.cpp" line="302"/>
         <source>%1 samples</source>
         <translation>%1 サンプル</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="326"/>
+        <location filename="../mainwindow_live_preview.cpp" line="327"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[ライブプレビュー] エラー: %1</translation>
     </message>
@@ -7354,12 +7354,12 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1219"/>
+        <location filename="../mainwindow_widgets.h" line="1220"/>
         <source>No renders yet</source>
         <translation>レンダリング結果はまだありません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1227"/>
+        <location filename="../mainwindow_widgets.h" line="1228"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>

@@ -291,6 +291,7 @@ void MainWindow::onLivePreviewFrameReady(QImage image, int sampleCount) {
 	if (!m_livePreviewLabel || !m_livePreviewStatusLabel) return;
 	++m_livePreviewFrameCount;
 	m_livePreviewLabel->setPreviewPixmap(QPixmap::fromImage(image));
+	if (m_liveObjectEditor) m_liveObjectEditor->frameShown();   // the selection's box follows the camera
 	// While effectively showing the latest frame instead of accumulating
 	// (RealtimePreviewWorker::renderLoop()'s own gating condition), sampleCount
 	// is really just a frame counter - no real accumulation is happening, so
@@ -333,7 +334,6 @@ void MainWindow::onLivePreviewCameraChanged() {
 	if (!m_livePreviewRunning || !m_livePreviewSession) return;
 	const camera_math::Vec3 camera = currentCameraPosition();
 	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
-	if (m_liveObjectEditor) m_liveObjectEditor->cameraMoved();
 	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z,
 									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 }
@@ -341,7 +341,6 @@ void MainWindow::onLivePreviewCameraChanged() {
 void MainWindow::updateLivePreviewCameraFromOrbit() {
 	if (!m_livePreviewRunning || !m_livePreviewSession) return;
 	const camera_math::Vec3 camera = camera_math::orbitToCartesian(m_orbit, m_livePreviewLookAt);
-	if (m_liveObjectEditor) m_liveObjectEditor->cameraMoved();
 	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z,
 									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 }
@@ -596,6 +595,8 @@ void MainWindow::onLivePreviewTranslate(int forwardSteps, int rightSteps, int up
 	// Scaled here rather than inside applyTranslateDelta(), matching onLivePreviewKeyOrbit()/onLivePreviewKeyZoom()'s own "resolve steps to a real delta before
 	// calling the shared apply* helper" convention.
 	const double scale = camera_math::keyboardStep(m_livePreviewSceneSize, m_keyboardSensitivity);
+	// With an object selected in Move objects mode these keys move the object (in the directions the picture shows) instead of the camera.
+	if (m_liveObjectEditor && m_liveObjectEditor->nudge(forwardSteps, rightSteps, upSteps, scale)) return;
 	applyTranslateDelta(forwardSteps * scale, rightSteps * scale, upSteps * scale);
 }
 

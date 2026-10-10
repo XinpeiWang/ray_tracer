@@ -51,14 +51,39 @@ void LiveObjectEditor::setHint(const QString &text) {
 void LiveObjectEditor::onModeToggled(bool on) {
 	m_label->setObjectMode(on);
 	m_haveSelection = false;
-	setHint(on ? tr("Click an object and drag it. Shift: up and down.") : QString());
+	setHint(on ? tr("Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.") : QString());
 	if (on) m_label->setFocus();
 }
 
-void LiveObjectEditor::cameraMoved() {
-	if (!m_haveSelection) return;
-	m_haveSelection = false;
-	m_label->clearSelection();
+void LiveObjectEditor::frameShown() {
+	if (m_haveSelection) showSelectionBox();
+}
+
+// The camera of the picture on screen (it moves while the user orbits or flies), or, before the first frame, the one the object was picked with.
+bool LiveObjectEditor::currentBasis(camera_math::CameraBasis &basis) const {
+	double b[12];
+	if (!m_session || !m_session->cameraBasisNow(b)) std::copy(m_selected.cameraBasis, m_selected.cameraBasis + 12, b);
+	basis = camera_math::CameraBasis{{b[0], b[1], b[2]}, {b[3], b[4], b[5]}, {b[6], b[7], b[8]}, {b[9], b[10], b[11]}};
+	return true;
+}
+
+bool LiveObjectEditor::nudge(int forwardSteps, int rightSteps, int upSteps, double step) {
+	if (!m_haveSelection || !m_label->objectMode() || !m_session) return false;
+	if (m_dragging) return true;
+	camera_math::CameraBasis basis;
+	camera_math::Vec3 delta;
+	currentBasis(basis);
+	if (!object_drag::keyMove(basis, forwardSteps, rightSteps, upSteps, step, delta)) return true;
+	for (int a = 0; a < 3; ++a) {
+		const double d = a == 0 ? delta.x : a == 1 ? delta.y : delta.z;
+		m_selected.lo[a] += d;
+		m_selected.hi[a] += d;
+		m_selected.hit[a] += d;
+		m_selected.offset[a] += d;
+	}
+	m_session->setObjectOffset(m_selected.object, m_selected.offset[0], m_selected.offset[1], m_selected.offset[2]);
+	showSelectionBox();
+	return true;
 }
 
 void LiveObjectEditor::onPressed(double s, double t) {
@@ -74,8 +99,9 @@ void LiveObjectEditor::onPressed(double s, double t) {
 	m_haveSelection = true;
 	m_dragging = true;
 	m_label->setObjectGrabbed(true);
-	showSelectionBox(camera_math::Vec3{0.0, 0.0, 0.0});
-	setHint(tr("Moving: %1. Shift: up and down.").arg(pick.label));
+	m_pending = camera_math::Vec3{0.0, 0.0, 0.0};
+	showSelectionBox();
+	setHint(tr("Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.").arg(pick.label));
 }
 
 void LiveObjectEditor::onDragged(double s, double t, bool vertical) {
@@ -87,11 +113,22 @@ void LiveObjectEditor::onDragged(double s, double t, bool vertical) {
 	// One drag never throws the object further than a few scene sizes (a ray that grazes the floor meets it very far away).
 	if (!object_drag::dragDelta(basis, grab, s, t, vertical, m_sceneSize > 0.0 ? 3.0 * m_sceneSize : 0.0, delta)) return;
 	m_session->setObjectOffset(m_selected.object, m_selected.offset[0] + delta.x, m_selected.offset[1] + delta.y, m_selected.offset[2] + delta.z);
-	showSelectionBox(delta);
+	m_pending = delta;
+	showSelectionBox();
 }
 
+// The drag is over: the object is where the drag put it, which is where later drags and key presses start from.
 void LiveObjectEditor::onReleased() {
 	m_dragging = false;
+	if (!m_haveSelection) return;
+	const double d[3] = {m_pending.x, m_pending.y, m_pending.z};
+	for (int a = 0; a < 3; ++a) {
+		m_selected.lo[a] += d[a];
+		m_selected.hi[a] += d[a];
+		m_selected.hit[a] += d[a];
+		m_selected.offset[a] += d[a];
+	}
+	m_pending = camera_math::Vec3{0.0, 0.0, 0.0};
 }
 
 void LiveObjectEditor::onResetClicked() {
@@ -102,10 +139,11 @@ void LiveObjectEditor::onResetClicked() {
 	setHint(tr("Every object is back where the scene file puts it."));
 }
 
-// The 12 edges of the selected object's box, shifted by `shift`, as the picture shows them (the camera that drew the picture the object was picked in).
-void LiveObjectEditor::showSelectionBox(const camera_math::Vec3 &shift) {
-	const double *b = m_selected.cameraBasis;
-	const camera_math::CameraBasis basis{{b[0], b[1], b[2]}, {b[3], b[4], b[5]}, {b[6], b[7], b[8]}, {b[9], b[10], b[11]}};
+// The 12 edges of the selected object's box (plus the drag so far), as the picture on screen shows them.
+void LiveObjectEditor::showSelectionBox() {
+	camera_math::CameraBasis basis;
+	currentBasis(basis);
+	const camera_math::Vec3 shift = m_pending;
 	QPointF corner[8];
 	bool visible[8];
 	for (int i = 0; i < 8; ++i) {

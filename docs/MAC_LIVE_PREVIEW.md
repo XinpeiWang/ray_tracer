@@ -27,6 +27,10 @@ Under the picture, **Move objects** switches the mouse to object mode: a press o
 through the point you grabbed), a drag with **Shift** held lifts and lowers it, and a press on empty space orbits the camera as before. **Reset objects** puts
 everything back. Moves are for looking at a different arrangement: they are not saved, and each new Live Preview starts from the scene file again.
 
+* With an object selected (its yellow box shows), **W/S, A/D and Up/Down move the object** instead of the camera: forward, back, left and right as the picture shows
+  them (forward is flattened onto the floor), up and down straight up and down, by the same step as the camera's free fly (`object_drag_math.h` `keyMove`).
+  The selection survives camera moves: orbit, zoom or fly and the box follows the object (the GUI redraws it every frame from the camera basis of the
+  picture on screen, `RealtimePreviewSession::cameraBasisNow()`); it ends when you press on empty space or another object, switch Move objects off, or Reset.
 * What an "object" is: the shapes of one `AttributeBegin`/`AttributeEnd` block of the pbrt file (a box written as six quads is one object), or a `Shape` outside any
   block on its own. Only shapes that became triangles, spheres, disks or cylinders can be moved; instances, curves and the like cannot, and a click on one orbits.
   A scene with everything in one block is one object.

@@ -475,6 +475,7 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 	// Every preview starts from the scene as its file has it: objects moved in an earlier preview of this scene (the renderer keeps them while the scene stays
 	// the same) are put back.
 	if (const auto reset = handle().resetObjectsFn) reset(sceneId.toStdString().c_str());
+	{ std::lock_guard<std::mutex> lock(m_publishedBasisMutex); m_publishedBasisValid = false; }
 	m_width = width;
 	m_height = height;
 	m_camX = camX;
@@ -1079,7 +1080,19 @@ bool RealtimePreviewWorker::renderOneFrame(bool cameraJustMoved, bool scheduleSp
 			emit statusChanged(message);
 		}
 	}
+	if (ok && m_cameraBasis.size() >= 12) {
+		std::lock_guard<std::mutex> lock(m_publishedBasisMutex);
+		for (int i = 0; i < 12; ++i) m_publishedBasis[i] = m_cameraBasis[i];
+		m_publishedBasisValid = true;
+	}
 	return ok;
+}
+
+bool RealtimePreviewWorker::cameraBasisNow(double out[12]) const {
+	std::lock_guard<std::mutex> lock(m_publishedBasisMutex);
+	if (!m_publishedBasisValid) return false;
+	for (int i = 0; i < 12; ++i) out[i] = m_publishedBasis[i];
+	return true;
 }
 
 // Neural temporal upscale: the GPU already produced the final high-resolution picture; tone-map it for display.
@@ -1606,6 +1619,10 @@ LiveObjectPick RealtimePreviewSession::pickObjectAt(double s, double t) {
 	if (!m_thread.isRunning()) return pick;
 	QMetaObject::invokeMethod(m_worker, [this, s, t, &pick]() { pick = m_worker->pickObjectAt(s, t); }, Qt::BlockingQueuedConnection);
 	return pick;
+}
+
+bool RealtimePreviewSession::cameraBasisNow(double out[12]) const {
+	return m_worker->cameraBasisNow(out);
 }
 
 void RealtimePreviewSession::setObjectOffset(int object, double dx, double dy, double dz) {

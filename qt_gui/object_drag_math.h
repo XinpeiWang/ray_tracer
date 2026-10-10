@@ -54,6 +54,19 @@ inline bool dragDelta(const CameraBasis &cb, const Vec3 &grab, double s1, double
 	return true;
 }
 
+// The world-space move of a keypress for an object, in the camera's own terms (the same W/A/S/D and Up/Down as the camera's free fly): `forwardSteps` along the way
+// the camera looks (flattened onto the floor, so the object stays on it), `rightSteps` to the camera's right, `upSteps` straight up, each times `step`.
+// False when the camera looks straight down or up (no horizontal forward).
+inline bool keyMove(const CameraBasis &cb, int forwardSteps, int rightSteps, int upSteps, double step, Vec3 &delta) {
+	Vec3 forward = cb.lowerLeftCorner + cb.horizontal * 0.5 + cb.vertical * 0.5 - cb.origin;
+	forward.y = 0.0;
+	forward = camera_math::normalized(forward);
+	if (camera_math::length(forward) < 0.5) return false;
+	const Vec3 right = camera_math::normalized(camera_math::cross(forward, Vec3{0.0, 1.0, 0.0}));
+	delta = forward * (forwardSteps * step) + right * (rightSteps * step) + Vec3{0.0, upSteps * step, 0.0};
+	return true;
+}
+
 }  // namespace object_drag
 
 #endif  // OBJECT_DRAG_MATH_H

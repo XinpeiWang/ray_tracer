@@ -109,3 +109,46 @@ TEST(ObjectDragMathTest, NoVerticalPlaneFacesACameraLookingStraightDown) {
 	Vec3 delta;
 	EXPECT_FALSE(dragDelta(cb, Vec3{0.0, 0.0, 0.0}, 0.5, 0.5, true, 0.0, delta));
 }
+
+TEST(ObjectDragMathTest, KeysMoveAnObjectRelativeToTheView) {
+	const CameraBasis cb = testCamera();   // at (0, 5, 10) looking at the origin: forward is -z on the floor, right is +x
+	Vec3 delta;
+	ASSERT_TRUE(keyMove(cb, 1, 0, 0, 2.0, delta));
+	EXPECT_NEAR(delta.x, 0.0, 1e-9);
+	EXPECT_NEAR(delta.y, 0.0, 1e-12) << "forward stays on the floor even though the camera looks down";
+	EXPECT_NEAR(delta.z, -2.0, 1e-9);
+	ASSERT_TRUE(keyMove(cb, 0, 1, 0, 2.0, delta));
+	EXPECT_NEAR(delta.x, 2.0, 1e-9);
+	EXPECT_NEAR(delta.z, 0.0, 1e-9);
+	ASSERT_TRUE(keyMove(cb, 0, 0, -1, 2.0, delta));
+	EXPECT_NEAR(delta.y, -2.0, 1e-12);
+	EXPECT_NEAR(delta.x, 0.0, 1e-12);
+}
+
+TEST(ObjectDragMathTest, KeysFollowAnOrbitedCamera) {
+	// The same camera turned a quarter circle round the origin (now at +x looking at -x): forward is -x, and with y up the camera's right is -z.
+	CameraBasis cb;
+	cb.origin = Vec3{10.0, 5.0, 0.0};
+	const Vec3 forward = camera_math::normalized(Vec3{0.0, 0.0, 0.0} - cb.origin);
+	const Vec3 right = camera_math::normalized(camera_math::cross(forward, Vec3{0.0, 1.0, 0.0}));
+	const Vec3 up = camera_math::cross(right, forward);
+	cb.horizontal = right * 2.0;
+	cb.vertical = up * 2.0;
+	cb.lowerLeftCorner = cb.origin + forward - right - up;
+	Vec3 delta;
+	ASSERT_TRUE(keyMove(cb, 1, 0, 0, 1.0, delta));
+	EXPECT_NEAR(delta.x, -1.0, 1e-9);
+	EXPECT_NEAR(delta.z, 0.0, 1e-9);
+	ASSERT_TRUE(keyMove(cb, 0, 1, 0, 1.0, delta));
+	EXPECT_NEAR(delta.z, -1.0, 1e-9) << "to the right of a camera looking down -x is -z";
+}
+
+TEST(ObjectDragMathTest, NoHorizontalForwardWhenLookingStraightDown) {
+	CameraBasis cb;
+	cb.origin = Vec3{0.0, 10.0, 0.0};
+	cb.lowerLeftCorner = Vec3{-1.0, 9.0, 1.0};
+	cb.horizontal = Vec3{2.0, 0.0, 0.0};
+	cb.vertical = Vec3{0.0, 0.0, -2.0};
+	Vec3 delta;
+	EXPECT_FALSE(keyMove(cb, 1, 0, 0, 1.0, delta));
+}

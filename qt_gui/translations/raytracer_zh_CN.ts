@@ -543,21 +543,21 @@
     </message>
     <message>
         <location filename="../live_object_editor.cpp" line="54"/>
-        <source>Click an object and drag it. Shift: up and down.</source>
-        <translation>点击物体并拖动。Shift：上下移动。</translation>
+        <source>Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.</source>
+        <translation>点击物体并拖动（Shift：上下移动）。之后 W A S D 和上/下方向键也可以移动它。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="70"/>
+        <location filename="../live_object_editor.cpp" line="104"/>
+        <source>Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.</source>
+        <translation>已选中：%1。拖动可移动（Shift：上下移动）；W A S D 和上/下方向键也可以移动它。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="95"/>
         <source>Nothing movable there: drag to orbit.</source>
         <translation>那里没有可移动的物体：拖动以环绕相机。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="78"/>
-        <source>Moving: %1. Shift: up and down.</source>
-        <translation>正在移动：%1。Shift：上下移动。</translation>
-    </message>
-    <message>
-        <location filename="../live_object_editor.cpp" line="102"/>
+        <location filename="../live_object_editor.cpp" line="139"/>
         <source>Every object is back where the scene file puts it.</source>
         <translation>所有物体已回到场景文件指定的位置。</translation>
     </message>
@@ -4252,17 +4252,17 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
         <translation>已停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="299"/>
+        <location filename="../mainwindow_live_preview.cpp" line="300"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>实时（已降噪，不进行累积）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="301"/>
+        <location filename="../mainwindow_live_preview.cpp" line="302"/>
         <source>%1 samples</source>
         <translation>%1 个样本</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="326"/>
+        <location filename="../mainwindow_live_preview.cpp" line="327"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[实时预览] 错误：%1</translation>
     </message>
@@ -7360,12 +7360,12 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1219"/>
+        <location filename="../mainwindow_widgets.h" line="1220"/>
         <source>No renders yet</source>
         <translation>尚无渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1227"/>
+        <location filename="../mainwindow_widgets.h" line="1228"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>
