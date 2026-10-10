@@ -31,7 +31,10 @@ inline void shadeEscapedRay(thread const KernelRes& R, thread PathState& P, thre
             // exactly the same two escape hatches the area
             // light's own weight below already has.
             float envMissWeight = 1.0;
-            if (!specularBounce && uniforms.envMapWidth > 0u) {
+            // A ray that left a medium scatter has no light-sampling strategy to share the sky with (medium scatters sample the area, point and
+            // distant lights and the constant sky, not an image sky): full weight. Found by scripts/consistency_sweep.py: fog under a white
+            // picture sky read 30% darker than the same fog under a constant sky.
+            if (!specularBounce && !fromMediumScatter && uniforms.envMapWidth > 0u) {
                 float pdfEnv = pdfEnvironmentDirection(envMarginalCDF, envConditionalCDF,
                                                         int(uniforms.envMapWidth), int(uniforms.envMapHeight),
                                                         normalize(rayDir));
@@ -49,7 +52,7 @@ inline void shadeEscapedRay(thread const KernelRes& R, thread PathState& P, thre
             // double-count protection.
             float3 pbrtEnvColorSample = pbrtEnvLeAt(uniforms, pbrtEnvConditionalCDF, pbrtEnvTexture, textureSampler, rayOrigin, normalize(rayDir));
             float pbrtEnvMissWeight = 1.0;
-            if (!specularBounce && uniforms.pbrtEnvMapWidth > 0u) {
+            if (!specularBounce && !fromMediumScatter && uniforms.pbrtEnvMapWidth > 0u) {
                 float pdfPbrtEnv = pbrtEnvPdfAt(uniforms, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF,
                                                 uniforms.pbrtEnvMapWidth, uniforms.pbrtEnvMapHeight,
                                                 rayOrigin, normalize(rayDir));

@@ -214,6 +214,58 @@ inline bool shadeCoatedConductor(TriangleMaterial mat, float3 hitPoint, float3 f
                 }
             }
         }
+
+        // Environment lights (the demo scene's picture, and a pbrt scene's own image-based infinite light): one light sample from the picture's own distribution,
+        // MIS-weighted against the walk's sample by pbrt's PDF(). Without this the continuation ray's escape is MIS-weighted for a light sample that is never
+        // taken, and an object under an image sky comes out dark (a coated ball read 6% low under a white picture sky and exactly right under the same sky as a constant:
+        // found by scripts/consistency_sweep.py).
+        if (envMapWidth > 0u && uniforms.useEnvironmentMap != 0u) {
+            float envPdfSolidAngle;
+            float3 envWi = sampleEnvironmentDirection(envMarginalCDF, envConditionalCDF,
+                                                       int(envMapWidth), int(envMapHeight),
+                                                       randFloat(rngState), randFloat(rngState), envPdfSolidAngle);
+            float envCosSurface = dot(facingNormal, envWi);
+            if (envCosSurface > 0.0 && envPdfSolidAngle > 1e-9) {
+                ray envShadowRay;
+                envShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                envShadowRay.direction = envWi;
+                envShadowRay.min_distance = 0.001f;
+                envShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> envShadowResult =
+                    traceShadowAny(isect, envShadowRay, accelStructure, functionTable);
+                if (envShadowResult.type == intersection_type::none) {
+                    float3 envWiLocal = float3(dot(envWi, tangent), dot(envWi, bitangent), dot(envWi, facingNormal));
+                    float3 envF = layeredCoatedConductorF(envWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
+                    float envPdfBsdf = layeredCoatedConductorPdf(woLocal, envWiLocal, mat.ior, alpha, conductorEta, conductorK, baseAlpha);
+                    float envWeight = (envPdfSolidAngle * envPdfSolidAngle) / (envPdfSolidAngle * envPdfSolidAngle + envPdfBsdf * envPdfBsdf);
+                    float3 envRadiance = earthTexture.sample(textureSampler, envMapUV(envWi)).rgb;
+                    radiance += throughput * envF * envRadiance * envCosSurface / envPdfSolidAngle * envWeight;
+                }
+            }
+        }
+        if (pbrtEnvMapWidth > 0u) {
+            float pbrtEnvPdfSolidAngle;
+            float3 pbrtEnvWi = pbrtEnvSampleDirection(uniforms, pbrtEnvMarginalCDF, pbrtEnvConditionalCDF, pbrtEnvMapWidth, pbrtEnvMapHeight, hitPoint,
+                                                           randFloat(rngState), randFloat(rngState), pbrtEnvPdfSolidAngle);
+            float pbrtEnvCosSurface = dot(facingNormal, pbrtEnvWi);
+            if (pbrtEnvCosSurface > 0.0 && pbrtEnvPdfSolidAngle > 1e-9) {
+                ray pbrtEnvShadowRay;
+                pbrtEnvShadowRay.origin = hitPoint + facingNormal * 0.001f;
+                pbrtEnvShadowRay.direction = pbrtEnvWi;
+                pbrtEnvShadowRay.min_distance = 0.001f;
+                pbrtEnvShadowRay.max_distance = 1e5f;
+                intersection_result<instancing, triangle_data> pbrtEnvShadowResult =
+                    traceShadowAny(isect, pbrtEnvShadowRay, accelStructure, functionTable);
+                if (pbrtEnvShadowResult.type == intersection_type::none) {
+                    float3 pbrtEnvWiLocal = float3(dot(pbrtEnvWi, tangent), dot(pbrtEnvWi, bitangent), dot(pbrtEnvWi, facingNormal));
+                    float3 pbrtEnvF = layeredCoatedConductorF(pbrtEnvWiLocal, woLocal, mat.ior, alpha, conductorEta, conductorK, rngState, baseAlpha, coatThickness);
+                    float pbrtEnvPdfBsdf = layeredCoatedConductorPdf(woLocal, pbrtEnvWiLocal, mat.ior, alpha, conductorEta, conductorK, baseAlpha);
+                    float pbrtEnvWeight = (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle) / (pbrtEnvPdfSolidAngle * pbrtEnvPdfSolidAngle + pbrtEnvPdfBsdf * pbrtEnvPdfBsdf);
+                    float3 pbrtEnvRadianceSample = pbrtEnvLeAt(uniforms, pbrtEnvConditionalCDF, pbrtEnvTexture, textureSampler, hitPoint, pbrtEnvWi);
+                    radiance += throughput * pbrtEnvF * pbrtEnvRadianceSample * pbrtEnvCosSurface / pbrtEnvPdfSolidAngle * pbrtEnvWeight;
+                }
+            }
+        }
     }
 
     // Continuation ray: pbrt's LayeredBxDF::Sample_f random walk. A failed walk ends the path here (the light samples above were

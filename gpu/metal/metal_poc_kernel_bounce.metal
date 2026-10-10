@@ -221,7 +221,7 @@ inline bool traceBounce(thread const KernelRes& R, thread PathState& P) {
     if (!scatterInGlobalMedium(R, P, B)) return false;
 
     if (scatteredInMedium) mediumSkippedDist = 0.0;  // global-fog scatter: new segment
-    if (scatteredInMedium) { CENSUS_PUSH(100u); }
+    if (scatteredInMedium) { CENSUS_PUSH(100u); fromMediumScatter = true; }
     if (!scatteredInMedium && !passedThroughMediumSphere) {
         if (result.type == intersection_type::none) {
             CENSUS_PUSH(255u);
@@ -229,6 +229,7 @@ inline bool traceBounce(thread const KernelRes& R, thread PathState& P) {
             return false;
         }
         envLightSampled = false;   // a surface vertex: the environment is no longer sampled for this ray
+        fromMediumScatter = false;
         resolveHit(R, P, B);
         perturbShadingNormal(R, P, B);
         computeAlbedo(R, P, B);

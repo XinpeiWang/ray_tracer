@@ -44,7 +44,7 @@ const char* kScene =
 	"  Shape \"sphere\" \"float radius\" [ 0.8 ]\n"
 	"AttributeEnd\n";
 
-struct Frame {
+struct LiveFrame {
 	std::vector<float> rgb = std::vector<float>(kSize * kSize * 3);
 	std::vector<float> pos = std::vector<float>(kSize * kSize * 4);
 	// The first-hit position of the pixel at (column, row), or false for a miss.
@@ -56,7 +56,7 @@ struct Frame {
 	}
 };
 
-double meanAbsDiff(const Frame& a, const Frame& b) {
+double meanAbsDiff(const LiveFrame& a, const LiveFrame& b) {
 	double sum = 0.0;
 	for (std::size_t i = 0; i < a.rgb.size(); ++i) sum += std::fabs(a.rgb[i] - b.rgb[i]);
 	return sum / static_cast<double>(a.rgb.size());
@@ -94,7 +94,7 @@ protected:
 		fs::remove_all(root_, ec);
 	}
 
-	bool draw(Frame& f) {
+	bool draw(LiveFrame& f) {
 		return rt_realtime_render_frame(id_.c_str(), kSize, kSize, /*spp=*/64, /*max_depth=*/4, 0.0, 1.0, 6.0,
 			/*has_custom_lookat=*/true, 0.0, 1.0, 0.0, /*denoise=*/false, /*denoise_blend=*/0.0,
 			f.pos.data(), /*out_camera_basis=*/nullptr, f.rgb.data(), /*enable_svgf=*/false);
@@ -109,7 +109,7 @@ protected:
 	}
 
 	// A hit on the left sphere and one on the right sphere, from a drawn frame (a row above the middle crosses both).
-	static void spheresIn(const Frame& f, double left[3], double right[3]) {
+	static void spheresIn(const LiveFrame& f, double left[3], double right[3]) {
 		bool haveL = false, haveR = false;
 		for (int col = 0; col < kSize; ++col) {
 			double p[3];
@@ -133,7 +133,7 @@ TEST_F(LivePreviewObjectEditTest, NothingIsPickableBeforeAFrameIsDrawn) {
 }
 
 TEST_F(LivePreviewObjectEditTest, AClickFindsTheObjectItHit) {
-	Frame f;
+	LiveFrame f;
 	ASSERT_TRUE(draw(f)) << rt_realtime_get_last_error();
 	double left[3], right[3];
 	spheresIn(f, left, right);
@@ -155,7 +155,7 @@ TEST_F(LivePreviewObjectEditTest, AClickFindsTheObjectItHit) {
 }
 
 TEST_F(LivePreviewObjectEditTest, MovingAnObjectChangesTheNextFrameAndResetRestoresIt) {
-	Frame before;
+	LiveFrame before;
 	ASSERT_TRUE(draw(before)) << rt_realtime_get_last_error();
 	double left[3], right[3];
 	spheresIn(before, left, right);
@@ -171,7 +171,7 @@ TEST_F(LivePreviewObjectEditTest, MovingAnObjectChangesTheNextFrameAndResetResto
 	EXPECT_NEAR(off[1], 2.0, 1e-9);
 	EXPECT_GT(lo[1], 2.0) << "the box already follows the move: the sphere spans y 0.2..1.8, moved up by 2";
 
-	Frame moved;
+	LiveFrame moved;
 	ASSERT_TRUE(draw(moved)) << rt_realtime_get_last_error();
 	EXPECT_GT(meanAbsDiff(before, moved), 0.01) << "the left sphere is somewhere else now";
 	EXPECT_EQ(pickAt(left), -1) << "nothing is where the left sphere was";
@@ -180,14 +180,14 @@ TEST_F(LivePreviewObjectEditTest, MovingAnObjectChangesTheNextFrameAndResetResto
 	EXPECT_EQ(pickAt(right), 1) << "the other object did not move";
 
 	rt_realtime_reset_objects(id_.c_str());
-	Frame back;
+	LiveFrame back;
 	ASSERT_TRUE(draw(back)) << rt_realtime_get_last_error();
 	EXPECT_LT(meanAbsDiff(before, back), 0.5 * meanAbsDiff(before, moved)) << "reset draws the file's own arrangement again";
 	EXPECT_EQ(pickAt(left), 0);
 }
 
 TEST_F(LivePreviewObjectEditTest, SaveArrangementWritesTheMovedScene) {
-	Frame f;
+	LiveFrame f;
 	ASSERT_TRUE(draw(f)) << rt_realtime_get_last_error();
 	const fs::path out = root_ / "saved.pbrt";
 	char message[256] = {};
