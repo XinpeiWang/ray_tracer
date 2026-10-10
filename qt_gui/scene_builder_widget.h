@@ -20,6 +20,7 @@
 #include "../src/shared/scene_document.h"
 #include "../src/shared/snapshot_history.h"
 #include "../src/shared/scene_props.h"
+#include "../src/shared/scene_blocks.h"
 
 class QButtonGroup;
 class QCheckBox;
@@ -73,6 +74,8 @@ public:
 	void selectCameraForTest() { setSelection({SelKind::Camera, 0}); }
 	void addObject(scene_doc::ShapeKind shape);
 	void addProp(scene_doc::PropKind kind);   // a few ordinary objects at once (a table, a tree...), one undo step
+	void addBlocky(scene_doc::BlockyKind kind);   // a block, creature or thing made of boxes (scene_blocks.h), one undo step
+	void addParts(std::vector<scene_doc::Object> parts);   // the objects go in together at the drop point, named apart from what is there, the first selected
 	void addLight(scene_doc::LightKind kind);
 	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
 	void showModelLibrary();    // scene_builder_models.cpp: the dialog behind Add > Model library...

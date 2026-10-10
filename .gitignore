@@ -485,3 +485,6 @@ baselines/
 !qt_gui/downloadable_assets.txt
 !qt_gui/scene_packs.txt
 !tests/portable_build_exclusions.txt
+
+# Scratch folder the measured-BxDF unit tests write into the working directory.
+measured_bxdf_pbrt_tests/

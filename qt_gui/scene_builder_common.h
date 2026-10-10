@@ -14,6 +14,7 @@
 
 #include "../src/shared/scene_document.h"
 #include "../src/shared/scene_props.h"
+#include "../src/shared/scene_blocks.h"
 
 namespace scene_builder_ui {
 
@@ -88,6 +89,44 @@ inline QString propLabel(scene_doc::PropKind k) {
 		case scene_doc::PropKind::Snowman: return QObject::tr("Snowman");
 		case scene_doc::PropKind::Column: return QObject::tr("Column");
 		case scene_doc::PropKind::StreetLamp: return QObject::tr("Street lamp");
+	}
+	return QString();
+}
+inline QString blockyLabel(scene_doc::BlockyKind k) {
+	using K = scene_doc::BlockyKind;
+	switch (k) {
+		case K::GrassBlock: return QObject::tr("Grass block");
+		case K::DirtBlock: return QObject::tr("Dirt block");
+		case K::StoneBlock: return QObject::tr("Stone block");
+		case K::PlanksBlock: return QObject::tr("Planks block");
+		case K::LogBlock: return QObject::tr("Log block");
+		case K::SandBlock: return QObject::tr("Sand block");
+		case K::GlassBlock: return QObject::tr("Glass block");
+		case K::WaterBlock: return QObject::tr("Water block");
+		case K::TntBlock: return QObject::tr("TNT block");
+		case K::GoldBlock: return QObject::tr("Gold block");
+		case K::DiamondOre: return QObject::tr("Diamond ore");
+		case K::GlowBlock: return QObject::tr("Glowing block");
+		case K::LavaBlock: return QObject::tr("Lava block");
+		case K::Pumpkin: return QObject::tr("Pumpkin");
+		case K::LanternPumpkin: return QObject::tr("Lantern pumpkin");
+		case K::GreenMonster: return QObject::tr("Green monster");
+		case K::Pig: return QObject::tr("Pig");
+		case K::Sheep: return QObject::tr("Sheep");
+		case K::Explorer: return QObject::tr("Explorer");
+		case K::Skeleton: return QObject::tr("Skeleton");
+		case K::OakTree: return QObject::tr("Oak tree");
+		case K::Cottage: return QObject::tr("Cottage");
+		case K::Torch: return QObject::tr("Torch");
+		case K::Chest: return QObject::tr("Chest");
+		case K::CraftingTable: return QObject::tr("Crafting table");
+		case K::Furnace: return QObject::tr("Furnace");
+		case K::Bed: return QObject::tr("Bed");
+		case K::Poppy: return QObject::tr("Poppy");
+		case K::Dandelion: return QObject::tr("Dandelion");
+		case K::Fence: return QObject::tr("Fence");
+		case K::RainbowWool: return QObject::tr("Rainbow wool");
+		case K::PurplePortal: return QObject::tr("Purple portal");
 	}
 	return QString();
 }

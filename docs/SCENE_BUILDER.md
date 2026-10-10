@@ -71,6 +71,12 @@ Delete or Backspace removes the selected item (from the list or a view; in a tex
 
 The **Props** section of the Add menu puts a few ordinary objects in at once: a **table** (top and four legs), a **chair**, a **tree** (trunk and two cones), a **snowman**, a stone **column** and a **street lamp** (its bulb is an emitting sphere). They stand on the floor with the middle of their footprint where the new item would drop, as one undo step, and the first part is selected. From then on they are plain objects: move, recolour or delete the parts one at a time (nothing is grouped), or Duplicate a part. A second copy of a prop is named apart ("Table top 2").
 
+## Blocky objects
+
+The **Blocky** part of the Add menu has three submenus of colourful block-style objects (in the look of block-building games; not affiliated with any of them): **Blocks** (grass, dirt, stone, planks, log, sand, glass, water, TNT, gold, diamond ore, a glowing block, lava, a pumpkin and a lantern pumpkin), **Creatures** (a green monster, a pig, a sheep, an explorer, a skeleton) and **Things** (an oak tree, a cottage, a torch, a chest, a crafting table, a furnace, a bed, two flowers, a fence, a row of rainbow-coloured wool, a glowing purple portal). A block is half a scene unit across, so a creature stands about 0.8 tall and the cottage about 4.
+
+Each one goes in as a few dozen ordinary **Box** objects (a creature's body, legs, head and face are separate boxes; the pieces are merged so none overlap), standing on the floor under the middle of the view, as one undo step. From then on they are plain boxes: recolour a creeper's face, delete a window, move one wall. Glass and water blocks use the glass and see-through materials, gold is metal, and the glowing block, lava, torches, the portal, the lantern pumpkin and the furnace fire are light-giving boxes, so they light what is near them.
+
 ## Model library
 
 **Add > Model library...** opens a window of ready-made meshes with a picture of each (the Stanford bunny, armadillo, Lucy and dragon, a horse, a cow, a teapot, busts, a beetle car and more: 22 in a source checkout, about 100 thousand triangles each for the big ones). Pick one and press **Add** (or double-click it): it stands on the floor under the middle of the view, about 1.6 units across, as one undo step; **Scale** in its properties resizes it and the Rotate tool turns it. The search box narrows the list by name. **Choose another file...** adds any `.obj` or `.ply` of your own instead (that one keeps its own size, so a big scan may need a smaller Scale).
