@@ -527,6 +527,8 @@ struct MetalPocApp {
     bool mapPbrtPerHitMix(PbrtMaterialMapState& st, const pbrt_flatten::Material& m, int depth, TriangleMaterial& out);
     int bssrdfTableOffset(PbrtMaterialMapState& st, double g, double eta);
     TriangleMaterial mapPbrtSubsurfaceMaterial(PbrtMaterialMapState& st, const pbrt_flatten::Material& m);
+    // A pbrt "nanovdb" medium as a per-voxel RGB grid medium (metal_poc_pbrt_nanovdb.mm); false (mat untouched) when the file or grid cannot be used.
+    bool mapNanovdbMedium(const pbrt_flatten::Medium& nm, float sceneScale, float cOffX, float cOffY, float cOffZ, TriangleMaterial& mat);
     TriangleMaterial mapPbrtDiffuseMaterial(const pbrt_flatten::Material& m, float sceneScale, float3 bboxCenter, float3 sceneOffset);
     // Area lights ("single quad, 2 triangles" shape only) - populates
     // `lights`, and the two out-params the very next phase

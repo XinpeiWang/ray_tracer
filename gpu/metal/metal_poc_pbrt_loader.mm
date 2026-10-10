@@ -634,6 +634,13 @@ void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const Pb
             mat.materialType = METAL_MAT_MEDIUM_RGB_GRID;
             mat.lightId = -1;
             mat.conductorEta = PackedFloat3{(float)gridIdx, 0.0f, 0.0f};
+        } else if (interfaceSphere && s.medium >= 0 && s.medium < (int)scene.media.size() && scene.media[s.medium].type == "nanovdb") {
+            // pbrt "nanovdb" medium (E9): the file is baked to a dense density grid on the host and drawn by the RGB grid medium (metal_poc_pbrt_nanovdb.mm); this sphere is
+            // its trigger volume, exactly as for rgbgrid above. An unusable file falls through to the transparent boundary below, as every unsupported medium does.
+            const float3 nanoOff = -toWorld(float3{0.0f, 0.0f, 0.0f}) * (1.0f / sceneScale);
+            TriangleMaterial gridMat;
+            if (mapNanovdbMedium(scene.media[s.medium], sceneScale, nanoOff.x, nanoOff.y, nanoOff.z, gridMat)) mat = gridMat;
+            else mat = TriangleMaterial{PackedFloat3{1, 1, 1}, METAL_MAT_MEDIUM_HOMOGENEOUS, 0.0f, PackedFloat3{0, 0, 0}, -1, 0.0f};
         } else if (interfaceSphere && s.medium >= 0 && s.medium < (int)scene.media.size() &&
                    scene.media[s.medium].type == "cloud") {
             // pbrt "cloud" medium (E5): procedural Perlin-noise density inside the interface sphere, rendered by

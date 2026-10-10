@@ -534,6 +534,11 @@ inline float3 rgbGridShadowTransmittance(GpuRgbGridMedium grid, device const flo
     return tr;
 }
 
+// How far past a grid box's exit a pass-through step goes, and the shortest box segment that counts. A ray that leaves the box exactly on its face and stays inside the
+// loose trigger sphere would otherwise meet the same face again within float rounding of the (recentred, +60 in X) scene coordinates, and stall there, spending its depth
+// budget one hair's breadth at a time until the pixel went black (a ray grazing the face of a NanoVDB grid placed at the origin did exactly that).
+constant float kGridBoxEdgeEps = 1e-4;
+
 // materialType 30 (E4, section 179) - heterogeneous per-voxel R/G/B RgbGridMedium: spectral tracking against one scalar
 // majorant, the same model as the CPU's rgb_grid_medium_hittable.h and OptiX's heterogeneous_tracking_step
 // (src/shared/volume_scattering.h). At each tentative collision a REAL event happens with probability mean_c(sigma_t_c)/majorant
@@ -550,7 +555,7 @@ inline float3 rgbGridShadowTransmittance(GpuRgbGridMedium grid, device const flo
 inline void shadeRgbGridMediumSphere(
     TriangleMaterial mediumMat, float entryDistance,
     device const GpuRgbGridMedium* rgbGridMediums, device const float* rgbGridData,
-    device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
+    device const AreaLight* lights, device const PointLight* pointLights, device const DirectionalLight* directionalLights, constant Uniforms& uniforms,
     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
     intersector<instancing, triangle_data> isect,
     instance_acceleration_structure accelStructure,
@@ -570,7 +575,7 @@ inline void shadeRgbGridMediumSphere(
     bool hasSeg = rgbGridAabbSlabIntersect(grid, mo, md, segMin, segMax);
     // A box that ends at or behind the ray origin (e.g. a ray that just left it and is still inside the loose trigger sphere) is a
     // miss: using its zero-length "segment" made the ray stand still and re-enter this shader until its depth budget ran out.
-    hasSeg = hasSeg && segMax > 1e-5;
+    hasSeg = hasSeg && segMax > kGridBoxEdgeEps;
     const float sigmaMaj = grid.sigmaMaj;
 
     bool didScatter = false;
@@ -600,7 +605,7 @@ inline void shadeRgbGridMediumSphere(
                 if (nullMean > 1e-30) w *= (float3(sigmaMaj) - sigmaTc) / nullMean;
             }
         }
-        if (!didScatter) missedExitT = segMax;
+        if (!didScatter) missedExitT = segMax + kGridBoxEdgeEps;   // step just past the box so the next shading does not meet the same boundary again
     }
 
     if (didScatter) {
@@ -662,6 +667,24 @@ inline void shadeRgbGridMediumSphere(
                 float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
                 const float3 tr = rgbGridShadowTransmittance(grid, rgbGridData, mediumPoint, plWi, plDist, rngState);
                 radiance += throughput * collideW * tr * plPhase * float3(pl.emission) * plSpot / plDistSq;
+            }
+        }
+
+        // Distant lights: summed, no pdf (a delta light), the shadow ray ratio-tracked through the grid like the others.
+        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+            DirectionalLight dl = directionalLights[dli];
+            const float3 dlWi = normalize(-float3(dl.direction));
+            ray dlShadowRay;
+            dlShadowRay.origin = mediumPoint;
+            dlShadowRay.direction = dlWi;
+            dlShadowRay.min_distance = 0.001f;
+            dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+            intersection_result<instancing, triangle_data> dlShadowResult =
+                traceShadowAnyP(isect, dlShadowRay, accelStructure, functionTable, shadowSpherePayload);
+            if (dlShadowResult.type == intersection_type::none) {
+                const float dlPhase = henyeyGreensteinPhase(dot(wo, dlWi), grid.phaseG);
+                const float3 tr = rgbGridShadowTransmittance(grid, rgbGridData, mediumPoint, dlWi, kDirectionalLightMaxDistance, rngState);
+                radiance += throughput * collideW * tr * dlPhase * float3(dl.emission);
             }
         }
 

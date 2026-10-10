@@ -392,6 +392,7 @@ if(RT_BUILD_METAL)
         # precedent as the other metal_poc_*.mm splits.
         gpu/metal/metal_poc_pbrt_loader.mm
         gpu/metal/metal_poc_pbrt_materials.mm
+        gpu/metal/metal_poc_pbrt_nanovdb.mm   # "nanovdb" media: read on the host, drawn by the RGB grid medium
         # Stage 3 (GPU buffer/acceleration-structure upload) and Stage 4
         # (shader compile + dispatch + readback) - split out of
         # metal_poc.mm once that pair grew past ~1200 combined lines,
@@ -686,6 +687,17 @@ if(RT_BUILD_METAL)
     set_tests_properties(metal_poc_subsurface PROPERTIES
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "SUBSURFACE_TEST_OK")
+
+    # pbrt "nanovdb" media under Metal: the furnace and the thin-slab closed form the CPU and OptiX renderers pass (metal_poc_nanovdb_test.sh drives it).
+    add_executable(metal_poc_nanovdb_check gpu/metal/metal_poc_nanovdb_check.cpp)
+    target_include_directories(metal_poc_nanovdb_check PRIVATE ${CMAKE_SOURCE_DIR})
+    target_link_libraries(metal_poc_nanovdb_check PRIVATE cpu_renderer)   # tinyexr's implementation
+    add_test(NAME metal_poc_nanovdb
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_nanovdb_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_nanovdb_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_nanovdb PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "NANOVDB_TEST_OK")
 
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
