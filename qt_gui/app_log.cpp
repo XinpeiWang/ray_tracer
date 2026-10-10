@@ -15,8 +15,11 @@
 #include <QtGlobal>
 
 #ifdef Q_OS_WIN
+#include <fcntl.h>
 #include <io.h>
+#include <share.h>
 #include <stdio.h>
+#include <sys/stat.h>
 #else
 #include <errno.h>
 #include <fcntl.h>
@@ -97,8 +100,15 @@ void qtMessageHandler(QtMsgType type, const QMessageLogContext &context, const Q
 
 void redirectStderr() {
 #ifdef Q_OS_WIN
-	FILE *f = nullptr;
-	if (_wfreopen_s(&f, reinterpret_cast<const wchar_t *>(g_path.utf16()), L"a", stderr) == 0 && f) g_stderrRedirected = true;
+	if (_isatty(2)) return;   // started from a terminal: leave stderr there, as on the other platforms
+	// Not freopen(): the log is already open (g_file), and freopen() onto stderr fails with a sharing violation (EACCES) after it has CLOSED stderr, which left every
+	// std::cerr / stderr write in this process (the renderer libraries print their errors there) aborting the program with 0xC0000409. A second descriptor opened
+	// with full sharing and duplicated onto 2 cannot fail that way, and if it fails stderr is simply left as it was.
+	int fd = -1;
+	if (_wsopen_s(&fd, reinterpret_cast<const wchar_t *>(g_path.utf16()), _O_WRONLY | _O_APPEND | _O_CREAT | _O_BINARY, _SH_DENYNO, _S_IREAD | _S_IWRITE) == 0 && fd >= 0) {
+		if (_dup2(fd, 2) == 0) g_stderrRedirected = true;
+		_close(fd);
+	}
 #else
 	if (::isatty(2)) return;   // started from a terminal: leave stderr there
 	const int fd = ::open(QFile::encodeName(g_path).constData(), O_WRONLY | O_APPEND);

@@ -6,6 +6,7 @@
 
 #include <QCoreApplication>
 #include <QMetaObject>
+#include <QTimer>
 #include <algorithm>
 #include <array>
 #include <chrono>
@@ -1481,9 +1482,16 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 	if (cameraJustMoved || !scheduleSpp) m_sppScheduler.reset();   // a move is rendered at one batch at once, not at the size the still picture had grown to
 	const int batchCount = scheduleSpp ? m_sppScheduler.batch() : 1;
 
-	if (renderOneFrame(cameraJustMoved, scheduleSpp, useUpscale, useAdaptive, batchCount)) processFrame(cameraJustMoved, useUpscale, useAdaptive, batchCount);
+	const bool rendered = renderOneFrame(cameraJustMoved, scheduleSpp, useUpscale, useAdaptive, batchCount);
+	if (rendered) processFrame(cameraJustMoved, useUpscale, useAdaptive, batchCount);
 
-	if (m_running) QMetaObject::invokeMethod(this, [this, epoch]() { renderLoop(epoch); }, Qt::QueuedConnection);
+	if (m_running) {
+		// A frame the library cannot render (a scene the GPU cannot build, an empty one) fails the same way every time, and retrying it as fast as the loop can spin
+		// only burns a CPU core and writes the library's error line to the log hundreds of times a second. Try again twice a second instead, so a fixed problem still recovers.
+		constexpr int kFailedFrameRetryMs = 500;
+		if (rendered) QMetaObject::invokeMethod(this, [this, epoch]() { renderLoop(epoch); }, Qt::QueuedConnection);
+		else QTimer::singleShot(kFailedFrameRetryMs, this, [this, epoch]() { renderLoop(epoch); });
+	}
 }
 
 // ============================================================================

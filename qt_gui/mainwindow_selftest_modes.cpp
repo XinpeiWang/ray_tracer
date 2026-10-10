@@ -6,6 +6,7 @@
 #include "denoiser_installer.h"
 #include "live_ai_denoise.h"
 #include "app_log.h"
+#include <iostream>
 #include "../src/shared/pbrt_asset_check.h"
 
 #include <QApplication>
@@ -315,6 +316,15 @@ void MainWindow::runUiSelfTest(const std::function<void(const QString &)> &log, 
 		resize(1100, 900);   // large enough to see the scene group, including the download button
 	}
 	log(QString("scene info: %1").arg(m_sceneInfoLabel ? m_sceneInfoLabel->text() : QString()));
+	// The renderer libraries print their errors to std::cerr. This program's stderr used to be left CLOSED on Windows (the redirect into the log failed after closing
+	// it), so the first such line aborted the whole program (0xC0000409). Writing one here makes that regression a crash of the self-test; when the session log says
+	// stderr goes into it, the line must have arrived there.
+	std::cerr << "[selftest] a line written to stderr" << std::endl;
+	const QStringList logTail = AppLog::tail(400);
+	const bool redirected = logTail.join('\n').contains(QStringLiteral("stderr of this process"));
+	const bool arrived = logTail.join('\n').contains(QStringLiteral("[selftest] a line written to stderr"));
+	log(QString("stderr: %1").arg(redirected ? (arrived ? "written to the log" : "FAIL (redirected, but the line is not in the log)") : "left where it was (a terminal)"));
+	if (redirected && !arrived) { QApplication::exit(1); return; }
 	QTimer::singleShot(600, this, [shot]() { shot("ui"); QApplication::exit(0); });
 	return;
 }
