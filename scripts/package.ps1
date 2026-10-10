@@ -321,7 +321,7 @@ Write-Host "  OK licenses\ ($((Get-ChildItem $licenseDir -File).Count) files)" -
 # (same rule as the macOS package, scripts/build_and_deploy_macos.sh). The demo room's own small meshes and picture come along as well.
 $trackedScenes = @()
 if (Get-Command git -ErrorAction SilentlyContinue) {
-	$trackedScenes = @(& git -C $RepoRoot ls-files -- pbrt_scenes images/earthmap.jpg models/suzanne.obj models/spot.obj)
+	$trackedScenes = @(& git -C $RepoRoot ls-files -- pbrt_scenes images/earthmap.jpg models/suzanne.obj models/spot.obj models/teapot.obj models/thumbnails/spot.png models/thumbnails/suzanne.png models/thumbnails/teapot.png)
 }
 if ($trackedScenes.Count -eq 0) {
 	Write-Host "  [ERROR] could not list the tracked scene files (is git on PATH and is this a checkout?) - the package would have no scenes" -ForegroundColor Red
@@ -336,7 +336,7 @@ foreach ($rel in $trackedScenes) {
 	Copy-Item $src $dst -Force
 	$sceneBytes += (Get-Item $src).Length
 }
-Write-Host ("  OK scenes: {0} files, {1:N1} MB (pbrt_scenes\, images\earthmap.jpg, models\suzanne.obj, models\spot.obj)" -f $trackedScenes.Count, ($sceneBytes / 1MB)) -ForegroundColor Green
+Write-Host ("  OK scenes: {0} files, {1:N1} MB (pbrt_scenes\, images\earthmap.jpg, models\suzanne.obj, models\spot.obj, models\teapot.obj, the three model thumbnails)" -f $trackedScenes.Count, ($sceneBytes / 1MB)) -ForegroundColor Green
 
 # A package that cannot render the first scene is not a package: fail here, not on a user's machine.
 foreach ($must in @("ray_tracer.exe", "pbrt_scenes\cornell-box-native.pbrt", "images\earthmap.jpg", "LICENSE", "THIRD_PARTY_NOTICES.md")) {

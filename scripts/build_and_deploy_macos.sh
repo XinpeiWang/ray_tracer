@@ -220,6 +220,11 @@ fi
 mkdir -p "$APP_BUNDLE/Contents/MacOS/models" "$APP_BUNDLE/Contents/MacOS/images"
 cp "$REPO_ROOT/models/suzanne.obj" "$APP_BUNDLE/Contents/MacOS/models/suzanne.obj"
 cp "$REPO_ROOT/models/spot.obj" "$APP_BUNDLE/Contents/MacOS/models/spot.obj"
+# The Scene Builder's model library (Add > Model library...) lists what is in models/ beside the app: only the three small models whose terms are clear
+# (Spot, Suzanne, the Utah teapot) go in the installer, with their thumbnails; the Stanford scans and the rest stay in a source checkout (docs/MODELS.md).
+cp "$REPO_ROOT/models/teapot.obj" "$APP_BUNDLE/Contents/MacOS/models/teapot.obj"
+mkdir -p "$APP_BUNDLE/Contents/MacOS/models/thumbnails"
+for m in spot suzanne teapot; do cp "$REPO_ROOT/models/thumbnails/$m.png" "$APP_BUNDLE/Contents/MacOS/models/thumbnails/$m.png"; done
 cp "$REPO_ROOT/images/earthmap.jpg" "$APP_BUNDLE/Contents/MacOS/images/earthmap.jpg"
 
 # The pbrt scene collection (~5MB). Every pbrt-backed scene - nearly the whole

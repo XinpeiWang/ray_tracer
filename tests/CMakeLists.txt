@@ -43,6 +43,7 @@ add_executable(unit_tests
     unit/photo_helper_report_tests.cpp
     unit/scene_view_math_tests.cpp
     unit/mesh_preview_tests.cpp
+    unit/model_library_tests.cpp
     unit/log_format_tests.cpp
     unit/oidn_runtime_tests.cpp
     unit/job_queue_tests.cpp

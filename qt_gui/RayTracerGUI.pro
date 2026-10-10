@@ -94,6 +94,7 @@ SOURCES += \
 	scene_builder_render.cpp \
 	scene_builder_inspector.cpp \
 	scene_builder_photo.cpp \
+	scene_builder_models.cpp \
 	photo_import.cpp \
 	scene_builder_views.cpp \
 	scene_3d_view.cpp \
