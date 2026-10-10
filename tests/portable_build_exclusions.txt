@@ -20,6 +20,7 @@ integration/live_preview_svgf_test.cpp
 integration/material_cpu_gpu_parity_tests.cpp
 integration/mlt_first_render_test.cpp
 integration/optix_validation_sweep_test.cpp
+integration/pbrt_camera_override_test.cpp
 integration/pbrt_dof_override_test.cpp
 integration/pbrt_scene_render_test.cpp
 integration/render_tests.cpp

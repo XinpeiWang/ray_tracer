@@ -97,6 +97,14 @@ struct RenderOptions {
 	// scenes, which keep their own fixed camera.
 	double aperture_override = -1.0;
 	double focus_distance_override = -1.0;
+	// A camera to look through instead of the scene's own, for one render: where it looks (has_lookat_override, lookat_override) and its vertical field of view in
+	// degrees (vfov_override > 0). Together with aperture_override/focus_distance_override above and the caller's lookfrom, this is a whole camera placed per frame, which
+	// is what a --video --camera-keyframes flythrough needs (launcher/main.cpp): without it a video moved only the camera's position and kept looking at the scene's own
+	// target with the scene's own lens. Default (no override) leaves the scene's camera alone. The CPU default path tracer and the OptiX backends read these; the Metal
+	// backend still follows only the lookfrom it is given (metal_interface.h).
+	bool has_lookat_override = false;
+	double lookat_override[3] = {0.0, 0.0, 0.0};
+	double vfov_override = -1.0;
 	// Real hero-wavelength spectral rendering instead of flat RGB. CPU
 	// default path tracer only, 6-material whitelist (see camera.h's
 	// ray_color_spectral()'s own comment).

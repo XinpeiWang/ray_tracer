@@ -7423,7 +7423,7 @@ Procedencia: %3</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="164"/>
-        <location filename="../scene_builder_turntable.cpp" line="235"/>
+        <location filename="../scene_builder_turntable.cpp" line="242"/>
         <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
@@ -7460,9 +7460,13 @@ Procedencia: %3</translation>
         <translation>Crea un vídeo de la escena desde una cámara que da una vuelta alrededor del punto al que mira la cámara, a su misma altura y distancia, empezando donde está ahora. Renderiza todos los fotogramas, así que un vídeo largo o grande tarda un rato; empieza con Borrador.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="64"/>
         <source>Makes a video of the scene from a camera that flies through your saved camera views in the order they were saved: %1. The first picture is the first view and the last picture the last. The lens (field of view, depth of field) is the first view&apos;s. It renders every frame, so a long or large video takes a while; start with Draft.</source>
-        <translation>Crea un vídeo de la escena desde una cámara que vuela por tus vistas de cámara guardadas en el orden en que se guardaron: %1. La primera imagen es la primera vista y la última imagen la última. El objetivo (campo de visión, profundidad de campo) es el de la primera vista. Renderiza todos los fotogramas, así que un vídeo largo o grande tarda un rato; empieza con Borrador.</translation>
+        <translation type="vanished">Crea un vídeo de la escena desde una cámara que vuela por tus vistas de cámara guardadas en el orden en que se guardaron: %1. La primera imagen es la primera vista y la última imagen la última. El objetivo (campo de visión, profundidad de campo) es el de la primera vista. Renderiza todos los fotogramas, así que un vídeo largo o grande tarda un rato; empieza con Borrador.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="64"/>
+        <source>Makes a video of the scene from a camera that flies through your saved camera views in the order they were saved: %1. The first picture is the first view and the last picture the last. Each view&apos;s field of view and lens go with it. It renders every frame, so a long or large video takes a while; start with Draft.</source>
+        <translation>Crea un vídeo de la escena desde una cámara que vuela por tus vistas de cámara guardadas en el orden en que se guardaron: %1. La primera imagen es la primera vista y la última imagen la última. El campo de visión y el objetivo de cada vista van con ella. Renderiza todos los fotogramas, así que un vídeo largo o grande tarda un rato; empieza con Borrador.</translation>
     </message>
     <message>
         <location filename="../scene_builder_turntable.cpp" line="75"/>
@@ -7556,37 +7560,37 @@ Procedencia: %3</translation>
         <translation>El recorrido falló</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="163"/>
+        <location filename="../scene_builder_turntable.cpp" line="166"/>
         <source>A video needs at least one frame.</source>
         <translation>Un vídeo necesita al menos un fotograma.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="208"/>
+        <location filename="../scene_builder_turntable.cpp" line="215"/>
         <source>Video: frame %1 of %2...</source>
         <translation>Vídeo: fotograma %1 de %2...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="209"/>
+        <location filename="../scene_builder_turntable.cpp" line="216"/>
         <source>Video: putting the video together...</source>
         <translation>Vídeo: montando el vídeo...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="223"/>
+        <location filename="../scene_builder_turntable.cpp" line="230"/>
         <source>Video: starting (%1 frames, %2 x %3, %4 samples)...</source>
         <translation>Vídeo: iniciando (%1 fotogramas, %2 x %3, %4 muestras)...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="249"/>
+        <location filename="../scene_builder_turntable.cpp" line="256"/>
         <source>Video done in %1 s. Saved %2.</source>
         <translation>Vídeo terminado en %1 s. Guardado en %2.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="254"/>
+        <location filename="../scene_builder_turntable.cpp" line="261"/>
         <source>The video was cancelled.</source>
         <translation>El vídeo se canceló.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="266"/>
+        <location filename="../scene_builder_turntable.cpp" line="273"/>
         <source>The video failed.</source>
         <translation>El vídeo falló.</translation>
     </message>
@@ -7611,7 +7615,7 @@ Procedencia: %3</translation>
         <translation type="vanished">Plato giratorio terminado en %1 s. Guardado en %2.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="251"/>
+        <location filename="../scene_builder_turntable.cpp" line="258"/>
         <source>The video was made but could not be saved to %1.</source>
         <translation>El vídeo se creó pero no se pudo guardar en %1.</translation>
     </message>
@@ -7620,12 +7624,12 @@ Procedencia: %3</translation>
         <translation type="vanished">El plato giratorio se canceló.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="262"/>
+        <location filename="../scene_builder_turntable.cpp" line="269"/>
         <source>The frames were rendered, but putting them together needs the free program ffmpeg, which was not found. Install it (ffmpeg.org) and try again.</source>
         <translation>Se renderizaron los fotogramas, pero para montarlos hace falta el programa gratuito ffmpeg, que no se encontró. Instálalo (ffmpeg.org) e inténtalo de nuevo.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="263"/>
+        <location filename="../scene_builder_turntable.cpp" line="270"/>
         <source>The renderer did not produce a video (exit code %1).
 %2</source>
         <translation>El renderizador no produjo un vídeo (código de salida %1).
@@ -7685,7 +7689,7 @@ Procedencia: %3</translation>
         <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_files.cpp" line="248"/>
         <location filename="../scene_builder_render.cpp" line="85"/>
-        <location filename="../scene_builder_turntable.cpp" line="178"/>
+        <location filename="../scene_builder_turntable.cpp" line="181"/>
         <source>Could not write %1.</source>
         <translation>No se pudo escribir %1.</translation>
     </message>
@@ -7831,19 +7835,19 @@ Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</transla
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="111"/>
-        <location filename="../scene_builder_turntable.cpp" line="162"/>
+        <location filename="../scene_builder_turntable.cpp" line="165"/>
         <source>A render is already running.</source>
         <translation>Ya hay un renderizado en curso.</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="113"/>
-        <location filename="../scene_builder_turntable.cpp" line="165"/>
+        <location filename="../scene_builder_turntable.cpp" line="168"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>Corrige primero los problemas indicados en las propiedades.</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="114"/>
-        <location filename="../scene_builder_turntable.cpp" line="166"/>
+        <location filename="../scene_builder_turntable.cpp" line="169"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>No se encontró el renderizador (%1) junto al programa.</translation>
     </message>
@@ -7915,7 +7919,7 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
         <location filename="../scene_builder_render.cpp" line="149"/>
-        <location filename="../scene_builder_turntable.cpp" line="218"/>
+        <location filename="../scene_builder_turntable.cpp" line="225"/>
         <source>Cancel</source>
         <translation>Cancelar</translation>
     </message>
@@ -7951,7 +7955,7 @@ La forma es una suposición: la parte trasera es inventada y los detalles finos 
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="180"/>
-        <location filename="../scene_builder_turntable.cpp" line="261"/>
+        <location filename="../scene_builder_turntable.cpp" line="268"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>El renderizador se detuvo inesperadamente.</translation>
     </message>

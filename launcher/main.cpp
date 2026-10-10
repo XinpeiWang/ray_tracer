@@ -589,6 +589,20 @@ static std::string prepare_output_path(const LaunchArgs &args, const char *argv0
 	return out_path;
 }
 
+// The camera of one frame of a --camera-keyframes video: where it is is the returned position; what it looks at, its field of view and its lens go into the render
+// options (which the renderers read), so each frame is the whole camera and not only a moved position.
+static CameraPosition keyframe_camera_for_frame(const camera_keyframes::Path &keyframes, int frame, int frame_count, RenderOptions &render_opts) {
+    const camera_keyframes::Key key = camera_keyframes::at(keyframes, camera_keyframes::progressOf(frame, frame_count));
+    render_opts.has_lookat_override = true;
+    for (int a = 0; a < 3; ++a) render_opts.lookat_override[a] = key.target[a];
+    if (key.fov > 0) render_opts.vfov_override = key.fov;
+    if (key.hasLens()) {
+        render_opts.aperture_override = 2.0 * key.lensRadius;   // the option is the aperture's diameter
+        render_opts.focus_distance_override = key.focus;
+    }
+    return CameraPosition{key.pos[0], key.pos[1], key.pos[2], key.target[0], key.target[1], key.target[2], 0.0, 1.0, 0.0};
+}
+
 // --video: renders the frames along a camera path, converts them to PNG as they finish, and assembles an MP4.
 static int run_video_render(const LaunchArgs &args, const RenderSetup &s) {
 	const bool use_gpu = s.use_gpu;
@@ -788,10 +802,7 @@ static int run_video_render(const LaunchArgs &args, const RenderSetup &s) {
         CameraPosition cam_pos = get_camera_position(camera_path, frame, render_frame_count,
                                                         path_lookfrom_x, path_lookfrom_y, path_lookfrom_z,
                                                         path_lookat_x, path_lookat_y, path_lookat_z);
-        if (use_keyframes) {
-            const camera_keyframes::Key key = camera_keyframes::at(keyframes, camera_keyframes::progressOf(frame, render_frame_count));
-            cam_pos = CameraPosition{key.pos[0], key.pos[1], key.pos[2], key.target[0], key.target[1], key.target[2], 0.0, 1.0, 0.0};
-        }
+        if (use_keyframes) cam_pos = keyframe_camera_for_frame(keyframes, frame, render_frame_count, render_opts);
 
         // Generate frame filename (e.g., frame_0001.ppm)
         // Metal's own writer only produces PNG (never PPM), so a Metal

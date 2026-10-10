@@ -113,15 +113,15 @@ in a shorter video).
 ```
 ease 1                      # 1 (the default): start and end gently; 0: the same pace from the first frame to the last
 key  0 2.5 8    0 1 0       # key px py pz tx ty tz: where the camera is, and what it looks at
-key  6 1.5 3    0 1 0
-key  0 5 -4     0 1 0
+key  6 1.5 3    0 1 0  60   # ... and a 7th number: its vertical field of view, in degrees
+key  0 5 -4     0 1 0  35 0.1 9   # ... and the 8th and 9th: its lens radius and focus distance (0.1 blurs what is not 9 away)
 ```
 
 ```powershell
 .\ray_tracer.exe --video --camera-keyframes route.txt --frames 120 --fps 30 800 64 8 my-scene.pbrt
 ```
 
-The first frame is exactly the first `key` and the last frame exactly the last (two or more keys are needed). In between the camera passes through every key on a smooth curve (a Catmull-Rom spline through the places, and another through the targets), spending time on each stretch in proportion to how far it is, so the speed is about the same all the way. The field of view and lens come from the scene's own camera (the Scene Builder's **Flythrough...** writes the scene with the first saved view's lens). `--speed` stretches the number of frames as for the other paths. The file is read and checked before any frame is rendered, and a mistake is reported with its line number. The Scene Builder's **Flythrough...** button writes this file from its saved camera views. The code is `src/shared/camera_keyframes.h`.
+The first frame is exactly the first `key` and the last frame exactly the last (two or more keys are needed). In between the camera passes through every key on a smooth curve (a Catmull-Rom spline through the places, and another through the targets), spending time on each stretch in proportion to how far it is, so the speed is about the same all the way. Every frame is the whole camera: where it is, where it looks, and (when the keys give them) its field of view and lens, all on the same curve. The field of view and the lens are used only when EVERY key gives them (a key without them is the scene's own camera, so a path is not half-and-half): then each frame overrides the scene's own with them, and otherwise the scene's own field of view and lens apply throughout. `--speed` stretches the number of frames as for the other paths. The file is read and checked before any frame is rendered, and a mistake is reported with its line number. The Scene Builder's **Flythrough...** button writes this file from its saved camera views. The code is `src/shared/camera_keyframes.h`. The renderers read the per-frame camera from `RenderOptions` (`has_lookat_override`, `lookat_override`, `vfov_override`, and the existing `aperture_override`/`focus_distance_override`): the CPU path tracer and the OptiX backends do; the Metal backend still follows only the camera's position, so on a Mac use `--cpu` for keyframes that turn or zoom.
 
 ### 1. Orbit (Default)
 Circular motion around the scene on the XZ plane.

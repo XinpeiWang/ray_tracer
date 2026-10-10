@@ -957,7 +957,8 @@ static bool build_loaded_pbrt_scene(
 	// override needs to plug in.
 	const bool has_dof_override = false,
 	const double aperture_override = 0.0,
-	const double focus_distance_override = 0.0
+	const double focus_distance_override = 0.0,
+	const double vfov_override = 0.0
 ) {
 	// pbrt_load::loadFile() does real, scene-size-scaling work - disk I/O,
 	// full text parsing, PLY mesh loading, and infinite-light image decode -
@@ -990,7 +991,6 @@ static bool build_loaded_pbrt_scene(
 	// to be back when this function was slow enough that repeat calls were
 	// rare.
 	static SharedLruCache<pbrt_load::LoadResult> s_pbrtLoadCache(2);   // bounded: see SharedLruCache
-	// The file's write time is part of both cache keys, so a scene file saved again mid-session is read again (the Scene Builder saves over the same path).
 	const std::string stamp = optix_live_edit::writeStamp(path);
 	const std::shared_ptr<const pbrt_load::LoadResult> loadedPtr = s_pbrtLoadCache.get_or_build(std::string(path) + stamp,
 		[&](pbrt_load::LoadResult& out) -> bool {
@@ -1113,6 +1113,7 @@ static bool build_loaded_pbrt_scene(
 				       static_cast<float>(c.up[1]),
 				       static_cast<float>(c.up[2]));
 	const float aspect = static_cast<float>(image_width) / static_cast<float>(image_height);
+	const float vfovUsed = vfov_override > 0.0 ? static_cast<float>(vfov_override) : static_cast<float>(c.vfov);   // (RenderOptions::vfov_override: a flythrough frame)
 	// c.aperture (pbrt's lensradius*2, a world-space lens diameter) was
 	// never read here at all: every loaded .pbrt scene rendered pinhole-sharp
 	// on GPU regardless of what its own Camera directive's "lensradius"
@@ -1207,7 +1208,7 @@ static bool build_loaded_pbrt_scene(
 	if (defocus_angle_deg > 0.0f) {
 		float3 dof_u, dof_v;
 		build_pinhole_camera_params(
-			lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
+			lookfrom, lookat, vup, vfovUsed, aspect,
 			focus_dist_world, camera_params, &dof_u, &dof_v, nullptr, screenWindowPtr);
 		if (out_camera_extra) {
 			// A nonzero defocus disk opts this scene out of
@@ -1229,7 +1230,7 @@ static bool build_loaded_pbrt_scene(
 		}
 	} else {
 		build_pinhole_camera_params(
-			lookfrom, lookat, vup, static_cast<float>(c.vfov), aspect,
+			lookfrom, lookat, vup, vfovUsed, aspect,
 			1.0f, camera_params, nullptr, nullptr, nullptr, screenWindowPtr);
 	}
 
@@ -1428,7 +1429,8 @@ bool build_scene(
 	double lookat_z,
 	bool has_dof_override,
 	double aperture_override,
-	double focus_distance_override
+	double focus_distance_override,
+	double vfov_override
 ) {
 	if (camera_params == nullptr) {
 		return false;  // Invalid camera parameter buffer
@@ -1459,7 +1461,7 @@ bool build_scene(
 			cam_x, cam_y, cam_z, effectiveForceOverride,
 			has_custom_lookat, lookat_x, lookat_y, lookat_z,
 			out_camera_extra,
-			has_dof_override, aperture_override, focus_distance_override);
+			has_dof_override, aperture_override, focus_distance_override, vfov_override);
 	}
 
 	const char* name = cpu_scene_name_by_id(scene_id);

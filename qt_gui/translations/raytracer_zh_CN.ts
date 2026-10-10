@@ -7378,7 +7378,7 @@ From: %3</source>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="164"/>
-        <location filename="../scene_builder_turntable.cpp" line="235"/>
+        <location filename="../scene_builder_turntable.cpp" line="242"/>
         <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>预览</translation>
@@ -7415,9 +7415,13 @@ From: %3</source>
         <translation>制作一段视频：相机以它当前的位置为起点，保持自身的高度和距离，绕着相机所注视的点转一整圈。每一帧都要渲染，所以较长或较大的视频需要一些时间；建议先用“草稿”。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="64"/>
         <source>Makes a video of the scene from a camera that flies through your saved camera views in the order they were saved: %1. The first picture is the first view and the last picture the last. The lens (field of view, depth of field) is the first view&apos;s. It renders every frame, so a long or large video takes a while; start with Draft.</source>
-        <translation>制作一段视频：相机按保存的先后顺序依次飞过你保存的相机视图：%1。第一张画面就是第一个视图，最后一张画面就是最后一个视图。镜头（视野、景深）取自第一个视图。每一帧都要渲染，所以较长或较大的视频需要一些时间；建议先用“草稿”。</translation>
+        <translation type="vanished">制作一段视频：相机按保存的先后顺序依次飞过你保存的相机视图：%1。第一张画面就是第一个视图，最后一张画面就是最后一个视图。镜头（视野、景深）取自第一个视图。每一帧都要渲染，所以较长或较大的视频需要一些时间；建议先用“草稿”。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="64"/>
+        <source>Makes a video of the scene from a camera that flies through your saved camera views in the order they were saved: %1. The first picture is the first view and the last picture the last. Each view&apos;s field of view and lens go with it. It renders every frame, so a long or large video takes a while; start with Draft.</source>
+        <translation>制作一段视频：相机按保存的先后顺序依次飞过你保存的相机视图：%1。第一张画面就是第一个视图，最后一张画面就是最后一个视图。每个视图自己的视野和镜头也会随之变化。每一帧都要渲染，所以较长或较大的视频需要一些时间；建议先用“草稿”。</translation>
     </message>
     <message>
         <location filename="../scene_builder_turntable.cpp" line="75"/>
@@ -7511,37 +7515,37 @@ From: %3</source>
         <translation>飞行视频失败</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="163"/>
+        <location filename="../scene_builder_turntable.cpp" line="166"/>
         <source>A video needs at least one frame.</source>
         <translation>视频至少需要一帧。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="208"/>
+        <location filename="../scene_builder_turntable.cpp" line="215"/>
         <source>Video: frame %1 of %2...</source>
         <translation>视频：第 %1 帧，共 %2 帧...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="209"/>
+        <location filename="../scene_builder_turntable.cpp" line="216"/>
         <source>Video: putting the video together...</source>
         <translation>视频：正在合成视频...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="223"/>
+        <location filename="../scene_builder_turntable.cpp" line="230"/>
         <source>Video: starting (%1 frames, %2 x %3, %4 samples)...</source>
         <translation>视频：开始（%1 帧，%2 x %3，%4 次采样）...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="249"/>
+        <location filename="../scene_builder_turntable.cpp" line="256"/>
         <source>Video done in %1 s. Saved %2.</source>
         <translation>视频已在 %1 秒内完成。已保存到 %2。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="254"/>
+        <location filename="../scene_builder_turntable.cpp" line="261"/>
         <source>The video was cancelled.</source>
         <translation>视频已取消。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="266"/>
+        <location filename="../scene_builder_turntable.cpp" line="273"/>
         <source>The video failed.</source>
         <translation>视频制作失败。</translation>
     </message>
@@ -7566,7 +7570,7 @@ From: %3</source>
         <translation type="vanished">转台视频已在 %1 秒内完成。已保存到 %2。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="251"/>
+        <location filename="../scene_builder_turntable.cpp" line="258"/>
         <source>The video was made but could not be saved to %1.</source>
         <translation>视频已生成，但无法保存到 %1。</translation>
     </message>
@@ -7575,12 +7579,12 @@ From: %3</source>
         <translation type="vanished">转台视频已取消。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="262"/>
+        <location filename="../scene_builder_turntable.cpp" line="269"/>
         <source>The frames were rendered, but putting them together needs the free program ffmpeg, which was not found. Install it (ffmpeg.org) and try again.</source>
         <translation>帧已渲染完成，但合成视频需要免费程序 ffmpeg，而系统中没有找到。请安装（ffmpeg.org）后重试。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="263"/>
+        <location filename="../scene_builder_turntable.cpp" line="270"/>
         <source>The renderer did not produce a video (exit code %1).
 %2</source>
         <translation>渲染器没有生成视频（退出码 %1）。
@@ -7640,7 +7644,7 @@ From: %3</source>
         <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_files.cpp" line="248"/>
         <location filename="../scene_builder_render.cpp" line="85"/>
-        <location filename="../scene_builder_turntable.cpp" line="178"/>
+        <location filename="../scene_builder_turntable.cpp" line="181"/>
         <source>Could not write %1.</source>
         <translation>无法写入 %1。</translation>
     </message>
@@ -7786,19 +7790,19 @@ It is in the scene list now (Settings tab, My Scenes).</source>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="111"/>
-        <location filename="../scene_builder_turntable.cpp" line="162"/>
+        <location filename="../scene_builder_turntable.cpp" line="165"/>
         <source>A render is already running.</source>
         <translation>已有渲染正在运行。</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="113"/>
-        <location filename="../scene_builder_turntable.cpp" line="165"/>
+        <location filename="../scene_builder_turntable.cpp" line="168"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>请先修复属性中列出的问题。</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="114"/>
-        <location filename="../scene_builder_turntable.cpp" line="166"/>
+        <location filename="../scene_builder_turntable.cpp" line="169"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>在程序旁边找不到渲染器 (%1)。</translation>
     </message>
@@ -7870,7 +7874,7 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
         <location filename="../scene_builder_render.cpp" line="149"/>
-        <location filename="../scene_builder_turntable.cpp" line="218"/>
+        <location filename="../scene_builder_turntable.cpp" line="225"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
@@ -7906,7 +7910,7 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="180"/>
-        <location filename="../scene_builder_turntable.cpp" line="261"/>
+        <location filename="../scene_builder_turntable.cpp" line="268"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>渲染器意外停止。</translation>
     </message>

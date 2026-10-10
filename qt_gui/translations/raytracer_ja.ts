@@ -7372,7 +7372,7 @@ From: %3</source>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="164"/>
-        <location filename="../scene_builder_turntable.cpp" line="235"/>
+        <location filename="../scene_builder_turntable.cpp" line="242"/>
         <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
@@ -7409,9 +7409,13 @@ From: %3</source>
         <translation>カメラが注視している点のまわりを、カメラ自身の高さと距離のまま、現在の位置から 1 周する動画を作ります。すべてのフレームをレンダリングするので、長い動画や大きな動画は時間がかかります。まずは「ドラフト」から試してください。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="64"/>
         <source>Makes a video of the scene from a camera that flies through your saved camera views in the order they were saved: %1. The first picture is the first view and the last picture the last. The lens (field of view, depth of field) is the first view&apos;s. It renders every frame, so a long or large video takes a while; start with Draft.</source>
-        <translation>保存したカメラビューを保存した順にたどって飛ぶカメラから見たシーンの動画を作ります: %1。最初の画像が最初のビュー、最後の画像が最後のビューになります。レンズ (画角、被写界深度) は最初のビューのものです。すべてのフレームをレンダリングするので、長い動画や大きな動画は時間がかかります。まずは「ドラフト」から試してください。</translation>
+        <translation type="vanished">保存したカメラビューを保存した順にたどって飛ぶカメラから見たシーンの動画を作ります: %1。最初の画像が最初のビュー、最後の画像が最後のビューになります。レンズ (画角、被写界深度) は最初のビューのものです。すべてのフレームをレンダリングするので、長い動画や大きな動画は時間がかかります。まずは「ドラフト」から試してください。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="64"/>
+        <source>Makes a video of the scene from a camera that flies through your saved camera views in the order they were saved: %1. The first picture is the first view and the last picture the last. Each view&apos;s field of view and lens go with it. It renders every frame, so a long or large video takes a while; start with Draft.</source>
+        <translation>保存したカメラビューを保存した順にたどって飛ぶカメラから見たシーンの動画を作ります: %1。最初の画像が最初のビュー、最後の画像が最後のビューになります。各ビューの画角とレンズもそのビューと一緒に反映されます。すべてのフレームをレンダリングするので、長い動画や大きな動画は時間がかかります。まずは「ドラフト」から試してください。</translation>
     </message>
     <message>
         <location filename="../scene_builder_turntable.cpp" line="75"/>
@@ -7505,37 +7509,37 @@ From: %3</source>
         <translation>フライスルーに失敗しました</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="163"/>
+        <location filename="../scene_builder_turntable.cpp" line="166"/>
         <source>A video needs at least one frame.</source>
         <translation>動画には少なくとも 1 フレームが必要です。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="208"/>
+        <location filename="../scene_builder_turntable.cpp" line="215"/>
         <source>Video: frame %1 of %2...</source>
         <translation>動画: フレーム %1 / %2...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="209"/>
+        <location filename="../scene_builder_turntable.cpp" line="216"/>
         <source>Video: putting the video together...</source>
         <translation>動画: 動画を組み立てています...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="223"/>
+        <location filename="../scene_builder_turntable.cpp" line="230"/>
         <source>Video: starting (%1 frames, %2 x %3, %4 samples)...</source>
         <translation>動画: 開始 (%1 フレーム、%2 x %3、%4 サンプル)...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="249"/>
+        <location filename="../scene_builder_turntable.cpp" line="256"/>
         <source>Video done in %1 s. Saved %2.</source>
         <translation>動画が %1 秒で完成しました。%2 に保存しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="254"/>
+        <location filename="../scene_builder_turntable.cpp" line="261"/>
         <source>The video was cancelled.</source>
         <translation>動画はキャンセルされました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="266"/>
+        <location filename="../scene_builder_turntable.cpp" line="273"/>
         <source>The video failed.</source>
         <translation>動画の作成に失敗しました。</translation>
     </message>
@@ -7560,7 +7564,7 @@ From: %3</source>
         <translation type="vanished">ターンテーブルが %1 秒で完了しました。%2 に保存しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="251"/>
+        <location filename="../scene_builder_turntable.cpp" line="258"/>
         <source>The video was made but could not be saved to %1.</source>
         <translation>動画は作成されましたが、%1 に保存できませんでした。</translation>
     </message>
@@ -7569,12 +7573,12 @@ From: %3</source>
         <translation type="vanished">ターンテーブルはキャンセルされました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="262"/>
+        <location filename="../scene_builder_turntable.cpp" line="269"/>
         <source>The frames were rendered, but putting them together needs the free program ffmpeg, which was not found. Install it (ffmpeg.org) and try again.</source>
         <translation>フレームはレンダリングされましたが、動画にまとめるには無料のプログラム ffmpeg が必要で、見つかりませんでした。インストール (ffmpeg.org) してからもう一度お試しください。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_turntable.cpp" line="263"/>
+        <location filename="../scene_builder_turntable.cpp" line="270"/>
         <source>The renderer did not produce a video (exit code %1).
 %2</source>
         <translation>レンダラーは動画を作成しませんでした (終了コード %1)。
@@ -7634,7 +7638,7 @@ From: %3</source>
         <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_files.cpp" line="248"/>
         <location filename="../scene_builder_render.cpp" line="85"/>
-        <location filename="../scene_builder_turntable.cpp" line="178"/>
+        <location filename="../scene_builder_turntable.cpp" line="181"/>
         <source>Could not write %1.</source>
         <translation>%1 に書き込めませんでした。</translation>
     </message>
@@ -7780,19 +7784,19 @@ It is in the scene list now (Settings tab, My Scenes).</source>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="111"/>
-        <location filename="../scene_builder_turntable.cpp" line="162"/>
+        <location filename="../scene_builder_turntable.cpp" line="165"/>
         <source>A render is already running.</source>
         <translation>すでにレンダリング中です。</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="113"/>
-        <location filename="../scene_builder_turntable.cpp" line="165"/>
+        <location filename="../scene_builder_turntable.cpp" line="168"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>先にプロパティに表示されている問題を修正してください。</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="114"/>
-        <location filename="../scene_builder_turntable.cpp" line="166"/>
+        <location filename="../scene_builder_turntable.cpp" line="169"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>プログラムと同じ場所にレンダラー (%1) が見つかりません。</translation>
     </message>
@@ -7864,7 +7868,7 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
         <location filename="../scene_builder_render.cpp" line="149"/>
-        <location filename="../scene_builder_turntable.cpp" line="218"/>
+        <location filename="../scene_builder_turntable.cpp" line="225"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -7900,7 +7904,7 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="180"/>
-        <location filename="../scene_builder_turntable.cpp" line="261"/>
+        <location filename="../scene_builder_turntable.cpp" line="268"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>レンダラーが予期せず停止しました。</translation>
     </message>

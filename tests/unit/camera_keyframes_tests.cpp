@@ -53,7 +53,8 @@ TEST(CameraKeyframes, RejectsWhatCannotBeAPath) {
 	const ParseResult bad = parse("key 0 0 1 0 0 0\nkey 1 2 3\n");
 	EXPECT_FALSE(bad.ok);
 	EXPECT_NE(bad.error.find("line 2"), std::string::npos) << bad.error;
-	EXPECT_FALSE(parse("key 0 0 1 0 0 0\nkey 1 0 1 0 0 0 7\n").ok) << "seven numbers";
+	EXPECT_FALSE(parse("key 0 0 1 0 0 0\nkey 1 0 1 0 0 0 40 1\n").ok) << "eight numbers: a lens needs both its radius and its focus distance";
+	EXPECT_FALSE(parse("key 0 0 1 0 0 0\nkey 1 0 1 0 0 0 40 1 5 9\n").ok) << "ten numbers";
 	EXPECT_FALSE(parse("key 0 0 1 0 0 0\nkey a b c 0 0 0\n").ok);
 	EXPECT_FALSE(parse("key 0 0 1 0 0 0\nkey 1 0 1 nan 0 0\n").ok);
 	EXPECT_FALSE(parse("key 0 0 1 0 0 0\nkey 1 0 1 1 0 1\n").ok) << "a camera looking at its own place";
@@ -194,4 +195,114 @@ TEST(CameraKeyframes, LoadReadsAFileAndSaysWhichFileIsWrong) {
 	EXPECT_NE(bad.error.find("line 2"), std::string::npos);
 	std::error_code ec;
 	std::filesystem::remove(file, ec);
+}
+
+// ---- field of view and lens ------------------------------------------------------------------------------------------------------------
+
+namespace {
+
+Path withLens(double fovA, double fovB, double lensA, double lensB) {
+	Path p;
+	p.ease = false;
+	for (int i = 0; i < 2; ++i) {
+		Key k;
+		k.pos[0] = i * 10.0;
+		k.target[0] = i * 10.0;
+		k.target[2] = 5;
+		k.fov = i == 0 ? fovA : fovB;
+		k.lensRadius = i == 0 ? lensA : lensB;
+		k.focus = 4.0 + i * 2.0;
+		p.keys.push_back(k);
+	}
+	return p;
+}
+
+}  // namespace
+
+TEST(CameraKeyframes, KeysCanCarryAFieldOfViewAndALens) {
+	const ParseResult r = parse(
+		"key 0 1 8  0 1 0\n"
+		"key 4 1 6  0 1 0  60\n"
+		"key 0 1 4  0 1 0  35 0.25 3.5\n");
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_DOUBLE_EQ(r.path.keys[0].fov, 0.0) << "not given";
+	EXPECT_FALSE(r.path.keys[0].hasLens());
+	EXPECT_DOUBLE_EQ(r.path.keys[1].fov, 60.0);
+	EXPECT_FALSE(r.path.keys[1].hasLens()) << "a field of view alone has no lens";
+	EXPECT_DOUBLE_EQ(r.path.keys[2].lensRadius, 0.25);
+	EXPECT_DOUBLE_EQ(r.path.keys[2].focus, 3.5);
+	EXPECT_TRUE(r.path.keys[2].hasLens());
+	EXPECT_TRUE(parse("key 0 1 8  0 1 0  40 0 6\nkey 1 1 8  0 1 0  40 0 6\n").ok) << "a lens radius of 0 is a real value: sharp everywhere";
+}
+
+TEST(CameraKeyframes, RejectsAFieldOfViewOrLensThatCannotBe) {
+	const std::string two = "key 0 0 1 0 0 0\n";
+	EXPECT_FALSE(parse(two + "key 1 0 1 0 0 0 0\n").ok) << "fov 0";
+	EXPECT_FALSE(parse(two + "key 1 0 1 0 0 0 180\n").ok);
+	EXPECT_FALSE(parse(two + "key 1 0 1 0 0 0 -10\n").ok);
+	EXPECT_FALSE(parse(two + "key 1 0 1 0 0 0 40 -0.1 5\n").ok) << "negative lens radius";
+	EXPECT_FALSE(parse(two + "key 1 0 1 0 0 0 40 0.1 0\n").ok) << "no focus distance";
+	EXPECT_FALSE(parse(two + "key 1 0 1 0 0 0 forty\n").ok);
+}
+
+TEST(CameraKeyframes, TheFieldOfViewAndLensAreOnTheCurveWhenEveryKeyGivesThem) {
+	const Path p = withLens(30.0, 70.0, 0.0, 0.4);
+	const Key start = at(p, 0.0), end = at(p, 1.0), mid = at(p, 0.5);
+	EXPECT_DOUBLE_EQ(start.fov, 30.0);
+	EXPECT_DOUBLE_EQ(end.fov, 70.0);
+	EXPECT_NEAR(mid.fov, 50.0, 1e-9);
+	EXPECT_DOUBLE_EQ(start.lensRadius, 0.0);
+	EXPECT_DOUBLE_EQ(end.lensRadius, 0.4);
+	EXPECT_NEAR(mid.lensRadius, 0.2, 1e-9);
+	EXPECT_NEAR(mid.focus, 5.0, 1e-9);
+	EXPECT_TRUE(start.hasLens());
+}
+
+TEST(CameraKeyframes, AKeyWithoutAFieldOfViewLeavesItToTheScene) {
+	Path p = withLens(30.0, 70.0, 0.0, 0.4);
+	p.keys[1].fov = 0;   // one key does not say: nothing is interpolated
+	const Key mid = at(p, 0.5);
+	EXPECT_DOUBLE_EQ(mid.fov, 0.0);
+	EXPECT_FALSE(mid.hasLens()) << "no field of view given for every key, no lens either";
+	Path q = withLens(30.0, 70.0, 0.0, 0.4);
+	q.keys[0].lensRadius = -1;   // fields of view given, lens not
+	const Key m = at(q, 0.5);
+	EXPECT_NEAR(m.fov, 50.0, 1e-9);
+	EXPECT_FALSE(m.hasLens());
+	EXPECT_DOUBLE_EQ(m.lensRadius, -1.0);
+	EXPECT_DOUBLE_EQ(m.focus, 0.0);
+}
+
+TEST(CameraKeyframes, TheFieldOfViewStaysWhatACameraCanDoThroughASwing) {
+	Path p;
+	p.ease = false;
+	for (double fov : {20.0, 160.0, 20.0, 160.0}) {   // a spline overshoots between sharp changes
+		Key k;
+		k.pos[0] = p.keys.size() * 5.0;
+		k.target[2] = 3;
+		k.fov = fov;
+		p.keys.push_back(k);
+	}
+	for (int i = 0; i <= 300; ++i) {
+		const double fov = at(p, i / 300.0).fov;
+		EXPECT_GE(fov, 1.0);
+		EXPECT_LE(fov, 170.0);
+	}
+	EXPECT_DOUBLE_EQ(at(p, 0.0).fov, 20.0);
+	EXPECT_DOUBLE_EQ(at(p, 1.0).fov, 160.0);
+}
+
+TEST(CameraKeyframes, TheFileWrittenKeepsTheFieldOfViewAndLens) {
+	const Path p = withLens(30.0, 70.0, 0.0, 0.4);
+	const ParseResult r = parse(toText(p));
+	ASSERT_TRUE(r.ok) << r.error;
+	for (std::size_t i = 0; i < 2; ++i) {
+		EXPECT_DOUBLE_EQ(r.path.keys[i].fov, p.keys[i].fov);
+		EXPECT_DOUBLE_EQ(r.path.keys[i].lensRadius, p.keys[i].lensRadius);
+		EXPECT_DOUBLE_EQ(r.path.keys[i].focus, p.keys[i].focus);
+	}
+	Path plain = straight(true);
+	const std::string text = toText(plain);
+	EXPECT_EQ(text.find("fov"), std::string::npos);
+	EXPECT_FALSE(parse(text).path.keys[0].hasLens());
 }

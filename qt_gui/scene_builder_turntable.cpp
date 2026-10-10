@@ -62,7 +62,7 @@ void SceneBuilderWidget::showVideoDialog(bool flythrough) {
 		QStringList names;
 		for (const scene_doc::CameraView &v : m_doc.cameraViews) names << QString::fromStdString(v.name);
 		introText = tr("Makes a video of the scene from a camera that flies through your saved camera views in the order they were saved: %1. The first picture is the first view and the last picture the last. "
-		               "The lens (field of view, depth of field) is the first view's. It renders every frame, so a long or large video takes a while; start with Draft.").arg(names.join(QStringLiteral(" > ")));
+		               "Each view's field of view and lens go with it. It renders every frame, so a long or large video takes a while; start with Draft.").arg(names.join(QStringLiteral(" > ")));
 	}
 	auto *intro = new QLabel(introText, &dialog);
 	intro->setWordWrap(true);
@@ -140,10 +140,13 @@ void SceneBuilderWidget::startFlythrough(int frames, int fps, int width, int sam
 		camera_keyframes::Key k;
 		k.pos[0] = v.camera.position.x; k.pos[1] = v.camera.position.y; k.pos[2] = v.camera.position.z;
 		k.target[0] = v.camera.target.x; k.target[1] = v.camera.target.y; k.target[2] = v.camera.target.z;
+		k.fov = v.camera.fov;                       // each view's own field of view and lens
+		k.lensRadius = v.camera.lensRadius;
+		k.focus = v.camera.focusDistance;
 		path.keys.push_back(k);
 	}
 	if (returnToStart) path.keys.push_back(path.keys.front());
-	// The lens is the first view's: the scene is written with that camera.
+	// The scene is written with the first view's camera (the rest of a frame's camera comes from the keyframes).
 	scene_doc::Document lens = m_doc;
 	lens.camera = m_doc.cameraViews.front().camera;
 	startCameraVideo(frames, fps, width, samples, outMp4, QString::fromStdString(camera_keyframes::toText(path)), &lens, done);
@@ -182,7 +185,11 @@ void SceneBuilderWidget::startCameraVideo(int frames, int fps, int width, int sa
 	const double aspect = m_doc.render.width > 0 ? double(m_doc.render.height) / m_doc.render.width : 0.75;
 	const int height = std::max(1, static_cast<int>(std::lround(width * aspect)));
 	QStringList args;
-	args << (m_gpuCheck->isChecked() ? "--gpu" : "--cpu") << "--output" << dir + "/turntable.ppm" << "--video";
+	bool gpu = m_gpuCheck->isChecked();
+#ifdef Q_OS_MAC
+	if (!keyframes.isEmpty()) gpu = false;   // the Mac's GPU renderer follows only the camera's position, not where it looks or its lens: a flythrough needs the CPU there
+#endif
+	args << (gpu ? "--gpu" : "--cpu") << "--output" << dir + "/turntable.ppm" << "--video";
 	if (keyframes.isEmpty()) args << "--camera-path" << "orbit";
 	else args << "--camera-keyframes" << keyframeFile;
 	args << "--frames" << QString::number(frames) << "--fps" << QString::number(fps) << "--height" << QString::number(height) << QString::number(width) << QString::number(samples) << QString::number(m_doc.render.maxDepth) << scene;

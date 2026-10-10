@@ -533,9 +533,12 @@ extern "C" int cpu_render_main(int width, int height, int spp, int max_depth, co
 				? 2.0 * std::atan(lens_radius / effFocusDist) * 180.0 / 3.14159265358979323846
 				: 0.0;
 		}
-		std::cout << "[cpu_interface] Camera: vfov=" << cc.vfov
+		// Where the camera looks and its field of view, when the caller places the whole camera (RenderOptions::has_lookat_override/vfov_override: a flythrough frame).
+		if (options.has_lookat_override) cam.lookat = point3(options.lookat_override[0], options.lookat_override[1], options.lookat_override[2]);
+		if (options.vfov_override > 0.0) cam.vfov = options.vfov_override;
+		std::cout << "[cpu_interface] Camera: vfov=" << cam.vfov
 				  << " lookfrom=(" << cam.lookfrom.x() << "," << cam.lookfrom.y() << "," << cam.lookfrom.z() << ")"
-				  << " lookat=(" << cc.lookat_x << "," << cc.lookat_y << "," << cc.lookat_z << ")" << std::endl;
+				  << " lookat=(" << cam.lookat.x() << "," << cam.lookat.y() << "," << cam.lookat.z() << ")" << std::endl;
 
 		// Apply optional sky light and punctual lights from scene descriptor
 		if (scene_desc->build_sky)

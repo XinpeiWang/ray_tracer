@@ -204,5 +204,8 @@ bool build_scene(
 	// has_custom_lookat/lookat_x/y/z above.
 	bool has_dof_override = false,
 	double aperture_override = 0.0,
-	double focus_distance_override = 0.0
+	double focus_distance_override = 0.0,
+	// A vertical field of view (degrees) to use instead of the scene's own (RenderOptions::vfov_override, render_options.h): > 0 replaces it, <= 0 leaves it. Only the
+	// pbrt-scene perspective camera reads it, like the depth-of-field override above.
+	double vfov_override = 0.0
 );

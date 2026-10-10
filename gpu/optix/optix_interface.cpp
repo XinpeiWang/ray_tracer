@@ -131,7 +131,8 @@ static bool prepareSceneAndCamera(
 	double lookat_z = 0.0,
 	bool has_dof_override = false,
 	double aperture_override = 0.0,
-	double focus_distance_override = 0.0
+	double focus_distance_override = 0.0,
+	double vfov_override = 0.0
 ) {
 	errorCode = 0;
 	if (verbose) {
@@ -168,13 +169,13 @@ static bool prepareSceneAndCamera(
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
 							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
 							   has_custom_lookat, lookat_x, lookat_y, lookat_z,
-							   has_dof_override, aperture_override, focus_distance_override);
+							   has_dof_override, aperture_override, focus_distance_override, vfov_override);
 	} else {
 		CerrCapture capture;
 		builtOk = build_scene(scene_id, image_width, image_height, scene, camera_params,
 							   cam_x, cam_y, cam_z, &cameraExtra, force_camera_override,
 							   has_custom_lookat, lookat_x, lookat_y, lookat_z,
-							   has_dof_override, aperture_override, focus_distance_override);
+							   has_dof_override, aperture_override, focus_distance_override, vfov_override);
 		buildDiagnostics = capture.text.str();
 	}
 
@@ -369,13 +370,13 @@ extern "C" int optix_render_main(
 		// trailing params. has_custom_lookat/lookat_x/y/z must be spelled
 		// out here (rather than left to their defaults) since C++ can't
 		// skip earlier default params to reach later ones by position -
-		// this offline single-frame path never uses a custom lookat.
+		// they come from RenderOptions (a flythrough frame places the whole camera).
 		if (!prepareSceneAndCamera(scene_id, image_width, image_height, cam_x, cam_y, cam_z,
 									 force_camera_override != 0, wavefrontMode, ptxPath, /*verbose=*/true,
 									 cameraExtra, prepareErrorCode,
-									 /*has_custom_lookat=*/false, /*lookat_x=*/0.0, /*lookat_y=*/0.0, /*lookat_z=*/0.0,
+									 options.has_lookat_override, options.lookat_override[0], options.lookat_override[1], options.lookat_override[2],
 									 /*has_dof_override=*/options.aperture_override >= 0.0 || options.focus_distance_override >= 0.0,
-									 options.aperture_override, options.focus_distance_override)) {
+									 options.aperture_override, options.focus_distance_override, options.vfov_override)) {
 			return prepareErrorCode;
 		}
 
