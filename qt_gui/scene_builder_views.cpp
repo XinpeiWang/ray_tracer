@@ -13,12 +13,14 @@
 #include <QCheckBox>
 #include <QHBoxLayout>
 #include <QLabel>
+#include <QListWidget>
 #include <QMouseEvent>
 #include <QPushButton>
 #include <QShortcut>
 #include <QStackedWidget>
 #include <QVBoxLayout>
 
+#include <algorithm>
 #include <cmath>
 
 using namespace scene_builder_ui;
@@ -123,7 +125,7 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 	const auto onSelection = [this](const char *where) {
 		return [this, where](const BuilderSelection &s) {
 			logSelection(s, where);
-			setSelection(s);
+			selectWithGroup(s);   // an object in a group picks the whole group
 		};
 	};
 	const auto onDragBegan = [this]() {
@@ -132,6 +134,19 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		m_editCounter++;
 	};
 	const auto onDragged = [this](const BuilderSelection &s, int which, const Float3 &w) {
+		// Dragging one of several picked items moves them all by the same amount.
+		const bool picked = which == 0 && !m_extra.empty() && (s == m_sel || std::find(m_extra.begin(), m_extra.end(), s) != m_extra.end());
+		if (picked && (s.kind == SelKind::Object || s.kind == SelKind::Light)) {
+			const Float3 *now = builderHandle(&m_doc, s, 0);
+			if (now) {
+				const Float3 delta{w.x - now->x, w.y - now->y, w.z - now->z};
+				if (delta.x == 0.0 && delta.y == 0.0 && delta.z == 0.0) return;
+				const scene_doc::ItemSet items = pickedItems();
+				edit(QString("drag#%1").arg(m_editCounter), [&]() { scene_doc::translateItems(m_doc, items, delta); });
+				refreshInspectorValues();
+				return;
+			}
+		}
 		edit(QString("drag#%1").arg(m_editCounter), [&]() {
 			Float3 *target = nullptr;
 			switch (s.kind) {
@@ -147,6 +162,9 @@ void SceneBuilderWidget::createViews(QWidget *layoutBox, QVBoxLayout *layoutLayo
 		refreshInspectorValues();
 	};
 	connect(m_view, &SceneLayoutView::selectionRequested, this, onSelection("layout view"));
+	connect(m_view, &SceneLayoutView::selectionToggled, this, [this](const BuilderSelection &s) { togglePicked(s); });
+	connect(m_view, &SceneLayoutView::boxSelected, this, [this](const QList<BuilderSelection> &items, bool additive) { boxPicked(items, additive); });
+	connect(m_view3d, &Scene3DView::selectionToggled, this, [this](const BuilderSelection &s) { togglePicked(s); });
 	connect(m_view, &SceneLayoutView::dragBegan, this, onDragBegan);
 	connect(m_view, &SceneLayoutView::positionDragged, this, onDragged);
 	connect(m_view3d, &Scene3DView::selectionRequested, this, onSelection("3D view"));
@@ -191,6 +209,8 @@ void SceneBuilderWidget::updateViews() {
 void SceneBuilderWidget::selectInViews(const BuilderSelection &s) {
 	m_view->setSelection(s);
 	m_view3d->setSelection(s);
+	m_view->setExtraSelection(m_extra);
+	m_view3d->setExtraSelection(m_extra);
 	updateGizmoButtons(s);
 }
 
@@ -198,7 +218,7 @@ void SceneBuilderWidget::selectInViews(const BuilderSelection &s) {
 // greyed and Move shows pressed, instead of a pressed Rotate beside arrows. The choice itself is kept for the next object picked.
 void SceneBuilderWidget::updateGizmoButtons(const BuilderSelection &s) {
 	if (!m_gizmoGroup) return;
-	const bool object = s.kind == SelKind::Object;
+	const bool object = s.kind == SelKind::Object && m_extra.empty();   // a turn or a stretch is of one object
 	for (int i = 1; i <= 2; ++i)
 		if (QAbstractButton *b = m_gizmoGroup->button(i)) b->setEnabled(object);
 	if (QAbstractButton *b = m_gizmoGroup->button(object ? static_cast<int>(m_view3d->gizmoMode()) : 0)) b->setChecked(true);
@@ -311,6 +331,26 @@ bool SceneBuilderWidget::dragScale3dForTest(int index, int axis, double ratio) {
 }
 
 void SceneBuilderWidget::orbit3dForTest(double yawDeg, double pitchDeg) { m_view3d->orbitForTest(yawDeg, pitchDeg); }
+
+// A real drag of object `index` in the layout view while others are picked: true if object `index` moved.
+bool SceneBuilderWidget::dragPickedForTest(int index, const QPointF &deltaPx) { return dragObjectForTest(index, deltaPx); }
+
+QPointF SceneBuilderWidget::itemScreenPosForTest(const BuilderSelection &s) const { return m_view->itemScreenPos(s); }
+
+void SceneBuilderWidget::clickItemForTest(const BuilderSelection &s, Qt::KeyboardModifiers mods) {
+	const QPointF at = m_view->itemScreenPos(s);
+	sendMouse(m_view, QEvent::MouseButtonPress, at, Qt::LeftButton, Qt::LeftButton, mods);
+	sendMouse(m_view, QEvent::MouseButtonRelease, at, Qt::LeftButton, Qt::NoButton, mods);
+}
+
+int SceneBuilderWidget::pickedRowsForTest() const { return static_cast<int>(m_list->selectedItems().size()); }
+
+void SceneBuilderWidget::boxSelectForTest(const QPointF &from, const QPointF &to) {
+	const Qt::KeyboardModifiers mods = Qt::ControlModifier;
+	sendMouse(m_view, QEvent::MouseButtonPress, from, Qt::LeftButton, Qt::LeftButton, mods);
+	for (int step = 1; step <= 4; ++step) sendMouse(m_view, QEvent::MouseMove, from + (to - from) * (step / 4.0), Qt::NoButton, Qt::LeftButton, mods);
+	sendMouse(m_view, QEvent::MouseButtonRelease, to, Qt::LeftButton, Qt::NoButton, mods);
+}
 bool SceneBuilderWidget::meshReadyForTest(const QString &path) const { return m_view3d->meshPreviewReady(path.toStdString()); }
 bool SceneBuilderWidget::gizmoButtonEnabled(int tool) const { return m_gizmoGroup && m_gizmoGroup->button(tool) && m_gizmoGroup->button(tool)->isEnabled(); }
 int SceneBuilderWidget::gizmoButtonChecked() const { return m_gizmoGroup ? m_gizmoGroup->checkedId() : -1; }

@@ -56,6 +56,7 @@ add_executable(unit_tests
     unit/gpu_scene_frame_tests.cpp
     unit/scene_size_tests.cpp
     unit/scene_array_tests.cpp
+    unit/scene_selection_tests.cpp
     unit/gpu_scene_textures_tests.cpp
     unit/gpu_scene_materials_tests.cpp
     unit/nanovdb_dense_tests.cpp

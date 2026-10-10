@@ -25,7 +25,7 @@ inline Fields fieldsOf(const Object& o) {
 	        {"meshFile", o.meshFile}, {"material", toString(o.material.kind)}, {"color", v(o.material.color)}, {"checker", o.material.checker ? "1" : "0"},
 	        {"color2", v(o.material.color2)}, {"checkerCount", v(o.material.checkerCount)}, {"roughness", v(o.material.roughness)}, {"ior", v(o.material.ior)},
 	        {"transmittance", v(o.material.transmittance)}, {"picture", o.material.imageFile}, {"emissive", o.emissive ? "1" : "0"}, {"emission", v(o.emission)},
-	        {"strength", v(o.emissionStrength)}, {"twoSided", o.twoSided ? "1" : "0"}};
+	        {"strength", v(o.emissionStrength)}, {"twoSided", o.twoSided ? "1" : "0"}, {"group", o.group}};
 }
 inline Fields fieldsOf(const Light& l) {
 	return {{"name", l.name}, {"kind", toString(l.kind)}, {"position", v(l.position)}, {"target", v(l.target)}, {"color", v(l.color)},

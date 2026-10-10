@@ -228,14 +228,24 @@ void SceneBuilderWidget::buildUi() {
 	leftLayout->addWidget(listBar);
 	m_list = new QListWidget(left);
 	m_list->setObjectName("sceneBuilderList");  // sized by the application stylesheet (mainwindow_style.cpp)
+	m_list->setSelectionMode(QAbstractItemView::ExtendedSelection);   // Ctrl- or Shift-click picks several: they are moved, copied and deleted together
 	leftLayout->addWidget(m_list, 1);
 	left->setMinimumWidth(0);  // showEvent() sets the real minimum from the widest button
 	m_leftPanel = left;
 	m_addButton = addB;
-	connect(m_list, &QListWidget::currentRowChanged, this, [this](int) { onListSelectionChanged(); });
+	connect(m_list, &QListWidget::itemSelectionChanged, this, [this]() { onListSelectionChanged(); });
 	connect(m_deleteButton, &QPushButton::clicked, this, [this]() { deleteSelected(); });
 	connect(m_duplicateButton, &QPushButton::clicked, this, [this]() { duplicateSelected(); });
 	connect(m_arrayButton, &QPushButton::clicked, this, [this]() { showArrayDialog(); });
+	// Group, Ungroup and Select all, from anywhere in the tab except a text box.
+	const auto addKey = [this](const QKeySequence &key, const std::function<void()> &action) {
+		auto *shortcut = new QShortcut(key, this);
+		shortcut->setContext(Qt::WidgetWithChildrenShortcut);
+		connect(shortcut, &QShortcut::activated, this, [action]() { if (!qobject_cast<QLineEdit *>(QApplication::focusWidget())) action(); });
+	};
+	addKey(QKeySequence(Qt::CTRL | Qt::Key_G), [this]() { groupSelected(); });
+	addKey(QKeySequence(Qt::CTRL | Qt::SHIFT | Qt::Key_G), [this]() { ungroupSelected(); });
+	addKey(QKeySequence(Qt::CTRL | Qt::Key_A), [this]() { selectAll(); });
 	// Ctrl+D (Command+D on a Mac) duplicates from anywhere in the tab except a text box.
 	auto *duplicateKey = new QShortcut(QKeySequence(Qt::CTRL | Qt::Key_D), this);
 	duplicateKey->setContext(Qt::WidgetWithChildrenShortcut);
@@ -391,11 +401,18 @@ bool SceneBuilderWidget::restore(const std::string &json) {
 	std::string err;
 	if (!scene_doc::fromJson(json, d, err)) return false;
 	m_doc = std::move(d);
-	if (m_sel.kind == SelKind::Object && m_sel.index >= static_cast<int>(m_doc.objects.size())) m_sel = {SelKind::None, 0};
-	if (m_sel.kind == SelKind::Light && m_sel.index >= static_cast<int>(m_doc.lights.size())) m_sel = {SelKind::None, 0};
+	// What was picked stays picked, except items the restored document does not have.
+	const auto gone = [this](const BuilderSelection &s) {
+		return (s.kind == SelKind::Object && s.index >= static_cast<int>(m_doc.objects.size())) || (s.kind == SelKind::Light && s.index >= static_cast<int>(m_doc.lights.size()));
+	};
+	m_extra.erase(std::remove_if(m_extra.begin(), m_extra.end(), gone), m_extra.end());
+	if (gone(m_sel)) {
+		m_sel = {SelKind::None, 0};
+		m_extra.clear();
+	}
 	m_lastEditKey.clear();
 	rebuildList();
-	setSelection(m_sel);
+	applySelection(m_sel, false);
 	documentChanged();
 	return true;
 }
@@ -474,13 +491,20 @@ void SceneBuilderWidget::rebuildList() {
 	for (int i = 0; i < static_cast<int>(m_doc.objects.size()); ++i) add(QString(), SelKind::Object, i);
 	for (int i = 0; i < static_cast<int>(m_doc.lights.size()); ++i) add(QString(), SelKind::Light, i);
 	refreshListLabels();
-	// reselect
+	syncListSelection();   // reselect
+}
+
+// Highlights the rows of the main item and the others picked with it; the main one is the list's current row.
+void SceneBuilderWidget::syncListSelection() {
+	QSignalBlocker block(m_list);
+	m_list->clearSelection();
+	m_list->setCurrentRow(-1);
 	for (int r = 0; r < m_list->count(); ++r) {
-		const auto *it = m_list->item(r);
-		if (it->data(Qt::UserRole).toInt() == static_cast<int>(m_sel.kind) && it->data(Qt::UserRole + 1).toInt() == m_sel.index) {
-			m_list->setCurrentRow(r);
-			break;
-		}
+		QListWidgetItem *it = m_list->item(r);
+		const BuilderSelection row{static_cast<SelKind>(it->data(Qt::UserRole).toInt()), it->data(Qt::UserRole + 1).toInt()};
+		if (row.kind == SelKind::None) continue;
+		if (row == m_sel) m_list->setCurrentRow(r, QItemSelectionModel::ClearAndSelect);
+		else if (std::find(m_extra.begin(), m_extra.end(), row) != m_extra.end()) it->setSelected(true);
 	}
 }
 
@@ -502,14 +526,34 @@ void SceneBuilderWidget::refreshListLabels() {
 }
 
 void SceneBuilderWidget::onListSelectionChanged() {
+	const QList<QListWidgetItem *> rows = m_list->selectedItems();
 	QListWidgetItem *it = m_list->currentItem();
+	if (it && !it->isSelected()) it = nullptr;   // the current row can be one that a Ctrl-click just took out of the selection
+	if (!it && !rows.isEmpty()) it = rows.first();
 	if (!it) {
 		setSelection({SelKind::None, 0}, true);
 		return;
 	}
-	const BuilderSelection s{static_cast<SelKind>(it->data(Qt::UserRole).toInt()), it->data(Qt::UserRole + 1).toInt()};
+	const auto toSelection = [](const QListWidgetItem *row) { return BuilderSelection{static_cast<SelKind>(row->data(Qt::UserRole).toInt()), row->data(Qt::UserRole + 1).toInt()}; };
+	const BuilderSelection s = toSelection(it);
+	std::vector<BuilderSelection> others;
+	if (rows.size() > 1)
+		for (const QListWidgetItem *row : rows) {
+			const BuilderSelection other = toSelection(row);
+			if (!(other == s) && other.kind != SelKind::Camera) others.push_back(other);   // the camera is edited on its own
+		}
 	logSelection(s, "list");
-	setSelection(s, true);
+	if (others.empty()) {
+		setSelection(s, true);
+		return;
+	}
+	if (s.kind == SelKind::Camera) {   // Ctrl-clicked onto the camera's row: the camera alone
+		setSelection(s, true);
+		return;
+	}
+	m_extra = others;
+	applySelection(s, true);
+	AppLog::info(QStringLiteral("builder"), QStringLiteral("select: %1 items (list)").arg(others.size() + 1));
 }
 
 void SceneBuilderWidget::logSelection(const BuilderSelection &s, const char *where) {
@@ -529,18 +573,13 @@ void SceneBuilderWidget::logSelection(const BuilderSelection &s, const char *whe
 }
 
 void SceneBuilderWidget::setSelection(const BuilderSelection &s, bool fromList) {
+	m_extra.clear();
+	applySelection(s, fromList);
+}
+
+void SceneBuilderWidget::applySelection(const BuilderSelection &s, bool fromList) {
 	m_sel = s;
-	if (!fromList) {
-		QSignalBlocker block(m_list);
-		m_list->setCurrentRow(-1);
-		for (int r = 0; r < m_list->count(); ++r) {
-			const auto *it = m_list->item(r);
-			if (it->data(Qt::UserRole).toInt() == static_cast<int>(s.kind) && it->data(Qt::UserRole + 1).toInt() == s.index) {
-				m_list->setCurrentRow(r);
-				break;
-			}
-		}
-	}
+	if (!fromList) syncListSelection();
 	selectInViews(s);
 	rebuildInspector();
 	updateActions();
@@ -572,10 +611,11 @@ void SceneBuilderWidget::selectLight(int index) {
 
 // The prop's objects go in together at the drop point, named alike ("Table top", "Table leg 1", ...; a second table gets "Table top 2"...), and the first
 // is selected. They are ordinary objects from then on.
-void SceneBuilderWidget::addProp(scene_doc::PropKind kind) { addParts(scene_doc::makeProp(kind)); }
-void SceneBuilderWidget::addBlocky(scene_doc::BlockyKind kind) { addParts(scene_doc::makeBlocky(kind)); }
+void SceneBuilderWidget::addProp(scene_doc::PropKind kind) { addParts(scene_doc::makeProp(kind), propLabel(kind)); }
+void SceneBuilderWidget::addBlocky(scene_doc::BlockyKind kind) { addParts(scene_doc::makeBlocky(kind), blockyLabel(kind)); }
 
-void SceneBuilderWidget::addParts(std::vector<Object> parts) {
+void SceneBuilderWidget::addParts(std::vector<Object> parts, const QString &groupName) {
+	scene_doc::ItemSet addedItems;
 	edit(QString(), [&]() {
 		QStringList names;
 		for (const Object &existing : m_doc.objects) names << QString::fromStdString(existing.name);
@@ -593,11 +633,13 @@ void SceneBuilderWidget::addParts(std::vector<Object> parts) {
 			p.position.y += c.y;
 			p.position.z += c.z;
 			m_doc.objects.push_back(p);
+			addedItems.objects.push_back(static_cast<int>(m_doc.objects.size()) - 1);
 		}
+		if (parts.size() >= 2 && !groupName.isEmpty()) scene_doc::groupObjects(m_doc, addedItems.objects, groupName.toStdString());   // a table is one thing to pick and move
 		m_sel = {SelKind::Object, first};
 	});
 	rebuildList();
-	setSelection(m_sel);
+	pickItems(addedItems, m_sel);
 }
 
 void SceneBuilderWidget::addObject(ShapeKind shape) {
@@ -647,28 +689,15 @@ void SceneBuilderWidget::addLight(LightKind kind) {
 	setSelection(m_sel);
 }
 
-// A numbered copy of the selected object or light ("Chair" gives "Chair 2"), beside the original, which is selected afterwards. One undo step.
+// A numbered copy of what is picked ("Chair" gives "Chair 2"), beside the original, with its place relative to the others kept and a group of its own if it was one;
+// the copies are picked afterwards. One undo step.
 void SceneBuilderWidget::duplicateSelected() {
-	if (m_sel.kind == SelKind::Object && m_sel.index < static_cast<int>(m_doc.objects.size())) {
-		edit(QString(), [this]() {
-			m_doc.objects.push_back(scene_doc::duplicateOf(m_doc.objects[m_sel.index], m_doc.objects));
-			m_sel.index = static_cast<int>(m_doc.objects.size()) - 1;
-		});
-	} else if (m_sel.kind == SelKind::Light && m_sel.index < static_cast<int>(m_doc.lights.size())) {
-		edit(QString(), [this]() {
-			Light l = m_doc.lights[m_sel.index];
-			QStringList names;
-			for (const Light &existing : m_doc.lights) names << QString::fromStdString(existing.name);
-			l.name = uniqueName(QString::fromStdString(l.name).remove(QRegularExpression(" copy$")).remove(QRegularExpression(" \\d+$")), names).toStdString();
-			l.position.x += 0.5;
-			m_doc.lights.push_back(l);
-			m_sel.index = static_cast<int>(m_doc.lights.size()) - 1;
-		});
-	} else {
-		return;
-	}
+	const scene_doc::ItemSet items = pickedItems();
+	if (items.empty()) return;
+	scene_doc::ItemSet added;
+	edit(QString(), [&]() { added = scene_doc::duplicateItems(m_doc, items); });
 	rebuildList();
-	setSelection(m_sel);
+	pickItems(added, added.objects.empty() ? BuilderSelection{SelKind::Light, added.lights.front()} : BuilderSelection{SelKind::Object, added.objects.front()});
 }
 
 // Objects made from another one (scene_array.h: a grid, a ring, a scatter) go in together, as one undo step; the first is selected.
@@ -686,18 +715,20 @@ void SceneBuilderWidget::addCopies(const std::vector<Object> &copies) {
 
 void SceneBuilderWidget::showArrayDialog() {
 	if (m_sel.kind != SelKind::Object || m_sel.index >= static_cast<int>(m_doc.objects.size())) return;
-	ArrayDialog dialog(m_sel.index, m_doc.objects, this);
-	if (dialog.exec() == QDialog::Accepted) addCopies(dialog.copies());
+	std::vector<int> together;   // several picked objects are the unit that is copied; with one, the window suggests the parts that belong with it
+	for (const BuilderSelection &other : m_extra)
+		if (other.kind == SelKind::Object && other.index < static_cast<int>(m_doc.objects.size())) together.push_back(other.index);
+	ArrayDialog dialog(m_sel.index, m_doc.objects, this, together);
+	if (dialog.exec() != QDialog::Accepted) return;
+	std::vector<Object> made = dialog.copies();
+	scene_doc::groupCopies(m_doc, made, dialog.unit());   // copies of a group are groups
+	addCopies(made);
 }
 
 void SceneBuilderWidget::deleteSelected() {
-	if (m_sel.kind == SelKind::Object && m_sel.index < static_cast<int>(m_doc.objects.size())) {
-		edit(QString(), [this]() { m_doc.objects.erase(m_doc.objects.begin() + m_sel.index); });
-	} else if (m_sel.kind == SelKind::Light && m_sel.index < static_cast<int>(m_doc.lights.size())) {
-		edit(QString(), [this]() { m_doc.lights.erase(m_doc.lights.begin() + m_sel.index); });
-	} else {
-		return;
-	}
+	const scene_doc::ItemSet items = pickedItems();
+	if (items.empty()) return;
+	edit(QString(), [&]() { scene_doc::eraseItems(m_doc, items); });
 	m_sel = {SelKind::None, 0};
 	rebuildList();
 	setSelection(m_sel);
@@ -707,7 +738,7 @@ void SceneBuilderWidget::updateActions() {
 	const bool item = (m_sel.kind == SelKind::Object || m_sel.kind == SelKind::Light);
 	m_deleteButton->setEnabled(item);
 	m_duplicateButton->setEnabled(item);
-	m_arrayButton->setEnabled(m_sel.kind == SelKind::Object);
+	m_arrayButton->setEnabled(m_sel.kind == SelKind::Object);   // (with several picked, the others go into the copies)
 	m_undoButton->setEnabled(m_history.canUndo());
 	m_redoButton->setEnabled(m_history.canRedo());
 	const bool ok = !scene_doc::hasErrors(m_problems);   // from the last refreshProblems(): the document has not changed since

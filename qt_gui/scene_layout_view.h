@@ -1,8 +1,12 @@
 #pragma once
 // scene_layout_view.h - the Scene Builder's 2D layout view: the scene seen from above, the front or the side, where things are picked and dragged.
 
+#include <QList>
 #include <QPointF>
+#include <QRectF>
 #include <QWidget>
+
+#include <vector>
 
 #include "../src/shared/scene_document.h"
 
@@ -27,6 +31,8 @@ public:
 
 	void setDocument(const scene_doc::Document *doc) { m_doc = doc; update(); }
 	void setSelection(const BuilderSelection &s) { m_sel = s; update(); }
+	// The other items picked along with the main one (Ctrl- or Shift-click, a box, a group): drawn like it, and dragged with it.
+	void setExtraSelection(const std::vector<BuilderSelection> &extra) { m_extra = extra; update(); }
 	void setPlane(Plane p);
 	void setSnap(bool on) { m_snap = on; }
 	// The point in world space the view is centred on, for the plane's two axes (the third is 0): where a new object is dropped.
@@ -38,6 +44,10 @@ public:
 
 signals:
 	void selectionRequested(const BuilderSelection &s);
+	// Ctrl- or Shift-click on an item: add it to the picked items, or take it out.
+	void selectionToggled(const BuilderSelection &s);
+	// A box dragged round items (Ctrl or Shift held on the background): every object and light whose centre is inside; `additive` adds to the picked items.
+	void boxSelected(const QList<BuilderSelection> &items, bool additive);
 	// A drag moved something: `which` is 0 for the item's position, 1 for its target (camera, spot and distant lights). dragBegan is sent once at the
 	// start so the owner can take an undo snapshot.
 	void dragBegan();
@@ -64,9 +74,18 @@ private:
 	QList<QPointF> silhouette(const scene_doc::Object &o) const;
 	Hit hitTest(const QPointF &px) const;
 	const scene_doc::Float3 *handlePosition(const BuilderSelection &s, int which) const;
+	bool isPicked(const BuilderSelection &s) const;   // the main item or one of the extra ones
 
 	const scene_doc::Document *m_doc = nullptr;
 	BuilderSelection m_sel;
+	std::vector<BuilderSelection> m_extra;
+	bool m_maybeToggle = false;      // Ctrl or Shift pressed: a click toggles m_toggleCandidate, a drag becomes a box
+	BuilderSelection m_toggleCandidate;
+	bool m_banding = false;          // a box is being dragged out
+	bool m_bandAdditive = false;
+	QPointF m_bandStart, m_bandEnd;
+	BuilderSelection m_collapseTo;   // pressed on one of several picked items: if the mouse does not move, that one alone becomes the selection
+	bool m_collapsePending = false;
 	Plane m_plane = Plane::Top;
 	double m_scale = 40.0;           // pixels per world unit
 	double m_cu = 0.0, m_cv = 2.0;   // the (u, v) point at the middle of the widget

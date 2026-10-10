@@ -179,6 +179,114 @@ static void selfTestArray(SceneBuilderWidget *sb, const std::function<void(bool,
 	check(sb->undo() && sb->document().lights.size() == lights0, "and undone");
 }
 
+// Several items at once (scene_selection.h, scene_builder_multi.cpp): picking by list, click and box, dragging, copying, deleting and grouping them together, each
+// one undo step. Leaves the document as it found it.
+static void selfTestMultiSelect(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check) {
+	using Sel = BuilderSelection;
+	const size_t n0 = sb->document().objects.size();
+	const auto objectsPicked = [sb]() { return sb->pickedItems().objects; };
+	sb->pickObjects({1, 2});
+	check(objectsPicked() == std::vector<int>({1, 2}) && sb->pickedRowsForTest() == 2, "two objects can be picked together (the list shows both)");
+	const auto pos = [sb](int i) { return sb->document().objects[static_cast<size_t>(i)].position; };
+	const scene_doc::Float3 glass0 = pos(1), gold0 = pos(2);
+	check(sb->dragPickedForTest(1, QPointF(40, 0)), "dragging one of the two with the mouse moves it");
+	const double dx = pos(1).x - glass0.x, dz = pos(1).z - glass0.z;
+	check(dx != 0.0 && std::abs((pos(2).x - gold0.x) - dx) < 1e-9 && std::abs((pos(2).z - gold0.z) - dz) < 1e-9, "and the other moves by the same amount");
+	check(sb->undo() && pos(1).x == glass0.x && pos(2).x == gold0.x, "the drag of both is one undo step");
+	sb->moveSelectedBy({0.0, 1.0, 0.0});
+	check(std::abs(pos(1).y - (glass0.y + 1.0)) < 1e-9 && std::abs(pos(2).y - (gold0.y + 1.0)) < 1e-9, "Move all by lifts both");
+	check(sb->undo() && pos(2).y == gold0.y, "undone");
+
+	sb->duplicateSelected();
+	check(sb->document().objects.size() == n0 + 2 && objectsPicked() == std::vector<int>({static_cast<int>(n0), static_cast<int>(n0) + 1}), "Duplicate copies both and picks the copies");
+	check(std::abs((pos(static_cast<int>(n0) + 1).x - pos(static_cast<int>(n0)).x) - (gold0.x - glass0.x)) < 1e-9, "the copies keep their places relative to each other");
+	check(sb->undo() && sb->document().objects.size() == n0, "one undo removes both copies");
+
+	// Click and Ctrl-click in the layout view.
+	sb->selectObject(1);
+	sb->clickItemForTest(Sel{Sel::Kind::Object, 2}, Qt::ControlModifier);
+	check(objectsPicked() == std::vector<int>({1, 2}), "Ctrl-click adds an object to what is picked");
+	sb->clickItemForTest(Sel{Sel::Kind::Object, 2}, Qt::ControlModifier);
+	check(objectsPicked() == std::vector<int>({1}), "Ctrl-click on a picked object takes it out");
+	sb->pickObjects({1, 2});
+	sb->clickItemForTest(Sel{Sel::Kind::Object, 2});
+	check(objectsPicked() == std::vector<int>({2}), "a plain click on one of several leaves just that one");
+
+	// A box: whatever is inside it (computed from where the view draws things).
+	const QPointF a = sb->itemScreenPosForTest(Sel{Sel::Kind::Object, 1}), b = sb->itemScreenPosForTest(Sel{Sel::Kind::Object, 2});
+	const QPointF topLeft(std::min(a.x(), b.x()) - 12, std::min(a.y(), b.y()) - 12), bottomRight(std::max(a.x(), b.x()) + 12, std::max(a.y(), b.y()) + 12);
+	std::vector<int> expected;
+	for (int i = 0; i < static_cast<int>(n0); ++i) {
+		const QPointF p = sb->itemScreenPosForTest(Sel{Sel::Kind::Object, i});
+		if (p.x() >= topLeft.x() && p.x() <= bottomRight.x() && p.y() >= topLeft.y() && p.y() <= bottomRight.y()) expected.push_back(i);
+	}
+	sb->selectObject(3);
+	sb->boxSelectForTest(topLeft, bottomRight);
+	std::vector<int> want = expected;
+	want.push_back(3);
+	std::sort(want.begin(), want.end());
+	want.erase(std::unique(want.begin(), want.end()), want.end());
+	check(objectsPicked() == want && expected.size() >= 2, "a Ctrl-dragged box adds the objects inside it to what was picked (" + QString::number(expected.size()) + " inside)");
+
+	// Groups.
+	sb->pickObjects({1, 2});
+	sb->groupSelected();
+	const std::string group = sb->document().objects[1].group;
+	check(!group.empty() && sb->document().objects[2].group == group && sb->document().objects[3].group.empty(), "Group makes the two a group");
+	sb->selectObject(3);
+	sb->clickItemForTest(Sel{Sel::Kind::Object, 2});
+	check(objectsPicked() == std::vector<int>({1, 2}), "clicking one member picks the whole group");
+	sb->duplicateSelected();
+	const std::string copyGroup = sb->document().objects[n0].group;
+	check(!copyGroup.empty() && copyGroup != group && sb->document().objects[n0 + 1].group == copyGroup, "a copy of a group is a group of its own");
+	check(sb->undo() && sb->document().objects.size() == n0, "and one undo removes it");
+	sb->pickObjects({1, 2});
+	sb->deleteSelected();
+	check(sb->document().objects.size() == n0 - 2 && sb->pickedItems().empty(), "Delete removes both");
+	check(sb->undo() && sb->document().objects.size() == n0 && sb->document().objects[1].group == group, "one undo brings both back, still a group");
+	sb->pickObjects({1, 2});
+	sb->ungroupSelected();
+	check(sb->document().objects[1].group.empty() && sb->document().objects[2].group.empty(), "Ungroup frees them");
+	check(sb->undo() && sb->document().objects[1].group == group, "undone");
+	check(sb->undo() && sb->document().objects[1].group.empty(), "and the grouping itself is one undo step");
+
+	// The Array window takes the other picked objects along as the unit; the look of the main one goes to the rest.
+	sb->pickObjects({2, 1});
+	ArrayDialog dialog(2, sb->document().objects, sb, {1});
+	check(dialog.unit().size() == 2 && dialog.unit()[1].name == sb->document().objects[1].name, "the Array window copies the picked objects together");
+	sb->useLookOfMainObject();
+	check(sb->document().objects[1].material.kind == sb->document().objects[2].material.kind && sb->document().objects[1].material.kind == scene_doc::MaterialKind::Conductor, "the main object's look is given to the other picked ones");
+	check(sb->undo() && sb->document().objects[1].material.kind == scene_doc::MaterialKind::Dielectric, "undone");
+
+	// A prop is a group: clicking its crown picks the trunk too.
+	sb->addProp(scene_doc::PropKind::Tree);
+	const int treeParts = static_cast<int>(sb->document().objects.size() - n0);
+	check(static_cast<int>(sb->pickedItems().objects.size()) == treeParts && !sb->document().objects[n0].group.empty(), "a tree prop arrives as a group, all of it picked (" + QString::number(treeParts) + " parts)");
+	sb->moveSelectedBy({-4.0, 0.0, 3.0});   // clear of the spotlight an earlier step left at the middle (a light is hit before an object)
+	check(std::abs(sb->document().objects[n0].position.x - sb->document().objects[n0 + 1].position.x) < 1e-9, "the tree moves as one");
+	sb->selectObject(0);
+	sb->clickItemForTest(Sel{Sel::Kind::Object, static_cast<int>(n0)});
+	{
+		QStringList names;
+		for (int i : sb->pickedItems().objects) names << QString::fromStdString(sb->document().objects[static_cast<size_t>(i)].name);
+		check(static_cast<int>(sb->pickedItems().objects.size()) == treeParts, "clicking one part of the tree picks all of it (picked: " + names.join(", ") + ")");
+	}
+	check(sb->undo() && sb->undo() && sb->document().objects.size() == n0, "the tree and its move are two undo steps");
+
+	sb->selectAll();
+	size_t movable = 0;
+	for (const scene_doc::Light &l : sb->document().lights) movable += l.kind != scene_doc::LightKind::Infinite ? 1 : 0;
+	check(sb->pickedItems().objects.size() == n0 && sb->pickedItems().lights.size() == movable, "Select all picks every object and light but the sky");
+	// RT_GUI_SELFTEST_MULTI_PNG=<file> saves a picture of the tab with three objects picked.
+	const QString picture = qEnvironmentVariable("RT_GUI_SELFTEST_MULTI_PNG");
+	if (!picture.isEmpty()) {
+		sb->pickObjects({1, 2, 3});
+		QApplication::processEvents();
+		sb->grab().save(picture);
+	}
+	sb->selectObject(1);
+}
+
 void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix) {
 	resize(qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") : 1500, qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") : 950);  // (..._WIDTH / ..._HEIGHT: a smaller window)
 	if (m_sceneBuilder) m_tabWidget->setCurrentWidget(m_sceneBuilder);  // by widget, so it works in every language
@@ -206,6 +314,7 @@ void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &
 	check(sb->redo(), "redo moves it again");
 	selfTestShapes(sb, check);
 	selfTestArray(sb, check);
+	selfTestMultiSelect(sb, check);
 	sb->selectObject(1);
 	check(sb->problemsText().isEmpty(), "the scene has no problems or notes");
 	const QString pbrt = outPrefix + "_builder.pbrt";

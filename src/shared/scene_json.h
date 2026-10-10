@@ -334,6 +334,7 @@ inline std::string toJson(const Document& d) {
 		j.set("material", std::move(m));
 		j.set("emissive", Json::boolean(o.emissive)).set("emission", detail::toJson(o.emission));
 		j.set("emissionStrength", Json::number(o.emissionStrength)).set("twoSided", Json::boolean(o.twoSided));
+		if (!o.group.empty()) j.set("group", Json::string(o.group));
 		objs.push(std::move(j));
 	}
 	root.set("objects", std::move(objs));
@@ -394,7 +395,7 @@ inline bool fromJson(const std::string& text, Document& out, std::string& err) {
 			     detail::readVec(j, "position", o.position) && detail::readVec(j, "rotation", o.rotation) && detail::readNum(j, "radius", o.radius) &&
 			     detail::readNum(j, "height", o.height) && detail::readVec(j, "size", o.size) && detail::readNum(j, "meshScale", o.meshScale) && detail::readNum(j, "radius2", o.radius2) && detail::readInt(j, "steps", o.steps) &&
 			     detail::readStr(j, "meshFile", o.meshFile) && detail::readBool(j, "emissive", o.emissive) && detail::readRgb(j, "emission", o.emission) &&
-			     detail::readNum(j, "emissionStrength", o.emissionStrength) && detail::readBool(j, "twoSided", o.twoSided);
+			     detail::readNum(j, "emissionStrength", o.emissionStrength) && detail::readBool(j, "twoSided", o.twoSided) && detail::readStr(j, "group", o.group);
 			if (const Json* m = j.find("material")) {
 				if (m->type != Json::Type::Obj) ok = false;
 				else {

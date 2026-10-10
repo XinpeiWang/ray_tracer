@@ -42,7 +42,13 @@ const Object *Scene3DView::selectedObject() const {
 	return &m_doc->objects[m_sel.index];
 }
 
-Scene3DView::GizmoMode Scene3DView::effectiveGizmo() const { return selectedObject() ? m_gizmo : GizmoMode::Move; }
+Scene3DView::GizmoMode Scene3DView::effectiveGizmo() const { return selectedObject() && m_extra.empty() ? m_gizmo : GizmoMode::Move; }
+
+bool Scene3DView::isPicked(const BuilderSelection &s) const {
+	if (s.kind == BuilderSelection::Kind::None) return false;
+	if (s == m_sel) return true;
+	return std::find(m_extra.begin(), m_extra.end(), s) != m_extra.end();
+}
 
 void Scene3DView::setGizmoMode(GizmoMode m) {
 	if (m == m_gizmo) return;
@@ -370,7 +376,7 @@ void Scene3DView::drawFaces(Ctx &c) const {
 		n = scene_view::normalize(n);
 		const double shade = 0.40 + 0.60 * std::abs(scene_view::dot(n, lightDir));
 		QColor col = f.color;
-		const bool selected = m_sel.kind == BuilderSelection::Kind::Object && m_sel.index == f.owner;
+		const bool selected = isPicked({BuilderSelection::Kind::Object, f.owner});
 		const double k = m_doc->objects[f.owner].emissive ? 1.0 : shade;
 		col = QColor(std::min(255, int(col.red() * k)), std::min(255, int(col.green() * k)), std::min(255, int(col.blue() * k)), col.alpha());
 		QColor edge = col.darker(160);
@@ -386,7 +392,7 @@ void Scene3DView::drawMeshPoints(Ctx &c, int i) const {
 	const Object &o = m_doc->objects[i];
 	const mesh_preview::MeshPreview *m = meshPreview(o.meshFile);
 	if (!m) return;
-	const bool selected = m_sel.kind == BuilderSelection::Kind::Object && m_sel.index == i;
+	const bool selected = isPicked({BuilderSelection::Kind::Object, i});
 	QColor dot = selected ? c.accent : toQColor(o.material.color).lighter(130);
 	dot.setAlpha(210);
 	c.p->setPen(QPen(dot, 2.0, Qt::SolidLine, Qt::RoundCap));
@@ -404,7 +410,7 @@ void Scene3DView::drawNames(Ctx &c) const {
 		const Object &o = m_doc->objects[i];
 		QPointF at;
 		if (!c.pixel(toV3(o.position), at)) continue;
-		const bool selected = m_sel.kind == BuilderSelection::Kind::Object && m_sel.index == i;
+		const bool selected = isPicked({BuilderSelection::Kind::Object, i});
 		c.p->setBrush(selected ? c.accent : c.text);
 		c.p->setPen(Qt::NoPen);
 		c.p->drawEllipse(at, 2.5, 2.5);
@@ -419,7 +425,7 @@ void Scene3DView::drawLights(Ctx &c) const {
 	for (int i = 0; i < static_cast<int>(m_doc->lights.size()); ++i) {
 		const Light &l = m_doc->lights[i];
 		if (l.kind == LightKind::Infinite) continue;
-		const bool selected = m_sel.kind == BuilderSelection::Kind::Light && m_sel.index == i;
+		const bool selected = isPicked({BuilderSelection::Kind::Light, i});
 		QPointF at;
 		if (!c.pixel(toV3(l.position), at)) continue;
 		if (l.kind == LightKind::Spot || l.kind == LightKind::Distant) {

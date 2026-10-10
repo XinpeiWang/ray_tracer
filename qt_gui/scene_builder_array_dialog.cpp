@@ -45,7 +45,7 @@ double snapQuarter(double v) { return std::round(v * 4.0) / 4.0; }
 
 }  // namespace
 
-ArrayDialog::ArrayDialog(int sourceIndex, const std::vector<Object> &existing, QWidget *parent)
+ArrayDialog::ArrayDialog(int sourceIndex, const std::vector<Object> &existing, QWidget *parent, const std::vector<int> &together)
     : QDialog(parent), m_source(existing.at(static_cast<size_t>(sourceIndex))), m_sourceIndex(sourceIndex), m_existing(existing) {
 	const Object &source = m_source;
 	setWindowTitle(tr("Array - copies of %1").arg(QString::fromStdString(source.name)));
@@ -66,7 +66,13 @@ ArrayDialog::ArrayDialog(int sourceIndex, const std::vector<Object> &existing, Q
 		partsLayout->addWidget(hint);
 		m_parts = new QListWidget(m_partsBox);
 		m_parts->setMaximumHeight(110);
-		const std::vector<int> likely = scene_doc::likelyCompanions(source, existing, sourceIndex);
+		std::vector<int> likely = together;
+		if (likely.empty()) {
+			likely = scene_doc::likelyCompanions(source, existing, sourceIndex);
+			if (!source.group.empty())   // the other members of its group belong with it
+				for (int i = 0; i < static_cast<int>(existing.size()); ++i)
+					if (i != sourceIndex && existing[static_cast<size_t>(i)].group == source.group && std::find(likely.begin(), likely.end(), i) == likely.end()) likely.push_back(i);
+		}
 		for (int i = 0; i < static_cast<int>(existing.size()); ++i) {
 			if (i == sourceIndex) continue;
 			auto *item = new QListWidgetItem(QString::fromStdString(existing[static_cast<size_t>(i)].name), m_parts);

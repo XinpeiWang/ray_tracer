@@ -23,7 +23,8 @@ public:
 	enum class Mode { Grid, Ring, Scatter };
 
 	// `sourceIndex` is the selected object in `existing`, all the document's objects (the defaults come from its size and place; the copies get names nobody uses).
-	ArrayDialog(int sourceIndex, const std::vector<scene_doc::Object> &existing, QWidget *parent = nullptr);
+	// `together`: the other objects picked along with it, which are then the ones ticked (instead of the ones the names and the group suggest).
+	ArrayDialog(int sourceIndex, const std::vector<scene_doc::Object> &existing, QWidget *parent = nullptr, const std::vector<int> &together = {});
 
 	Mode mode() const;
 	scene_doc::GridParams grid() const;
