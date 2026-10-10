@@ -112,8 +112,28 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 		emit selectionRequested(BuilderSelection{});
 		return;
 	}
+	// Ctrl or Shift on an item: a click adds it to the picked items or takes it out; a drag is still the lift (Shift) or free move (Ctrl) of it.
+	if (h.kind == Hit::Kind::Item && h.sel.kind != BuilderSelection::Kind::Camera && (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier))) {
+		m_mode = Mode::MaybeToggle;
+		m_pending = h;
+		m_pendingPress = px;
+		m_pendingMods = e->modifiers();
+		return;
+	}
+	beginHit(h, px, e->modifiers());
+}
+
+void Scene3DView::beginHit(const Hit &h, const QPointF &px, Qt::KeyboardModifiers mods) {
 	m_drag = h;
-	if (h.kind == Hit::Kind::Item) emit selectionRequested(h.sel);
+	if (h.kind == Hit::Kind::Item) {
+		// Pressing one of several picked items drags them all; a click that does not move leaves just that one picked, as in a file manager.
+		if (!m_extra.empty() && isPicked(h.sel) && h.which == 0) {
+			m_collapseTo = h.sel;
+			m_collapsePending = true;
+		} else if (!isPicked(h.sel) || h.which != 0) {
+			emit selectionRequested(h.sel);
+		}
+	}
 	const Float3 *pos = handle(h.sel, h.which);
 	if (!pos) { m_mode = Mode::None; return; }
 	m_dragStart = toV3(*pos);
@@ -142,7 +162,7 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 		m_axisT0 = t;
 		return;
 	}
-	if (h.kind == Hit::Kind::FreeHandle || (e->modifiers() & Qt::ControlModifier)) {
+	if (h.kind == Hit::Kind::FreeHandle || (mods & Qt::ControlModifier)) {
 		// A free move: the item follows the pointer on the plane through it that faces the camera, so it goes up, down, sideways, nearer or further as the mouse
 		// goes (the white dot in the middle of the Move tool, or Ctrl - Command on a Mac - while dragging anything).
 		m_mode = Mode::Free;
@@ -151,7 +171,7 @@ void Scene3DView::mousePressEvent(QMouseEvent *e) {
 		else m_mode = Mode::None;
 		return;
 	}
-	if (e->modifiers() & Qt::ShiftModifier) {
+	if (mods & Qt::ShiftModifier) {
 		m_mode = Mode::Vertical;
 		double t = 0;
 		if (!scene_view::closestOnLine(ray, m_dragStart, kAxisDir[1], t)) m_mode = Mode::None;
@@ -233,12 +253,23 @@ void Scene3DView::mouseMoveEvent(QMouseEvent *e) {
 		m_cam.pan(-d.x() * upp, d.y() * upp);
 		m_last = px;
 		update();
+	} else if (m_mode == Mode::MaybeToggle) {
+		if (std::hypot(px.x() - m_pendingPress.x(), px.y() - m_pendingPress.y()) < 4.0) return;   // still a click
+		const Hit h = m_pending;
+		beginHit(h, m_pendingPress, m_pendingMods);
+		if (m_mode != Mode::None) applyDrag(px, e->modifiers());
 	} else if (m_mode != Mode::None) {
+		m_collapsePending = false;   // it moved: the picked items stay picked
 		applyDrag(px, e->modifiers());
 	}
 }
 
 void Scene3DView::mouseReleaseEvent(QMouseEvent *) {
+	if (m_mode == Mode::MaybeToggle) emit selectionToggled(m_pending.sel);
+	if (m_collapsePending) {
+		m_collapsePending = false;
+		emit selectionRequested(m_collapseTo);
+	}
 	m_mode = Mode::None;
 	m_drag = Hit{};
 	update();

@@ -21,6 +21,7 @@
 #include "../src/shared/snapshot_history.h"
 #include "../src/shared/scene_props.h"
 #include "../src/shared/scene_blocks.h"
+#include "../src/shared/scene_selection.h"
 
 class QButtonGroup;
 class QCheckBox;
@@ -54,6 +55,21 @@ public:
 	bool saveFile(const QString &path);
 	void selectObject(int index);
 	void selectLight(int index);   // (the self-test picks the sky)
+	// Several items at once (scene_builder_multi.cpp): Ctrl- or Shift-click and a box in the views, Ctrl/Shift-click in the list, and groups. Everything acts on all of them.
+	void pickObjects(const std::vector<int> &objects, const std::vector<int> &lights = {});   // replaces the selection; the first one given is the main one
+	scene_doc::ItemSet pickedItems() const;   // the main item and the others picked along with it (never the camera)
+	void selectAll();                          // every object and light (Ctrl+A)
+	void groupSelected();                      // the picked objects become one group (Ctrl+G); needs two or more
+	void ungroupSelected();                    // dissolves the groups of the picked objects (Ctrl+Shift+G)
+	void moveSelectedBy(const scene_doc::Float3 &delta);   // the picked items, together, one undo step
+	void useLookOfMainObject();                // the other picked objects get the main one's material
+	bool dragPickedForTest(int index, const QPointF &deltaPx);   // a real drag in the layout view of one picked object (moves them all)
+	void togglePickedForTest(const BuilderSelection &s) { togglePicked(s); }
+	void clickItemForTest(const BuilderSelection &s, Qt::KeyboardModifiers mods = Qt::NoModifier);   // a real click on an item in the layout view
+	int pickedRowsForTest() const;   // how many rows of the list are highlighted
+	QPointF itemScreenPosForTest(const BuilderSelection &s) const;   // where the layout view draws an item
+	// A box dragged in the layout view with Ctrl held, from one pixel position to another (real mouse events); the layout view must be the one showing.
+	void boxSelectForTest(const QPointF &from, const QPointF &to);
 	bool dragObjectForTest(int index, const QPointF &deltaPx);
 	// The 3D view, for the self-test: show it (or go back to the 2D views), drag an object on the floor, or along one axis arrow of the selected item.
 	void show3dView(bool on);
@@ -78,7 +94,8 @@ public:
 	void duplicateSelected();                                  // a numbered copy beside the selected object or light (the Duplicate button, Ctrl+D)
 	void addCopies(const std::vector<scene_doc::Object> &copies);   // objects made from another one (an array, a scatter): one undo step, the first selected
 	void showArrayDialog();                                    // the Array... button: a grid, ring or scatter of copies of the selected object
-	void addParts(std::vector<scene_doc::Object> parts);   // the objects go in together at the drop point, named apart from what is there, the first selected
+	// The objects go in together at the drop point, named apart from what is there, as a group of that name (two or more) and all picked.
+	void addParts(std::vector<scene_doc::Object> parts, const QString &groupName = QString());
 	void addLight(scene_doc::LightKind kind);
 	void addObjectFromPhoto();  // scene_builder_photo.cpp: needs the optional photo helper
 	void showModelLibrary();    // scene_builder_models.cpp: the dialog behind Add > Model library...
@@ -141,7 +158,15 @@ private:
 	void rebuildInspector();
 	void refreshInspectorValues();
 	void updatePreviewPixmap();
-	void setSelection(const BuilderSelection &s, bool fromList = false);
+	void setSelection(const BuilderSelection &s, bool fromList = false);   // one item (or none): the others are let go
+	void applySelection(const BuilderSelection &s, bool fromList);      // m_sel is the main item; m_extra the others, as they are
+	void syncListSelection();                                           // highlights the picked items' rows
+	// scene_builder_multi.cpp
+	void pickItems(const scene_doc::ItemSet &items, const BuilderSelection &mainItem = BuilderSelection{});
+	void selectWithGroup(const BuilderSelection &s);   // a click in a view: the whole group when the object is in one
+	void togglePicked(const BuilderSelection &s);      // Ctrl- or Shift-click: add or remove (a group goes in or out whole)
+	void boxPicked(const QList<BuilderSelection> &items, bool additive);
+	void inspectMultiple(QFormLayout *f);
 	void logSelection(const BuilderSelection &s, const char *where);   // what the user picked, and where (the list, the layout view, the 3D view)
 	void documentChanged();
 	void refreshProblems();
@@ -187,6 +212,7 @@ private:
 
 	scene_doc::Document m_doc;
 	BuilderSelection m_sel;
+	std::vector<BuilderSelection> m_extra;   // the other items picked along with m_sel
 	QString m_path;                  // the .pbrt file this scene was opened from or saved to; empty for an unsaved one
 	bool m_dirty = false;
 	bool m_loading = false;          // true while the inspector is being filled, so setting a value does not count as an edit

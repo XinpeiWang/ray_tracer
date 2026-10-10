@@ -37,6 +37,9 @@ public:
 
 	void setDocument(const scene_doc::Document *doc) { m_doc = doc; update(); }
 	void setSelection(const BuilderSelection &s) { m_sel = s; update(); }
+	// The other items picked along with the main one (Ctrl- or Shift-click, a box in the 2D view, a group): drawn like it, and dragged with it. While there are
+	// any, the tool is Move (a turn or a stretch is of one object).
+	void setExtraSelection(const std::vector<BuilderSelection> &extra) { m_extra = extra; update(); }
 	void setSnap(bool on) { m_snap = on; }
 	void setGizmoMode(GizmoMode m);
 	GizmoMode gizmoMode() const { return m_gizmo; }
@@ -57,6 +60,8 @@ public:
 
 signals:
 	void selectionRequested(const BuilderSelection &s);
+	// A Ctrl- or Shift-click (no drag) on an item: add it to the picked items, or take it out. (A Shift- or Ctrl-drag still lifts or moves freely.)
+	void selectionToggled(const BuilderSelection &s);
 	void dragBegan();
 	void positionDragged(const BuilderSelection &s, int which, const scene_doc::Float3 &world);
 	// A turn or a stretch: the object as it now is (the owner takes its rotation, radius, height, size and meshScale).
@@ -81,7 +86,7 @@ private:
 		int which = 0;   // 0: the item's position, 1: its target
 		int axis = 0;    // for an arrow, ring or handle
 	};
-	enum class Mode { None, Orbit, Pan, Ground, Vertical, Free, Axis, Rotate, Scale };
+	enum class Mode { None, Orbit, Pan, Ground, Vertical, Free, Axis, Rotate, Scale, MaybeToggle };
 
 	scene_view::View view() const;
 	// The shapes as world-space polygons. Tessellating them is the expensive part of a repaint, so they are kept until the document changes (found by
@@ -100,6 +105,8 @@ private:
 	void meshLoaded(const std::string &path, mesh_preview::MeshPreview preview, qint64 modified, qint64 size);
 	Hit hitTest(const QPointF &px) const;
 	void applyDrag(const QPointF &px, Qt::KeyboardModifiers mods);
+	void beginHit(const Hit &h, const QPointF &px, Qt::KeyboardModifiers mods);   // what a press on an item or a tool handle starts
+	bool isPicked(const BuilderSelection &s) const;   // the main item or one of the extra ones
 
 	// paintEvent's parts
 	void drawGrid(Ctx &c) const;
@@ -112,6 +119,12 @@ private:
 
 	const scene_doc::Document *m_doc = nullptr;
 	BuilderSelection m_sel;
+	std::vector<BuilderSelection> m_extra;
+	Hit m_pending;                    // a Ctrl- or Shift-press on an item: a click toggles it, a drag past a few pixels is the usual drag of it
+	QPointF m_pendingPress;
+	Qt::KeyboardModifiers m_pendingMods;
+	BuilderSelection m_collapseTo;    // pressed on one of several picked items: if the mouse does not move, that one alone becomes the selection
+	bool m_collapsePending = false;
 	scene_view::OrbitCamera m_cam;
 	bool m_snap = true;
 	GizmoMode m_gizmo = GizmoMode::Move;

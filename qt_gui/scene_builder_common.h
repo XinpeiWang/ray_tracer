@@ -76,9 +76,11 @@ inline QString ctrlKeyName() {
 #endif
 }
 inline QString shortcutText(QKeySequence::StandardKey key) { return QKeySequence(key).toString(QKeySequence::NativeText); }
-inline QString viewHint2d() { return QObject::tr("Wheel: zoom. Drag the background or right-drag: pan."); }
+inline QString viewHint2d() {
+	return QObject::tr("Wheel: zoom. Drag the background or right-drag: pan. %1- or Shift-click adds an item to what is picked or takes it out; %1- or Shift-drag the background picks what a box holds.").arg(ctrlKeyName());
+}
 inline QString viewHint3d() {
-	return QObject::tr("Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.").arg(ctrlKeyName());
+	return QObject::tr("Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction. Shift- or %1-click (without dragging) adds an item to what is picked or takes it out.").arg(ctrlKeyName());
 }
 
 inline QString propLabel(scene_doc::PropKind k) {

@@ -74,6 +74,7 @@ struct Object {
 	Rgb emission{1.0, 1.0, 1.0};
 	double emissionStrength = 10.0;    // radiance = emission * strength
 	bool twoSided = false;             // emits from both sides
+	std::string group;                 // objects with the same non-empty group are picked, moved, copied and deleted together in the Scene Builder (scene_selection.h)
 };
 
 // The radius of a sphere around the object's position that holds all of it, whatever its rotation (a mesh, whose size the document does not know, counts as its

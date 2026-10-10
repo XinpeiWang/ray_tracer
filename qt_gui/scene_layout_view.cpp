@@ -223,6 +223,12 @@ const Float3 *SceneLayoutView::handlePosition(const BuilderSelection &s, int whi
 	return builderHandle(m_doc, s, which);
 }
 
+bool SceneLayoutView::isPicked(const BuilderSelection &s) const {
+	if (s.kind == BuilderSelection::Kind::None) return false;
+	if (s == m_sel) return true;
+	return std::find(m_extra.begin(), m_extra.end(), s) != m_extra.end();
+}
+
 SceneLayoutView::Hit SceneLayoutView::hitTest(const QPointF &px) const {
 	Hit h;
 	if (!m_doc) return h;
@@ -313,7 +319,7 @@ void SceneLayoutView::paintEvent(QPaintEvent *) {
 		if (o.material.kind == MaterialKind::Dielectric) fill = QColor(150, 200, 240);
 		if (o.emissive) fill = QColor(255, 214, 110);
 		fill.setAlpha(o.shape == ShapeKind::Quad && o.size.x * o.size.z > 30 ? 60 : 140);
-		const bool selected = m_sel.kind == BuilderSelection::Kind::Object && m_sel.index == i;
+		const bool selected = isPicked({BuilderSelection::Kind::Object, i});
 		p.setBrush(fill);
 		p.setPen(QPen(selected ? accent : text, selected ? 2.5 : 1.0));
 		if (poly.size() >= 3) p.drawPolygon(QPolygonF(poly.toVector()));
@@ -334,7 +340,7 @@ void SceneLayoutView::paintEvent(QPaintEvent *) {
 	for (int i = 0; i < static_cast<int>(m_doc->lights.size()); ++i) {
 		const Light &l = m_doc->lights[i];
 		if (l.kind == LightKind::Infinite) continue;
-		const bool selected = m_sel.kind == BuilderSelection::Kind::Light && m_sel.index == i;
+		const bool selected = isPicked({BuilderSelection::Kind::Light, i});
 		const QPointF c = toScreen(l.position);
 		if (l.kind == LightKind::Spot || l.kind == LightKind::Distant) {
 			const QPointF t = toScreen(l.target);
@@ -390,6 +396,14 @@ void SceneLayoutView::paintEvent(QPaintEvent *) {
 		p.drawText(c + QPointF(10, 18), tr("Camera"));
 		p.setFont(font());
 	}
+
+	if (m_banding) {
+		QColor fill = accent;
+		fill.setAlpha(40);
+		p.setBrush(fill);
+		p.setPen(QPen(accent, 1.0, Qt::DashLine));
+		p.drawRect(QRectF(m_bandStart, m_bandEnd).normalized());
+	}
 }
 
 void SceneLayoutView::mousePressEvent(QMouseEvent *e) {
@@ -401,7 +415,17 @@ void SceneLayoutView::mousePressEvent(QMouseEvent *e) {
 		return;
 	}
 	if (e->button() != Qt::LeftButton) return;
+	const bool additive = (e->modifiers() & (Qt::ShiftModifier | Qt::ControlModifier)) != 0;   // Control is the Command key on a Mac
 	const Hit h = hitTest(px);
+	if (additive && (!h.valid || h.sel.kind != BuilderSelection::Kind::Camera)) {
+		// Ctrl or Shift: a click on an item adds it or takes it out; a drag from anywhere (a floor under everything included) is a box that picks what it holds.
+		m_banding = false;
+		m_bandAdditive = true;
+		m_bandStart = m_bandEnd = px;
+		m_toggleCandidate = h.valid ? h.sel : BuilderSelection{};
+		m_maybeToggle = true;
+		return;
+	}
 	if (!h.valid) {
 		// A click on nothing deselects; a drag on nothing pans.
 		m_panning = true;
@@ -409,7 +433,13 @@ void SceneLayoutView::mousePressEvent(QMouseEvent *e) {
 		emit selectionRequested(BuilderSelection{});
 		return;
 	}
-	emit selectionRequested(h.sel);
+	// Pressing one of several picked items drags them all; a click that does not move leaves just that one picked, as in a file manager.
+	if (!m_extra.empty() && isPicked(h.sel) && h.which == 0) {
+		m_collapseTo = h.sel;
+		m_collapsePending = true;
+	} else {
+		emit selectionRequested(h.sel);
+	}
 	m_drag = h;
 	m_dragging = true;
 	emit dragBegan();
@@ -421,6 +451,17 @@ void SceneLayoutView::mousePressEvent(QMouseEvent *e) {
 
 void SceneLayoutView::mouseMoveEvent(QMouseEvent *e) {
 	const QPointF px = e->position();
+	if (m_maybeToggle) {
+		m_bandEnd = px;
+		if (std::hypot(px.x() - m_bandStart.x(), px.y() - m_bandStart.y()) < 4.0) return;   // still a click
+		m_maybeToggle = false;
+		m_banding = true;
+	}
+	if (m_banding) {
+		m_bandEnd = px;
+		update();
+		return;
+	}
 	if (m_panning) {
 		m_userView = true;
 		m_cu -=(px.x() - m_lastPan.x()) / m_scale;
@@ -432,6 +473,7 @@ void SceneLayoutView::mouseMoveEvent(QMouseEvent *e) {
 	if (!m_dragging || !m_drag.valid) return;
 	const Float3 *current = handlePosition(m_drag.sel, m_drag.which);
 	if (!current) return;
+	m_collapsePending = false;   // it moved: the picked items stay picked
 	QPointF target(px.x() + m_dragOffsetUV.x() * m_scale, px.y() + m_dragOffsetUV.y() * m_scale);
 	Float3 w = fromScreen(target, *current);
 	if (m_snap && !(e->modifiers() & Qt::AltModifier)) {
@@ -447,6 +489,29 @@ void SceneLayoutView::mouseMoveEvent(QMouseEvent *e) {
 }
 
 void SceneLayoutView::mouseReleaseEvent(QMouseEvent *) {
+	if (m_maybeToggle) {
+		m_maybeToggle = false;
+		if (m_toggleCandidate.kind != BuilderSelection::Kind::None) emit selectionToggled(m_toggleCandidate);
+		return;
+	}
+	if (m_banding) {
+		m_banding = false;
+		const QRectF box = QRectF(m_bandStart, m_bandEnd).normalized();
+		QList<BuilderSelection> inside;
+		if (m_doc) {
+			for (int i = 0; i < static_cast<int>(m_doc->objects.size()); ++i)
+				if (box.contains(toScreen(m_doc->objects[i].position))) inside.append({BuilderSelection::Kind::Object, i});
+			for (int i = 0; i < static_cast<int>(m_doc->lights.size()); ++i)
+				if (m_doc->lights[i].kind != LightKind::Infinite && box.contains(toScreen(m_doc->lights[i].position))) inside.append({BuilderSelection::Kind::Light, i});
+		}
+		update();
+		emit boxSelected(inside, m_bandAdditive);
+		return;
+	}
+	if (m_collapsePending) {
+		m_collapsePending = false;
+		emit selectionRequested(m_collapseTo);
+	}
 	m_panning = false;
 	m_dragging = false;
 	m_drag = Hit{};

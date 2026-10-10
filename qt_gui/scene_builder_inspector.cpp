@@ -65,6 +65,13 @@ void SceneBuilderWidget::rebuildInspector() {
 	form->setFieldGrowthPolicy(QFormLayout::AllNonFixedFieldsGrow);
 	form->setRowWrapPolicy(QFormLayout::WrapLongRows);  // in a narrow panel a label moves above its field instead of pushing the field off the edge
 	m_loading = true;
+	if (!m_extra.empty()) {   // several items picked
+		inspectMultiple(form);
+		m_loading = false;
+		m_inspectorScroll->setWidget(host);
+		if (m_inspectorPanel) m_inspectorPanel->setMinimumWidth(host->minimumSizeHint().width() + m_inspectorScroll->verticalScrollBar()->sizeHint().width() + 6);
+		return;
+	}
 	switch (m_sel.kind) {
 		case SelKind::Camera: inspectCamera(form); break;
 		case SelKind::Object:

@@ -36,7 +36,7 @@ Each drag is one undo step. In the flat views, the wheel zooms and right-drag (o
 | **Scale** tool (R): drag a square handle | Stretch the object along that one of its own axes (steps of 5 %): a box's size, a cylinder's or cone's height or radius, a quad's width or depth. A sphere, a disk and a mesh scale all round |
 | **Frame all** | Bring everything back into view |
 
-Rotate and Scale apply to objects; for a light or the camera the Move tool stays.  In the Move tool only the outer part of an arrow takes hold (from about half way to its tip); a press anywhere else on the selected object, the inner part of the arrows included, slides it on the floor, not an arrow (the white dot in the middle is the free move); in the
+Rotate and Scale apply to one object: for a light, the camera or several picked items the Move tool stays (see *Picking several things*).  In the Move tool only the outer part of an arrow takes hold (from about half way to its tip); a press anywhere else on the selected object, the inner part of the arrows included, slides it on the floor, not an arrow (the white dot in the middle is the free move); in the
 Scale tool only the square at the end of a handle takes hold (so the scale starts at 1 and does not jump); a ring seen almost edge-on holds still instead of
 spinning the object. The Rotate and Scale buttons are greyed while a light or the camera is selected, and Move shows pressed. A new object is dropped on the
 floor under the middle of the view, or under what the camera looks at when the camera is nearly level (so it never lands far off-screen). A mesh file is read in
@@ -63,13 +63,30 @@ Besides the sphere, box, quad, disk, cylinder, cone and mesh file, the Add menu 
 
 Each one has a picture-friendly set of texture coordinates, so the checker pattern works on them.
 
+## Picking several things
+
+Like Blender's selection, the Builder can act on several objects and lights at once.
+
+| Do this | To |
+|---|---|
+| Ctrl- or Shift-click a row of the list (Command on a Mac for Ctrl) | Add rows to the pick or take them out; Shift-click picks a run of rows |
+| Ctrl- or Shift-click an object or light in a view (3D: a click without dragging; Shift-drag still lifts and Ctrl-drag still moves freely) | Add it to what is picked, or take it out |
+| Ctrl- or Shift-drag from anywhere in a flat view (the floor included) | A box: everything whose centre is inside is added to the pick |
+| Ctrl+A | Pick every object and light (not the sky, which has nowhere to be moved to) |
+| Drag one of the picked items in a flat view, or one of the 3D arrows | All of them move by the same amount (one undo step) |
+| A plain click on one of several picked items | Leave just that one picked |
+
+While several are picked the properties panel shows who they are and offers **Move all by** (exact X, Y, Z, in scene units), **Group** / **Ungroup**, and **Use <main object>'s look for all**, which gives the other picked objects the main one's material and light settings (the main one is the one clicked first or last, and is the one the arrows and the Array window start from). Rotate and Scale are greyed, because a turn or a stretch is of one object. **Duplicate** copies everything picked, each copy keeping its place relative to the others and moved sideways together by about the width of the whole (so a copied table does not land inside the table); **Delete** removes everything picked; **Array...** copies the picked objects as one unit (the main one is the anchor). Each is one undo step, and undo keeps what was picked.
+
+**Groups.** *Group* (Ctrl+G) turns two or more picked objects into a group: clicking any member in a view picks the whole group, so a table's top and four legs are one thing to move, copy and delete. The props in the Add menu (table, chair, tree...) and the blocky things arrive as groups already. A copy of a group, by Duplicate or by an Array of it, is a group of its own ("Table", "Table 2"...). The list still shows every member as its own row, so one leg can still be picked and edited alone (click its row), and *Ungroup* (Ctrl+Shift+G) dissolves the group. A group is only a name on each member (saved in the scene's JSON copy, so reopening the file brings it back); the `.pbrt` text has no groups, so the renderers and Live Preview see the members as the separate objects they are, and an object's name says nothing about its group. A group left with one member (the rest deleted or regrouped) stops being a group.
+
 ## Keyboard
 
-Delete or Backspace removes the selected item (from the list or a view; in a text box they edit the text). Ctrl+D (Command+D on a Mac) duplicates it. Undo and Redo use the platform's usual keys (Ctrl+Z / Ctrl+Y on Windows, Command+Z / Shift+Command+Z on a Mac); the buttons' tooltips show the ones for your keyboard. W, E and R pick the 3D view's Move, Rotate and Scale tools.
+Delete or Backspace removes what is picked (from the list or a view; in a text box they edit the text). Ctrl+D (Command+D on a Mac) duplicates it, Ctrl+A picks everything, Ctrl+G groups and Ctrl+Shift+G ungroups. Undo and Redo use the platform's usual keys (Ctrl+Z / Ctrl+Y on Windows, Command+Z / Shift+Command+Z on a Mac); the buttons' tooltips show the ones for your keyboard. W, E and R pick the 3D view's Move, Rotate and Scale tools.
 
 ## Copies: duplicate, array and scatter
 
-**Duplicate** (the button under the scene list, or Ctrl+D / Command+D) makes a numbered copy of the selected object or light ("Chair" gives "Chair 2") beside the original, moved by about its own width, and selects it. One undo step.
+**Duplicate** (the button under the scene list, or Ctrl+D / Command+D) makes a numbered copy of what is picked ("Chair" gives "Chair 2") beside the original, moved by about its own width, and picks the copy. One undo step. With several things picked (or a group), all of them are copied together (see *Picking several things*).
 
 **Array...** (select an object first) makes many copies of it at once, in the spirit of Blender's Array modifier and particle scatter. It opens a window with three pages and a line that says how many objects the settings would add:
 
@@ -79,7 +96,7 @@ Delete or Backspace removes the selected item (from the list or a view; in a tex
 | **Ring** | copies spaced evenly round a point on the floor, as chairs round a table | how many in the whole ring (the original counts as one and stays where it is), radius, centre X and Z, a turn of the whole ring, and whether each copy turns round with the ring so it faces the centre the way the original does |
 | **Scatter** | copies placed at random in a disk or a rectangle | how many, the area (centre, width, depth), the floor height, the smallest and largest size (as a percentage), a random turn about the vertical, a random lean, whether footprints may overlap (and an extra gap), and an **Arrangement** number: the same number always gives the same scatter, **Another arrangement** tries the next |
 
-By default an array copies the one object. To copy a thing made of several objects (a tree's trunk and crown, a table's top and legs, a prop or a blocky creature) tick **Copy other objects together with it** and tick its parts in the list: the window ticks the objects with the same first word in their name that stand close by, and you can change that. Each copy keeps the parts' places relative to the selected object (the one you picked is the anchor); a ring turns the whole thing, and a scatter scales and turns it as one, standing it on the floor height you set.
+By default an array copies the one object. To copy a thing made of several objects (a tree's trunk and crown, a table's top and legs, a prop or a blocky creature) either pick them all first (the other picked objects are then ticked, and the main one is the anchor), or tick **Copy other objects together with it** and tick its parts in the list: for one picked object the window ticks the other members of its group, and the objects with the same first word in their name that stand close by, and you can change that. When the parts were one group, each copy is a group too. Each copy keeps the parts' places relative to the selected object (the one you picked is the anchor); a ring turns the whole thing, and a scatter scales and turns it as one, standing it on the floor height you set.
 
 The copies are ordinary objects with their own numbered names: move, recolour or delete them one by one. The whole array is one undo step, and the original is never changed. One array makes at most 500 copies and 2,000 objects in all (fifty copies of a forty-block creature, say); the window says when it has cut it short, and, for a scatter that keeps copies apart, when the area is too small for them all. The turn about the vertical adds to the object's own turn, so it suits upright objects. The numbers come from a small generator written into the program, so a scatter looks the same on every platform and in every build.
 
@@ -87,7 +104,7 @@ A scatter is not an instance: each copy is a separate object in the saved file (
 
 ## Props
 
-The **Props** section of the Add menu puts a few ordinary objects in at once: a **table** (top and four legs), a **chair**, a **tree** (trunk and two cones), a **snowman**, a stone **column** and a **street lamp** (its bulb is an emitting sphere). They stand on the floor with the middle of their footprint where the new item would drop, as one undo step, and the first part is selected. From then on they are plain objects: move, recolour or delete the parts one at a time (nothing is grouped), or Duplicate a part. A second copy of a prop is named apart ("Table top 2").
+The **Props** section of the Add menu puts a few ordinary objects in at once: a **table** (top and four legs), a **chair**, a **tree** (trunk and two cones), a **snowman**, a stone **column** and a **street lamp** (its bulb is an emitting sphere). They stand on the floor with the middle of their footprint where the new item would drop, as one undo step, and are all picked and made a group (the prop's name, "Table"), so they move, copy and delete as one thing; click a part's row in the list to edit it alone, or Ungroup. A second copy of a prop is named apart ("Table top 2", group "Table 2").
 
 ## Blocky objects
 
@@ -178,7 +195,7 @@ The scene's **name** is the field at the top right of the tab (it is also the *T
 
 ## What it does not do (yet)
 
-* Several objects cannot be selected at once: an array's *Copy other objects together with it* list is how a thing made of parts is copied; moving a group of objects together is not possible yet.
+* Groups are for editing here: the saved `.pbrt` has no groups, so Live Preview's *Move objects* still moves the members one at a time. Rotating or scaling several things as one (about their common centre) is not there yet: those tools turn one object.
 * Bump or normal maps, hair, subsurface, participating media, the principled material and instanced copies: use a hand-written pbrt file for those ([PBRT_SUPPORT.md](PBRT_SUPPORT.md) lists what the renderer accepts).
 * A mesh (`.ply` or `.obj`) is shown in the layout view only as a small marker at its position, because the view does not read the file; its scale and rotation apply when it renders.
 * No animation or camera paths.
@@ -192,5 +209,7 @@ The scene model (`scene_model.h`), the JSON (`scene_json.h`), the checks (`scene
 * every shape, material and light loads in the renderer;
 * a name with a newline in it cannot add a directive to the file;
 * closed-form renders: a diffuse sphere of albedo (0.5, 0.25, 0.75) under a white sky of strength 1 reads exactly that at depth 1; a sphere light of radiance 20 and radius 0.5 four units over a quad of albedo 0.6 lights the point under it by `rho * L * (r/d)^2`; and each shape emits on the side this page says it does (and not from behind).
+
+The selection operations (`scene_selection.h`: move, copy, delete, group, copy a look) have unit tests in `tests/unit/scene_selection_tests.cpp`, and the self-test picks by list, Ctrl-click and box, drags two objects with real mouse events, copies, groups, deletes and undoes each.
 
 The tab itself has a headless self-test (`RT_GUI_SELFTEST=builder`, see `qt_gui/mainwindow_selftest.cpp`): an edit, a real mouse drag in the layout view, undo and redo, a save and re-open, and a preview render. On a machine with a GPU (`scripts/gui_selftest.py --live-preview`) it also renders a preview through *Use the GPU* (Metal on a Mac) and checks it is lit and about as bright as the CPU one, and checks that *Add to scene list* from inside a `.app` writes to the per-user folder. It also checks that the scene is in the list at once under its persistent id, that the `ray_tracer` the GUI starts renders it by that id, and that the Settings tab's picker shows it selected.
