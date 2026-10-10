@@ -3543,7 +3543,7 @@ SVGF Denoiser: an alternative, experimental noise-reduction filter. Instead of b
         <translation>提亮较暗的场景，避免画面几乎全黑：把被照亮像素的平均亮度向中灰提升，最多 64 倍，并平滑地跟随画面变化。它绝不会让任何东西变暗，曝光正常或较亮的场景与关闭时完全一样。它会与上方的曝光值相乘，曝光值仍可作为手动修正。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_modes.cpp" line="91"/>
+        <location filename="../mainwindow_selftest_modes.cpp" line="92"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="760"/>
         <source>AI denoise</source>
         <translation>AI 降噪</translation>
@@ -6699,7 +6699,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="454"/>
-        <location filename="../scene_builder_widget.cpp" line="649"/>
+        <location filename="../scene_builder_widget.cpp" line="655"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>网格 (*.ply *.obj)</translation>
     </message>
@@ -6926,6 +6926,16 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <location filename="../scene_builder_widget.cpp" line="161"/>
         <source>Name:</source>
         <translation>名称：</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="286"/>
+        <source>Turntable...</source>
+        <translation>转台视频...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="288"/>
+        <source>Make a video of the scene from a camera that goes once round it</source>
+        <translation>制作一段视频：相机围绕场景转一整圈</translation>
     </message>
     <message>
         <location filename="../scene_builder_models.cpp" line="67"/>
@@ -7357,7 +7367,8 @@ From: %3</source>
         <translation>在显卡上渲染（Windows 上为 NVIDIA OptiX，Mac 上为 Metal）。大幅面图像快得多，需要受支持的 GPU。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="157"/>
+        <location filename="../scene_builder_render.cpp" line="164"/>
+        <location filename="../scene_builder_turntable.cpp" line="166"/>
         <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>预览</translation>
@@ -7373,12 +7384,140 @@ From: %3</source>
         <translation>按“相机”中设置的图像尺寸和采样数渲染，并将图像保存为 PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="287"/>
+        <location filename="../scene_builder_turntable.cpp" line="48"/>
+        <source>Turntable video</source>
+        <translation>转台视频</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="50"/>
+        <source>Makes a video of the scene from a camera that goes once round the point the camera looks at, at the camera&apos;s own height and distance, starting where it is now. It renders every frame, so a long or large video takes a while; start with Draft.</source>
+        <translation>制作一段视频：相机以它当前的位置为起点，保持自身的高度和距离，绕着相机所注视的点转一整圈。每一帧都要渲染，所以较长或较大的视频需要一些时间；建议先用“草稿”。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="59"/>
+        <source> s</source>
+        <translation> 秒</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="61"/>
+        <source>%1 frames per second</source>
+        <translation>每秒 %1 帧</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="64"/>
+        <source>Draft: 480 pixels wide, 16 samples</source>
+        <translation>草稿：宽 480 像素，16 次采样</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="65"/>
+        <source>Good: 720 pixels wide, 64 samples</source>
+        <translation>良好：宽 720 像素，64 次采样</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="66"/>
+        <source>Best: 960 pixels wide, 256 samples</source>
+        <translation>最佳：宽 960 像素，256 次采样</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="67"/>
+        <source>The scene&apos;s own size and samples (%1 x %2, %3)</source>
+        <translation>场景自身的尺寸和采样数（%1 x %2，%3）</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="69"/>
+        <source>Length:</source>
+        <translation>时长：</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="70"/>
+        <source>Speed:</source>
+        <translation>速度：</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="71"/>
+        <location filename="../scene_builder_widget.cpp" line="290"/>
         <source>Quality:</source>
         <translation>质量：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="300"/>
+        <location filename="../scene_builder_turntable.cpp" line="73"/>
+        <source>%1 frames.</source>
+        <translation>共 %1 帧。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="78"/>
+        <source>Choose where to save...</source>
+        <translation>选择保存位置...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="85"/>
+        <source>Save the turntable video</source>
+        <translation>保存转台视频</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="85"/>
+        <source>MP4 videos (*.mp4)</source>
+        <translation>MP4 视频 (*.mp4)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="91"/>
+        <source>The turntable failed</source>
+        <translation>转台视频失败</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="103"/>
+        <source>The turntable needs at least one frame.</source>
+        <translation>转台视频至少需要一帧。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="140"/>
+        <source>Turntable: frame %1 of %2...</source>
+        <translation>转台视频：第 %1 帧，共 %2 帧...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="141"/>
+        <source>Turntable: putting the video together...</source>
+        <translation>转台视频：正在合成视频...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="154"/>
+        <source>Turntable: starting (%1 frames, %2 x %3, %4 samples)...</source>
+        <translation>转台视频：开始（%1 帧，%2 x %3，%4 次采样）...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="180"/>
+        <source>Turntable done in %1 s. Saved %2.</source>
+        <translation>转台视频已在 %1 秒内完成。已保存到 %2。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="182"/>
+        <source>The video was made but could not be saved to %1.</source>
+        <translation>视频已生成，但无法保存到 %1。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="185"/>
+        <source>The turntable was cancelled.</source>
+        <translation>转台视频已取消。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="193"/>
+        <source>The frames were rendered, but putting them together needs the free program ffmpeg, which was not found. Install it (ffmpeg.org) and try again.</source>
+        <translation>帧已渲染完成，但合成视频需要免费程序 ffmpeg，而系统中没有找到。请安装（ffmpeg.org）后重试。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="194"/>
+        <source>The renderer did not produce a video (exit code %1).
+%2</source>
+        <translation>渲染器没有生成视频（退出码 %1）。
+%2</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="197"/>
+        <source>The turntable failed.</source>
+        <translation>转台视频失败。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="305"/>
         <source>Press Preview to see the scene.</source>
         <translation>点击“预览”查看场景。</translation>
     </message>
@@ -7426,7 +7565,7 @@ From: %3</source>
         <location filename="../scene_builder_files.cpp" line="175"/>
         <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_files.cpp" line="248"/>
-        <location filename="../scene_builder_render.cpp" line="112"/>
+        <location filename="../scene_builder_render.cpp" line="85"/>
         <source>Could not write %1.</source>
         <translation>无法写入 %1。</translation>
     </message>
@@ -7486,12 +7625,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 它现在已在场景列表中（“设置”标签页，我的场景）。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="757"/>
+        <location filename="../scene_builder_widget.cpp" line="764"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 个物体，%4 个光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="649"/>
+        <location filename="../scene_builder_widget.cpp" line="655"/>
         <source>Choose a mesh</source>
         <translation>选择网格</translation>
     </message>
@@ -7526,62 +7665,65 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>已添加到场景列表</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="491"/>
+        <location filename="../scene_builder_widget.cpp" line="497"/>
         <source>Camera and image</source>
         <translation>相机与画面</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="519"/>
+        <location filename="../scene_builder_widget.cpp" line="525"/>
         <source>, light</source>
         <translation>，光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="751"/>
+        <location filename="../scene_builder_widget.cpp" line="758"/>
         <source>not saved yet</source>
         <translation>尚未保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="785"/>
+        <location filename="../scene_builder_widget.cpp" line="792"/>
         <source>No problems found.</source>
         <translation>未发现问题。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="791"/>
+        <location filename="../scene_builder_widget.cpp" line="798"/>
         <source>Fix this:</source>
         <translation>请修复：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="791"/>
+        <location filename="../scene_builder_widget.cpp" line="798"/>
         <source>Note:</source>
         <translation>注意：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="84"/>
+        <location filename="../scene_builder_render.cpp" line="95"/>
         <source>Save the rendered picture</source>
         <translation>保存渲染的图像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="84"/>
+        <location filename="../scene_builder_render.cpp" line="95"/>
         <source>PNG images (*.png)</source>
         <translation>PNG 图像 (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="88"/>
+        <location filename="../scene_builder_render.cpp" line="99"/>
         <source>The render failed</source>
         <translation>渲染失败</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="100"/>
+        <location filename="../scene_builder_render.cpp" line="111"/>
+        <location filename="../scene_builder_turntable.cpp" line="102"/>
         <source>A render is already running.</source>
         <translation>已有渲染正在运行。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="102"/>
+        <location filename="../scene_builder_render.cpp" line="113"/>
+        <location filename="../scene_builder_turntable.cpp" line="105"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>请先修复属性中列出的问题。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="103"/>
+        <location filename="../scene_builder_render.cpp" line="114"/>
+        <location filename="../scene_builder_turntable.cpp" line="106"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>在程序旁边找不到渲染器 (%1)。</translation>
     </message>
@@ -7652,7 +7794,8 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
-        <location filename="../scene_builder_render.cpp" line="142"/>
+        <location filename="../scene_builder_render.cpp" line="149"/>
+        <location filename="../scene_builder_turntable.cpp" line="150"/>
         <source>Cancel</source>
         <translation>取消</translation>
     </message>
@@ -7677,44 +7820,45 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
         <translation>已根据照片添加 %1。形状是推测的，请从各个角度检查。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="145"/>
+        <location filename="../scene_builder_render.cpp" line="152"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>正在渲染 %1 x %2，%3 个采样…</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
         <source>The render was cancelled.</source>
         <translation>渲染已取消。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
+        <location filename="../scene_builder_turntable.cpp" line="192"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>渲染器意外停止。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>渲染器没有生成图像（退出代码 %1）。
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="174"/>
+        <location filename="../scene_builder_render.cpp" line="181"/>
         <source>The render failed.</source>
         <translation>渲染失败。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="180"/>
+        <location filename="../scene_builder_render.cpp" line="187"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>用时 %1 秒完成 (%2 x %3)。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="183"/>
+        <location filename="../scene_builder_render.cpp" line="190"/>
         <source>Saved %1.</source>
         <translation>已保存 %1。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="184"/>
+        <location filename="../scene_builder_render.cpp" line="191"/>
         <source>Could not save to %1.</source>
         <translation>无法保存到 %1。</translation>
     </message>

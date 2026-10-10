@@ -3537,7 +3537,7 @@ SVGFデノイザー: もう一つの、実験的なノイズ低減フィルタ�
         <translation>暗いシーンがほぼ真っ黒にならないよう明るくします。明るいピクセルの平均輝度を中間グレーに向けて最大64倍まで引き上げ、画像に滑らかに追従します。何かを暗くすることはなく、通常の露出のシーンや明るいシーンは、オフのときとまったく同じに見えます。上の露出の値にさらに掛け合わされるため、露出は手動の補正として引き続き使えます。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_modes.cpp" line="91"/>
+        <location filename="../mainwindow_selftest_modes.cpp" line="92"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="760"/>
         <source>AI denoise</source>
         <translation>AIノイズ除去</translation>
@@ -6693,7 +6693,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="454"/>
-        <location filename="../scene_builder_widget.cpp" line="649"/>
+        <location filename="../scene_builder_widget.cpp" line="655"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>メッシュ (*.ply *.obj)</translation>
     </message>
@@ -6920,6 +6920,16 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <location filename="../scene_builder_widget.cpp" line="161"/>
         <source>Name:</source>
         <translation>名前:</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="286"/>
+        <source>Turntable...</source>
+        <translation>ターンテーブル...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="288"/>
+        <source>Make a video of the scene from a camera that goes once round it</source>
+        <translation>カメラがシーンのまわりを 1 周する動画を作ります</translation>
     </message>
     <message>
         <location filename="../scene_builder_models.cpp" line="67"/>
@@ -7351,7 +7361,8 @@ From: %3</source>
         <translation>グラフィックスカードでレンダリングします (Windows では NVIDIA OptiX、Mac では Metal)。大きな画像ではずっと高速ですが、対応する GPU が必要です。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="157"/>
+        <location filename="../scene_builder_render.cpp" line="164"/>
+        <location filename="../scene_builder_turntable.cpp" line="166"/>
         <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>プレビュー</translation>
@@ -7367,12 +7378,140 @@ From: %3</source>
         <translation>カメラで設定した画像サイズとサンプル数でレンダリングし、PNG として保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="287"/>
+        <location filename="../scene_builder_turntable.cpp" line="48"/>
+        <source>Turntable video</source>
+        <translation>ターンテーブル動画</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="50"/>
+        <source>Makes a video of the scene from a camera that goes once round the point the camera looks at, at the camera&apos;s own height and distance, starting where it is now. It renders every frame, so a long or large video takes a while; start with Draft.</source>
+        <translation>カメラが注視している点のまわりを、カメラ自身の高さと距離のまま、現在の位置から 1 周する動画を作ります。すべてのフレームをレンダリングするので、長い動画や大きな動画は時間がかかります。まずは「ドラフト」から試してください。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="59"/>
+        <source> s</source>
+        <translation> 秒</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="61"/>
+        <source>%1 frames per second</source>
+        <translation>毎秒 %1 フレーム</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="64"/>
+        <source>Draft: 480 pixels wide, 16 samples</source>
+        <translation>ドラフト: 幅 480 ピクセル、16 サンプル</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="65"/>
+        <source>Good: 720 pixels wide, 64 samples</source>
+        <translation>標準: 幅 720 ピクセル、64 サンプル</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="66"/>
+        <source>Best: 960 pixels wide, 256 samples</source>
+        <translation>最高: 幅 960 ピクセル、256 サンプル</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="67"/>
+        <source>The scene&apos;s own size and samples (%1 x %2, %3)</source>
+        <translation>シーンのサイズとサンプル数 (%1 x %2、%3)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="69"/>
+        <source>Length:</source>
+        <translation>長さ:</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="70"/>
+        <source>Speed:</source>
+        <translation>速さ:</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="71"/>
+        <location filename="../scene_builder_widget.cpp" line="290"/>
         <source>Quality:</source>
         <translation>品質:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="300"/>
+        <location filename="../scene_builder_turntable.cpp" line="73"/>
+        <source>%1 frames.</source>
+        <translation>%1 フレーム。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="78"/>
+        <source>Choose where to save...</source>
+        <translation>保存先を選ぶ...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="85"/>
+        <source>Save the turntable video</source>
+        <translation>ターンテーブル動画を保存</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="85"/>
+        <source>MP4 videos (*.mp4)</source>
+        <translation>MP4 動画 (*.mp4)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="91"/>
+        <source>The turntable failed</source>
+        <translation>ターンテーブルに失敗しました</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="103"/>
+        <source>The turntable needs at least one frame.</source>
+        <translation>ターンテーブルには少なくとも 1 フレームが必要です。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="140"/>
+        <source>Turntable: frame %1 of %2...</source>
+        <translation>ターンテーブル: フレーム %1 / %2...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="141"/>
+        <source>Turntable: putting the video together...</source>
+        <translation>ターンテーブル: 動画を組み立てています...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="154"/>
+        <source>Turntable: starting (%1 frames, %2 x %3, %4 samples)...</source>
+        <translation>ターンテーブル: 開始 (%1 フレーム、%2 x %3、%4 サンプル)...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="180"/>
+        <source>Turntable done in %1 s. Saved %2.</source>
+        <translation>ターンテーブルが %1 秒で完了しました。%2 に保存しました。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="182"/>
+        <source>The video was made but could not be saved to %1.</source>
+        <translation>動画は作成されましたが、%1 に保存できませんでした。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="185"/>
+        <source>The turntable was cancelled.</source>
+        <translation>ターンテーブルはキャンセルされました。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="193"/>
+        <source>The frames were rendered, but putting them together needs the free program ffmpeg, which was not found. Install it (ffmpeg.org) and try again.</source>
+        <translation>フレームはレンダリングされましたが、動画にまとめるには無料のプログラム ffmpeg が必要で、見つかりませんでした。インストール (ffmpeg.org) してからもう一度お試しください。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="194"/>
+        <source>The renderer did not produce a video (exit code %1).
+%2</source>
+        <translation>レンダラーは動画を作成しませんでした (終了コード %1)。
+%2</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="197"/>
+        <source>The turntable failed.</source>
+        <translation>ターンテーブルに失敗しました。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="305"/>
         <source>Press Preview to see the scene.</source>
         <translation>「プレビュー」を押すとシーンが表示されます。</translation>
     </message>
@@ -7420,7 +7559,7 @@ From: %3</source>
         <location filename="../scene_builder_files.cpp" line="175"/>
         <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_files.cpp" line="248"/>
-        <location filename="../scene_builder_render.cpp" line="112"/>
+        <location filename="../scene_builder_render.cpp" line="85"/>
         <source>Could not write %1.</source>
         <translation>%1 に書き込めませんでした。</translation>
     </message>
@@ -7480,12 +7619,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 シーンリスト（設定タブの「マイシーン」）に追加されました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="757"/>
+        <location filename="../scene_builder_widget.cpp" line="764"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  オブジェクト %3 個、ライト %4 個</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="649"/>
+        <location filename="../scene_builder_widget.cpp" line="655"/>
         <source>Choose a mesh</source>
         <translation>メッシュを選択</translation>
     </message>
@@ -7520,62 +7659,65 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>シーンリストに追加しました</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="491"/>
+        <location filename="../scene_builder_widget.cpp" line="497"/>
         <source>Camera and image</source>
         <translation>カメラと画像</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="519"/>
+        <location filename="../scene_builder_widget.cpp" line="525"/>
         <source>, light</source>
         <translation>、ライト</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="751"/>
+        <location filename="../scene_builder_widget.cpp" line="758"/>
         <source>not saved yet</source>
         <translation>未保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="785"/>
+        <location filename="../scene_builder_widget.cpp" line="792"/>
         <source>No problems found.</source>
         <translation>問題は見つかりませんでした。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="791"/>
+        <location filename="../scene_builder_widget.cpp" line="798"/>
         <source>Fix this:</source>
         <translation>修正してください:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="791"/>
+        <location filename="../scene_builder_widget.cpp" line="798"/>
         <source>Note:</source>
         <translation>注意:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="84"/>
+        <location filename="../scene_builder_render.cpp" line="95"/>
         <source>Save the rendered picture</source>
         <translation>レンダリングした画像を保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="84"/>
+        <location filename="../scene_builder_render.cpp" line="95"/>
         <source>PNG images (*.png)</source>
         <translation>PNG 画像 (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="88"/>
+        <location filename="../scene_builder_render.cpp" line="99"/>
         <source>The render failed</source>
         <translation>レンダリングに失敗しました</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="100"/>
+        <location filename="../scene_builder_render.cpp" line="111"/>
+        <location filename="../scene_builder_turntable.cpp" line="102"/>
         <source>A render is already running.</source>
         <translation>すでにレンダリング中です。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="102"/>
+        <location filename="../scene_builder_render.cpp" line="113"/>
+        <location filename="../scene_builder_turntable.cpp" line="105"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>先にプロパティに表示されている問題を修正してください。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="103"/>
+        <location filename="../scene_builder_render.cpp" line="114"/>
+        <location filename="../scene_builder_turntable.cpp" line="106"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>プログラムと同じ場所にレンダラー (%1) が見つかりません。</translation>
     </message>
@@ -7646,7 +7788,8 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
-        <location filename="../scene_builder_render.cpp" line="142"/>
+        <location filename="../scene_builder_render.cpp" line="149"/>
+        <location filename="../scene_builder_turntable.cpp" line="150"/>
         <source>Cancel</source>
         <translation>キャンセル</translation>
     </message>
@@ -7671,44 +7814,45 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
         <translation>写真から %1 を追加しました。形は推測なので、あらゆる角度から確認してください。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="145"/>
+        <location filename="../scene_builder_render.cpp" line="152"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>%1 x %2、%3 サンプルでレンダリング中...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
         <source>The render was cancelled.</source>
         <translation>レンダリングはキャンセルされました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
+        <location filename="../scene_builder_turntable.cpp" line="192"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>レンダラーが予期せず停止しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>レンダラーは画像を生成しませんでした (終了コード %1)。
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="174"/>
+        <location filename="../scene_builder_render.cpp" line="181"/>
         <source>The render failed.</source>
         <translation>レンダリングに失敗しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="180"/>
+        <location filename="../scene_builder_render.cpp" line="187"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>%1 秒で完了しました (%2 x %3)。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="183"/>
+        <location filename="../scene_builder_render.cpp" line="190"/>
         <source>Saved %1.</source>
         <translation>%1 を保存しました。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="184"/>
+        <location filename="../scene_builder_render.cpp" line="191"/>
         <source>Could not save to %1.</source>
         <translation>%1 に保存できませんでした。</translation>
     </message>

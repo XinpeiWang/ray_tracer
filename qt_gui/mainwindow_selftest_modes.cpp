@@ -22,6 +22,7 @@
 #include <QImage>
 #include <QPixmap>
 #include <QProcess>
+#include <QStandardPaths>
 #include <QSysInfo>
 #include <QPainter>
 #include <QList>
@@ -424,7 +425,7 @@ void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &
 	// The screenshots show the starter scene (the edits above are done), with the gold ball picked.
 	sb->newScene();
 	sb->selectObject(2);
-	QTimer::singleShot(600, this, [this, shot, log, sb, ok]() mutable {
+	QTimer::singleShot(600, this, [this, shot, log, sb, ok, outPrefix]() mutable {
 		shot("builder_edit");
 		// One preview on the CPU, then (RT_GUI_SELFTEST_GPU=1, set by scripts/gui_selftest.py --live-preview on a machine with a GPU)
 		// one through "Use the GPU" - Metal on a Mac - which must also give a lit picture of about the same brightness.
@@ -437,7 +438,7 @@ void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &
 			return img.isNull() ? 0.0 : sum / (double(img.width()) * img.height());
 		};
 		log("starting a preview render");
-		sb->startPreview([this, shot, log, sb, ok, alsoGpu, meanGrey](bool done, const QString &message) mutable {
+		sb->startPreview([this, shot, log, sb, ok, alsoGpu, meanGrey, outPrefix](bool done, const QString &message) mutable {
 			log(QString("preview: %1 - %2").arg(done ? "ok" : "FAIL", message));
 			bool good = ok && done;
 			double cpuMean = 0.0;
@@ -446,11 +447,31 @@ void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &
 				log(QString("preview picture, mean grey %1").arg(cpuMean));
 				good = good && cpuMean > 10.0 && cpuMean < 245.0;
 			}
-			const auto finish = [this, shot, log](bool result) {
+			const auto conclude = [this, shot, log](bool result) {
 				QTimer::singleShot(300, this, [shot, log, result]() {
 					shot("builder_preview");
 					log(result ? "RESULT: OK" : "RESULT: FAIL");
 					QApplication::exit(result ? 0 : 1);
+				});
+			};
+			// The turntable (scene_builder_turntable.cpp) after the previews: a short video of the starter scene on the CPU, which must be a real MP4 (it needs ffmpeg on Windows and
+			// Linux; a machine without it skips this step, a Mac has its own encoder).
+			const auto finish = [log, sb, outPrefix, conclude](bool result) {
+				if (!result) { conclude(false); return; }
+#ifndef Q_OS_MAC
+				if (QStandardPaths::findExecutable("ffmpeg").isEmpty()) {
+					log("ok: the turntable step is skipped: ffmpeg was not found");
+					conclude(true);
+					return;
+				}
+#endif
+				const QString video = outPrefix + "_turntable.mp4";
+				QFile::remove(video);
+				log("starting a turntable render (6 frames)");
+				sb->startTurntable(6, 12, 96, 2, video, [log, conclude, video](bool turned, const QString &turnMessage) {
+					const qint64 size = QFileInfo(video).size();
+					log(QString("turntable: %1 - %2 (%3 bytes)").arg(turned ? "ok" : "FAIL", turnMessage).arg(size));
+					conclude(turned && size > 1000);
 				});
 			};
 			if (!alsoGpu || !good) { finish(good); return; }

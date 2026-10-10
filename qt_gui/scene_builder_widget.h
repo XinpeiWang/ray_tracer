@@ -133,6 +133,11 @@ public:
 	void deleteSelected();
 	bool undo();
 	bool redo();
+	// A video of the scene from a camera that goes once round the point the camera looks at (scene_builder_turntable.cpp). The window asks for the length, speed and
+	// quality and where to save the MP4; startTurntable() renders `frames` pictures `width` pixels wide (the height follows the scene's picture shape) and puts them together
+	// at `fps`, then copies the video to `outMp4` and calls `done`.
+	void showTurntableDialog();
+	void startTurntable(int frames, int fps, int width, int samples, const QString &outMp4, const std::function<void(bool ok, const QString &message)> &done = nullptr);
 	// Starts a preview render (no file dialog) and calls `done` when the picture is loaded or it failed.
 	void startPreview(const std::function<void(bool ok, const QString &message)> &done = nullptr);
 	QString previewImagePath() const { return m_previewPng; }
@@ -182,6 +187,7 @@ private slots:
 	// Live Preview can open it by a scene id without touching the scene's own listing or file. Returns the path, or "" with `error` set.
 	QString writeLivePreviewCopy(QString *error);
 	void onRenderFinalClicked();
+	void onTurntableFinished(int exitCode);
 	void onPreviewFinished(int exitCode);
 
 private:
@@ -248,6 +254,7 @@ private:
 	void inspectMaterial(QFormLayout *f, int i);
 
 	QString workFolder() const;
+	bool writeSceneFile(const QString &path, QString *error) const;   // the scene as pbrt text, for a renderer to read
 	QString launcherPath() const;
 	void runRender(int width, int height, int samples, bool toFinalFile, const QString &finalPng,
 	               const std::function<void(bool, const QString &)> &done);
@@ -303,6 +310,9 @@ private:
 	QCheckBox *m_gpuCheck = nullptr;
 	QPushButton *m_previewButton = nullptr;
 	QPushButton *m_finalButton = nullptr;
+	QPushButton *m_turntableButton = nullptr;
+	QString m_turntableOut;
+	int m_turntableFrames = 0;
 	QPushButton *m_deleteButton = nullptr;
 	QPushButton *m_duplicateButton = nullptr;
 	QPushButton *m_arrayButton = nullptr;

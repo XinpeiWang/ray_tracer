@@ -79,6 +79,17 @@ void SceneBuilderWidget::startPreview(const std::function<void(bool, const QStri
 	runRender(w, h, spps[q], false, QString(), done);
 }
 
+bool SceneBuilderWidget::writeSceneFile(const QString &path, QString *error) const {
+	QFile f(path);
+	if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
+		if (error) *error = tr("Could not write %1.").arg(path);
+		return false;
+	}
+	const std::string text = scene_doc::toPbrt(m_doc);
+	f.write(text.data(), static_cast<qint64>(text.size()));
+	return true;
+}
+
 void SceneBuilderWidget::onRenderFinalClicked() {
 	QString start = m_path.isEmpty() ? QDir::homePath() + "/render.png" : QFileInfo(m_path).absolutePath() + "/" + QFileInfo(m_path).completeBaseName() + ".png";
 	QString png = QFileDialog::getSaveFileName(this, tr("Save the rendered picture"), start, tr("PNG images (*.png)"));
@@ -107,12 +118,8 @@ void SceneBuilderWidget::runRender(int width, int height, int samples, bool toFi
 	const QString base = dir + (toFinalFile ? "/final" : "/preview");
 	QFile::remove(base + ".ppm");
 	QFile::remove(base + ".png");
-	{
-		QFile f(scene);
-		if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) return fail(tr("Could not write %1.").arg(scene));
-		const std::string text = scene_doc::toPbrt(m_doc);
-		f.write(text.data(), static_cast<qint64>(text.size()));
-	}
+	QString writeError;
+	if (!writeSceneFile(scene, &writeError)) return fail(writeError);
 
 	QStringList args;
 	args << (m_gpuCheck->isChecked() ? "--gpu" : "--cpu") << "--output" << base + ".ppm" << "--height" << QString::number(height)

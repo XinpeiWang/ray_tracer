@@ -99,6 +99,7 @@ SOURCES += \
 	scene_builder_array_dialog.cpp \
 	scene_builder_multi.cpp \
 	scene_builder_camera_views.cpp \
+	scene_builder_turntable.cpp \
 	photo_import.cpp \
 	scene_builder_views.cpp \
 	scene_3d_view.cpp \

@@ -283,6 +283,9 @@ void SceneBuilderWidget::buildUi() {
 	m_finalButton = new QPushButton(tr("Render picture..."), previewBox);
 	m_finalButton->setAutoDefault(false);
 	m_finalButton->setToolTip(tr("Render at the image size and sample count set under Camera, and save the picture as a PNG"));
+	m_turntableButton = new QPushButton(tr("Turntable..."), previewBox);
+	m_turntableButton->setAutoDefault(false);
+	m_turntableButton->setToolTip(tr("Make a video of the scene from a camera that goes once round it"));
 	m_previewStatus = new QLabel(previewBox);
 	renderRow->addWidget(new QLabel(tr("Quality:"), renderBar));
 	renderRow->addWidget(m_qualityCombo);
@@ -291,6 +294,8 @@ void SceneBuilderWidget::buildUi() {
 	scene_builder_ui::compactStyle(m_finalButton);
 	renderRow->addWidget(m_previewButton);
 	renderRow->addWidget(m_finalButton);
+	scene_builder_ui::compactStyle(m_turntableButton);
+	renderRow->addWidget(m_turntableButton);
 	m_previewStatus->setWordWrap(true);
 	previewLayout->addWidget(renderBar);
 	m_previewLabel = new QLabel(previewBox);
@@ -310,6 +315,7 @@ void SceneBuilderWidget::buildUi() {
 		startPreview();
 	});
 	connect(m_finalButton, &QPushButton::clicked, this, &SceneBuilderWidget::onRenderFinalClicked);
+	connect(m_turntableButton, &QPushButton::clicked, this, &SceneBuilderWidget::showTurntableDialog);
 
 	// ---- right: inspector
 	auto *right = new QWidget(split);
@@ -745,6 +751,7 @@ void SceneBuilderWidget::updateActions() {
 	const bool ok = !scene_doc::hasErrors(m_problems);   // from the last refreshProblems(): the document has not changed since
 	m_previewButton->setEnabled(ok || m_process);
 	m_finalButton->setEnabled(ok && !m_process);
+	m_turntableButton->setEnabled(ok && !m_process);
 }
 
 void SceneBuilderWidget::updateTitle() {

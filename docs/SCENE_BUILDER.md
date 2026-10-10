@@ -189,6 +189,8 @@ A scene with no light renders black; the tab says so under the properties.
 
 **Render picture...** uses the width, height, samples and light bounces under *Camera and image*, and asks where to save the PNG.
 
+**Turntable...** makes a video of the scene from a camera that goes once round the point the camera looks at (the "Looks at" point under *Camera and image*), at the camera's own height and distance, starting where the camera is, like a product turntable. The window asks for the **length** (1 to 120 seconds), the **speed** (24, 30 or 60 frames per second, so 4 seconds at 30 is 120 frames) and the **quality** (the same Draft, Good and Best as Preview, or the size and samples set under *Camera and image*), then where to save the MP4. It renders every frame (with the GPU if *Use the GPU* is ticked) and puts them together, showing "frame 12 of 120" under the buttons; the Preview button reads *Cancel* meanwhile. Start with Draft: a Good 4-second video is 120 pictures. It is the renderer's own `--video` mode with the orbit camera path run on the scene file, so the same video can be made from the command line. Putting the frames together needs the free program **ffmpeg** on Windows and Linux (the message says so if it is missing); a Mac uses its built-in encoder. The orbit stays on the floor plane's circle and always looks at the same point: to look from above, raise the camera first (a saved camera view is a good way to keep that).
+
 Problems that would stop a render (the camera at its target, a radius of zero, a mesh with no file, a spotlight aiming at itself) are listed under the properties and disable the render buttons until they are fixed.
 
 ## The saved file

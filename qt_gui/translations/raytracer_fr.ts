@@ -3574,7 +3574,7 @@ Débruiteur SVGF : un filtre de réduction de bruit alternatif et expérimental.
         <translation>Éclaircit une scène sombre pour qu&apos;elle ne sorte pas presque noire : la luminosité moyenne des pixels éclairés est ramenée vers un gris moyen, jusqu&apos;à 64x, en suivant l&apos;image en douceur. Cela n&apos;assombrit jamais rien : une scène normalement exposée ou lumineuse apparaît exactement comme lorsque l&apos;option est désactivée. Elle se multiplie à la valeur d&apos;Exposition ci-dessus, qui reste utilisable comme correction manuelle.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_modes.cpp" line="91"/>
+        <location filename="../mainwindow_selftest_modes.cpp" line="92"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="760"/>
         <source>AI denoise</source>
         <translation>Débruitage IA</translation>
@@ -6796,7 +6796,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="454"/>
-        <location filename="../scene_builder_widget.cpp" line="649"/>
+        <location filename="../scene_builder_widget.cpp" line="655"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Maillages (*.ply *.obj)</translation>
     </message>
@@ -7023,6 +7023,16 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <location filename="../scene_builder_widget.cpp" line="161"/>
         <source>Name:</source>
         <translation>Nom :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="286"/>
+        <source>Turntable...</source>
+        <translation>Plateau tournant...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="288"/>
+        <source>Make a video of the scene from a camera that goes once round it</source>
+        <translation>Crée une vidéo de la scène depuis une caméra qui en fait une fois le tour</translation>
     </message>
     <message>
         <location filename="../scene_builder_models.cpp" line="67"/>
@@ -7279,7 +7289,7 @@ Origine : %3</translation>
     <message>
         <location filename="../scene_builder_multi.cpp" line="183"/>
         <source>Scale by a factor between 0.01 and 100.</source>
-        <translation>Utilisez un facteur d'échelle compris entre 0,01 et 100.</translation>
+        <translation>Utilisez un facteur d&apos;échelle compris entre 0,01 et 100.</translation>
     </message>
     <message>
         <location filename="../scene_builder_multi.cpp" line="197"/>
@@ -7345,12 +7355,12 @@ Origine : %3</translation>
     <message>
         <location filename="../scene_builder_multi.cpp" line="282"/>
         <source>Turn them as one about the middle of them, about the world&apos;s X, then Y, then Z axis</source>
-        <translation>Les fait pivoter ensemble autour de leur centre, autour de l'axe X, puis Y, puis Z du monde</translation>
+        <translation>Les fait pivoter ensemble autour de leur centre, autour de l&apos;axe X, puis Y, puis Z du monde</translation>
     </message>
     <message>
         <location filename="../scene_builder_multi.cpp" line="297"/>
         <source>Scale all to:</source>
-        <translation>Tout mettre à l'échelle à :</translation>
+        <translation>Tout mettre à l&apos;échelle à :</translation>
     </message>
     <message>
         <location filename="../scene_builder_multi.cpp" line="299"/>
@@ -7454,7 +7464,8 @@ Origine : %3</translation>
         <translation>Effectuer le rendu sur la carte graphique (NVIDIA OptiX sous Windows, Metal sur Mac). Beaucoup plus rapide pour les grandes images ; nécessite un GPU pris en charge.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="157"/>
+        <location filename="../scene_builder_render.cpp" line="164"/>
+        <location filename="../scene_builder_turntable.cpp" line="166"/>
         <location filename="../scene_builder_widget.cpp" line="281"/>
         <source>Preview</source>
         <translation>Aperçu</translation>
@@ -7470,12 +7481,140 @@ Origine : %3</translation>
         <translation>Effectuer le rendu à la taille d&apos;image et au nombre d&apos;échantillons définis sous Caméra, et enregistrer l&apos;image en PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="287"/>
+        <location filename="../scene_builder_turntable.cpp" line="48"/>
+        <source>Turntable video</source>
+        <translation>Vidéo sur plateau tournant</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="50"/>
+        <source>Makes a video of the scene from a camera that goes once round the point the camera looks at, at the camera&apos;s own height and distance, starting where it is now. It renders every frame, so a long or large video takes a while; start with Draft.</source>
+        <translation>Crée une vidéo de la scène depuis une caméra qui fait une fois le tour du point que regarde la caméra, à sa hauteur et à sa distance, en partant de sa position actuelle. Toutes les images sont calculées, donc une vidéo longue ou grande prend du temps ; commencez par Brouillon.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="59"/>
+        <source> s</source>
+        <translation> s</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="61"/>
+        <source>%1 frames per second</source>
+        <translation>%1 images par seconde</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="64"/>
+        <source>Draft: 480 pixels wide, 16 samples</source>
+        <translation>Brouillon : 480 pixels de large, 16 échantillons</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="65"/>
+        <source>Good: 720 pixels wide, 64 samples</source>
+        <translation>Bonne : 720 pixels de large, 64 échantillons</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="66"/>
+        <source>Best: 960 pixels wide, 256 samples</source>
+        <translation>Optimale : 960 pixels de large, 256 échantillons</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="67"/>
+        <source>The scene&apos;s own size and samples (%1 x %2, %3)</source>
+        <translation>La taille et les échantillons de la scène (%1 x %2, %3)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="69"/>
+        <source>Length:</source>
+        <translation>Durée :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="70"/>
+        <source>Speed:</source>
+        <translation>Vitesse :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="71"/>
+        <location filename="../scene_builder_widget.cpp" line="290"/>
         <source>Quality:</source>
         <translation>Qualité :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="300"/>
+        <location filename="../scene_builder_turntable.cpp" line="73"/>
+        <source>%1 frames.</source>
+        <translation>%1 images.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="78"/>
+        <source>Choose where to save...</source>
+        <translation>Choisir où enregistrer...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="85"/>
+        <source>Save the turntable video</source>
+        <translation>Enregistrer la vidéo sur plateau tournant</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="85"/>
+        <source>MP4 videos (*.mp4)</source>
+        <translation>Vidéos MP4 (*.mp4)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="91"/>
+        <source>The turntable failed</source>
+        <translation>Le plateau tournant a échoué</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="103"/>
+        <source>The turntable needs at least one frame.</source>
+        <translation>Le plateau tournant a besoin d'au moins une image.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="140"/>
+        <source>Turntable: frame %1 of %2...</source>
+        <translation>Plateau tournant : image %1 sur %2...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="141"/>
+        <source>Turntable: putting the video together...</source>
+        <translation>Plateau tournant : assemblage de la vidéo...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="154"/>
+        <source>Turntable: starting (%1 frames, %2 x %3, %4 samples)...</source>
+        <translation>Plateau tournant : démarrage (%1 images, %2 x %3, %4 échantillons)...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="180"/>
+        <source>Turntable done in %1 s. Saved %2.</source>
+        <translation>Plateau tournant terminé en %1 s. Enregistré : %2.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="182"/>
+        <source>The video was made but could not be saved to %1.</source>
+        <translation>La vidéo a été créée mais n'a pas pu être enregistrée dans %1.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="185"/>
+        <source>The turntable was cancelled.</source>
+        <translation>Le plateau tournant a été annulé.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="193"/>
+        <source>The frames were rendered, but putting them together needs the free program ffmpeg, which was not found. Install it (ffmpeg.org) and try again.</source>
+        <translation>Les images ont été calculées, mais leur assemblage nécessite le programme gratuit ffmpeg, introuvable. Installez-le (ffmpeg.org) puis réessayez.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="194"/>
+        <source>The renderer did not produce a video (exit code %1).
+%2</source>
+        <translation>Le moteur de rendu n'a pas produit de vidéo (code de sortie %1).
+%2</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_turntable.cpp" line="197"/>
+        <source>The turntable failed.</source>
+        <translation>Le plateau tournant a échoué.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="305"/>
         <source>Press Preview to see the scene.</source>
         <translation>Cliquez sur Aperçu pour voir la scène.</translation>
     </message>
@@ -7523,7 +7662,7 @@ Origine : %3</translation>
         <location filename="../scene_builder_files.cpp" line="175"/>
         <location filename="../scene_builder_files.cpp" line="222"/>
         <location filename="../scene_builder_files.cpp" line="248"/>
-        <location filename="../scene_builder_render.cpp" line="112"/>
+        <location filename="../scene_builder_render.cpp" line="85"/>
         <source>Could not write %1.</source>
         <translation>Impossible d&apos;écrire %1.</translation>
     </message>
@@ -7583,12 +7722,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scènes).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="757"/>
+        <location filename="../scene_builder_widget.cpp" line="764"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objets, %4 lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="649"/>
+        <location filename="../scene_builder_widget.cpp" line="655"/>
         <source>Choose a mesh</source>
         <translation>Choisir un maillage</translation>
     </message>
@@ -7623,62 +7762,65 @@ Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scène
         <translation>Ajoutée à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="491"/>
+        <location filename="../scene_builder_widget.cpp" line="497"/>
         <source>Camera and image</source>
         <translation>Caméra et image</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="519"/>
+        <location filename="../scene_builder_widget.cpp" line="525"/>
         <source>, light</source>
         <translation>, lumière</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="751"/>
+        <location filename="../scene_builder_widget.cpp" line="758"/>
         <source>not saved yet</source>
         <translation>pas encore enregistrée</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="785"/>
+        <location filename="../scene_builder_widget.cpp" line="792"/>
         <source>No problems found.</source>
         <translation>Aucun problème détecté.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="791"/>
+        <location filename="../scene_builder_widget.cpp" line="798"/>
         <source>Fix this:</source>
         <translation>À corriger :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="791"/>
+        <location filename="../scene_builder_widget.cpp" line="798"/>
         <source>Note:</source>
         <translation>Remarque :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="84"/>
+        <location filename="../scene_builder_render.cpp" line="95"/>
         <source>Save the rendered picture</source>
         <translation>Enregistrer l&apos;image rendue</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="84"/>
+        <location filename="../scene_builder_render.cpp" line="95"/>
         <source>PNG images (*.png)</source>
         <translation>Images PNG (*.png)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="88"/>
+        <location filename="../scene_builder_render.cpp" line="99"/>
         <source>The render failed</source>
         <translation>Échec du rendu</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="100"/>
+        <location filename="../scene_builder_render.cpp" line="111"/>
+        <location filename="../scene_builder_turntable.cpp" line="102"/>
         <source>A render is already running.</source>
         <translation>Un rendu est déjà en cours.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="102"/>
+        <location filename="../scene_builder_render.cpp" line="113"/>
+        <location filename="../scene_builder_turntable.cpp" line="105"/>
         <source>Fix the problems listed under the properties first.</source>
         <translation>Corrigez d&apos;abord les problèmes indiqués dans les propriétés.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="103"/>
+        <location filename="../scene_builder_render.cpp" line="114"/>
+        <location filename="../scene_builder_turntable.cpp" line="106"/>
         <source>The renderer (%1) was not found next to the program.</source>
         <translation>Le moteur de rendu (%1) est introuvable à côté du programme.</translation>
     </message>
@@ -7749,7 +7891,8 @@ La forme est une estimation : l&apos;arrière est inventé et les détails fins 
     </message>
     <message>
         <location filename="../scene_builder_photo.cpp" line="87"/>
-        <location filename="../scene_builder_render.cpp" line="142"/>
+        <location filename="../scene_builder_render.cpp" line="149"/>
+        <location filename="../scene_builder_turntable.cpp" line="150"/>
         <source>Cancel</source>
         <translation>Annuler</translation>
     </message>
@@ -7774,44 +7917,45 @@ La forme est une estimation : l&apos;arrière est inventé et les détails fins 
         <translation>%1 a été ajouté à partir de la photo. La forme est une estimation ; vérifiez-la sous tous les angles.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="145"/>
+        <location filename="../scene_builder_render.cpp" line="152"/>
         <source>Rendering %1 x %2, %3 samples...</source>
         <translation>Rendu de %1 x %2, %3 échantillons...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
         <source>The render was cancelled.</source>
         <translation>Le rendu a été annulé.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
+        <location filename="../scene_builder_turntable.cpp" line="192"/>
         <source>The renderer stopped unexpectedly.</source>
         <translation>Le moteur de rendu s&apos;est arrêté de façon inattendue.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="173"/>
+        <location filename="../scene_builder_render.cpp" line="180"/>
         <source>The renderer did not produce a picture (exit code %1).
 %2</source>
         <translation>Le moteur de rendu n&apos;a produit aucune image (code de sortie %1).
 %2</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="174"/>
+        <location filename="../scene_builder_render.cpp" line="181"/>
         <source>The render failed.</source>
         <translation>Le rendu a échoué.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="180"/>
+        <location filename="../scene_builder_render.cpp" line="187"/>
         <source>Done in %1 s (%2 x %3).</source>
         <translation>Terminé en %1 s (%2 x %3).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="183"/>
+        <location filename="../scene_builder_render.cpp" line="190"/>
         <source>Saved %1.</source>
         <translation>%1 enregistré.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_render.cpp" line="184"/>
+        <location filename="../scene_builder_render.cpp" line="191"/>
         <source>Could not save to %1.</source>
         <translation>Impossible d&apos;enregistrer dans %1.</translation>
     </message>
