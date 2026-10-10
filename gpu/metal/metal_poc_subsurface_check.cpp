@@ -2,7 +2,7 @@
 // pbrt_scenes/subsurface-ball.pbrt is a Cornell box with two balls of pbrt's SubsurfaceMaterial (a tabulated BSSRDF). Rendered at 128x128 by the
 // CPU renderer (512 spp), the mean 8-bit values of four windows are the numbers below; Metal's BSSRDF has to land within the tolerance of them. A renderer
 // that falls back to an opaque grey diffuse (as Metal did before it had a BSSRDF), or lets the balls cast shadows, is far outside: the balls would come
-// out about twice as bright.
+// out about twice as bright. (The numbers are the CPU renderer's since the exit-normal fix: the balls read about 26% brighter than before it.)
 //
 // usage: metal_poc_subsurface_check <render.png> <tolerance-percent>
 #define STB_IMAGE_IMPLEMENTATION
@@ -20,10 +20,10 @@ int main(int argc, char** argv) {
     const double tol = atof(argv[2]) / 100.0;
     struct Win { const char* what; int x0, y0, x1, y1; double expect[3]; };
     const Win wins[] = {
-        {"big ball",   32,  64,  64, 102, {60.7, 62.7, 60.4}},
-        {"small ball", 78,  92,  96, 108, {53.4, 52.2, 50.5}},
-        {"back wall",  38,  19,  90,  38, {94.9, 86.9, 79.5}},
-        {"floor",      26, 108, 102, 124, {111.8, 111.6, 109.2}},
+        {"big ball",   32,  64,  64, 102, {76.6, 80.9, 74.4}},
+        {"small ball", 78,  92,  96, 108, {55.9, 50.4, 44.8}},
+        {"back wall",  38,  19,  90,  38, {98.8, 91.3, 84.1}},
+        {"floor",      26, 108, 102, 124, {109.9, 108.5, 104.9}},
     };
     int bad = 0;
     for (const Win& win : wins) {
