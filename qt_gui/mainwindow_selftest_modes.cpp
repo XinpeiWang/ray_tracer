@@ -2,6 +2,7 @@
 // runSelfTest() in mainwindow_selftest.cpp. A pure split of what used to be one 500-line function.
 
 #include "mainwindow.h"
+#include "scene_builder_array_dialog.h"
 #include "../src/shared/oidn_runtime.h"
 #include "denoiser_installer.h"
 #include "live_ai_denoise.h"
@@ -114,6 +115,70 @@ void MainWindow::runOptionsSelfTest(const std::function<void(const QString &)> &
 
 	// RT_GUI_SELFTEST=builder: drives the Scene Builder tab through an edit, undo/redo, a save and re-open, and a real preview render (needs
 	// ray_tracer next to the GUI); saves screenshots <out>_builder_edit.png / _builder_preview.png and exits 0 if every step held.
+// Duplicate, Array and Scatter (scene_array.h, the Array... window): each is one undo step, the copies are ordinary objects with their own names, and the window
+// itself offers the same objects it would add. Leaves the document as it found it (everything is undone).
+static void selfTestArray(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check) {
+	const size_t n0 = sb->document().objects.size();
+	sb->selectObject(2);   // the gold ball
+	const std::string sourceName = sb->document().objects[2].name;
+	sb->duplicateSelected();
+	check(sb->document().objects.size() == n0 + 1 && sb->document().objects.back().name == sourceName + " 2", "Duplicate makes a numbered copy (" + QString::fromStdString(sb->document().objects.back().name) + ")");
+	check(sb->document().objects.back().position.x > sb->document().objects[2].position.x, "the copy sits beside the original");
+	check(sb->undo() && sb->document().objects.size() == n0, "one undo removes the duplicate");
+	// A window with the defaults: a grid of three in a row (two new), a ring of eight (seven new), a scatter of twenty.
+	ArrayDialog dialog(2, sb->document().objects, sb);
+	check(dialog.copies().size() == 2, "the Array window's default grid adds 2 objects");
+	dialog.setMode(ArrayDialog::Mode::Ring);
+	check(dialog.copies().size() == 7, "its default ring of 8 adds 7 (the original is one of them)");
+	dialog.setRingCount(5);
+	check(dialog.copies().size() == 4, "a ring of 5 adds 4");
+	dialog.setMode(ArrayDialog::Mode::Scatter);
+	const size_t scattered = dialog.copies().size();
+	check(scattered > 0 && scattered <= 20, "the scatter adds up to the 20 asked for (" + QString::number(scattered) + ")");
+	// RT_GUI_SELFTEST_ARRAY_DIALOG_PNG=<prefix> saves a picture of each page of the window (<prefix>_grid.png, _ring.png, _scatter.png).
+	const QString picture = qEnvironmentVariable("RT_GUI_SELFTEST_ARRAY_DIALOG_PNG");
+	if (!picture.isEmpty()) {
+		dialog.show();
+		const std::pair<ArrayDialog::Mode, const char *> pages[] = {{ArrayDialog::Mode::Grid, "grid"}, {ArrayDialog::Mode::Ring, "ring"}, {ArrayDialog::Mode::Scatter, "scatter"}};
+		for (const auto &page : pages) {
+			dialog.setMode(page.first);
+			QApplication::processEvents();
+			dialog.grab().save(picture + "_" + page.second + ".png");
+		}
+		dialog.hide();
+	}
+	dialog.setMode(ArrayDialog::Mode::Grid);
+	dialog.setGridCounts(4, 1, 3);
+	const std::vector<scene_doc::Object> grid = dialog.copies();
+	check(grid.size() == 11, "a 4 x 1 x 3 grid adds 11 objects");
+	sb->addCopies(grid);
+	check(sb->document().objects.size() == n0 + 11 && sb->document().objects[n0].name == sourceName + " 2", "the copies are added with their own names");
+	check(sb->undo() && sb->document().objects.size() == n0, "all eleven are one undo step");
+	check(sb->redo() && sb->document().objects.size() == n0 + 11, "and one redo");
+	sb->addCopies(std::vector<scene_doc::Object>());
+	check(sb->document().objects.size() == n0 + 11, "adding no copies changes nothing");
+	check(sb->undo() && sb->document().objects.size() == n0, "back to the scene as it was");
+	// A prop is several objects: the window ticks the other parts that belong with the one picked, and copies them as one.
+	sb->addProp(scene_doc::PropKind::Tree);
+	const int treeFirst = static_cast<int>(n0);
+	const int treeParts = static_cast<int>(sb->document().objects.size() - n0);
+	check(treeParts >= 2, "a tree prop is several objects (" + QString::number(treeParts) + ")");
+	ArrayDialog treeDialog(treeFirst, sb->document().objects, sb);
+	check(static_cast<int>(treeDialog.unit().size()) == treeParts, "the window ticks the tree's other parts to go with the one picked");
+	treeDialog.setGridCounts(3, 1, 1);
+	check(static_cast<int>(treeDialog.copies().size()) == 2 * treeParts, "a row of three trees adds two trees' worth of objects");
+	treeDialog.tickPart(QString::fromStdString(sb->document().objects[n0 + 1].name), false);
+	check(static_cast<int>(treeDialog.unit().size()) == treeParts - 1, "unticking a part leaves it out");
+	sb->undo();
+	check(sb->document().objects.size() == n0, "the tree is removed again by one undo");
+	// A light is duplicated too (and numbered).
+	const size_t lights0 = sb->document().lights.size();
+	sb->selectLight(0);
+	sb->duplicateSelected();
+	check(sb->document().lights.size() == lights0 + 1, "a light can be duplicated");
+	check(sb->undo() && sb->document().lights.size() == lights0, "and undone");
+}
+
 void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix) {
 	resize(qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_WIDTH") : 1500, qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") > 0 ? qEnvironmentVariableIntValue("RT_GUI_SELFTEST_HEIGHT") : 950);  // (..._WIDTH / ..._HEIGHT: a smaller window)
 	if (m_sceneBuilder) m_tabWidget->setCurrentWidget(m_sceneBuilder);  // by widget, so it works in every language
@@ -140,6 +205,7 @@ void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &
 	check(sb->undo() && sb->document().objects[1].position.x == ball0.x && sb->document().objects[1].position.z == ball0.z, "one undo puts it back");
 	check(sb->redo(), "redo moves it again");
 	selfTestShapes(sb, check);
+	selfTestArray(sb, check);
 	sb->selectObject(1);
 	check(sb->problemsText().isEmpty(), "the scene has no problems or notes");
 	const QString pbrt = outPrefix + "_builder.pbrt";

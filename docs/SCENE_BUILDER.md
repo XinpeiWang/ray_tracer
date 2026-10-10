@@ -65,7 +65,25 @@ Each one has a picture-friendly set of texture coordinates, so the checker patte
 
 ## Keyboard
 
-Delete or Backspace removes the selected item (from the list or a view; in a text box they edit the text). Undo and Redo use the platform's usual keys (Ctrl+Z / Ctrl+Y on Windows, Command+Z / Shift+Command+Z on a Mac); the buttons' tooltips show the ones for your keyboard. W, E and R pick the 3D view's Move, Rotate and Scale tools.
+Delete or Backspace removes the selected item (from the list or a view; in a text box they edit the text). Ctrl+D (Command+D on a Mac) duplicates it. Undo and Redo use the platform's usual keys (Ctrl+Z / Ctrl+Y on Windows, Command+Z / Shift+Command+Z on a Mac); the buttons' tooltips show the ones for your keyboard. W, E and R pick the 3D view's Move, Rotate and Scale tools.
+
+## Copies: duplicate, array and scatter
+
+**Duplicate** (the button under the scene list, or Ctrl+D / Command+D) makes a numbered copy of the selected object or light ("Chair" gives "Chair 2") beside the original, moved by about its own width, and selects it. One undo step.
+
+**Array...** (select an object first) makes many copies of it at once, in the spirit of Blender's Array modifier and particle scatter. It opens a window with three pages and a line that says how many objects the settings would add:
+
+| Page | Makes | Settings |
+|---|---|---|
+| **Grid** | a line, a rectangle or a block of copies | how many along X, Y (up) and Z (the original is one of them), and the distance between neighbours |
+| **Ring** | copies spaced evenly round a point on the floor, as chairs round a table | how many in the whole ring (the original counts as one and stays where it is), radius, centre X and Z, a turn of the whole ring, and whether each copy turns round with the ring so it faces the centre the way the original does |
+| **Scatter** | copies placed at random in a disk or a rectangle | how many, the area (centre, width, depth), the floor height, the smallest and largest size (as a percentage), a random turn about the vertical, a random lean, whether footprints may overlap (and an extra gap), and an **Arrangement** number: the same number always gives the same scatter, **Another arrangement** tries the next |
+
+By default an array copies the one object. To copy a thing made of several objects (a tree's trunk and crown, a table's top and legs, a prop or a blocky creature) tick **Copy other objects together with it** and tick its parts in the list: the window ticks the objects with the same first word in their name that stand close by, and you can change that. Each copy keeps the parts' places relative to the selected object (the one you picked is the anchor); a ring turns the whole thing, and a scatter scales and turns it as one, standing it on the floor height you set.
+
+The copies are ordinary objects with their own numbered names: move, recolour or delete them one by one. The whole array is one undo step, and the original is never changed. One array makes at most 500 copies and 2,000 objects in all (fifty copies of a forty-block creature, say); the window says when it has cut it short, and, for a scatter that keeps copies apart, when the area is too small for them all. The turn about the vertical adds to the object's own turn, so it suits upright objects. The numbers come from a small generator written into the program, so a scatter looks the same on every platform and in every build.
+
+A scatter is not an instance: each copy is a separate object in the saved file (a few hundred bytes of text), which is why the limit exists.
 
 ## Props
 
@@ -160,6 +178,7 @@ The scene's **name** is the field at the top right of the tab (it is also the *T
 
 ## What it does not do (yet)
 
+* Several objects cannot be selected at once: an array's *Copy other objects together with it* list is how a thing made of parts is copied; moving a group of objects together is not possible yet.
 * Bump or normal maps, hair, subsurface, participating media, the principled material and instanced copies: use a hand-written pbrt file for those ([PBRT_SUPPORT.md](PBRT_SUPPORT.md) lists what the renderer accepts).
 * A mesh (`.ply` or `.obj`) is shown in the layout view only as a small marker at its position, because the view does not read the file; its scale and rotation apply when it renders.
 * No animation or camera paths.

@@ -10,6 +10,7 @@
 
 #include "agreement_test_helpers.h"
 #include "../../src/shared/scene_document.h"
+#include "../../src/shared/scene_array.h"
 #include "../../src/shared/scene_props.h"
 #include "../../src/shared/pbrt_load.h"
 #include "../../src/shared/pbrt_discover.h"
@@ -991,4 +992,82 @@ TEST(SceneDocumentTest, TheSizeFollowsTheObjects) {
 	EXPECT_NEAR(documentSize(d), 24.0, 1e-9) << "from -12 to 12 along x";
 	d.objects[1].position = {10.0, 100.0, 0.0};
 	EXPECT_NEAR(documentSize(d), 104.0, 1e-9) << "the largest side wins";
+}
+
+// ---- copies, arrays and scatters in a saved scene -------------------------------------------------------------------------------------
+
+TEST(SceneArrayDocumentTest, AScatteredSceneRoundTripsLoadsAndStaysSmall) {
+	Document d = makeStarterScene();
+	Object pine = makeObject(ShapeKind::Cone, "Pine");
+	pine.radius = 0.4;
+	pine.height = 2.0;
+	pine.position.y = 1.0;
+	d.objects.push_back(pine);
+	scene_doc::ScatterParams p;
+	p.count = 300;
+	p.width = 30.0;
+	p.keepApart = false;
+	for (const Object& o : scene_doc::scatter(pine, p, d.objects).objects) d.objects.push_back(o);
+	ASSERT_EQ(d.objects.size(), 5u + 1u + 300u);
+	std::set<std::string> names;
+	for (const Object& o : d.objects) EXPECT_TRUE(names.insert(o.name).second) << o.name << " is used twice";
+	ASSERT_FALSE(hasErrors(validate(d)));
+	const std::string pbrt = toPbrt(d);
+	Document back;
+	std::string err;
+	ASSERT_TRUE(fromPbrt(pbrt, back, err)) << err;
+	EXPECT_EQ(toJson(back), toJson(d)) << "three hundred copies survive the saved file";
+	EXPECT_LT(toJson(d).size(), 600u * 1024u) << "an undo step of a big scene stays a few hundred kilobytes";
+	const pbrt_load::LoadResult r = loadText(pbrt, "scattered");
+	ASSERT_TRUE(r.ok) << r.error;
+	EXPECT_EQ(r.scene.cones.size(), 301u) << "the original pine and its 300 copies";
+}
+
+TEST(SceneArrayDocumentTest, TheSceneSizeCoversTheWholeScatter) {
+	Document d = makeStarterScene();
+	d.objects.clear();
+	Object ball = makeObject(ShapeKind::Sphere, "Ball");
+	ball.radius = 0.5;
+	d.objects.push_back(ball);
+	scene_doc::ScatterParams p;
+	p.count = 200;
+	p.width = 40.0;
+	p.keepApart = false;
+	for (const Object& o : scene_doc::scatter(ball, p, d.objects).objects) d.objects.push_back(o);
+	EXPECT_GT(documentSize(d), 30.0) << "the '# @rt-size' line (the Live Preview's step) follows the area the copies cover";
+	EXPECT_LT(documentSize(d), 45.0);
+}
+
+// Not a check: with RT_FOREST_PBRT=<file> set, saves the example scene with a scattered, ringed and gridded set of objects so the result can be rendered and looked at.
+TEST(SceneArrayDocumentTest, WritesADemoSceneWhenAsked) {
+	const char* out = std::getenv("RT_FOREST_PBRT");
+	if (!out) GTEST_SKIP() << "set RT_FOREST_PBRT=<file> to write the demo scene";
+	Document d = makeStarterScene();
+	d.objects.resize(1);   // keep the floor
+	d.objects[0].size = {40.0, 1.0, 40.0};
+	Object trunk = makeObject(ShapeKind::Cylinder, "Trunk");
+	trunk.radius = 0.15; trunk.height = 1.0; trunk.position = {-6.0, 0.5, -4.0};
+	trunk.material.color = {0.35, 0.22, 0.1};
+	Object crown = makeObject(ShapeKind::Cone, "Crown");
+	crown.radius = 0.8; crown.height = 2.4; crown.position = {-6.0, 2.2, -4.0};
+	crown.material.color = {0.1, 0.45, 0.15};
+	scene_doc::ScatterParams p;
+	p.count = 40; p.centreX = -2.0; p.centreZ = -6.0; p.width = 18.0; p.scaleMin = 0.7; p.scaleMax = 1.4; p.tiltDegrees = 3.0; p.seed = 11;
+	// A tree is two parts; the unit scatter keeps each crown on its trunk.
+	d.objects.push_back(trunk);
+	d.objects.push_back(crown);
+	for (const Object& o : scene_doc::scatter({trunk, crown}, p, d.objects).objects) d.objects.push_back(o);
+	Object post = makeObject(ShapeKind::Box, "Post");
+	post.size = {0.2, 1.0, 0.2}; post.position = {2.0, 0.5, 4.0};
+	scene_doc::GridParams g; g.countX = 8; g.spacing = {1.0, 0, 0};
+	d.objects.push_back(post);
+	for (const Object& o : scene_doc::makeGrid(post, g, d.objects)) d.objects.push_back(o);
+	Object chair = makeObject(ShapeKind::Cylinder, "Stool");
+	chair.radius = 0.3; chair.height = 0.6; chair.position = {5.0, 0.3, -2.0};
+	chair.material.color = {0.8, 0.2, 0.2};
+	scene_doc::RingParams rp; rp.count = 7; rp.radius = 2.0; rp.centreX = 3.0; rp.centreZ = -2.0;
+	d.objects.push_back(chair);
+	for (const Object& o : scene_doc::makeRing(chair, rp, d.objects)) d.objects.push_back(o);
+	d.camera.position = {4.0, 7.0, 14.0}; d.camera.target = {0.0, 0.5, -2.0};
+	std::ofstream(out, std::ios::binary) << toPbrt(d);
 }

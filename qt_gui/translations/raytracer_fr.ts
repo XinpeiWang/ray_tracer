@@ -2,6 +2,201 @@
 <!DOCTYPE TS>
 <TS version="2.1" language="fr_FR">
 <context>
+    <name>ArrayDialog</name>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="51"/>
+        <source>Array - copies of %1</source>
+        <translation>Réseau - copies de %1</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="53"/>
+        <source>Makes copies of &lt;b&gt;%1&lt;/b&gt;. The copies are ordinary objects: move, recolour or delete them one by one. The whole thing is one undo step.</source>
+        <translation>Crée des copies de &lt;b&gt;%1&lt;/b&gt;. Les copies sont des objets ordinaires : déplacez-les, recolorez-les ou supprimez-les un par un. L'ensemble forme une seule étape d'annulation.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="60"/>
+        <source>Copy other objects together with it</source>
+        <translation>Copier d'autres objets avec lui</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="63"/>
+        <source>Tick the parts that belong with it (a tree&apos;s crown, a table&apos;s legs). They are copied, turned and scaled as one.</source>
+        <translation>Cochez les parties qui vont avec lui (la couronne d'un arbre, les pieds d'une table). Elles sont copiées, tournées et mises à l'échelle ensemble.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="102"/>
+        <source>Grid</source>
+        <translation>Grille</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="103"/>
+        <source>Ring</source>
+        <translation>Anneau</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="104"/>
+        <source>Scatter</source>
+        <translation>Dispersion</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="113"/>
+        <source>Add copies</source>
+        <translation>Ajouter les copies</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="127"/>
+        <source>A line, a rectangle or a block of copies, starting from the original. Counts include the original; spacing is the distance between neighbours.</source>
+        <translation>Une ligne, un rectangle ou un bloc de copies, à partir de l'original. Les nombres incluent l'original ; l'espacement est la distance entre voisins.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="141"/>
+        <source>apart by</source>
+        <translation>espacées de</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="143"/>
+        <source>Along %1:</source>
+        <translation>Le long de %1 :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="151"/>
+        <source>Copies spaced evenly round a point on the floor, as chairs round a table. The original counts as one of them and stays where it is; the circle&apos;s spacing starts from the original&apos;s own angle.</source>
+        <translation>Des copies espacées régulièrement autour d'un point du sol, comme des chaises autour d'une table. L'original compte pour l'une d'elles et reste en place ; l'espacement du cercle part de l'angle propre de l'original.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="162"/>
+        <source>Turn each copy round with the ring (it keeps facing the centre the way the original does)</source>
+        <translation>Faire tourner chaque copie avec l'anneau (elle regarde le centre comme l'original)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="164"/>
+        <source>Objects in the ring:</source>
+        <translation>Objets dans l'anneau :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="165"/>
+        <source>Radius:</source>
+        <translation>Rayon :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="166"/>
+        <location filename="../scene_builder_array_dialog.cpp" line="204"/>
+        <source>Centre X:</source>
+        <translation>Centre X :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="167"/>
+        <location filename="../scene_builder_array_dialog.cpp" line="205"/>
+        <source>Centre Z:</source>
+        <translation>Centre Z :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="168"/>
+        <source>Turn the ring by:</source>
+        <translation>Faire tourner l'anneau de :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="177"/>
+        <source>Copies placed at random in an area, each a little different in size and turn: trees, rocks, stars. The same Arrangement number always gives the same result.</source>
+        <translation>Des copies placées au hasard dans une zone, chacune un peu différente en taille et en rotation : arbres, rochers, étoiles. Le même numéro d'Arrangement donne toujours le même résultat.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="184"/>
+        <source>Disk</source>
+        <translation>Disque</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="185"/>
+        <source>Rectangle</source>
+        <translation>Rectangle</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="193"/>
+        <source>Turn each copy at random (about the vertical)</source>
+        <translation>Faire tourner chaque copie au hasard (autour de la verticale)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="196"/>
+        <source>Keep them from overlapping on the floor</source>
+        <translation>Éviter qu'elles se chevauchent au sol</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="200"/>
+        <source>Another arrangement</source>
+        <translation>Un autre arrangement</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="202"/>
+        <source>How many:</source>
+        <translation>Combien :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="203"/>
+        <source>Area:</source>
+        <translation>Zone :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="206"/>
+        <source>Width (diameter):</source>
+        <translation>Largeur (diamètre) :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="207"/>
+        <source>Depth:</source>
+        <translation>Profondeur :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="208"/>
+        <source>Floor height:</source>
+        <translation>Hauteur du sol :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="209"/>
+        <source>Smallest size:</source>
+        <translation>Taille minimale :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="210"/>
+        <source>Largest size:</source>
+        <translation>Taille maximale :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="212"/>
+        <source>Lean up to:</source>
+        <translation>Inclinaison maximale :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="214"/>
+        <source>Extra space between:</source>
+        <translation>Espace supplémentaire entre elles :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="218"/>
+        <source>Arrangement:</source>
+        <translation>Arrangement :</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="317"/>
+        <source>Nothing to add yet: set a count of two or more.</source>
+        <translation>Rien à ajouter pour l'instant : indiquez un nombre de deux ou plus.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="318"/>
+        <source>Adds %1 objects (you asked for %2; one array adds at most %3 copies and %4 objects).</source>
+        <translation>Ajoute %1 objets (vous en avez demandé %2 ; un réseau ajoute au plus %3 copies et %4 objets).</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="319"/>
+        <source>Adds %1 objects (%2 were asked for, but there is no room for more without overlapping: make the area bigger or turn the overlap check off).</source>
+        <translation>Ajoute %1 objets (%2 demandés, mais il n'y a pas de place pour plus sans chevauchement : agrandissez la zone ou désactivez la vérification des chevauchements).</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_array_dialog.cpp" line="320"/>
+        <source>Adds %1 objects.</source>
+        <translation>Ajoute %1 objets.</translation>
+    </message>
+</context>
+<context>
     <name>DiagnosticsRunner</name>
     <message>
         <location filename="../mainwindow.cpp" line="738"/>
@@ -3369,7 +3564,7 @@ Débruiteur SVGF : un filtre de réduction de bruit alternatif et expérimental.
         <translation>Éclaircit une scène sombre pour qu&apos;elle ne sorte pas presque noire : la luminosité moyenne des pixels éclairés est ramenée vers un gris moyen, jusqu&apos;à 64x, en suivant l&apos;image en douceur. Cela n&apos;assombrit jamais rien : une scène normalement exposée ou lumineuse apparaît exactement comme lorsque l&apos;option est désactivée. Elle se multiplie à la valeur d&apos;Exposition ci-dessus, qui reste utilisable comme correction manuelle.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_modes.cpp" line="90"/>
+        <location filename="../mainwindow_selftest_modes.cpp" line="91"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="760"/>
         <source>AI denoise</source>
         <translation>Débruitage IA</translation>
@@ -6581,7 +6776,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="446"/>
-        <location filename="../scene_builder_widget.cpp" line="613"/>
+        <location filename="../scene_builder_widget.cpp" line="602"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Maillages (*.ply *.obj)</translation>
     </message>
@@ -6729,72 +6924,72 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
         <translation>Luminosité</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="125"/>
+        <location filename="../scene_builder_widget.cpp" line="126"/>
         <source>New</source>
         <translation>Nouvelle</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="125"/>
+        <location filename="../scene_builder_widget.cpp" line="126"/>
         <source>Start again from the example scene</source>
         <translation>Recommencer à partir de la scène d&apos;exemple</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="126"/>
+        <location filename="../scene_builder_widget.cpp" line="127"/>
         <source>Open...</source>
         <translation>Ouvrir...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="126"/>
+        <location filename="../scene_builder_widget.cpp" line="127"/>
         <source>Open a .pbrt file saved by the Scene Builder</source>
         <translation>Ouvrir un fichier .pbrt enregistré par le Constructeur de scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="127"/>
+        <location filename="../scene_builder_widget.cpp" line="128"/>
         <source>Save</source>
         <translation>Enregistrer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="127"/>
+        <location filename="../scene_builder_widget.cpp" line="128"/>
         <source>Save the scene as a .pbrt file</source>
         <translation>Enregistrer la scène dans un fichier .pbrt</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="128"/>
+        <location filename="../scene_builder_widget.cpp" line="129"/>
         <source>Save As...</source>
         <translation>Enregistrer sous...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="128"/>
+        <location filename="../scene_builder_widget.cpp" line="129"/>
         <source>Save the scene under a new name</source>
         <translation>Enregistrer la scène sous un nouveau nom</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="129"/>
+        <location filename="../scene_builder_widget.cpp" line="130"/>
         <source>Add to scene list</source>
         <translation>Ajouter à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="130"/>
+        <location filename="../scene_builder_widget.cpp" line="131"/>
         <source>Undo</source>
         <translation>Annuler</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="131"/>
+        <location filename="../scene_builder_widget.cpp" line="132"/>
         <source>Redo</source>
         <translation>Rétablir</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="136"/>
+        <location filename="../scene_builder_widget.cpp" line="137"/>
         <source>Scene name</source>
         <translation>Nom de la scène</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="137"/>
+        <location filename="../scene_builder_widget.cpp" line="138"/>
         <source>The name of this scene, shown in the scene list</source>
         <translation>Le nom de cette scène, affiché dans la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="157"/>
+        <location filename="../scene_builder_widget.cpp" line="158"/>
         <source>Name:</source>
         <translation>Nom :</translation>
     </message>
@@ -6835,7 +7030,7 @@ Origine : %3</translation>
     </message>
     <message>
         <location filename="../scene_builder_models.cpp" line="118"/>
-        <location filename="../scene_builder_widget.cpp" line="179"/>
+        <location filename="../scene_builder_widget.cpp" line="180"/>
         <source>Add</source>
         <translation>Ajouter</translation>
     </message>
@@ -6850,67 +7045,82 @@ Origine : %3</translation>
         <translation>Ce modèle n&apos;a pas pu être lu.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="182"/>
+        <location filename="../scene_builder_widget.cpp" line="183"/>
         <source>Objects</source>
         <translation>Objets</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="185"/>
+        <location filename="../scene_builder_widget.cpp" line="186"/>
         <source>Props (several objects at once)</source>
         <translation>Accessoires (plusieurs objets à la fois)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="188"/>
+        <location filename="../scene_builder_widget.cpp" line="189"/>
         <source>Blocky (several objects at once)</source>
         <translation>Style blocs (plusieurs objets à la fois)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Blocks</source>
         <translation>Blocs</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Creatures</source>
         <translation>Créatures</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Things</source>
         <translation>Objets</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="192"/>
+        <location filename="../scene_builder_widget.cpp" line="193"/>
         <source>More</source>
         <translation>Plus</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="193"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Model library...</source>
         <translation>Bibliothèque de modèles...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="194"/>
+        <location filename="../scene_builder_widget.cpp" line="195"/>
         <source>Object from a photo...</source>
         <translation>Objet à partir d&apos;une photo...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="195"/>
+        <location filename="../scene_builder_widget.cpp" line="196"/>
         <source>Light panel (emitting quad)</source>
         <translation>Panneau lumineux (quadrilatère émissif)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="204"/>
+        <location filename="../scene_builder_widget.cpp" line="205"/>
         <source>Lights</source>
         <translation>Lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="208"/>
+        <location filename="../scene_builder_widget.cpp" line="209"/>
         <source>Duplicate</source>
         <translation>Dupliquer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="209"/>
+        <location filename="../scene_builder_widget.cpp" line="210"/>
+        <source>Make a copy of the selected item beside it (%1)</source>
+        <translation>Crée une copie de l'élément sélectionné à côté de lui (%1)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="211"/>
+        <source>Array...</source>
+        <translation>Réseau...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="212"/>
+        <source>Make many copies of the selected object: a grid, a ring round a point, or a random scatter</source>
+        <translation>Crée de nombreuses copies de l'objet sélectionné : une grille, un anneau autour d'un point ou une dispersion aléatoire</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="213"/>
         <source>Delete</source>
         <translation>Supprimer</translation>
     </message>
@@ -6981,53 +7191,53 @@ Origine : %3</translation>
         <translation>Tout cadrer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="271"/>
+        <location filename="../scene_builder_widget.cpp" line="260"/>
         <source>Draft</source>
         <translation>Brouillon</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="272"/>
+        <location filename="../scene_builder_widget.cpp" line="261"/>
         <source>Good</source>
         <translation>Bonne</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="273"/>
+        <location filename="../scene_builder_widget.cpp" line="262"/>
         <source>Best</source>
         <translation>Optimale</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="276"/>
+        <location filename="../scene_builder_widget.cpp" line="265"/>
         <source>Use the GPU</source>
         <translation>Utiliser le GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="277"/>
+        <location filename="../scene_builder_widget.cpp" line="266"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>Effectuer le rendu sur la carte graphique (NVIDIA OptiX sous Windows, Metal sur Mac). Beaucoup plus rapide pour les grandes images ; nécessite un GPU pris en charge.</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="157"/>
-        <location filename="../scene_builder_widget.cpp" line="278"/>
+        <location filename="../scene_builder_widget.cpp" line="267"/>
         <source>Preview</source>
         <translation>Aperçu</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="280"/>
+        <location filename="../scene_builder_widget.cpp" line="269"/>
         <source>Render picture...</source>
         <translation>Rendre l&apos;image...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="282"/>
+        <location filename="../scene_builder_widget.cpp" line="271"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>Effectuer le rendu à la taille d&apos;image et au nombre d&apos;échantillons définis sous Caméra, et enregistrer l&apos;image en PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="284"/>
+        <location filename="../scene_builder_widget.cpp" line="273"/>
         <source>Quality:</source>
         <translation>Qualité :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="297"/>
+        <location filename="../scene_builder_widget.cpp" line="286"/>
         <source>Press Preview to see the scene.</source>
         <translation>Cliquez sur Aperçu pour voir la scène.</translation>
     </message>
@@ -7123,12 +7333,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scènes).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="688"/>
+        <location filename="../scene_builder_widget.cpp" line="721"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objets, %4 lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="613"/>
+        <location filename="../scene_builder_widget.cpp" line="602"/>
         <source>Choose a mesh</source>
         <translation>Choisir un maillage</translation>
     </message>
@@ -7138,22 +7348,22 @@ Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scène
         <translation>Le dossier des scènes (pbrt_scenes) est introuvable à côté du programme. Utilisez Enregistrer sous pour placer le fichier où vous voulez, et définissez la variable d&apos;environnement RAY_TRACER_PBRT_DIR sur ce dossier pour que le programme le liste.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="129"/>
+        <location filename="../scene_builder_widget.cpp" line="130"/>
         <source>Save the scene into the scenes folder so it shows up in the Settings tab</source>
         <translation>Enregistrer la scène dans le dossier des scènes pour qu&apos;elle apparaisse dans l&apos;onglet Paramètres</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="130"/>
+        <location filename="../scene_builder_widget.cpp" line="131"/>
         <source>Undo the last change (%1)</source>
         <translation>Annuler la dernière modification (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="131"/>
+        <location filename="../scene_builder_widget.cpp" line="132"/>
         <source>Redo (%1)</source>
         <translation>Rétablir (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="275"/>
+        <location filename="../scene_builder_widget.cpp" line="264"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>Brouillon : 480 pixels de large, 16 échantillons. Bonne : 720 de large, 64 échantillons. Optimale : 960 de large, 256 échantillons.</translation>
     </message>
@@ -7163,32 +7373,32 @@ Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scène
         <translation>Ajoutée à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="480"/>
+        <location filename="../scene_builder_widget.cpp" line="469"/>
         <source>Camera and image</source>
         <translation>Caméra et image</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="501"/>
+        <location filename="../scene_builder_widget.cpp" line="490"/>
         <source>, light</source>
         <translation>, lumière</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="682"/>
+        <location filename="../scene_builder_widget.cpp" line="715"/>
         <source>not saved yet</source>
         <translation>pas encore enregistrée</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="716"/>
+        <location filename="../scene_builder_widget.cpp" line="749"/>
         <source>No problems found.</source>
         <translation>Aucun problème détecté.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="722"/>
+        <location filename="../scene_builder_widget.cpp" line="755"/>
         <source>Fix this:</source>
         <translation>À corriger :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="722"/>
+        <location filename="../scene_builder_widget.cpp" line="755"/>
         <source>Note:</source>
         <translation>Remarque :</translation>
     </message>
