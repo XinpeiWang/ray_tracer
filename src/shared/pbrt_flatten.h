@@ -29,6 +29,7 @@
 #include <cmath>
 #include <functional>
 #include <map>
+#include <utility>
 #include <string>
 #include <vector>
 
@@ -39,6 +40,7 @@
 #include "spectrum_types.h"   // BlackbodySpectrum - see resolveEmissionColor()'s own comment
 #include "spectral_math.h"    // SpectrumToXYZ/InnerProduct/GetCIE_Y - ditto
 #include "rgb_colorspace.h"   // RGBColorSpaceFromName() - ditto
+#include "bssrdf.h"           // BSSRDFTable, ComputeBeamDiffusionBSSRDF, SubsurfaceFromDiffuse - a subsurface material given as reflectance + mfp
 
 // Refinement is exponential: every level multiplies the triangle count by
 // four, so a scene asking for 8 turns a 10k-triangle cage into 650 million.
@@ -59,6 +61,20 @@ namespace pbrt_flatten {
 // header's own established convention for callers, see flatten()'s local
 // using-directive below) - exactly tests/unit/pbrt_flatten_tests.cpp's shape.
 namespace flatten_detail {
+
+// The beam-diffusion table SubsurfaceFromDiffuse() inverts, one per (g, eta)
+// pair (building it costs ~40 ms, a scene has a handful of subsurface
+// materials at most, usually sharing one pair).
+inline const BSSRDFTable &beamDiffusionTable(double g, double eta) {
+	static std::map<std::pair<double, double>, BSSRDFTable> cache;
+	auto it = cache.find({g, eta});
+	if (it == cache.end()) {
+		BSSRDFTable table(100, 64);
+		ComputeBeamDiffusionBSSRDF(g, eta, &table);
+		it = cache.emplace(std::make_pair(g, eta), std::move(table)).first;
+	}
+	return it->second;
+}
 
 // Resolves a Texture by name against the scene's declared list - pbrt's own
 // "last declaration wins" rule (a later `Texture "name" ...` shadows an
