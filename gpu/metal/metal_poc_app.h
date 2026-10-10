@@ -160,6 +160,10 @@ struct MetalPocApp {
     // True for a scene flagged requires_files (set from the registry by the caller): any unreadable mesh is then fatal,
     // not just "every mesh". See SceneDescriptor::missing_meshes_error.
     bool pbrtRequireAllMeshes = false;
+    // Called by loadPbrtScene() on the flattened scene after the scene frame (scale, centre) is fixed and before anything is built from
+    // it: the Live Preview uses it to move objects (src/shared/live_object_edit.h). The frame is NOT recomputed afterwards, so moving
+    // an object never rescales or recentres the picture.
+    std::function<void(pbrt_flatten::FlatScene&)> pbrtSceneEdit;
     // Optional 9th positional CLI arg (see parseArgsAndCreateDevice()'s own
     // argv[8] handling) - a scene_id one of buildHandAuthoredScene()'s own
     // real cases covers (section 116, docs/history/METAL_GPU_FEASIBILITY.md), for a

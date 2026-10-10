@@ -371,7 +371,18 @@ struct Instance {
 	double xform[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};   // object -> world, row major
 };
 
+// The primitives one top-level `Shape` of the scene file produced: index ranges [begin, end) into FlatScene::triangles / spheres / disks / cylinders. Written by
+// flattenShapes() in file order, so index i is the i-th Shape that made any of those four kinds; the Live Preview's object picking and moving use it. Shapes that were
+// turned into other kinds (curves, cones, patches, instances) have no range, and primitives the loader adds later (a tessellation) lie beyond every range.
+struct ShapeRange {
+	std::string type;                  // the pbrt shape name: "sphere", "trianglemesh", "plymesh", ...
+	int material = -1;                 // index into FlatScene::materials of the first primitive it made
+	int group = -1;                    // ShapeDecl::group: the AttributeBegin/End block the Shape sat in, -1 outside any
+	std::size_t triBegin = 0, triEnd = 0, sphereBegin = 0, sphereEnd = 0, diskBegin = 0, diskEnd = 0, cylinderBegin = 0, cylinderEnd = 0;
+};
+
 struct FlatScene {
+	std::vector<ShapeRange> shapeRanges;
 	std::vector<Triangle> triangles;
 	// See AnimatedTriangleMesh's own comment - real object motion blur for
 	// trianglemesh/plymesh/loopsubdiv, CPU only, populated only when a

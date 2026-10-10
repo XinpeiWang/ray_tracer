@@ -323,6 +323,10 @@ struct ShapeDecl {
 	// needed by any scene this loader has actually seen.
 	int insideMedium = -1;
 	bool reverseOrientation = false;
+	// Which AttributeBegin/End block the Shape sits in (the innermost one): a number that is the same for every Shape of one block and
+	// different between blocks, -1 outside any block. The Live Preview treats the shapes of one block as one object (a box drawn as six
+	// quads moves as a box).
+	int group = -1;
 };
 
 struct Warning {
@@ -746,6 +750,7 @@ struct GraphicsState {
 	// same way the CTM is, so two lights under different ColorSpace scopes
 	// in the same file each resolve correctly.
 	std::string colorSpaceName = "srgb";
+	int group = -1;   // see ShapeDecl::group; scoped like everything else here
 };
 
 class Parser {
@@ -783,6 +788,7 @@ private:
 	// than to the scene, which is the whole difference between defining an
 	// object and drawing one.
 	int recordingObject_ = -1;
+	int nextGroup_ = 0;   // the next ShapeDecl::group to hand out
 	bool inWorld_ = false;
 	// CoordinateSystem/CoordSysTransform: named snapshots of the CTM, saved
 	// and recalled by name - pure parser bookkeeping (mirrors pbrt-v4's own
@@ -1042,6 +1048,7 @@ private:
 		// is close enough for loading and avoids rejecting the file.
 		if (d == "AttributeBegin" || d == "TransformBegin") {
 			stack_.push_back(gs_);
+			gs_.group = nextGroup_++;
 			return true;
 		}
 		if (d == "ObjectBegin") {
@@ -1281,6 +1288,7 @@ private:
 			sh.areaLightIndex = gs_.areaLightIndex;
 			sh.insideMedium = gs_.insideMedium;
 			sh.reverseOrientation = gs_.reverseOrientation;
+			sh.group = gs_.group;
 			if (recordingObject_ >= 0)
 				s_.objects[static_cast<std::size_t>(recordingObject_)].shapes.push_back(sh);
 			else

@@ -1019,7 +1019,32 @@ inline void flattenShapes(const pbrt_scene::Scene &scene, FlatScene &out, const 
 		}
 	}
 
+	// Which primitives each top-level scene shape produced (FlatScene::shapeRanges). The branches below end with `continue`, so a shape's range is closed
+	// when the next one starts (and after the loop).
+	const flatten_detail::ShapeWork *openShape = nullptr;
+	std::size_t openTri = 0, openSphere = 0, openDisk = 0, openCylinder = 0;
+	const auto closeRange = [&]() {
+		if (!openShape) return;
+		ShapeRange r;
+		r.type = openShape->shape->type;
+		r.group = openShape->shape->group;
+		r.triBegin = openTri; r.triEnd = out.triangles.size();
+		r.sphereBegin = openSphere; r.sphereEnd = out.spheres.size();
+		r.diskBegin = openDisk; r.diskEnd = out.disks.size();
+		r.cylinderBegin = openCylinder; r.cylinderEnd = out.cylinders.size();
+		if (r.triEnd > r.triBegin) r.material = out.triangles[r.triBegin].material;
+		else if (r.sphereEnd > r.sphereBegin) r.material = out.spheres[r.sphereBegin].material;
+		else if (r.diskEnd > r.diskBegin) r.material = out.disks[r.diskBegin].material;
+		else if (r.cylinderEnd > r.cylinderBegin) r.material = out.cylinders[r.cylinderBegin].material;
+		if (r.triEnd > r.triBegin || r.sphereEnd > r.sphereBegin || r.diskEnd > r.diskBegin || r.cylinderEnd > r.cylinderBegin) out.shapeRanges.push_back(r);
+		openShape = nullptr;
+	};
 	for (const flatten_detail::ShapeWork &w : work) {
+		closeRange();
+		if (w.isTopLevelScene) {
+			openShape = &w;
+			openTri = out.triangles.size(); openSphere = out.spheres.size(); openDisk = out.disks.size(); openCylinder = out.cylinders.size();
+		}
 		const pbrt_scene::ShapeDecl &shape = *w.shape;
 		const pbrt_scene::Matrix4 &xform = w.xform;
 		// ReverseOrientation only flips a normal on a trianglemesh/plymesh/
@@ -1075,6 +1100,7 @@ inline void flattenShapes(const pbrt_scene::Scene &scene, FlatScene &out, const 
 		// it rather than looking subtly wrong.
 		warn("shape '" + shape.type + "' is not supported; skipped");
 	}
+	closeRange();
 }
 
 // Camera-medium and area-light-power resolution: needs the shapes (areas) and media to be final.

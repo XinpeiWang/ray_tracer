@@ -161,6 +161,7 @@ add_executable(unit_tests
     # pbrt_gpu_*_tests.cpp comment below explains staying out of this
     # portable, SDK-independent target for.
     unit/pbrt_flatten_tests.cpp
+    unit/live_object_edit_tests.cpp
     # pbrt_gpu_*_tests.cpp (bilinear_light/disk_cylinder/instance_sphere/
     # light_coverage/mix_material/quad_light/texture/triangle_light) are
     # deliberately NOT listed here: they transitively #include
