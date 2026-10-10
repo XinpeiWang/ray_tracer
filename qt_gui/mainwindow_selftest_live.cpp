@@ -206,7 +206,7 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 	QTimer::singleShot(9500, this, [this, shown, beforeKeys, lookAtBefore, outPrefix, fail]() {
 		if (!m_liveObjectEditor->hasSelection()) { fail("moving the camera cleared the selection"); return; }
 		*beforeKeys = shown();
-		m_livePreviewLabel->grab().save(outPrefix + "_objects_selection.png");   // the picture as the window shows it, with the box drawn over it
+		m_livePreviewPage->grab().save(outPrefix + "_objects_selection.png");   // the tab as the window shows it: the box over the picture, the button looking pressed
 		*lookAtBefore = m_livePreviewLookAt;
 		for (int i = 0; i < 4; ++i) onLivePreviewTranslate(1, 0, 0);   // the W key: with an object selected it moves the object, not the camera
 	});

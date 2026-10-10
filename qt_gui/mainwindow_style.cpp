@@ -229,11 +229,13 @@ void MainWindow::applyTheme(const theme::Palette &p) {
 		QPushButton:pressed {
 			background-color: %SURFACE1%;
 		}
-		/* A switch that is on (the Top / Front / Side / 3D choice, the Grid toggle): the hover look, held. */
+		/* A switch that is on (the Top / Front / Side / 3D choice, the Grid toggle, Move objects): filled like a selected list row, so on and off are
+		   told apart at a glance (the hover look it used to share with a button under the mouse was too close to the resting one). The border stays 1px:
+		   every control has the same height. */
 		QPushButton:checked {
-			background-color: %SURFACE3%;
+			background-color: %ACCENT_DIM%;
 			border-color: %ACCENT_2%;
-			color: %ACCENT_2%;
+			color: %SELECTED_TEXT%;
 		}
 		QPushButton:focus {
 			border: 1px solid %ACCENT_2%;
