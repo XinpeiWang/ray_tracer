@@ -57,7 +57,7 @@ everything back. Moves are for looking at a different arrangement: they are not 
   camera that drew the picture and does the drag arithmetic itself (`qt_gui/object_drag_math.h`, unit-tested), so the object follows the cursor exactly.
   The yellow box is the picked object's bounding box; it goes away when the camera moves.
 * C ABI (`src/shared/realtime_api.h`): `realtime_pick_object`, `realtime_set_object_offset`, `realtime_reset_objects`, and the feature flag
-  `RealtimeBackendFeatures::objectEditing` (appended; the OptiX library says false until it implements them, and the GUI then shows no button).
+  `RealtimeBackendFeatures::objectEditing` (appended; both libraries say true now, and a library that says false makes the GUI show no button).
 * Tests: unit tests for the ranges, grouping, pick and translate (`live_object_edit_tests.cpp`) and the drag arithmetic (`object_drag_math_tests.cpp`);
   `ctest -R metal_live_edit` (every visible surface point belongs to an object; a move changes the picture and the pick follows; a reset restores it exactly) and
   `metal_realtime_dylib` (the same through the exported functions); `RT_GUI_SELFTEST=livepreview_objects` (real mouse events: press on the tall box of A1, drag,

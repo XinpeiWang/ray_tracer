@@ -11,6 +11,7 @@ integration/live_preview_adaptive_sampling_test.cpp
 integration/live_preview_checkerboard_test.cpp
 integration/live_preview_failure_message_test.cpp
 integration/live_preview_geometry_skip_test.cpp
+integration/live_preview_object_edit_test.cpp
 integration/live_preview_nrc_test.cpp
 integration/live_preview_restir_firefly_test.cpp
 integration/live_preview_restir_gi_test.cpp

@@ -240,6 +240,7 @@
     <ClCompile Include="integration\live_preview_svgf_test.cpp" />
     <ClCompile Include="integration\live_preview_checkerboard_test.cpp" />
     <ClCompile Include="integration\live_preview_failure_message_test.cpp" />
+    <ClCompile Include="integration\live_preview_object_edit_test.cpp" />
     <ClCompile Include="integration\scene_loader_transform_cache_test.cpp" />
     <ClCompile Include="integration\pbrt_dof_override_test.cpp" />
     <ClCompile Include="integration\live_preview_geometry_skip_test.cpp" />

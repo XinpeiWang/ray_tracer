@@ -291,6 +291,17 @@ bool rt_realtime_render_frame(
 // own try/catch for what gets stored here.
 const char* rt_realtime_get_last_error();
 
+// Live Preview's object editing (src/shared/realtime_api.h describes the contract; gpu/optix/optix_live_edit.h keeps the state). An object is the shapes of one
+// AttributeBegin/End block of the scene's pbrt file; positions are the scene's own, the same as the first-hit positions rt_realtime_render_frame() returns.
+// The object whose surface holds the world point, or -1 (also until a frame of the scene has been drawn). Fills the box (lo, hi), the current offset and a label.
+int rt_realtime_pick_object(const char* scene_id, double x, double y, double z, double* out_lo, double* out_hi, double* out_offset, char* out_label, int label_size);
+// Puts an object at an offset from where the file puts it (absolute); the next rt_realtime_render_frame() draws the scene that way. False for an unknown object.
+bool rt_realtime_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz);
+// Puts every object of the scene back.
+void rt_realtime_reset_objects(const char* scene_id);
+// Writes the scene's file to out_path with the moved objects where they now are.
+bool rt_realtime_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size);
+
 // GPU SPPM (Stochastic Progressive Photon Mapping) rendering entry point,
 // mirrors cpu_render_main_sppm()'s signature (cpu_renderer/cpu_interface.h)
 // so main.cpp's --sppm --gpu branch (sub-phase 1e) can call either with the

@@ -41,5 +41,23 @@ RT_REALTIME_API const char* realtime_get_last_error() {
 
 // OptiX has every optional feature of realtime_render_frame().
 RT_REALTIME_API void realtime_backend_features(RealtimeBackendFeatures* out) {
-	if (out) *out = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true, false};
+	if (out) *out = RealtimeBackendFeatures{true, true, true, true, true, true, true, true, true, true, true, true};
+}
+
+// Live Preview's object editing (optix_live_edit.h keeps the state; optix_interface.cpp has the logic).
+RT_REALTIME_API int realtime_pick_object(const char* scene_id, double x, double y, double z,
+	double* out_lo, double* out_hi, double* out_offset, char* out_label, int label_size) {
+	return rt_realtime_pick_object(scene_id, x, y, z, out_lo, out_hi, out_offset, out_label, label_size);
+}
+
+RT_REALTIME_API bool realtime_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz) {
+	return rt_realtime_set_object_offset(scene_id, object, dx, dy, dz);
+}
+
+RT_REALTIME_API void realtime_reset_objects(const char* scene_id) {
+	rt_realtime_reset_objects(scene_id);
+}
+
+RT_REALTIME_API bool realtime_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size) {
+	return rt_realtime_export_arrangement(scene_id, out_path, message, message_size);
 }

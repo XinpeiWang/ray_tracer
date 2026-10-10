@@ -16,7 +16,7 @@ result. Screenshots are of the app's own window (never the screen) and are writt
   installphoto the Diagnostics tab's "Install Photo Helper" flow with stand-in installer scripts (not in the default set; no big download)
   livepreview  (--live-preview) selects Live Preview, starts it, lets it render, orbits the camera like a mouse drag, and requires
                frames to flow AND the picture to change
-  livepreview_objects  (--live-preview, on a Mac) presses on an object in the Live Preview picture and drags it with real mouse events: the picture must
+  livepreview_objects  (--live-preview) presses on an object in the Live Preview picture and drags it with real mouse events: the picture must
                change, and "Reset objects" must bring it back
 
 Usage:
@@ -124,19 +124,21 @@ def run_mode(exe, mode, wait_s, out, plugins, fake_home, gpu=False):
         "QT_QPA_PLATFORM": "offscreen", "QT_QPA_PLATFORM_PLUGIN_PATH": plugins,
         "RT_GUI_SELFTEST": mode, "RT_GUI_SELFTEST_OUT": prefix,
         "HOME": fake_home, "CFFIXED_USER_HOME": fake_home, "USERPROFILE": fake_home,
-        "APPDATA": os.path.join(fake_home, "AppData", "Roaming"), "LOCALAPPDATA": os.path.join(fake_home, "AppData", "Local"),
+        "APPDATA": os.path.join(fake_home, "AppData", "Roaming"),
         # Qt's per-user folders ignore HOME on a Mac (they come from the system), so say where the program's own per-user folders are: otherwise the
         # builder mode's "Add to scene list" put test scenes into the real user's My Scenes.
         "RAY_TRACER_USER_ASSETS": os.path.join(fake_home, "user_assets"),
     })
+    if not IS_WINDOWS:
+        env["LOCALAPPDATA"] = os.path.join(fake_home, "AppData", "Local")   # on Windows the GPU driver keeps its shader cache there: a fake folder stops OptiX from starting
     if gpu:
         env["RT_GUI_SELFTEST_GPU"] = "1"   # the builder mode also previews through "Use the GPU"
     if mode == "installphoto":
         env.update(installphoto_env(fake_home))
     cmd = (["arch", "-x86_64"] if needs_rosetta(exe) else []) + [exe]
     with open(prefix + ".stdout", "wb") as log:
-        # cwd is the root folder on purpose (see the module docstring).
-        proc = subprocess.Popen(cmd, env=env, cwd=os.path.abspath(os.sep), stdout=log, stderr=subprocess.STDOUT)
+        # cwd is the root folder on purpose (see the module docstring), except on Windows: the OptiX renderer looks for its .ptx files relative to the working directory.
+        proc = subprocess.Popen(cmd, env=env, cwd=os.path.dirname(exe) if IS_WINDOWS else os.path.abspath(os.sep), stdout=log, stderr=subprocess.STDOUT)
         try:
             rc = proc.wait(timeout=wait_s)
         except subprocess.TimeoutExpired:
@@ -188,8 +190,8 @@ def main():
     modes = [m for m in args.modes.split(",") if m]
     if args.live_preview and "livepreview" not in modes:
         modes.append("livepreview")
-    if args.live_preview and IS_MAC and "livepreview_objects" not in modes:
-        modes.append("livepreview_objects")   # object editing is in the Metal library only so far
+    if args.live_preview and "livepreview_objects" not in modes:
+        modes.append("livepreview_objects")
     waits = {"livepreview": 60, "livepreview_objects": 150}
     ok = True
     try:

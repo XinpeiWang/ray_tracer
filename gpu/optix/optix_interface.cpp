@@ -4,6 +4,8 @@
 #include "optix_interface.h"
 #include "optix_renderer.h"
 #include "scene_builder.h"
+#include "optix_live_edit.h"
+#include "../../cpu_renderer/cpu_interface.h"   // cpu_scene_pbrt_path_by_id
 #include "../../src/TheRestOfYourLife/error_codes.h"
 #include "../../src/shared/tone_map.h"
 #include "../../src/shared/exr_writer.h"
@@ -689,6 +691,9 @@ extern "C" bool rt_realtime_render_frame(
 	// rt_realtime_get_last_error()'s own comment.
 	g_lastRealtimeError.clear();
 
+	// The scene build below keeps what picking needs only for a Live Preview frame (optix_live_edit.h).
+	const optix_live_edit::LiveFrameScope liveFrame;
+
 	try {
 		if (!g_renderer) {
 			// Kept only once it has started: a renderer that failed to initialize must not be left as the global one, or every later call would use it unstarted.
@@ -730,6 +735,14 @@ extern "C" bool rt_realtime_render_frame(
 		// pointing at a scene that is no longer what's actually uploaded, and
 		// this cache would report a hit and skip prepareSceneAndCamera()
 		// entirely - silently rendering the wrong scene.
+		// An object moved (or the scene was put back) since the last build: forget that the scene is on the GPU, so the build below applies the new offsets.
+		static std::uint64_t s_cachedEditVersion = 0;
+		if (const std::uint64_t editVersion = optix_live_edit::Edits::get().version(); editVersion != s_cachedEditVersion) {
+			s_cachedEditVersion = editVersion;
+			g_uploaded_scene_id.clear();
+			s_haveCache = false;
+		}
+
 		const bool cacheHit = s_haveCache && s_cachedSceneId == scene_id &&
 			scene_id == g_uploaded_scene_id &&
 			s_cachedWidth == image_width && s_cachedHeight == image_height &&
@@ -951,6 +964,42 @@ extern "C" bool rt_realtime_render_frame(
 // discard entirely.
 extern "C" const char* rt_realtime_get_last_error() {
 	return g_lastRealtimeError.c_str();
+}
+
+// ---- Live Preview's object editing (optix_live_edit.h) -----------------------------------------------------------------------------------------------
+// Scenes are known to it by their pbrt file, which is also what scene_builder.cpp builds from, so a scene id is turned into that path here.
+static std::string livePathOf(const char* scene_id) {
+	const char* p = scene_id ? cpu_scene_pbrt_path_by_id(scene_id) : nullptr;
+	return p ? std::string(p) : std::string();
+}
+
+extern "C" int rt_realtime_pick_object(const char* scene_id, double x, double y, double z, double* out_lo, double* out_hi, double* out_offset, char* out_label, int label_size) {
+	const std::string path = livePathOf(scene_id);
+	if (path.empty()) return -1;
+	return optix_live_edit::Edits::get().pick(path, x, y, z, out_lo, out_hi, out_offset, out_label, label_size);
+}
+
+extern "C" bool rt_realtime_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz) {
+	const std::string path = livePathOf(scene_id);
+	return !path.empty() && optix_live_edit::Edits::get().setOffset(path, object, dx, dy, dz);
+}
+
+extern "C" void rt_realtime_reset_objects(const char* scene_id) {
+	const std::string path = livePathOf(scene_id);
+	if (!path.empty()) optix_live_edit::Edits::get().reset(path);
+}
+
+extern "C" bool rt_realtime_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size) {
+	if (!scene_id || !out_path) {
+		if (message && message_size > 0) std::snprintf(message, static_cast<std::size_t>(message_size), "%s", "bad arguments");
+		return false;
+	}
+	const std::string path = livePathOf(scene_id);
+	if (path.empty()) {
+		if (message && message_size > 0) std::snprintf(message, static_cast<std::size_t>(message_size), "%s", "this scene has no pbrt file behind it");
+		return false;
+	}
+	return optix_live_edit::Edits::get().exportArrangement(path, out_path, message, message_size);
 }
 
 // Human-readable name for the MaterialTypes this function's error messages

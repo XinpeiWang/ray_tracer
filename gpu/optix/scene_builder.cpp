@@ -12,6 +12,7 @@
 #include "../../cpu_renderer/cpu_interface.h"
 #include "pbrt_gpu_builder.h"
 #include "../../src/shared/pbrt_load.h"
+#include "optix_live_edit.h"   // Live Preview moves objects: the offsets applied here, and what picking needs
 #include "../../src/shared/gpu_tessellate.h"   // cones and paraboloids become triangles (the same step Metal uses for all its unsupported shapes)
 #include "../../src/shared/scene_descriptor.h"
 #include <cmath>
@@ -1021,25 +1022,46 @@ static bool build_loaded_pbrt_scene(
 	struct PbrtBuiltScene {
 		SceneData sceneData;
 		pbrt_gpu::BuildStats stats;
+		std::shared_ptr<const optix_live_edit::Built> edit;   // for a Live Preview: what picking an object needs (optix_live_edit.h); null for a batch build
 	};
 	static SharedLruCache<PbrtBuiltScene> s_pbrtBuiltSceneCache(2);   // bounded: see SharedLruCache
 
-	const std::shared_ptr<const PbrtBuiltScene> built = s_pbrtBuiltSceneCache.get_or_build(std::string(path),
+	// Live Preview's object moves (optix_live_edit.h): the offsets the user has put on this scene's objects, applied to the flattened scene before it is built. A moved
+	// scene has its own cache entry (the key names the offsets), so moving something neither evicts nor reuses the unmoved build.
+	const optix_live_edit::Offsets offsets = optix_live_edit::Edits::get().offsetsFor(path);
+	const bool moved = optix_live_edit::anyMoved(offsets), livePreview = optix_live_edit::g_liveFrame;
+	const std::string builtKey = optix_live_edit::keyFor(path, offsets);
+
+	const std::shared_ptr<const PbrtBuiltScene> built = s_pbrtBuiltSceneCache.get_or_build(builtKey,
 		[&](PbrtBuiltScene& out) -> bool {
+			// The scene is copied only when something has to change in it: an object moved, or a shape OptiX cannot trace turned into triangles.
+			const bool hasQuadrics = !loaded.scene.cones.empty() || !loaded.scene.paraboloids.empty();
+			pbrt_flatten::FlatScene edited;
+			const pbrt_flatten::FlatScene* source = &loaded.scene;
+			if (moved || hasQuadrics) {
+				edited = loaded.scene;
+				source = &edited;
+			}
+			if (moved || livePreview) {
+				live_objects::ObjectList objects = live_objects::objectsOf(loaded.scene);
+				if (moved)
+					for (std::size_t i = 0; i < objects.size() && i < offsets.size(); ++i)
+						live_objects::translateObject(edited, objects, i, offsets[i].data());
+				if (livePreview) out.edit = optix_live_edit::makeBuilt(loaded.scene, *source, std::move(objects), offsets, builtKey);
+			}
 			// OptiX has no cone or paraboloid intersection, so those two shapes are rewritten as triangles first (gpu_tessellate.h, shared with Metal): a close
-			// approximation, drawn instead of dropped. Only a scene that has one pays for the copy of the cached FlatScene.
-			if (!loaded.scene.cones.empty() || !loaded.scene.paraboloids.empty()) {
-				pbrt_flatten::FlatScene tessellated = loaded.scene;
-				const size_t added = gpu_tessellate::tessellateForBackend(tessellated, gpu_tessellate::TessellationCaps::conesAndParaboloids(), nullptr);
+			// approximation, drawn instead of dropped.
+			if (hasQuadrics) {
+				const size_t added = gpu_tessellate::tessellateForBackend(edited, gpu_tessellate::TessellationCaps::conesAndParaboloids(), nullptr);
 				std::cerr << "[OptiX] " << loaded.scene.cones.size() << " cone(s) and " << loaded.scene.paraboloids.size() << " paraboloid(s) tessellated into " << added
 				          << " triangles (an approximation of the exact shape).\n";
-				out.stats = pbrt_gpu::build(tessellated, out.sceneData);
-			} else {
-				out.stats = pbrt_gpu::build(loaded.scene, out.sceneData);
 			}
+			out.stats = pbrt_gpu::build(*source, out.sceneData);
 			return true;
 		});
 	if (!built) return false;
+	// What a click needs, for the scene as it is drawn now (a build cached by a batch render of the same file has no pick information: made from the scene itself).
+	if (livePreview) optix_live_edit::Edits::get().note(path, built->edit ? built->edit : optix_live_edit::makeBuiltFrom(loaded.scene, offsets, builtKey));
 	if (scene.skipExpensiveGeometryLoad) {
 		// See SceneData::skipExpensiveGeometryLoad's own comment - this pbrt
 		// scene is already GPU-resident, so the full built->sceneData copy

@@ -258,8 +258,9 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 		selectSceneById(*savedId);
 		startLivePreview();   // the saved scene, drawn from its own file
 	});
-	QTimer::singleShot(22000, this, [this, shown, before, arranged, diff, outPrefix, log, fail]() {
+	QTimer::singleShot(30000, this, [this, shown, before, arranged, diff, outPrefix, log, fail]() {
 		const QImage fromSaved = shown();
+		log("the saved scene: status \"" + (m_livePreviewStatusLabel ? m_livePreviewStatusLabel->text() : QString()) + "\", picture " + QString::number(fromSaved.width()) + "x" + QString::number(fromSaved.height()));
 		fromSaved.save(outPrefix + "_objects_saved_scene.png");
 		const double likeArranged = diff(*arranged, fromSaved), likeOriginal = diff(*before, fromSaved);
 		log(QString("the saved scene is %1 from the arrangement it was saved from, %2 from the original").arg(likeArranged, 0, 'f', 3).arg(likeOriginal, 0, 'f', 3));
