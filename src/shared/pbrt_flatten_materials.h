@@ -371,6 +371,12 @@ inline void readMaterialBindings(const pbrt_scene::Scene &scene, FlatScene &out,
 						m.mixAmount = tex->params.getFloat("amount", 0.5);
 					}
 					m.hasMixReflectance = true;
+					// A backend with no mix texture of its own (Metal) draws the flat colour: the blend of the two inputs at the amount (an image or an amount image
+					// stays at the default). Exact for two plain colours, an average for nested procedurals. Found by scripts/consistency_sweep.py: a mix of two
+					// equal colours drew as the default grey on Metal.
+					if (m.mixTex1Filename.empty() && m.mixTex2Filename.empty() && m.mixAmountTextureFilename.empty()) {
+						for (int c = 0; c < 3; ++c) m.color[c] = (1.0 - m.mixAmount) * m.mixColor1[c] + m.mixAmount * m.mixColor2[c];
+					}
 					continue;   // resolved to a procedural mix, not a "not supported" warning
 				}
 			}

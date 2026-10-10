@@ -80,6 +80,21 @@ inline DecodedImage decodeColourImage(const std::string& path, float gamma = kDe
 	return entry;
 }
 
+// The decode this follows (stb's float load) turns an 8-bit picture into linear values with gamma 2.2. A Texture "imagemap" with another "encoding" ("linear", "gamma 1.8") or
+// "invert" wants its bytes read differently: this redoes the curve from stb's result (v = byte^2.2 -> byte^gamma) and inverts. A float picture (.exr, .hdr) is linear already.
+// Found by scripts/consistency_sweep.py: a reflectance image with encoding "linear" was drawn 12% darker on Metal than on the CPU.
+inline void applyImagemapEncoding(std::vector<float>& pixels, const std::string& filename, double gamma, bool invert) {
+    std::string lower = filename;
+    for (char& c : lower) c = (char)tolower((unsigned char)c);
+    const bool floatPicture = lower.size() >= 4 && (lower.compare(lower.size() - 4, 4, ".exr") == 0 || lower.compare(lower.size() - 4, 4, ".hdr") == 0 || lower.compare(lower.size() - 4, 4, ".pic") == 0);
+    if (floatPicture) return;
+    const float exponent = (float)(gamma / 2.2);
+    for (float& v : pixels) {
+        if (exponent != 1.0f) v = powf(std::max(v, 0.0f), exponent);
+        if (invert) v = std::max(0.0f, 1.0f - v);
+    }
+}
+
 // A Shape "alpha" cutout mask: pbrt reads it as the mean of the channels, sRGB-decoded, so the result holds that value replicated into R, G and B (a consumer that reads the
 // red channel sees pbrt's number). It is never gamma-decoded the way colour is: a coverage fraction is not a display colour.
 inline DecodedImage decodeAlphaMask(const std::string& path) {

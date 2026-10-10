@@ -155,10 +155,10 @@ void MetalPocApp::loadPbrtScene() {
     std::unordered_map<int, std::pair<float3, bool>> unhandledLightEmission;
     loadPbrtAreaLights(scene, toWorld, materialFor, triangleHandled, unhandledLightEmission);
     loadPbrtRemainingTriangles(scene, toWorld, materialFor, triangleHandled, unhandledLightEmission);
-    loadPbrtSpheres(scene, toWorld, materialFor, sceneScale);
+    loadPbrtSpheres(scene, scene.spheres, toWorld, materialFor, sceneScale);
     loadPbrtDisks(scene, toWorld, materialFor, sceneScale);
     loadPbrtCylinders(scene, toWorld, materialFor, sceneScale);
-    loadPbrtObjectInstances(scene, toWorld, materialFor);
+    loadPbrtObjectInstances(scene, toWorld, materialFor, sceneScale);
     loadPbrtPunctualLights(scene, toWorld, sceneScale);
     loadPbrtMedium(scene, sceneScale);
     pbrtMaxComponentValue = (float)scene.maxComponentValue;
@@ -513,9 +513,9 @@ static TriangleMaterial homogeneousMediumMaterial(const pbrt_flatten::Medium& m,
     return mat;
 }
 
-void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
+void MetalPocApp::loadPbrtSpheres(const pbrt_flatten::FlatScene& scene, const std::vector<pbrt_flatten::Sphere>& sphereList, const PbrtToWorldFn& toWorld,
     const PbrtMaterialForFn& materialFor, float sceneScale) {
-    for (const pbrt_flatten::Sphere& s : scene.spheres) {
+    for (const pbrt_flatten::Sphere& s : sphereList) {
         const float3 center = toWorld(float3{(float)s.center[0], (float)s.center[1], (float)s.center[2]});
         SphereData sd{PackedFloat3{center.x, center.y, center.z}, sceneScale * (float)s.radius};
         // Object motion blur (F11, section 167): Sphere::center1 differs
@@ -985,7 +985,7 @@ void MetalPocApp::loadPbrtCylinders(const pbrt_flatten::FlatScene& scene, const 
 // Pavilion: 97 million, more than the GPU can hold); now it stores the tree once. The kernel finds an instance's triangles at
 // InstanceTransform::triBase + the group-local primitive id and transforms the shading normal by the instance's normal matrix.
 void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, const PbrtToWorldFn& toWorld,
-    const PbrtMaterialForFn& materialFor) {
+    const PbrtMaterialForFn& materialFor, float sceneScale) {
     pbrtInstGroups.clear();
     pbrtInstPlacements.clear();
     pbrtInstTriTotal = 0;
@@ -994,6 +994,7 @@ void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, 
     const float3 aCol[3] = {toWorld(float3{1, 0, 0}) - b, toWorld(float3{0, 1, 0}) - b, toWorld(float3{0, 0, 1}) - b};
     std::vector<int> groupSlot(scene.groups.size(), -1);
     size_t skippedInstancedSpheres = 0, skippedDegenerate = 0, bakedEquivalent = 0;
+    std::vector<pbrt_flatten::Sphere> instancedSpheres;   // each instanced sphere placed in the scene, in the scene's own units: drawn as an ordinary sphere
     for (const pbrt_flatten::Instance& inst : scene.instances) {
         if (inst.group < 0 || (size_t)inst.group >= scene.groups.size()) {
             fprintf(stderr, "loadPbrtScene: ObjectInstance with an invalid group index skipped\n");
@@ -1021,7 +1022,28 @@ void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, 
                 const int r1 = (r + 1) % 3, r2 = (r + 2) % 3, c1 = (c + 1) % 3, c2 = (c + 2) % 3;
                 N[r][c] = (L[r1][c1] * L[r2][c2] - L[r1][c2] * L[r2][c1]) / det;
             }
-        skippedInstancedSpheres += grp.spheres.size();
+        // A sphere stays a sphere under a rotation, a mirror and a uniform scale: place it as an ordinary sphere. A stretch makes it an ellipsoid, which the analytic
+        // sphere cannot draw (and an emissive, medium-bounded or clipped one carries more than a centre and a radius): those are skipped. Found by
+        // scripts/consistency_sweep.py: a ball written as an ObjectInstance was missing from the picture.
+        {
+            const double* X = inst.xform;
+            const double len[3] = {std::sqrt(X[0] * X[0] + X[4] * X[4] + X[8] * X[8]), std::sqrt(X[1] * X[1] + X[5] * X[5] + X[9] * X[9]), std::sqrt(X[2] * X[2] + X[6] * X[6] + X[10] * X[10])};
+            const double dots[3] = {X[0] * X[1] + X[4] * X[5] + X[8] * X[9], X[0] * X[2] + X[4] * X[6] + X[8] * X[10], X[1] * X[2] + X[5] * X[6] + X[9] * X[10]};
+            const double mean = (len[0] + len[1] + len[2]) / 3.0;
+            const bool similarity = mean > 1e-12 && std::fabs(len[0] - mean) < 1e-4 * mean && std::fabs(len[1] - mean) < 1e-4 * mean && std::fabs(len[2] - mean) < 1e-4 * mean &&
+                                    std::fabs(dots[0]) < 1e-4 * mean * mean && std::fabs(dots[1]) < 1e-4 * mean * mean && std::fabs(dots[2]) < 1e-4 * mean * mean;
+            for (const pbrt_flatten::Sphere& gs : grp.spheres) {
+                const bool plainMedium = gs.medium < 0 || (gs.medium < (int)scene.media.size() && scene.media[gs.medium].type == "homogeneous");   // a grid or cloud has its own frame, which the instance would not move
+                if (!similarity || gs.areaLight >= 0 || !plainMedium || gs.clipped) { ++skippedInstancedSpheres; continue; }
+                pbrt_flatten::Sphere placed = gs;
+                for (int r = 0; r < 3; ++r) {
+                    placed.center[r] = X[r * 4 + 0] * gs.center[0] + X[r * 4 + 1] * gs.center[1] + X[r * 4 + 2] * gs.center[2] + X[r * 4 + 3];
+                    placed.center1[r] = placed.center[r];
+                }
+                placed.radius = gs.radius * mean;
+                instancedSpheres.push_back(placed);
+            }
+        }
         bakedEquivalent += grp.triangles.size();
         if (grp.triangles.empty()) continue;
 
@@ -1068,6 +1090,7 @@ void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, 
         for (int r = 0; r < 3; ++r) p.translation[r] = (float)t[r];
         pbrtInstPlacements.push_back(p);
     }
+    if (!instancedSpheres.empty()) loadPbrtSpheres(scene, instancedSpheres, toWorld, materialFor, sceneScale);
     if (!pbrtInstPlacements.empty())
         fprintf(stderr, "loadPbrtScene: %zu ObjectInstance placement(s) of %zu group(s) as hardware instances (%u triangles stored once; "
                         "baking them would take %zu)\n", pbrtInstPlacements.size(), pbrtInstGroups.size(), pbrtInstTriTotal, bakedEquivalent);
@@ -1076,9 +1099,8 @@ void MetalPocApp::loadPbrtObjectInstances(const pbrt_flatten::FlatScene& scene, 
     // A non-uniformly-scaled sphere is an ellipsoid, which SphereData (a plain centre+radius analytic primitive) can't represent - baking it as
     // a sphere anyway would silently render the wrong shape, so instanced spheres are skipped (no pbrt scene run so far uses one).
     if (skippedInstancedSpheres > 0)
-        fprintf(stderr, "loadPbrtScene: %zu instanced sphere(s) skipped - a non-uniformly-scaled "
-                        "instanced sphere can't be represented by this loader's analytic sphere "
-                        "primitive\n", skippedInstancedSpheres);
+        fprintf(stderr, "loadPbrtScene: %zu instanced sphere(s) skipped - a non-uniformly-scaled, emissive, medium-bounded or clipped "
+                        "instanced sphere can't be represented by this loader's analytic sphere primitive\n", skippedInstancedSpheres);
 }
 
 // --- Punctual lights (point/spot/distant) ---------------------------

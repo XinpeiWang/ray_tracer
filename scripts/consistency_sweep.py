@@ -20,6 +20,7 @@ the EXR reader is in this file.
 Exit code 1 when a pair is off by more than the tolerance. See docs/CONSISTENCY_SWEEP.md.
 """
 import argparse
+import math
 import os
 import struct
 import subprocess
@@ -93,6 +94,10 @@ MATERIALS = {
 # materials whose light paths go through a specular chain a point light cannot reach (a point light cannot be hit by a random walk through glass, so the caustic a sphere
 # lamp makes is not there): the point-against-sphere-lamp pair is not a fair one for them
 SPECULAR = {"dielectric", "roughdielectric", "thindielectric"}
+ROTATE_MATERIALS = {"diffuse", "conductor", "coateddiffuse", "dielectric", "subsurface"}
+SHAPE_MATERIALS = {"diffuse", "conductor", "coateddiffuse", "dielectric", "fog"}
+LIGHT_MATERIALS = {"diffuse", "conductor", "coateddiffuse", "diffusetransmission", "subsurface"}
+BACKEND_TOLERANCE = {}   # a material whose two backends are known to differ by more than the default 6%, with the reason
 NOISY = {"dielectric", "thindielectric"}   # fireflies: a pair needs a looser tolerance
 
 
@@ -110,59 +115,110 @@ def medium_prelude(sc):
 
 
 class Scene:
-    """A scene description with the knobs the sweep turns: offset, scale, mirror, sky form, lamp form, size, samples."""
+    """A scene description with the knobs the sweep turns: offset, scale, mirror, turn about the vertical axis, sky form, lamp form, ball form, floor form, size, samples."""
 
-    def __init__(self, material="diffuse", sky="constant", lamp="area", offset=(0, 0, 0), scale=1.0, mirror=False, size=48, spp=64, fill=False, depth=8, sky_png=None):
+    def __init__(self, material="diffuse", sky="constant", lamp="area", offset=(0, 0, 0), scale=1.0, mirror=False, rot=0.0, size=48, spp=64, fill=False, depth=8, sky_png=None,
+                 sky_scale=1.0, ball="sphere", floor="tri", material_text=None, prelude=""):
         self.__dict__.update(locals())
         del self.__dict__["self"]
 
     def p(self, x, y, z):
-        """A point of the base scene, mirrored, scaled and moved."""
+        """A point of the base scene, mirrored, scaled, turned about the vertical axis and moved."""
         if self.mirror:
             x = -x
         s = self.scale
+        c, sn = math.cos(math.radians(self.rot)), math.sin(math.radians(self.rot))
+        x, z = c * x + sn * z, -sn * x + c * z   # pbrt's Rotate about +y
         return (x * s + self.offset[0], y * s + self.offset[1], z * s + self.offset[2])
 
     @staticmethod
     def f(v):
         return " ".join("%.9g" % c for c in v)
 
-    def text(self):
+    def sky_text(self):
+        if self.sky == "constant":
+            return 'LightSource "infinite" "rgb L" [ %s ]' % ("%g %g %g" % ((self.sky_scale,) * 3) if self.fill else "%g %g %g" % (0.25 * self.sky_scale, 0.25 * self.sky_scale, 0.3 * self.sky_scale))
+        light = 'LightSource "infinite" "string filename" [ "%s" ] "float scale" [ %g ]' % (self.sky_png, self.sky_scale)
+        if self.rot:
+            return "AttributeBegin\n  Rotate %g 0 1 0\n  %s\nAttributeEnd" % (self.rot, light)   # the picture turns with the scene
+        return light
+
+    def lamp_text(self):
         s, p, f = self.scale, self.p, self.f
+        lamp_at, power = p(-1.2, 3.0, 1.0), 40.0
+        if self.lamp == "area":
+            return 'AttributeBegin\n  Translate %s\n  AreaLightSource "diffuse" "rgb L" [ %s ]\n  Shape "sphere" "float radius" [ %g ]\nAttributeEnd' % (f(lamp_at), f((power / (3.14159265 * 0.04),) * 3), 0.2 * s)
+        if self.lamp == "point":
+            return 'LightSource "point" "point3 from" [ %s ] "rgb I" [ %s ]' % (f(lamp_at), f((power * s * s,) * 3))
+        if self.lamp == "spot":   # a cone wide enough to hold the whole scene, with a hard edge: lights what the point light does
+            return 'LightSource "spot" "point3 from" [ %s ] "point3 to" [ %s ] "float coneangle" [ 89 ] "float conedeltaangle" [ 0 ] "rgb I" [ %s ]' % (f(lamp_at), f(p(-1.2, 0.0, 1.0)), f((power * s * s,) * 3))
+        # a distant light of irradiance E, and the same light as a point light 1000 units away along its direction (intensity E * d^2)
+        d = (-0.3, 0.85, 0.25)
+        n = math.sqrt(sum(c * c for c in d))
+        d = tuple(c / n for c in d)
+        base = (0.5, 1.0, 0.0)
+        e = 2.0
+        if self.lamp == "distant":
+            return 'LightSource "distant" "point3 from" [ %s ] "point3 to" [ %s ] "rgb L" [ %s ]' % (f(p(*(b + c for b, c in zip(base, d)))), f(p(*base)), f((e,) * 3))
+        far = 1000.0
+        return 'LightSource "point" "point3 from" [ %s ] "rgb I" [ %s ]' % (f(p(*(b + c * far for b, c in zip(base, d)))), f((e * (far * s) ** 2,) * 3))
+
+    def floor_text(self):
+        p, f = self.p, self.f
+        q = [p(-6, 0, -6), p(6, 0, -6), p(6, 0, 6), p(-6, 0, 6)]
+        if self.mirror:
+            q = [q[1], q[0], q[3], q[2]]   # the mirrored floor keeps its winding (its normal stays up), so the pair differs only by the mirror
+        shape = 'Shape "trianglemesh" "integer indices" [ 0 2 1 0 3 2 ] "point3 P" [ %s ]'
+        if self.floor == "tri2":   # the other diagonal
+            shape = 'Shape "trianglemesh" "integer indices" [ 0 3 1 1 3 2 ] "point3 P" [ %s ]'
+        elif self.floor == "bilinear":   # one planar patch: p00 p10 p01 p11
+            shape = 'Shape "bilinearmesh" "integer indices" [ 0 1 3 2 ] "point3 P" [ %s ]'
+        elif self.floor == "bilinear_plain":   # the same patch with its four points listed in the patch's own order
+            q = [q[0], q[1], q[3], q[2]]
+            shape = 'Shape "bilinearmesh" "point3 P" [ %s ]'
+        return 'AttributeBegin\n  Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ]\n  %s\nAttributeEnd' % (shape % " ".join(f(v) for v in q))
+
+    def ball_text(self, material):
+        p, f, s = self.p, self.f, self.scale
+        at = p(0, 0, 0) if self.fill else p(0.5, 1.0, 0)
+        if self.ball == "scaled":      # the same ball as a radius 2 sphere shrunk by the transform
+            return 'AttributeBegin\n  Translate %s\n  Scale 0.5 0.5 0.5\n  %s\n  Shape "sphere" "float radius" [ %g ]\nAttributeEnd' % (f(at), material, 2.0 * s)
+        if self.ball == "rotated":     # a sphere does not care how it is turned
+            return 'AttributeBegin\n  Translate %s\n  Rotate 37 1 2 3\n  %s\n  Shape "sphere" "float radius" [ %g ]\nAttributeEnd' % (f(at), material, s)
+        if self.ball == "explicit":    # every parameter written out at its default
+            return 'AttributeBegin\n  Translate %s\n  %s\n  Shape "sphere" "float radius" [ %g ] "float zmin" [ %g ] "float zmax" [ %g ] "float phimax" [ 360 ]\nAttributeEnd' % (f(at), material, s, -s, s)
+        if self.ball == "instance":    # the ball as an object instance
+            return 'ObjectBegin "ball"\n  %s\n  Shape "sphere" "float radius" [ %g ]\nObjectEnd\nAttributeBegin\n  Translate %s\n  ObjectInstance "ball"\nAttributeEnd' % (material, s, f(at))
+        return 'AttributeBegin\n  Translate %s\n  %s\n  Shape "sphere" "float radius" [ %g ]\nAttributeEnd' % (f(at), material, s)
+
+    def text(self):
+        p, f = self.p, self.f
         eye, look = (p(0, 0, 5) if self.fill else p(0.5, 1.5, 6.0)), (p(0, 0, 0) if self.fill else p(0.2, 0.6, 0))
         fov = 10 if self.fill else 38
-        out = ["LookAt %s  %s  0 1 0" % (f(eye), f(look)), 'Camera "perspective" "float fov" [ %g ]' % fov,
+        up = self.p(0, 1, 0)
+        up = tuple(a - b for a, b in zip(up, self.p(0, 0, 0)))   # the turned, scaled up vector's direction
+        out = ["LookAt %s  %s  %s" % (f(eye), f(look), f(tuple(c / self.scale for c in up))), 'Camera "perspective" "float fov" [ %g ]' % fov,
                'Film "rgb" "integer xresolution" [ %d ] "integer yresolution" [ %d ]' % (self.size, self.size),
                'Sampler "halton" "integer pixelsamples" [ %d ]' % self.spp, 'Integrator "volpath" "integer maxdepth" [ %d ]' % self.depth, "WorldBegin"]
-        if self.sky == "constant":
-            out.append('LightSource "infinite" "rgb L" [ %s ]' % ("1 1 1" if self.fill else "0.25 0.25 0.3"))
-        else:
-            out.append('LightSource "infinite" "string filename" [ "%s" ]' % self.sky_png)
+        out.append(self.sky_text())
         if not self.fill:
-            # a floor: two triangles; mirrored they wind the other way, which a diffuse floor does not care about
-            q = [p(-6, 0, -6), p(6, 0, -6), p(6, 0, 6), p(-6, 0, 6)]
-            if self.mirror:
-                q = [q[1], q[0], q[3], q[2]]   # the mirrored floor keeps its winding (its normal stays up), so the pair differs only by the mirror
-            out.append('AttributeBegin\n  Material "diffuse" "rgb reflectance" [ 0.7 0.7 0.7 ]\n  Shape "trianglemesh" "integer indices" [ 0 2 1 0 3 2 ] "point3 P" [ %s ]\nAttributeEnd' % " ".join(f(v) for v in q))
-            lamp_at, power = p(-1.2, 3.0, 1.0), 40.0
-            if self.lamp == "area":
-                out.append('AttributeBegin\n  Translate %s\n  AreaLightSource "diffuse" "rgb L" [ %s ]\n  Shape "sphere" "float radius" [ %g ]\nAttributeEnd' % (f(lamp_at), f((power / (3.14159265 * 0.04),) * 3), 0.2 * s))
-            else:
-                out.append('LightSource "point" "point3 from" [ %s ] "rgb I" [ %s ]' % (f(lamp_at), f((power * s * s,) * 3)))
-        ball = p(0, 0, 0) if self.fill else p(0.5, 1.0, 0)
-        material = MATERIALS[self.material]
+            out.append(self.floor_text())
+            out.append(self.lamp_text())
+        material = self.material_text or MATERIALS[self.material]
         if callable(material):
             prelude = medium_prelude(self)
             if prelude:
                 out.append(prelude)
             material = material(self)
-        out.append('AttributeBegin\n  Translate %s\n  %s\n  Shape "sphere" "float radius" [ %g ]\nAttributeEnd' % (f(ball), material, 1.0 * s))
+        if self.prelude:
+            out.append(self.prelude)
+        out.append(self.ball_text(material))
         return "\n".join(out) + "\n"
 
 
-def make_white_png(path):
-    w, h = 64, 32
-    raw = b"".join(b"\0" + bytes([255, 255, 255] * w) for _ in range(h))
+def write_png(path, w, h, pixel):
+    """An 8-bit RGB PNG; pixel(x, y) -> (r, g, b) bytes."""
+    raw = b"".join(b"\0" + b"".join(bytes(pixel(x, y)) for x in range(w)) for y in range(h))
 
     def chunk(t, d):
         c = struct.pack(">I", len(d)) + t + d
@@ -174,7 +230,11 @@ class Sweep:
     def __init__(self, exe, backends, workdir, verbose):
         self.exe, self.backends, self.dir, self.verbose = exe, backends, workdir, verbose
         self.white = os.path.join(workdir, "white.png")
-        make_white_png(self.white)
+        write_png(self.white, 64, 32, lambda x, y: (255, 255, 255))
+        self.gradient = os.path.join(workdir, "gradient.png")   # brighter to one side: a picture sky that is not the same in every direction
+        write_png(self.gradient, 64, 64, lambda x, y: (30 + 3 * x, 40 + 2 * x + y, 255 - 3 * x))
+        self.grey = os.path.join(workdir, "grey.png")   # a uniform image for the texture pair, written with a linear encoding
+        write_png(self.grey, 8, 8, lambda x, y: (153, 102, 77))
         self.n = 0
         self.cache = {}
 
@@ -238,6 +298,55 @@ def run(args):
             check("spp", "spp 16 vs 128, %s" % name, backend, Scene(material=name, spp=16, size=64), Scene(material=name, spp=128, size=64), tolerance=max(noise_tol(name), 6.0))
             if name not in SPECULAR:
                 check("lightform", "point vs sphere lamp, %s" % name, backend, Scene(material=name, lamp="point"), Scene(material=name, lamp="area"), tolerance=max(tol, 6.0))
+            if name in ROTATE_MATERIALS:
+                # a picture sky that is not the same in every direction, turned together with everything else in the scene
+                check("skyrotate", "scene and sky turned 90 deg, %s" % name, backend,
+                      Scene(material=name, sky="picture", sky_png=sw.gradient), Scene(material=name, sky="picture", sky_png=sw.gradient, rot=90.0), tolerance=noise_tol(name))
+                check("skyrotate", "scene and sky turned 200 deg, %s" % name, backend,
+                      Scene(material=name, sky="picture", sky_png=sw.gradient), Scene(material=name, sky="picture", sky_png=sw.gradient, rot=200.0), tolerance=noise_tol(name))
+            if name in SHAPE_MATERIALS:
+                for ball in ("scaled", "rotated", "explicit", "instance"):
+                    check("shapeform", "ball written as %s, %s" % (ball, name), backend, base, Scene(material=name, ball=ball), tolerance=noise_tol(name))
+                for floor in ("tri2", "bilinear", "bilinear_plain"):
+                    check("shapeform", "floor written as %s, %s" % (floor, name), backend, base, Scene(material=name, floor=floor), tolerance=noise_tol(name))
+            if name in LIGHT_MATERIALS:
+                check("lights", "spot vs point, %s" % name, backend, Scene(material=name, lamp="point"), Scene(material=name, lamp="spot"), tolerance=max(tol, 6.0))
+                check("lights", "distant vs far point, %s" % name, backend, Scene(material=name, lamp="distant"), Scene(material=name, lamp="far"), tolerance=max(tol, 6.0))
+
+        # textures: a value written inline, as a constant texture, as an image, as a checkerboard of two equal colours, as a mix of equal colours
+        diffuse_inline = 'Material "diffuse" "rgb reflectance" [ 0.6 0.4 0.3 ]'
+        textures = {
+            "constant": 'Texture "t" "spectrum" "constant" "rgb value" [ 0.6 0.4 0.3 ]',
+            "image": 'Texture "t" "spectrum" "imagemap" "string filename" [ "%s" ] "string encoding" [ "linear" ]' % sw.grey,
+            "checkerboard": 'Texture "t" "spectrum" "checkerboard" "rgb tex1" [ 0.6 0.4 0.3 ] "rgb tex2" [ 0.6 0.4 0.3 ] "float uscale" [ 6 ] "float vscale" [ 6 ]',
+            "mix": 'Texture "t" "spectrum" "mix" "rgb tex1" [ 0.6 0.4 0.3 ] "rgb tex2" [ 0.6 0.4 0.3 ] "float amount" [ 0.3 ]',
+        }
+        for tname, decl in textures.items():
+            check("texture", "diffuse reflectance as %s texture" % tname, backend, Scene(material_text=diffuse_inline), Scene(material_text='Material "diffuse" "texture reflectance" [ "t" ]', prelude=decl), tolerance=tol)
+        roughness_tex = 'Texture "r" "float" "constant" "float value" [ 0.1 ]'
+        check("texture", "conductor roughness as a texture", backend, Scene(material="conductor"),
+              Scene(material_text='Material "conductor" "rgb reflectance" [ 0.9 0.6 0.4 ] "texture roughness" [ "r" ]', prelude=roughness_tex), tolerance=tol)
+        check("texture", "coateddiffuse roughness as a texture", backend, Scene(material="coateddiffuse"),
+              Scene(material_text='Material "coateddiffuse" "rgb reflectance" [ 0.5 0.3 0.2 ] "texture roughness" [ "r" ]', prelude=roughness_tex), tolerance=tol)
+        check("texture", "coateddiffuse reflectance as a texture", backend, Scene(material="coateddiffuse"),
+              Scene(material_text='Material "coateddiffuse" "texture reflectance" [ "t" ] "float roughness" [ 0.1 ]', prelude='Texture "t" "spectrum" "constant" "rgb value" [ 0.5 0.3 0.2 ]'), tolerance=tol)
+        # the sky's scale: a constant sky at 0.4 against a white picture at scale 0.4
+        check("skyscale", "constant sky at 0.4 vs white picture at scale 0.4", backend, Scene(material="diffuse", sky="constant", sky_scale=0.4, fill=True),
+              Scene(material="diffuse", sky="picture", sky_png=sw.white, sky_scale=0.4, fill=True), tolerance=tol)
+    # backends: the same scene on the CPU and on the GPU (only when both are asked for)
+    if "cpu" in args.backends and "gpu" in args.backends and (not only or "backends" in only):
+        print("[cpu vs gpu]")
+        for name in MATERIALS:
+            spp = 512 if name in NOISY else 64   # a glass ball lit through by a small lamp has caustics: one backend's few fireflies can move a 64-sample mean by 9%
+            for label, scene in (("constant sky", Scene(material=name, spp=spp)), ("picture sky", Scene(material=name, sky="picture", sky_png=sw.gradient, spp=spp))):
+                total += 1
+                ma, mb = sw.render("cpu", scene), sw.render("gpu", scene)
+                worst = max(abs(x - y) / max(abs(x), 1e-6) for x, y in zip(ma, mb)) * 100.0
+                limit = max(noise_tol(name), BACKEND_TOLERANCE.get(name, 6.0))
+                if worst > limit or args.verbose:
+                    print("  %-4s %-34s %s  %.4f vs %.4f  off by %.1f%%" % ("both", "cpu vs gpu, %s, %s" % (label, name), "ok   " if worst <= limit else "WRONG", ma[1], mb[1], worst))
+                if worst > limit:
+                    failures.append(("backends", "both", "%s, %s" % (label, name)))
     print("\n%d pairs, %d off by more than %g%%" % (total, len(failures), tol))
     return 1 if failures else 0
 
