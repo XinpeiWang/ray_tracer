@@ -1,0 +1,20 @@
+# media-distant-cloud.pbrt -- the cloud of cloud-furnace.pbrt lit by a distant light on a black background (see media-distant-homogeneous.pbrt).
+LookAt  278 260 -500    358 280 330    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Film "rgb" "integer xresolution" [ 48 ] "integer yresolution" [ 48 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+WorldBegin
+LightSource "distant" "point3 from" [ 300 600 -400 ] "point3 to" [ 358 280 330 ] "rgb L" [ 3 3 3 ]
+AttributeBegin
+  Translate 278 200 250
+  Scale 160 160 160
+  MakeNamedMedium "puffcloud" "string type" [ "cloud" ]
+    "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.15 0.15 0.15 ] "float g" [ 0.3 ]
+    "float density" [ 1 ] "float wispiness" [ 1 ] "float frequency" [ 4 ]
+AttributeEnd
+AttributeBegin
+  Translate 358 280 330
+  Material "interface"
+  MediumInterface "puffcloud" ""
+  Shape "sphere" "float radius" [ 145 ]
+AttributeEnd

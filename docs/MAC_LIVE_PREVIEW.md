@@ -39,8 +39,11 @@ everything back. Moves are for looking at a different arrangement: they are not 
   never over an existing file), listed under My Scenes at once (`realtime_export_arrangement`; the original scene is not changed). The original text is kept byte
   for byte: each shape of a moved object is wrapped as `AttributeBegin  Translate t  <the Shape>  AttributeEnd` (`src/shared/pbrt_arrangement.h`), where `t` is the world
   offset turned into the frame the shape's own transform is in (`t = A^-1 d`, A the linear part of the transform in force at the Shape, recorded by the parser as
-  `ShapeDecl::srcBegin/srcEnd` and `ShapeRange::ctm`), so a scaled or rotated scene moves the same way in the saved file. A relative file name (`"string filename"`,
-  `Include`) that names an existing file is made absolute so the copy works from another folder. Shapes that live in an included file cannot be edited (the summary says
+  `ShapeDecl::srcBegin/srcEnd` and `ShapeRange::ctm`), so a scaled or rotated scene moves the same way in the saved file. A scene made by the Scene Builder keeps its
+  document in a `# @rt-builder-doc` comment; the moves are written into that document as well (each moved object's position changes by the world offset, which is exactly
+  what the Builder's own `Translate <position>` means), so the Builder opens the arrangement and not the original. If the document's objects and the scene's blocks are not
+  the same list (a scene edited by hand), the marker is removed from the copy instead, so the Builder never opens a stale one (the summary says which happened). A relative
+  file name (`"string filename"`, `Include`) that names an existing file is made absolute so the copy works from another folder. Shapes that live in an included file cannot be edited (the summary says
   how many were left). Tested by flattening the saved text and comparing every coordinate with the moved flattened scene (`pbrt_arrangement_tests.cpp`), by
   `metal_live_edit` (the saved scene has the object where the live picture has it), and by the GUI self-test, which saves, lists, opens the saved scene in Live Preview
   and checks the picture is the arrangement, not the original.

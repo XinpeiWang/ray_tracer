@@ -69,13 +69,13 @@ inline bool traverseBoundedMedia(thread const KernelRes& R, thread PathState& P,
         TriangleMaterial mediumMat = sphereMaterials[mediumPrimId];
         if (mediumMat.materialType == METAL_MAT_MEDIUM_HOMOGENEOUS) {
             shadeHomogeneousMediumSphere(mediumMat, mediumPrimId, result.distance,
-                spheres, shutterT, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
+                spheres, shutterT, lights, pointLights, directionalLights, uniforms, pbrtAreaLightTexture, textureSampler,
                 isect, accelStructure, functionTable, shadowSpherePayload,
                 rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                 scatteredInMedium, passedThroughMediumSphere);
         } else if (mediumMat.materialType == METAL_MAT_MEDIUM_HETEROGENEOUS) {
             shadeCloudMediumSphere(mediumMat, result.distance,
-                cloudMediums, lights, uniforms, pbrtAreaLightTexture, textureSampler,
+                cloudMediums, lights, pointLights, directionalLights, uniforms, pbrtAreaLightTexture, textureSampler,
                 isect, accelStructure, functionTable, shadowSpherePayload,
                 rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                 scatteredInMedium, passedThroughMediumSphere, envLightSampled);
@@ -90,7 +90,7 @@ inline bool traverseBoundedMedia(thread const KernelRes& R, thread PathState& P,
                cylinderMaterials[result.primitive_id].materialType == METAL_MAT_MEDIUM_HOMOGENEOUS) {
         // A tube bounding a homogeneous medium (Shape "cylinder" + MediumInterface).
         shadeHomogeneousMediumCylinder(cylinderMaterials[result.primitive_id], cylinders[result.primitive_id],
-            lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
+            lights, pointLights, directionalLights, uniforms, pbrtAreaLightTexture, textureSampler,
             isect, accelStructure, functionTable, shadowSpherePayload,
             rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
             scatteredInMedium, passedThroughMediumSphere);

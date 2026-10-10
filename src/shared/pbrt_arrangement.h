@@ -7,6 +7,11 @@
 // translation written is t = A^-1 d, A being the linear part of the transform in force at the Shape (live_objects::translateObject moves the flattened scene
 // by d in world space; the unit tests flatten both and compare). Standard library only.
 //
+// A scene made by the Scene Builder carries its document in a "# @rt-builder-doc" comment, which the Builder reads when it opens the file (the directives are ignored). The
+// moves are written into that document too (each moved object's position changes by the world offset: the Builder writes Translate <position> first in every object's block,
+// so that is exactly the same move), so the Builder opens the arrangement, not the original. That needs the document's objects and the scene's objects to be the same list
+// (one block per object, in order); when they are not, the marker is taken out of the saved file so the Builder does not open a stale copy.
+//
 // A scene saved somewhere else would lose the files it names by relative path, so any "string ..." parameter or Include whose value is a relative path to an existing
 // file is rewritten to the absolute path.
 
@@ -21,6 +26,7 @@
 
 #include "live_object_edit.h"
 #include "pbrt_scene.h"
+#include "scene_document.h"   // scene_doc::Document, fromPbrt/toPbrt (a Scene Builder scene carries its document in a comment)
 
 namespace pbrt_arrangement {
 
@@ -29,6 +35,8 @@ struct Result {
 	int movedShapes = 0;     // shapes wrapped in a Translate
 	int skippedShapes = 0;   // shapes of moved objects that sit in an Include'd file, which stays as it is
 	int rewrittenPaths = 0;  // relative file names made absolute
+	bool builderDocumentUpdated = false;   // a Scene Builder scene: its embedded document now has the moved positions
+	bool builderDocumentDropped = false;   // a Scene Builder scene whose document does not line up with the scene's objects: the marker was removed
 };
 
 namespace detail {
@@ -83,6 +91,31 @@ inline Result write(const std::string& text, const std::vector<pbrt_flatten::Sha
 			events.push_back(open);
 			events.push_back(close);
 			++result.movedShapes;
+		}
+	}
+	// A Scene Builder scene: keep its embedded document in step with the directives.
+	if (result.movedShapes > 0) {
+		const std::string marker = "# @rt-builder-doc ";
+		std::size_t at = text.compare(0, marker.size(), marker) == 0 ? 0 : text.find("\n" + marker);
+		if (at != std::string::npos && at != 0) ++at;
+		if (at != std::string::npos) {
+			const std::size_t jsonBegin = at + marker.size();
+			std::size_t jsonEnd = text.find_first_of("\r\n", jsonBegin);
+			if (jsonEnd == std::string::npos) jsonEnd = text.size();
+			scene_doc::Document doc;
+			std::string err;
+			if (scene_doc::fromJson(text.substr(jsonBegin, jsonEnd - jsonBegin), doc, err) && doc.objects.size() == objects.size()) {
+				for (std::size_t o = 0; o < objects.size() && o < offsets.size(); ++o) {
+					doc.objects[o].position.x += offsets[o][0];
+					doc.objects[o].position.y += offsets[o][1];
+					doc.objects[o].position.z += offsets[o][2];
+				}
+				events.push_back({jsonBegin, jsonEnd, 1, scene_doc::toJson(doc)});
+				result.builderDocumentUpdated = true;
+			} else {
+				events.push_back({at, jsonBegin, 1, "# (arranged in Live Preview: the Scene Builder cannot edit this copy) "});
+				result.builderDocumentDropped = true;
+			}
 		}
 	}
 	// Relative file names: where a "string <name>" parameter or an Include names an existing file next to the original, name it absolutely.
