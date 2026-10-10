@@ -185,6 +185,7 @@ void SceneBuilderWidget::buildUi() {
 	addMenu->addSection(tr("Props (several objects at once)"));
 	for (scene_doc::PropKind k : scene_doc::allPropKinds()) addMenu->addAction(propLabel(k), this, [this, k]() { addProp(k); });
 	addMenu->addSection(tr("More"));
+	addMenu->addAction(tr("Model library..."), this, [this]() { showModelLibrary(); });
 	addMenu->addAction(tr("Object from a photo..."), this, [this]() { addObjectFromPhoto(); });
 	addMenu->addAction(tr("Light panel (emitting quad)"), this, [this]() {
 		edit(QString(), [this]() {

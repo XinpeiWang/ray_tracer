@@ -191,6 +191,8 @@ RayTracer_Package/tls/
 # that happens to share the extension.
 !images/*.jpg
 !images/*.png
+# The Scene Builder model library's thumbnails (models/thumbnails/): small renders of the models, checked in.
+!models/thumbnails/*.png
 
 # ...and real mesh texture assets under models/sponza_textures/ and
 # models/bistro_textures/ (map_Kd images for scenes 62/63 - see

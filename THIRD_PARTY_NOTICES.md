@@ -41,8 +41,9 @@ These are data, not code, and the MIT licence **does not apply to them**.
   Lumberyard Bistro, Rungholt) and the common-3d-test-models collection. Each model
   keeps the licence and attribution terms of its source. Some require attribution,
   some allow research use only, and some are non-commercial, so check the source
-  before you redistribute a model or ship it in a product. A per-model provenance
-  table has not been written yet; until it is, treat the sources above as authoritative.
+  before you redistribute a model or ship it in a product. `docs/MODELS.md` has a per-model
+  table of sources (it was not checked file by file; the sources stay authoritative). The
+  installers carry only Spot, Suzanne and the Utah teapot.
   The larger scenes (Power Plant and others) are deliberately not bundled in the
   installers for this reason.
 * **`images/`**: `earthmap.jpg` is NASA's Blue Marble in equirectangular projection

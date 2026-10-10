@@ -71,6 +71,12 @@ Delete or Backspace removes the selected item (from the list or a view; in a tex
 
 The **Props** section of the Add menu puts a few ordinary objects in at once: a **table** (top and four legs), a **chair**, a **tree** (trunk and two cones), a **snowman**, a stone **column** and a **street lamp** (its bulb is an emitting sphere). They stand on the floor with the middle of their footprint where the new item would drop, as one undo step, and the first part is selected. From then on they are plain objects: move, recolour or delete the parts one at a time (nothing is grouped), or Duplicate a part. A second copy of a prop is named apart ("Table top 2").
 
+## Model library
+
+**Add > Model library...** opens a window of ready-made meshes with a picture of each (the Stanford bunny, armadillo, Lucy and dragon, a horse, a cow, a teapot, busts, a beetle car and more: 22 in a source checkout, about 100 thousand triangles each for the big ones). Pick one and press **Add** (or double-click it): it stands on the floor under the middle of the view, about 1.6 units across, as one undo step; **Scale** in its properties resizes it and the Rotate tool turns it. The search box narrows the list by name. **Choose another file...** adds any `.obj` or `.ply` of your own instead (that one keeps its own size, so a big scan may need a smaller Scale).
+
+The installers carry only Spot, Suzanne and the Utah teapot; the rest need a source checkout. Each model keeps the licence of its source: [MODELS.md](MODELS.md) says where each comes from and what to check before publishing.
+
 ## What the world looks like
 
 * **+Y is up.** Units are whatever you like; the example is a few units across.
@@ -149,7 +155,7 @@ The scene's **name** is the field at the top right of the tab (it is also the *T
 ## What it does not do (yet)
 
 * Bump or normal maps, hair, subsurface, participating media, the principled material and instanced copies: use a hand-written pbrt file for those ([PBRT_SUPPORT.md](PBRT_SUPPORT.md) lists what the renderer accepts).
-* A mesh (`.ply`) is shown in the layout view only as a small marker at its position, because the view does not read the file; its scale and rotation apply when it renders.
+* A mesh (`.ply` or `.obj`) is shown in the layout view only as a small marker at its position, because the view does not read the file; its scale and rotation apply when it renders.
 * No animation or camera paths.
 * The 3D view shows shapes, not materials or lighting, and a mesh as its bounding box and a sample of its points. Use it with the flat views, or type exact numbers in the properties.
 
