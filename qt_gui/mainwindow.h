@@ -144,6 +144,7 @@ public:
 	void runLivePreviewDragSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 	void runLivePreviewKeysSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 	void runLivePreviewObjectsSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
+	void runLivePreviewArrangeSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 	void runLivePreviewSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 #endif
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode

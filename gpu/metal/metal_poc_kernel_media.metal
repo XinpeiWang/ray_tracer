@@ -74,13 +74,13 @@ inline bool traverseBoundedMedia(thread const KernelRes& R, thread PathState& P,
                 rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                 scatteredInMedium, passedThroughMediumSphere);
         } else if (mediumMat.materialType == METAL_MAT_MEDIUM_HETEROGENEOUS) {
-            shadeCloudMediumSphere(mediumMat, result.distance,
+            shadeCloudMediumSphere(mediumMat, mediumPrimId, result.distance, spheres, shutterT,
                 cloudMediums, lights, pointLights, directionalLights, uniforms, pbrtAreaLightTexture, textureSampler,
                 isect, accelStructure, functionTable, shadowSpherePayload,
                 rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
                 scatteredInMedium, passedThroughMediumSphere, envLightSampled);
         } else if (mediumMat.materialType == METAL_MAT_MEDIUM_RGB_GRID) {
-            shadeRgbGridMediumSphere(mediumMat, result.distance,
+            shadeRgbGridMediumSphere(mediumMat, mediumPrimId, result.distance, spheres, shutterT,
                 rgbGridMediums, rgbGridData, lights, pointLights, directionalLights, uniforms, pbrtAreaLightTexture, textureSampler,
                 isect, accelStructure, functionTable, shadowSpherePayload,
                 rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,

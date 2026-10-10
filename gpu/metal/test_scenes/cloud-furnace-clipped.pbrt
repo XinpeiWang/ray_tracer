@@ -1,0 +1,28 @@
+# cloud-furnace-clipped.pbrt -- cloud-furnace.pbrt with the cloud's box moved 41 units to +x, so its dense part sits near the edge of the interface sphere and the box sticks
+# out of the sphere. A medium fills its interface sphere only (pbrt's MediumInterface), so a non-absorbing cloud under a uniform sky must still be invisible: the picture reads
+# the sky everywhere. A renderer that tracks the medium along the whole box but lights it as if the box were medium everywhere reads 14% dark along the sphere's edge
+# (gpu/metal/metal_poc_clipped_medium_test.sh; not in the scene list).
+
+LookAt  278 260 -500    358 280 330    0 1 0
+Camera "perspective" "float fov" [ 40 ]
+Film "rgb" "integer xresolution" [ 300 ] "integer yresolution" [ 300 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+
+WorldBegin
+
+LightSource "infinite" "rgb L" [ 0.5 0.5 0.5 ]
+
+AttributeBegin
+  Translate 319 200 250
+  Scale 160 160 160
+  MakeNamedMedium "puffcloud" "string type" [ "cloud" ]
+    "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.15 0.15 0.15 ] "float g" [ 0.3 ]
+    "float density" [ 1 ] "float wispiness" [ 1 ] "float frequency" [ 4 ]
+AttributeEnd
+
+AttributeBegin
+  Translate 358 280 330
+  Material "interface"
+  MediumInterface "puffcloud" ""
+  Shape "sphere" "float radius" [ 145 ]
+AttributeEnd
