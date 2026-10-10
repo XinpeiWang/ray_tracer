@@ -3,6 +3,7 @@
 
 #include "mainwindow.h"
 #include "live_ai_denoise.h"
+#include "live_object_editor.h"
 #include "icon_tint.h"
 #include "scene_technique_notes.h"
 #include "settings_keys.h"
@@ -132,6 +133,11 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 	m_livePreviewStatusLabel = new QLabel(page);
 	m_livePreviewStatusLabel->setAlignment(Qt::AlignCenter);
 	layout->addWidget(m_livePreviewStatusLabel);
+	m_liveObjectEditor = nullptr;
+	if (m_livePreviewSession && RealtimePreviewSession::objectEditingAvailable()) {
+		m_liveObjectEditor = new LiveObjectEditor(m_livePreviewSession, m_livePreviewLabel, m_livePreviewSceneSize, page);
+		layout->addWidget(m_liveObjectEditor->createControls(page));
+	}
 
 	// No outputPath/previewPath/techniqueHtml - there's no file on disk and
 	// no completed-render settings summary, so Open Folder/Open Viewer
@@ -327,6 +333,7 @@ void MainWindow::onLivePreviewCameraChanged() {
 	if (!m_livePreviewRunning || !m_livePreviewSession) return;
 	const camera_math::Vec3 camera = currentCameraPosition();
 	m_orbit = camera_math::cartesianToOrbit(camera, m_livePreviewLookAt);
+	if (m_liveObjectEditor) m_liveObjectEditor->cameraMoved();
 	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z,
 									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 }
@@ -334,6 +341,7 @@ void MainWindow::onLivePreviewCameraChanged() {
 void MainWindow::updateLivePreviewCameraFromOrbit() {
 	if (!m_livePreviewRunning || !m_livePreviewSession) return;
 	const camera_math::Vec3 camera = camera_math::orbitToCartesian(m_orbit, m_livePreviewLookAt);
+	if (m_liveObjectEditor) m_liveObjectEditor->cameraMoved();
 	m_livePreviewSession->setCamera(camera.x, camera.y, camera.z,
 									 m_livePreviewLookAt.x, m_livePreviewLookAt.y, m_livePreviewLookAt.z);
 }

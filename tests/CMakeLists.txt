@@ -25,6 +25,7 @@ add_executable(unit_tests
     unit/area_light_sampling_tests.cpp
     unit/bilinear_patch_hittable_tests.cpp
     unit/camera_math_tests.cpp
+    unit/object_drag_math_tests.cpp
     unit/camera_path_tests.cpp
     unit/curve_shape_tests.cpp
     unit/curve_tessellate_tests.cpp

@@ -520,6 +520,49 @@
     </message>
 </context>
 <context>
+    <name>LiveObjectEditor</name>
+    <message>
+        <location filename="../live_object_editor.cpp" line="22"/>
+        <source>Move objects</source>
+        <translation>移动物体</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="24"/>
+        <source>Click an object in the picture and drag it to move it. Hold Shift while dragging to lift or lower it. Drag on empty space to orbit as usual.</source>
+        <translation>在画面中点击物体并拖动即可移动它。拖动时按住 Shift 可上下移动。在空白处拖动仍然是环绕相机。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="26"/>
+        <source>Reset objects</source>
+        <translation>重置物体</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="28"/>
+        <source>Put every object back where the scene file puts it.</source>
+        <translation>把所有物体放回场景文件指定的位置。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="54"/>
+        <source>Click an object and drag it. Shift: up and down.</source>
+        <translation>点击物体并拖动。Shift：上下移动。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="70"/>
+        <source>Nothing movable there: drag to orbit.</source>
+        <translation>那里没有可移动的物体：拖动以环绕相机。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="78"/>
+        <source>Moving: %1. Shift: up and down.</source>
+        <translation>正在移动：%1。Shift：上下移动。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="102"/>
+        <source>Every object is back where the scene file puts it.</source>
+        <translation>所有物体已回到场景文件指定的位置。</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <location filename="../mainwindow_actions.cpp" line="195"/>
@@ -1361,7 +1404,7 @@ Use the pause/stop controls if a category turns out to take too long.</source>
         <translation>单张图像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="146"/>
+        <location filename="../mainwindow_live_preview.cpp" line="152"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
@@ -3316,10 +3359,6 @@ SVGF Denoiser: an alternative, experimental noise-reduction filter. Instead of b
         <translation>萤火虫噪点截断(--maxcomponentvalue)</translation>
     </message>
     <message>
-        <source>OptiX AI denoiser (GPU only)</source>
-        <translation type="vanished">OptiX AI 降噪器(仅限 GPU)</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="431"/>
         <source>Sampler:</source>
         <translation>采样器:</translation>
@@ -3761,15 +3800,6 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>在 GPU 渲染过程内部启用额外的正确性检查，用来发现某些类型的错误，否则这些错误会悄悄生成错误的图像或导致不可预测的崩溃。这是为开发渲染器 GPU 代码的人准备的调试辅助功能，对正常渲染没有好处：它有实际的性能开销，也不会改变正确渲染的外观。它专用于 OptiX GPU 后端（Windows）；Metal 没有对应功能，因此即使在 macOS 上把渲染器设为 GPU，它也保持灰色。</translation>
     </message>
     <message>
-        <source>Runs an AI denoiser on the finished render to smooth out
-graininess, using extra information about each pixel&apos;s base
-color and surface direction to do a better job than a plain
-blur. OptiX GPU only, both GPU modes (recursive and wavefront
-each have their own denoiser) - not available under Metal
-(macOS GPU rendering).</source>
-        <translation type="vanished">对完成的渲染运行 AI 降噪器以平滑颗粒感，它会利用每个像素的基础颜色和表面朝向等额外信息，效果比简单模糊更好。仅限 OptiX GPU，两种 GPU 模式都支持（递归和波前各有自己的降噪器）；Metal（macOS GPU 渲染）下不可用。</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1072"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
@@ -4186,7 +4216,7 @@ Off by default (genuinely random every render).</source>
         <translation>预览</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="116"/>
+        <location filename="../mainwindow_live_preview.cpp" line="117"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -4195,44 +4225,44 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="142"/>
+        <location filename="../mainwindow_live_preview.cpp" line="148"/>
         <source>Live Preview — %1</source>
         <translation>实时预览 — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="147"/>
+        <location filename="../mainwindow_live_preview.cpp" line="153"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>交互式 GPU 预览——拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行，左/右环绕</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="173"/>
+        <location filename="../mainwindow_live_preview.cpp" line="179"/>
         <source>Select a scene first</source>
         <translation>请先选择一个场景</translation>
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="270"/>
+        <location filename="../mainwindow_live_preview.cpp" line="257"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>正在启动…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="286"/>
+        <location filename="../mainwindow_live_preview.cpp" line="273"/>
         <source>Stopped</source>
         <translation>已停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="312"/>
+        <location filename="../mainwindow_live_preview.cpp" line="299"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>实时（已降噪，不进行累积）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="314"/>
+        <location filename="../mainwindow_live_preview.cpp" line="301"/>
         <source>%1 samples</source>
         <translation>%1 个样本</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="339"/>
+        <location filename="../mainwindow_live_preview.cpp" line="326"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[实时预览] 错误：%1</translation>
     </message>
@@ -5696,10 +5726,6 @@ The scenes in the other categories are not touched. You can get them back from %
         <location filename="../scene_builder_common.h" line="81"/>
         <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.</source>
         <translation>拖动背景：环绕观察（Shift + 拖动：平移）。右键拖动也可平移。滚轮：缩放。选择移动、旋转或缩放（W、E、R），然后拖动箭头、圆环或方块；拖动物体可在地面上滑动，Shift + 拖动可抬起它，拖动白点（或拖动时按住 %1）可向任意方向移动。</translation>
-    </message>
-    <message>
-        <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
-        <translation type="vanished">拖动背景：环绕（Shift + 拖动：平移）。右键拖动同样可以平移。滚轮：缩放。选择移动、旋转或缩放（W、E、R），然后拖动箭头、圆环或方块；Shift + 拖动物体可将其抬起。</translation>
     </message>
     <message>
         <location filename="../scene_builder_common.h" line="86"/>
@@ -7334,12 +7360,12 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1147"/>
+        <location filename="../mainwindow_widgets.h" line="1219"/>
         <source>No renders yet</source>
         <translation>尚无渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1155"/>
+        <location filename="../mainwindow_widgets.h" line="1227"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>

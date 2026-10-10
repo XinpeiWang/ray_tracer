@@ -16,6 +16,8 @@ result. Screenshots are of the app's own window (never the screen) and are writt
   installphoto the Diagnostics tab's "Install Photo Helper" flow with stand-in installer scripts (not in the default set; no big download)
   livepreview  (--live-preview) selects Live Preview, starts it, lets it render, orbits the camera like a mouse drag, and requires
                frames to flow AND the picture to change
+  livepreview_objects  (--live-preview, on a Mac) presses on an object in the Live Preview picture and drags it with real mouse events: the picture must
+               change, and "Reset objects" must bring it back
 
 Usage:
   python3 scripts/gui_selftest.py [APP] [--out DIR] [--modes ui,options,...] [--live-preview] [--plugins DIR]
@@ -186,7 +188,9 @@ def main():
     modes = [m for m in args.modes.split(",") if m]
     if args.live_preview and "livepreview" not in modes:
         modes.append("livepreview")
-    waits = {"livepreview": 60}
+    if args.live_preview and IS_MAC and "livepreview_objects" not in modes:
+        modes.append("livepreview_objects")   # object editing is in the Metal library only so far
+    waits = {"livepreview": 60, "livepreview_objects": 90}
     ok = True
     try:
         for mode in modes:
@@ -197,9 +201,9 @@ def main():
             if mode == "ui" and passed and args.live_preview and 'Live Preview (interactive)" enabled=1' not in text:
                 print("FAIL [ui]: no enabled Live Preview item")
                 ok = False
-            if mode == "livepreview":
+            if mode in ("livepreview", "livepreview_objects"):
                 for line in text.splitlines():
-                    if any(k in line for k in ("frames=", "picture change", "RESULT")):
+                    if any(k in line for k in ("frames=", "picture change", "RESULT", "changed by", "after Reset", "after the press", "objects ok")):
                         print("  " + line.strip())
     finally:
         shutil.rmtree(fake_home, ignore_errors=True)

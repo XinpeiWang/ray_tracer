@@ -75,7 +75,7 @@ namespace SceneMetadataClient { struct SceneMetadata; }
 // above - only used below as an owned pointer member, so callers of this
 // header don't need realtime_preview_session.h's QThread/DLL-loading
 // machinery dragged in just to see the member declaration.
-class RealtimePreviewSession;
+class RealtimePreviewSession; class LiveObjectEditor;
 class SceneBuilderWidget;
 class PhotoHelperCheck;
 class PhotoHelperInstaller;
@@ -237,8 +237,7 @@ public:
 	void runLivePreviewSweepSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 	void runLivePreviewDragSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 	void runLivePreviewKeysSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
-#endif
-#ifdef RT_GUI_HAVE_LIVE_PREVIEW
+	void runLivePreviewObjectsSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 	void runLivePreviewSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix);
 #endif
 	void selfTestSceneList(SceneBuilderWidget *sb, const std::function<void(bool, const QString &)> &check);   // part of the "builder" mode
@@ -1097,6 +1096,7 @@ private:
 	QWidget *m_livePreviewPage = nullptr;
 	OrbitPreviewLabel *m_livePreviewLabel = nullptr;
 	QLabel *m_livePreviewStatusLabel = nullptr;
+	QPointer<LiveObjectEditor> m_liveObjectEditor;   // moves objects with the mouse; lives with the Live Preview page (live_object_editor.h)
 	bool m_livePreviewRunning = false;
 	// Started in startLivePreview(), read back in stopLivePreview() to log
 	// the session's wall-clock duration and average fps
