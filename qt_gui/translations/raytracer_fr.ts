@@ -3301,7 +3301,7 @@ Débruiteur SVGF : un filtre de réduction de bruit alternatif et expérimental.
         <translation>Éclaircit une scène sombre pour qu&apos;elle ne sorte pas presque noire : la luminosité moyenne des pixels éclairés est ramenée vers un gris moyen, jusqu&apos;à 64x, en suivant l&apos;image en douceur. Cela n&apos;assombrit jamais rien : une scène normalement exposée ou lumineuse apparaît exactement comme lorsque l&apos;option est désactivée. Elle se multiplie à la valeur d&apos;Exposition ci-dessus, qui reste utilisable comme correction manuelle.</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_modes.cpp" line="89"/>
+        <location filename="../mainwindow_selftest_modes.cpp" line="90"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="760"/>
         <source>AI denoise</source>
         <translation>Débruitage IA</translation>
@@ -4303,28 +4303,28 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="263"/>
+        <location filename="../mainwindow_live_preview.cpp" line="270"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>Démarrage...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="279"/>
+        <location filename="../mainwindow_live_preview.cpp" line="286"/>
         <source>Stopped</source>
         <translation>Arrêté</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="305"/>
+        <location filename="../mainwindow_live_preview.cpp" line="312"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En direct (débruité, sans accumulation)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="307"/>
+        <location filename="../mainwindow_live_preview.cpp" line="314"/>
         <source>%1 samples</source>
         <translation>%1 échantillons</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="332"/>
+        <location filename="../mainwindow_live_preview.cpp" line="339"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[Aperçu en direct] ERREUR : %1</translation>
     </message>
@@ -4988,107 +4988,107 @@ Les scènes des autres catégories ne sont pas touchées. Vous pouvez les récup
 <context>
     <name>MaterialPreset</name>
     <message>
-        <location filename="../scene_builder_common.h" line="115"/>
+        <location filename="../scene_builder_common.h" line="154"/>
         <source>Chalk</source>
         <translation>Craie</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="115"/>
+        <location filename="../scene_builder_common.h" line="154"/>
         <source>Black rubber</source>
         <translation>Caoutchouc noir</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="115"/>
+        <location filename="../scene_builder_common.h" line="154"/>
         <source>Terracotta</source>
         <translation>Terre cuite</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="116"/>
+        <location filename="../scene_builder_common.h" line="155"/>
         <source>Concrete</source>
         <translation>Béton</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="116"/>
+        <location filename="../scene_builder_common.h" line="155"/>
         <source>Red plastic</source>
         <translation>Plastique rouge</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="116"/>
+        <location filename="../scene_builder_common.h" line="155"/>
         <source>Blue plastic</source>
         <translation>Plastique bleu</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="117"/>
+        <location filename="../scene_builder_common.h" line="156"/>
         <source>White ceramic</source>
         <translation>Céramique blanche</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="117"/>
+        <location filename="../scene_builder_common.h" line="156"/>
         <source>Car paint</source>
         <translation>Peinture automobile</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="117"/>
+        <location filename="../scene_builder_common.h" line="156"/>
         <source>Gold</source>
         <translation>Or</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="118"/>
+        <location filename="../scene_builder_common.h" line="157"/>
         <source>Copper</source>
         <translation>Cuivre</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="118"/>
+        <location filename="../scene_builder_common.h" line="157"/>
         <source>Silver</source>
         <translation>Argent</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="118"/>
+        <location filename="../scene_builder_common.h" line="157"/>
         <source>Aluminium</source>
         <translation>Aluminium</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="119"/>
+        <location filename="../scene_builder_common.h" line="158"/>
         <source>Chrome</source>
         <translation>Chrome</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="119"/>
+        <location filename="../scene_builder_common.h" line="158"/>
         <source>Brushed steel</source>
         <translation>Acier brossé</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="119"/>
+        <location filename="../scene_builder_common.h" line="158"/>
         <source>Clear glass</source>
         <translation>Verre transparent</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="120"/>
+        <location filename="../scene_builder_common.h" line="159"/>
         <source>Frosted glass</source>
         <translation>Verre dépoli</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="120"/>
+        <location filename="../scene_builder_common.h" line="159"/>
         <source>Water</source>
         <translation>Eau</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="120"/>
+        <location filename="../scene_builder_common.h" line="159"/>
         <source>Diamond</source>
         <translation>Diamant</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="121"/>
+        <location filename="../scene_builder_common.h" line="160"/>
         <source>Wax</source>
         <translation>Cire</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="121"/>
+        <location filename="../scene_builder_common.h" line="160"/>
         <source>Leaf</source>
         <translation>Feuille</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="121"/>
+        <location filename="../scene_builder_common.h" line="160"/>
         <source>Paper</source>
         <translation>Papier</translation>
     </message>
@@ -5096,27 +5096,27 @@ Les scènes des autres catégories ne sont pas touchées. Vous pouvez les récup
 <context>
     <name>MaterialPresetGroup</name>
     <message>
-        <location filename="../scene_builder_common.h" line="122"/>
+        <location filename="../scene_builder_common.h" line="161"/>
         <source>Matte</source>
         <translation>Mat</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="122"/>
+        <location filename="../scene_builder_common.h" line="161"/>
         <source>Plastic</source>
         <translation>Plastique</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="122"/>
+        <location filename="../scene_builder_common.h" line="161"/>
         <source>Metal</source>
         <translation>Métal</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="123"/>
+        <location filename="../scene_builder_common.h" line="162"/>
         <source>Glass</source>
         <translation>Verre</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="123"/>
+        <location filename="../scene_builder_common.h" line="162"/>
         <source>Translucent</source>
         <translation>Translucide</translation>
     </message>
@@ -5705,92 +5705,92 @@ Les scènes des autres catégories ne sont pas touchées. Vous pouvez les récup
         <translation>Aucune note sur la technique de rendu n&apos;a encore été rédigée pour cette scène - elles ne sont pour l&apos;instant écrites que pour l&apos;ensemble de scènes autonomes (l&apos;onglet « Autonome » ci-dessus).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="43"/>
+        <location filename="../scene_builder_common.h" line="44"/>
         <source>Sphere</source>
         <translation>Sphère</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="44"/>
+        <location filename="../scene_builder_common.h" line="45"/>
         <source>Box</source>
         <translation>Boîte</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="45"/>
+        <location filename="../scene_builder_common.h" line="46"/>
         <source>Quad (flat panel)</source>
         <translation>Quadrilatère (panneau plat)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="46"/>
+        <location filename="../scene_builder_common.h" line="47"/>
         <source>Disk</source>
         <translation>Disque</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="47"/>
+        <location filename="../scene_builder_common.h" line="48"/>
         <source>Cylinder</source>
         <translation>Cylindre</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="48"/>
+        <location filename="../scene_builder_common.h" line="49"/>
         <source>Cone</source>
         <translation>Cône</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="49"/>
+        <location filename="../scene_builder_common.h" line="50"/>
         <source>Mesh (.ply file)</source>
         <translation>Maillage (fichier .ply)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="50"/>
+        <location filename="../scene_builder_common.h" line="51"/>
         <source>Pyramid</source>
         <translation>Pyramide</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="51"/>
+        <location filename="../scene_builder_common.h" line="52"/>
         <source>Wedge (ramp)</source>
         <translation>Coin (rampe)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="52"/>
+        <location filename="../scene_builder_common.h" line="53"/>
         <source>Stairs</source>
         <translation>Escalier</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="53"/>
+        <location filename="../scene_builder_common.h" line="54"/>
         <source>Torus (ring)</source>
         <translation>Tore (anneau)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="54"/>
+        <location filename="../scene_builder_common.h" line="55"/>
         <source>Capsule</source>
         <translation>Capsule</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="55"/>
+        <location filename="../scene_builder_common.h" line="56"/>
         <source>Dome (half sphere)</source>
         <translation>Dôme (demi-sphère)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="56"/>
+        <location filename="../scene_builder_common.h" line="57"/>
         <source>Tube (pipe)</source>
         <translation>Tube (tuyau)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="64"/>
+        <location filename="../scene_builder_common.h" line="65"/>
         <source>Option</source>
         <translation>Option</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="72"/>
+        <location filename="../scene_builder_common.h" line="73"/>
         <source>Command</source>
         <translation>Commande</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="78"/>
+        <location filename="../scene_builder_common.h" line="79"/>
         <source>Wheel: zoom. Drag the background or right-drag: pan.</source>
         <translation>Molette : zoom. Glisser le fond ou clic droit + glisser : déplacer la vue.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="80"/>
+        <location filename="../scene_builder_common.h" line="81"/>
         <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.</source>
         <translation>Faites glisser l&apos;arrière-plan : orbite (Maj + glisser : panoramique). Le glissement avec le clic droit fait aussi un panoramique. Molette : zoom. Choisissez Déplacer, Pivoter ou Redimensionner (W, E, R) et faites glisser les flèches, les anneaux ou les carrés ; faites glisser un objet pour le faire glisser sur le sol, Maj + glisser pour le soulever, et faites glisser le point blanc (ou maintenez %1 en glissant) pour le déplacer dans n&apos;importe quelle direction.</translation>
     </message>
@@ -5799,77 +5799,237 @@ Les scènes des autres catégories ne sont pas touchées. Vous pouvez les récup
         <translation type="vanished">Faites glisser le fond : orbite (Maj + glisser : déplacer la vue). Le clic droit + glisser déplace aussi la vue. Molette : zoom. Choisissez Déplacer, Pivoter ou Redimensionner (W, E, R) et faites glisser les flèches, les anneaux ou les carrés ; Maj + glisser un objet le soulève.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="85"/>
+        <location filename="../scene_builder_common.h" line="86"/>
         <source>Table</source>
         <translation>Table</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="86"/>
+        <location filename="../scene_builder_common.h" line="87"/>
         <source>Chair</source>
         <translation>Chaise</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="87"/>
+        <location filename="../scene_builder_common.h" line="88"/>
         <source>Tree</source>
         <translation>Arbre</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="88"/>
+        <location filename="../scene_builder_common.h" line="89"/>
         <source>Snowman</source>
         <translation>Bonhomme de neige</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="89"/>
+        <location filename="../scene_builder_common.h" line="90"/>
         <source>Column</source>
         <translation>Colonne</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="90"/>
+        <location filename="../scene_builder_common.h" line="91"/>
         <source>Street lamp</source>
         <translation>Lampadaire</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="96"/>
+        <location filename="../scene_builder_common.h" line="98"/>
+        <source>Grass block</source>
+        <translation>Bloc d&apos;herbe</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="99"/>
+        <source>Dirt block</source>
+        <translation>Bloc de terre</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="100"/>
+        <source>Stone block</source>
+        <translation>Bloc de pierre</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="101"/>
+        <source>Planks block</source>
+        <translation>Bloc de planches</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="102"/>
+        <source>Log block</source>
+        <translation>Bloc de bois</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="103"/>
+        <source>Sand block</source>
+        <translation>Bloc de sable</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="104"/>
+        <source>Glass block</source>
+        <translation>Bloc de verre</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="105"/>
+        <source>Water block</source>
+        <translation>Bloc d&apos;eau</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="106"/>
+        <source>TNT block</source>
+        <translation>Bloc de TNT</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="107"/>
+        <source>Gold block</source>
+        <translation>Bloc d&apos;or</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="108"/>
+        <source>Diamond ore</source>
+        <translation>Minerai de diamant</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="109"/>
+        <source>Glowing block</source>
+        <translation>Bloc lumineux</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="110"/>
+        <source>Lava block</source>
+        <translation>Bloc de lave</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="111"/>
+        <source>Pumpkin</source>
+        <translation>Citrouille</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="112"/>
+        <source>Lantern pumpkin</source>
+        <translation>Citrouille lanterne</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="113"/>
+        <source>Green monster</source>
+        <translation>Monstre vert</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="114"/>
+        <source>Pig</source>
+        <translation>Cochon</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="115"/>
+        <source>Sheep</source>
+        <translation>Mouton</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="116"/>
+        <source>Explorer</source>
+        <translation>Explorateur</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="117"/>
+        <source>Skeleton</source>
+        <translation>Squelette</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="118"/>
+        <source>Oak tree</source>
+        <translation>Chêne</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="119"/>
+        <source>Cottage</source>
+        <translation>Chaumière</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="120"/>
+        <source>Torch</source>
+        <translation>Torche</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="121"/>
+        <source>Chest</source>
+        <translation>Coffre</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="122"/>
+        <source>Crafting table</source>
+        <translation>Établi</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="123"/>
+        <source>Furnace</source>
+        <translation>Four</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="124"/>
+        <source>Bed</source>
+        <translation>Lit</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="125"/>
+        <source>Poppy</source>
+        <translation>Coquelicot</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="126"/>
+        <source>Dandelion</source>
+        <translation>Pissenlit</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="127"/>
+        <source>Fence</source>
+        <translation>Clôture</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="128"/>
+        <source>Rainbow wool</source>
+        <translation>Laine arc-en-ciel</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="129"/>
+        <source>Purple portal</source>
+        <translation>Portail violet</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_common.h" line="135"/>
         <source>Point light</source>
         <translation>Lumière ponctuelle</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="97"/>
+        <location filename="../scene_builder_common.h" line="136"/>
         <source>Spotlight</source>
         <translation>Projecteur</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="98"/>
+        <location filename="../scene_builder_common.h" line="137"/>
         <source>Sun (distant light)</source>
         <translation>Soleil (lumière distante)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="99"/>
+        <location filename="../scene_builder_common.h" line="138"/>
         <source>Sky (surrounds the scene)</source>
         <translation>Ciel (entoure la scène)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="128"/>
+        <location filename="../scene_builder_common.h" line="167"/>
         <source>Matte (diffuse)</source>
         <translation>Mat (diffus)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="129"/>
+        <location filename="../scene_builder_common.h" line="168"/>
         <source>Metal</source>
         <translation>Métal</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="130"/>
+        <location filename="../scene_builder_common.h" line="169"/>
         <source>Glass</source>
         <translation>Verre</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="131"/>
+        <location filename="../scene_builder_common.h" line="170"/>
         <source>Glossy paint (coated)</source>
         <translation>Peinture brillante (vernie)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_common.h" line="132"/>
+        <location filename="../scene_builder_common.h" line="171"/>
         <source>Translucent (paper, leaves)</source>
         <translation>Translucide (papier, feuilles)</translation>
     </message>
@@ -5981,13 +6141,13 @@ Sortie :
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="607"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="626"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>En attente</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="625"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="644"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 s</translation>
@@ -6364,7 +6524,7 @@ Ajoutez des formes et des lumières avec le bouton Ajouter. Faites-les glisser d
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="446"/>
-        <location filename="../scene_builder_widget.cpp" line="606"/>
+        <location filename="../scene_builder_widget.cpp" line="613"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Maillages (*.ply *.obj)</translation>
     </message>
@@ -6643,37 +6803,57 @@ Origine : %3</translation>
         <translation>Accessoires (plusieurs objets à la fois)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="187"/>
+        <location filename="../scene_builder_widget.cpp" line="188"/>
+        <source>Blocky (several objects at once)</source>
+        <translation>Style blocs (plusieurs objets à la fois)</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <source>Blocks</source>
+        <translation>Blocs</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <source>Creatures</source>
+        <translation>Créatures</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <source>Things</source>
+        <translation>Objets</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="192"/>
         <source>More</source>
         <translation>Plus</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="188"/>
+        <location filename="../scene_builder_widget.cpp" line="193"/>
         <source>Model library...</source>
         <translation>Bibliothèque de modèles...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="194"/>
         <source>Object from a photo...</source>
         <translation>Objet à partir d&apos;une photo...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="190"/>
+        <location filename="../scene_builder_widget.cpp" line="195"/>
         <source>Light panel (emitting quad)</source>
         <translation>Panneau lumineux (quadrilatère émissif)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="199"/>
+        <location filename="../scene_builder_widget.cpp" line="204"/>
         <source>Lights</source>
         <translation>Lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="203"/>
+        <location filename="../scene_builder_widget.cpp" line="208"/>
         <source>Duplicate</source>
         <translation>Dupliquer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="204"/>
+        <location filename="../scene_builder_widget.cpp" line="209"/>
         <source>Delete</source>
         <translation>Supprimer</translation>
     </message>
@@ -6728,7 +6908,7 @@ Origine : %3</translation>
         <translation>Voir la scène sous n&apos;importe quel angle et déplacer les éléments en 3D</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="408"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="427"/>
         <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Snap to grid</source>
         <translation>Aligner sur la grille</translation>
@@ -6744,53 +6924,53 @@ Origine : %3</translation>
         <translation>Tout cadrer</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="266"/>
+        <location filename="../scene_builder_widget.cpp" line="271"/>
         <source>Draft</source>
         <translation>Brouillon</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="267"/>
+        <location filename="../scene_builder_widget.cpp" line="272"/>
         <source>Good</source>
         <translation>Bonne</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="268"/>
+        <location filename="../scene_builder_widget.cpp" line="273"/>
         <source>Best</source>
         <translation>Optimale</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="271"/>
+        <location filename="../scene_builder_widget.cpp" line="276"/>
         <source>Use the GPU</source>
         <translation>Utiliser le GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="272"/>
+        <location filename="../scene_builder_widget.cpp" line="277"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>Effectuer le rendu sur la carte graphique (NVIDIA OptiX sous Windows, Metal sur Mac). Beaucoup plus rapide pour les grandes images ; nécessite un GPU pris en charge.</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="157"/>
-        <location filename="../scene_builder_widget.cpp" line="273"/>
+        <location filename="../scene_builder_widget.cpp" line="278"/>
         <source>Preview</source>
         <translation>Aperçu</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="275"/>
+        <location filename="../scene_builder_widget.cpp" line="280"/>
         <source>Render picture...</source>
         <translation>Rendre l&apos;image...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="277"/>
+        <location filename="../scene_builder_widget.cpp" line="282"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>Effectuer le rendu à la taille d&apos;image et au nombre d&apos;échantillons définis sous Caméra, et enregistrer l&apos;image en PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="279"/>
+        <location filename="../scene_builder_widget.cpp" line="284"/>
         <source>Quality:</source>
         <translation>Qualité :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="292"/>
+        <location filename="../scene_builder_widget.cpp" line="297"/>
         <source>Press Preview to see the scene.</source>
         <translation>Cliquez sur Aperçu pour voir la scène.</translation>
     </message>
@@ -6886,12 +7066,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scènes).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="681"/>
+        <location filename="../scene_builder_widget.cpp" line="688"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objets, %4 lumières</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="606"/>
+        <location filename="../scene_builder_widget.cpp" line="613"/>
         <source>Choose a mesh</source>
         <translation>Choisir un maillage</translation>
     </message>
@@ -6916,7 +7096,7 @@ Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scène
         <translation>Rétablir (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="270"/>
+        <location filename="../scene_builder_widget.cpp" line="275"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>Brouillon : 480 pixels de large, 16 échantillons. Bonne : 720 de large, 64 échantillons. Optimale : 960 de large, 256 échantillons.</translation>
     </message>
@@ -6926,32 +7106,32 @@ Elle figure maintenant dans la liste des scènes (onglet Paramètres, Mes scène
         <translation>Ajoutée à la liste des scènes</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="475"/>
+        <location filename="../scene_builder_widget.cpp" line="480"/>
         <source>Camera and image</source>
         <translation>Caméra et image</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="496"/>
+        <location filename="../scene_builder_widget.cpp" line="501"/>
         <source>, light</source>
         <translation>, lumière</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="675"/>
+        <location filename="../scene_builder_widget.cpp" line="682"/>
         <source>not saved yet</source>
         <translation>pas encore enregistrée</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="709"/>
+        <location filename="../scene_builder_widget.cpp" line="716"/>
         <source>No problems found.</source>
         <translation>Aucun problème détecté.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="715"/>
+        <location filename="../scene_builder_widget.cpp" line="722"/>
         <source>Fix this:</source>
         <translation>À corriger :</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="715"/>
+        <location filename="../scene_builder_widget.cpp" line="722"/>
         <source>Note:</source>
         <translation>Remarque :</translation>
     </message>

@@ -14,6 +14,7 @@
 #include "../src/shared/oidn_runtime.h"
 #include "../src/shared/mesh_preview.h"
 #include <random>
+#include <set>
 #include "scene_metadata_client.h"
 #include "scene_builder_widget.h"
 
@@ -263,6 +264,24 @@ void MainWindow::selfTestShapes(SceneBuilderWidget *sb, const std::function<void
 		sb->addProp(scene_doc::PropKind::Table);
 		check(sb->document().objects.back().name.find("Table leg") != std::string::npos && sb->document().objects.back().name.back() == '2', "a second table is named apart (\"... 2\")");
 		check(sb->problemsText().isEmpty(), "the props give no problems or notes");
+		// The blocky objects (blocks, creatures, things): all of them add, a second copy is named apart, and each is one undo step.
+		{
+			const size_t beforeBlocky = sb->document().objects.size();
+			size_t blockyObjects = 0;
+			for (scene_doc::BlockyKind k : scene_doc::allBlockyKinds()) {
+				sb->addBlocky(k);
+				blockyObjects += scene_doc::makeBlocky(k).size();
+			}
+			check(sb->document().objects.size() == beforeBlocky + blockyObjects, QString("added all %1 blocky objects (%2 boxes)").arg(scene_doc::allBlockyKinds().size()).arg(blockyObjects));
+			check(sb->problemsText().isEmpty(), "the blocky objects give no problems or notes");
+			sb->addBlocky(scene_doc::BlockyKind::GreenMonster);
+			std::set<std::string> distinct;
+			for (const scene_doc::Object &o : sb->document().objects) distinct.insert(o.name);
+			check(distinct.size() == sb->document().objects.size(), "a second blocky creature is named apart (every object name is still unique)");
+			bool blockyUndone = true;
+			for (size_t n = 0; n <= scene_doc::allBlockyKinds().size(); ++n) blockyUndone = sb->undo() && blockyUndone;
+			check(blockyUndone && sb->document().objects.size() == beforeBlocky, "each blocky object is one undo step");
+		}
 		bool propsUndone = true;
 		for (size_t n = 0; n <= scene_doc::allPropKinds().size(); ++n) propsUndone = sb->undo() && propsUndone;
 		check(propsUndone && sb->document().objects.size() == withShapes, "each prop is one undo step");
