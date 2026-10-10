@@ -62,6 +62,7 @@ This will:
 | `--fps` | Target frames per second | 30 |
 | `--speed` | Camera movement speed multiplier | 1.0 |
 | `--camera-path`, `-p` | Camera animation path | orbit |
+| `--camera-keyframes FILE` | Fly the camera through the places listed in FILE instead of a named path (see *Keyframes*) | |
 | `--gpu` | Use GPU renderer (OptiX) | ✓ |
 | `--cpu` | Use CPU renderer | |
 | `--output`, `-o` | Output path (affects frame dir) | `./output/image.ppm` |
@@ -104,6 +105,23 @@ in a shorter video).
 ```
 
 ## Camera Animation Paths
+
+### Keyframes: your own route
+
+`--camera-keyframes FILE` replaces the named path with a route through places you choose. The file is plain text (`#` starts a comment):
+
+```
+ease 1                      # 1 (the default): start and end gently; 0: the same pace from the first frame to the last
+key  0 2.5 8    0 1 0       # key px py pz tx ty tz: where the camera is, and what it looks at
+key  6 1.5 3    0 1 0
+key  0 5 -4     0 1 0
+```
+
+```powershell
+.\ray_tracer.exe --video --camera-keyframes route.txt --frames 120 --fps 30 800 64 8 my-scene.pbrt
+```
+
+The first frame is exactly the first `key` and the last frame exactly the last (two or more keys are needed). In between the camera passes through every key on a smooth curve (a Catmull-Rom spline through the places, and another through the targets), spending time on each stretch in proportion to how far it is, so the speed is about the same all the way. The field of view and lens come from the scene's own camera (the Scene Builder's **Flythrough...** writes the scene with the first saved view's lens). `--speed` stretches the number of frames as for the other paths. The file is read and checked before any frame is rendered, and a mistake is reported with its line number. The Scene Builder's **Flythrough...** button writes this file from its saved camera views. The code is `src/shared/camera_keyframes.h`.
 
 ### 1. Orbit (Default)
 Circular motion around the scene on the XZ plane.

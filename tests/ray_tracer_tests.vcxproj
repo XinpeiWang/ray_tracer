@@ -207,6 +207,7 @@
     <ClCompile Include="unit\scene_array_tests.cpp" />
     <ClCompile Include="unit\scene_selection_tests.cpp" />
     <ClCompile Include="unit\scene_camera_views_tests.cpp" />
+    <ClCompile Include="unit\camera_keyframes_tests.cpp" />
     <ClCompile Include="unit\model_library_tests.cpp" />
     <ClCompile Include="unit\scene_blocks_tests.cpp" />
     <ClCompile Include="unit\live_object_edit_tests.cpp" />
@@ -313,6 +314,7 @@
     <ClCompile Include="unit\adaptive_sampling_tests.cpp" />
     <ClCompile Include="unit\launcher_args_denoise_blend_tests.cpp" />
     <ClCompile Include="unit\launcher_args_time_limit_tests.cpp" />
+    <ClCompile Include="unit\launcher_args_keyframes_tests.cpp" />
     <ClCompile Include="unit\launcher_args_scene_file_tests.cpp" />
     <ClCompile Include="unit\light_sampler_resolution_tests.cpp" />
     <ClCompile Include="unit\camera_path_tests.cpp" />

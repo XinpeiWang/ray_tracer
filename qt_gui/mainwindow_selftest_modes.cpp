@@ -468,10 +468,24 @@ void MainWindow::runBuilderSelfTest(const std::function<void(const QString &)> &
 				const QString video = outPrefix + "_turntable.mp4";
 				QFile::remove(video);
 				log("starting a turntable render (6 frames)");
-				sb->startTurntable(6, 12, 96, 2, video, [log, conclude, video](bool turned, const QString &turnMessage) {
+				sb->startTurntable(6, 12, 96, 2, video, [log, conclude, sb, outPrefix, video](bool turned, const QString &turnMessage) {
 					const qint64 size = QFileInfo(video).size();
 					log(QString("turntable: %1 - %2 (%3 bytes)").arg(turned ? "ok" : "FAIL", turnMessage).arg(size));
-					conclude(turned && size > 1000);
+					if (!turned || size <= 1000) { conclude(false); return; }
+					// A flythrough through two saved views (the camera, and the 3D view orbited round).
+					sb->saveCameraViewNamed("Start", true);
+					sb->show3dView(true);
+					sb->orbit3dForTest(100.0, 20.0);
+					sb->saveCameraViewNamed("Side");
+					sb->show3dView(false);
+					const QString fly = outPrefix + "_flythrough.mp4";
+					QFile::remove(fly);
+					log("starting a flythrough render (6 frames)");
+					sb->startFlythrough(6, 12, 96, 2, fly, true, false, [log, conclude, fly](bool flew, const QString &flyMessage) {
+						const qint64 flySize = QFileInfo(fly).size();
+						log(QString("flythrough: %1 - %2 (%3 bytes)").arg(flew ? "ok" : "FAIL", flyMessage).arg(flySize));
+						conclude(flew && flySize > 1000);
+					});
 				});
 			};
 			if (!alsoGpu || !good) { finish(good); return; }

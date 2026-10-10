@@ -30,6 +30,7 @@ namespace render_flags {
 	constexpr const char* kFps           = "--fps";
 	constexpr const char* kSpeed         = "--speed";
 	constexpr const char* kCameraPath    = "--camera-path";
+	constexpr const char* kCameraKeyframes = "--camera-keyframes";
 	constexpr const char* kDenoise       = "--denoise";
 	constexpr const char* kDenoiseBlend  = "--denoise-blend";
 	constexpr const char* kDenoiseGuides = "--denoise-guides";

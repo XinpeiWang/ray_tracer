@@ -40,6 +40,7 @@ add_executable(unit_tests
     unit/launcher_args_denoise_blend_tests.cpp
     unit/launcher_args_lightsampler_tests.cpp
     unit/launcher_args_time_limit_tests.cpp
+    unit/launcher_args_keyframes_tests.cpp
     unit/launcher_args_scene_file_tests.cpp
     unit/photo_helper_report_tests.cpp
     unit/scene_view_math_tests.cpp
@@ -58,6 +59,7 @@ add_executable(unit_tests
     unit/scene_array_tests.cpp
     unit/scene_selection_tests.cpp
     unit/scene_camera_views_tests.cpp
+    unit/camera_keyframes_tests.cpp
     unit/gpu_scene_textures_tests.cpp
     unit/gpu_scene_materials_tests.cpp
     unit/nanovdb_dense_tests.cpp

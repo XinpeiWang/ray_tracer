@@ -138,6 +138,10 @@ public:
 	// at `fps`, then copies the video to `outMp4` and calls `done`.
 	void showTurntableDialog();
 	void startTurntable(int frames, int fps, int width, int samples, const QString &outMp4, const std::function<void(bool ok, const QString &message)> &done = nullptr);
+	// A video of the scene from a camera that flies through the saved camera views, in the order they were saved (and back to the first at the end if `returnToStart`); `ease`
+	// starts and ends it gently. Needs two or more views. The lens is the first view's.
+	void showFlythroughDialog();
+	void startFlythrough(int frames, int fps, int width, int samples, const QString &outMp4, bool ease, bool returnToStart, const std::function<void(bool ok, const QString &message)> &done = nullptr);
 	// Starts a preview render (no file dialog) and calls `done` when the picture is loaded or it failed.
 	void startPreview(const std::function<void(bool ok, const QString &message)> &done = nullptr);
 	QString previewImagePath() const { return m_previewPng; }
@@ -212,6 +216,9 @@ private:
 	scene_doc::Document m_groupBase;                            // the document when the current group turn or stretch began
 	int m_groupBaseDrag = -1;                                   // m_editCounter of that drag
 	void inspectCameraViews(QFormLayout *f);
+	void showVideoDialog(bool flythrough);   // scene_builder_turntable.cpp: the Turntable and Flythrough windows
+	void startCameraVideo(int frames, int fps, int width, int samples, const QString &outMp4, const QString &keyframes, const scene_doc::Document *sceneDoc,
+	                      const std::function<void(bool, const QString &)> &done);
 	void createCameraBar(QWidget *layoutBox);
 	void refreshViewCombo();
 	scene_doc::Camera cameraNow() const;
@@ -254,7 +261,7 @@ private:
 	void inspectMaterial(QFormLayout *f, int i);
 
 	QString workFolder() const;
-	bool writeSceneFile(const QString &path, QString *error) const;   // the scene as pbrt text, for a renderer to read
+	bool writeSceneFile(const QString &path, QString *error, const scene_doc::Document *doc = nullptr) const;   // the scene (or `doc`) as pbrt text, for a renderer to read
 	QString launcherPath() const;
 	void runRender(int width, int height, int samples, bool toFinalFile, const QString &finalPng,
 	               const std::function<void(bool, const QString &)> &done);
@@ -311,6 +318,7 @@ private:
 	QPushButton *m_previewButton = nullptr;
 	QPushButton *m_finalButton = nullptr;
 	QPushButton *m_turntableButton = nullptr;
+	QPushButton *m_flythroughButton = nullptr;
 	QString m_turntableOut;
 	int m_turntableFrames = 0;
 	QPushButton *m_deleteButton = nullptr;

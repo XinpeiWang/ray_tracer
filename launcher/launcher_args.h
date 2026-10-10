@@ -348,6 +348,9 @@ struct LaunchArgs {
 	// choice - including an explicit `--camera-path orbit` that happens to
 	// spell out the same value the hardcoded default already has.
 	bool camera_path_explicit = false;
+	// --camera-keyframes FILE: the video's camera goes through the places listed in this file (src/shared/camera_keyframes.h) instead of one of the named paths;
+	// the first frame is the first place and the last frame the last. Empty when not given.
+	std::string camera_keyframes_file;
 	std::string custom_output_path;
 
 	int    image_width       = kDefaultWidth;
@@ -838,6 +841,12 @@ inline FlagResult handle_image_and_video_flag(const std::string& arg, int argc, 
 		consumed_args.insert(i);
 		consumed_args.insert(i + 1);
 		++i;
+	} else if (arg == render_flags::kCameraKeyframes && i + 1 < argc) {
+		out.camera_keyframes_file = argv[i + 1];
+		out.camera_path_explicit = true;
+		consumed_args.insert(i);
+		consumed_args.insert(i + 1);
+		++i;
 	} else if (arg == "--video-preset" && i + 1 < argc) {
 		// Sets video_mode plus all five video_preset::VideoPreset fields
 		// in one shot - see src/shared/video_preset.h's own comment for
@@ -1080,6 +1089,9 @@ inline void print_launch_help(const char* program) {
 				  << "  " << render_flags::kCameraPath << ",-p: Camera animation path "
 			  << "(orbit|linear|figure8|spiral|tour|showcase) - "
 			  << "defaults to the selected scene's own curated recommendation if omitted\n"
+				  << "  " << render_flags::kCameraKeyframes << " FILE: With --video, fly the camera through the places listed in FILE (lines\n"
+				  << "               'key px py pz tx ty tz': where the camera is and what it looks at; 'ease 0|1'; '#' comments)\n"
+				  << "               instead of a named path. The first frame is the first key and the last frame the last.\n"
 				  << "  --video-preset ID: Sets --video plus scene_id/camera-path/frames/fps/speed\n"
 				  << "               together from one of src/shared/video_preset.h's named bundles.\n"
 				  << "               Accepts either short id or descriptive key:\n"

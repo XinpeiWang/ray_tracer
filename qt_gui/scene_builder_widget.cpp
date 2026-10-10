@@ -286,6 +286,9 @@ void SceneBuilderWidget::buildUi() {
 	m_turntableButton = new QPushButton(tr("Turntable..."), previewBox);
 	m_turntableButton->setAutoDefault(false);
 	m_turntableButton->setToolTip(tr("Make a video of the scene from a camera that goes once round it"));
+	m_flythroughButton = new QPushButton(tr("Flythrough..."), previewBox);
+	m_flythroughButton->setAutoDefault(false);
+	m_flythroughButton->setToolTip(tr("Make a video of the scene from a camera that flies through your saved camera views (needs two or more)"));
 	m_previewStatus = new QLabel(previewBox);
 	renderRow->addWidget(new QLabel(tr("Quality:"), renderBar));
 	renderRow->addWidget(m_qualityCombo);
@@ -296,6 +299,8 @@ void SceneBuilderWidget::buildUi() {
 	renderRow->addWidget(m_finalButton);
 	scene_builder_ui::compactStyle(m_turntableButton);
 	renderRow->addWidget(m_turntableButton);
+	scene_builder_ui::compactStyle(m_flythroughButton);
+	renderRow->addWidget(m_flythroughButton);
 	m_previewStatus->setWordWrap(true);
 	previewLayout->addWidget(renderBar);
 	m_previewLabel = new QLabel(previewBox);
@@ -316,6 +321,7 @@ void SceneBuilderWidget::buildUi() {
 	});
 	connect(m_finalButton, &QPushButton::clicked, this, &SceneBuilderWidget::onRenderFinalClicked);
 	connect(m_turntableButton, &QPushButton::clicked, this, &SceneBuilderWidget::showTurntableDialog);
+	connect(m_flythroughButton, &QPushButton::clicked, this, &SceneBuilderWidget::showFlythroughDialog);
 
 	// ---- right: inspector
 	auto *right = new QWidget(split);
@@ -752,6 +758,7 @@ void SceneBuilderWidget::updateActions() {
 	m_previewButton->setEnabled(ok || m_process);
 	m_finalButton->setEnabled(ok && !m_process);
 	m_turntableButton->setEnabled(ok && !m_process);
+	m_flythroughButton->setEnabled(ok && !m_process && m_doc.cameraViews.size() >= 2);
 }
 
 void SceneBuilderWidget::updateTitle() {

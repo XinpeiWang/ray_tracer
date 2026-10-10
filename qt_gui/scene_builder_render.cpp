@@ -79,13 +79,13 @@ void SceneBuilderWidget::startPreview(const std::function<void(bool, const QStri
 	runRender(w, h, spps[q], false, QString(), done);
 }
 
-bool SceneBuilderWidget::writeSceneFile(const QString &path, QString *error) const {
+bool SceneBuilderWidget::writeSceneFile(const QString &path, QString *error, const scene_doc::Document *doc) const {
 	QFile f(path);
 	if (!f.open(QIODevice::WriteOnly | QIODevice::Truncate)) {
 		if (error) *error = tr("Could not write %1.").arg(path);
 		return false;
 	}
-	const std::string text = scene_doc::toPbrt(m_doc);
+	const std::string text = scene_doc::toPbrt(doc ? *doc : m_doc);
 	f.write(text.data(), static_cast<qint64>(text.size()));
 	return true;
 }

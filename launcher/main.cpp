@@ -70,6 +70,7 @@ extern char** environ;
 #include "src/shared/exr_writer.h"
 #include "src/shared/render_stats.h"
 #include "launcher/camera_path.h"
+#include "src/shared/camera_keyframes.h"
 #include "src/shared/backend_capabilities.h"   // which options each renderer reads
 #include "launcher/gpu_backend.h"      // the GPU renderer this build has (Metal or OptiX), behind one call
 #include "launcher/launcher_args.h"   // Argument parsing
@@ -336,6 +337,7 @@ struct RenderSetup {
 	int video_frames = 0, video_fps = 0;
 	double video_speed = 1.0;
 	std::string camera_path;
+	std::string camera_keyframes_file;   // --camera-keyframes: the video's camera goes through the places in this file
 	bool use_sppm = false, use_bdpt = false, use_mlt = false;
 	bool use_randomwalk = false, use_ao = false, use_simplepath = false, use_simplevolpath = false, use_lightpath = false;
 	bool use_debug_integrator = false;   // any one of the five debug integrators
@@ -608,6 +610,19 @@ static int run_video_render(const LaunchArgs &args, const RenderSetup &s) {
     std::cout << "VIDEO RENDERING" << std::endl;
     std::cout << "========================================" << std::endl;
 
+    // --camera-keyframes: read and check the file before any frame is rendered.
+    camera_keyframes::Path keyframes;
+    const bool use_keyframes = !s.camera_keyframes_file.empty();
+    if (use_keyframes) {
+        const camera_keyframes::ParseResult parsed = camera_keyframes::load(s.camera_keyframes_file);
+        if (!parsed.ok) {
+            std::cerr << "ERROR: " << parsed.error << std::endl;
+            return parsed.unreadable ? ERR_FILE_READ_FAILED : ERR_INVALID_ARGUMENTS;
+        }
+        keyframes = parsed.path;
+        std::cout << "Camera path: " << keyframes.keys.size() << " keyframes from " << s.camera_keyframes_file << (keyframes.ease ? " (eased)" : "") << std::endl;
+    }
+
     if (video_frames < 1) {
         std::cerr << "ERROR: --frames must be >= 1 (got " << video_frames << ")" << std::endl;
         return ERR_INVALID_ARGUMENTS;
@@ -773,6 +788,10 @@ static int run_video_render(const LaunchArgs &args, const RenderSetup &s) {
         CameraPosition cam_pos = get_camera_position(camera_path, frame, render_frame_count,
                                                         path_lookfrom_x, path_lookfrom_y, path_lookfrom_z,
                                                         path_lookat_x, path_lookat_y, path_lookat_z);
+        if (use_keyframes) {
+            const camera_keyframes::Key key = camera_keyframes::at(keyframes, camera_keyframes::progressOf(frame, render_frame_count));
+            cam_pos = CameraPosition{key.pos[0], key.pos[1], key.pos[2], key.target[0], key.target[1], key.target[2], 0.0, 1.0, 0.0};
+        }
 
         // Generate frame filename (e.g., frame_0001.ppm)
         // Metal's own writer only produces PNG (never PPM), so a Metal
@@ -1578,6 +1597,7 @@ int main(int argc, char** argv) {
 	setup.video_fps = video_fps;
 	setup.video_speed = video_speed;
 	setup.camera_path = camera_path;
+	setup.camera_keyframes_file = args.camera_keyframes_file;
 	setup.use_sppm = use_sppm;
 	setup.use_bdpt = use_bdpt;
 	setup.use_mlt = use_mlt;
