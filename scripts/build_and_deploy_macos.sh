@@ -279,6 +279,11 @@ if [[ "$SKIP_DMG" -eq 0 ]]; then
 	mkdir -p "$DMG_STAGING"
 	cp -R "$APP_BUNDLE" "$DMG_STAGING/"
 	ln -s /Applications "$DMG_STAGING/Applications"
+	# A README and a one-click installer beside the app (not inside it, so the bundle's seal is untouched): the app is not notarized, so a copy that
+	# arrived through a browser or WeChat needs its quarantine flag removed once (scripts/macos_dmg/).
+	cp "$REPO_ROOT/scripts/macos_dmg/README.txt" "$DMG_STAGING/README.txt"
+	cp "$REPO_ROOT/scripts/macos_dmg/Install RayTracerGUI.command" "$DMG_STAGING/Install RayTracerGUI.command"
+	chmod +x "$DMG_STAGING/Install RayTracerGUI.command"
 	hdiutil create -volname "$APP_NAME" -srcfolder "$DMG_STAGING" -ov -format UDZO "$DMG_PATH" >/dev/null
 	rm -rf "$DMG_STAGING"
 	if [[ -f "$DMG_PATH" ]]; then
