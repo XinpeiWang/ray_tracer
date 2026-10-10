@@ -1,0 +1,14 @@
+# media-point-homogeneous.pbrt -- a scattering sphere of homogeneous medium lit by a point light on a black background. A test of the renderer's light sampling inside media
+# (metal_poc_media_lights, gpu/metal/metal_poc_media_lights_test.sh renders it on the CPU and on Metal and compares the picture's mean). Not in the scene list.
+LookAt 0 0 6   0 0 0   0 1 0
+Camera "perspective" "float fov" [ 8 ]
+Film "rgb" "integer xresolution" [ 48 ] "integer yresolution" [ 48 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+WorldBegin
+LightSource "point" "point3 from" [ 0 3 4 ] "rgb I" [ 75 75 75 ]
+MakeNamedMedium "m" "string type" [ "homogeneous" ] "rgb sigma_a" [ 0 0 0 ] "rgb sigma_s" [ 0.8 0.8 0.8 ] "float g" [ 0.3 ]
+AttributeBegin
+  Material "interface"
+  MediumInterface "m" ""
+  Shape "sphere" "float radius" [ 0.6 ]
+AttributeEnd
