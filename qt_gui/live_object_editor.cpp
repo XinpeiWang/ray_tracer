@@ -4,6 +4,7 @@
 #include <QFileInfo>
 #include <QHBoxLayout>
 #include <QRegularExpression>
+#include <QTimer>
 #include <QLabel>
 #include <QPushButton>
 #include <QVector>
@@ -18,6 +19,13 @@ LiveObjectEditor::LiveObjectEditor(RealtimePreviewSession *session, OrbitPreview
 	connect(label, &OrbitPreviewLabel::objectPressed, this, &LiveObjectEditor::onPressed);
 	connect(label, &OrbitPreviewLabel::objectDragged, this, &LiveObjectEditor::onDragged);
 	connect(label, &OrbitPreviewLabel::objectReleased, this, &LiveObjectEditor::onReleased);
+	connect(label, &OrbitPreviewLabel::objectHovered, this, &LiveObjectEditor::onHovered);
+	connect(label, &OrbitPreviewLabel::objectHoverEnded, this, &LiveObjectEditor::onHoverEnded);
+	connect(session, &RealtimePreviewSession::hoverPicked, this, &LiveObjectEditor::onHoverPicked);
+	m_hoverTimer = new QTimer(this);
+	m_hoverTimer->setSingleShot(true);
+	m_hoverTimer->setInterval(70);
+	connect(m_hoverTimer, &QTimer::timeout, this, &LiveObjectEditor::onHoverTimer);
 }
 
 QWidget *LiveObjectEditor::createControls(QWidget *parent) {
@@ -67,6 +75,7 @@ void LiveObjectEditor::onModeToggled(bool on) {
 
 void LiveObjectEditor::frameShown() {
 	if (m_haveSelection) showSelectionBox();
+	if (m_hovering) showHoverBox();
 }
 
 // The camera of the picture on screen (it moves while the user orbits or flies), or, before the first frame, the one the object was picked with.
@@ -107,6 +116,7 @@ void LiveObjectEditor::onPressed(double s, double t) {
 	m_selected = pick;
 	m_haveSelection = true;
 	m_dragging = true;
+	m_label->clearHover();
 	m_label->setObjectGrabbed(true);
 	m_pending = camera_math::Vec3{0.0, 0.0, 0.0};
 	showSelectionBox();
@@ -174,12 +184,26 @@ void LiveObjectEditor::onSaveClicked() {
 void LiveObjectEditor::showSelectionBox() {
 	camera_math::CameraBasis basis;
 	currentBasis(basis);
-	const camera_math::Vec3 shift = m_pending;
+	m_label->setSelectionSegments(boxSegments(m_selected, m_pending, basis));
+}
+
+// The hover box: the object a click would grab, drawn as it is in the picture on screen (not while one is being dragged, and not on the selected object, which has
+// its own box).
+void LiveObjectEditor::showHoverBox() {
+	if (!m_hovering || m_dragging || (m_haveSelection && m_hover.object == m_selected.object)) {
+		m_label->clearHover();
+		return;
+	}
+	camera_math::CameraBasis basis;
+	currentBasis(basis);
+	m_label->setHoverSegments(boxSegments(m_hover, camera_math::Vec3{0.0, 0.0, 0.0}, basis));
+}
+
+QVector<QPointF> LiveObjectEditor::boxSegments(const LiveObjectPick &pick, const camera_math::Vec3 &shift, const camera_math::CameraBasis &basis) {
 	QPointF corner[8];
 	bool visible[8];
 	for (int i = 0; i < 8; ++i) {
-		const camera_math::Vec3 p{(i & 1 ? m_selected.hi[0] : m_selected.lo[0]) + shift.x, (i & 2 ? m_selected.hi[1] : m_selected.lo[1]) + shift.y,
-		                          (i & 4 ? m_selected.hi[2] : m_selected.lo[2]) + shift.z};
+		const camera_math::Vec3 p{(i & 1 ? pick.hi[0] : pick.lo[0]) + shift.x, (i & 2 ? pick.hi[1] : pick.lo[1]) + shift.y, (i & 4 ? pick.hi[2] : pick.lo[2]) + shift.z};
 		const camera_math::ScreenProjection sp = camera_math::projectToScreen(p, basis);
 		visible[i] = sp.inFront;
 		corner[i] = QPointF(sp.s, sp.t);
@@ -192,5 +216,35 @@ void LiveObjectEditor::showSelectionBox() {
 			segments.push_back(corner[i]);
 			segments.push_back(corner[j]);
 		}
-	m_label->setSelectionSegments(segments);
+	return segments;
+}
+
+// Hover: the cursor stopped (or moved) over the picture. A pick is asked for at most every 70 ms, one at a time, so a fast mouse never queues up work for the worker.
+void LiveObjectEditor::onHovered(double s, double t) {
+	if (m_dragging || !m_session) return;
+	m_hoverAt = QPointF(s, t);
+	m_hoverWanted = true;
+	if (!m_hoverTimer->isActive() && !m_hoverBusy) m_hoverTimer->start();
+}
+
+void LiveObjectEditor::onHoverTimer() {
+	if (!m_hoverWanted || m_hoverBusy || !m_session) return;
+	m_hoverWanted = false;
+	m_hoverBusy = true;
+	m_session->requestHover(m_hoverAt.x(), m_hoverAt.y());
+}
+
+void LiveObjectEditor::onHoverPicked(LiveObjectPick pick) {
+	m_hoverBusy = false;
+	if (!m_label->objectMode()) return;
+	m_hovering = pick.valid;
+	if (pick.valid) m_hover = pick;
+	showHoverBox();
+	if (m_hoverWanted) m_hoverTimer->start();   // the cursor moved while that pick was running
+}
+
+void LiveObjectEditor::onHoverEnded() {
+	m_hoverWanted = false;
+	m_hovering = false;
+	m_label->clearHover();
 }

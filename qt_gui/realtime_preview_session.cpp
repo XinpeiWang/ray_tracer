@@ -570,6 +570,10 @@ LiveObjectPick RealtimePreviewWorker::pickObjectAt(double s, double t) {
 	return pick;
 }
 
+void RealtimePreviewWorker::hoverAt(double s, double t) {
+	emit hoverPicked(pickObjectAt(s, t));
+}
+
 void RealtimePreviewWorker::setObjectOffset(int object, double dx, double dy, double dz) {
 	const DllHandle& h = handle();
 	if (!m_running || !h.setObjectOffsetFn) return;
@@ -1572,6 +1576,7 @@ void RealtimePreviewWorker::renderLoop(int epoch) {
 // ============================================================================
 
 RealtimePreviewSession::RealtimePreviewSession(QObject *parent) : QObject(parent) {
+	qRegisterMetaType<LiveObjectPick>();   // hoverPicked() crosses threads
 	m_worker = new RealtimePreviewWorker();
 	m_worker->moveToThread(&m_thread);
 	// Worker is parent-less and owned by the thread's own finished() cleanup
@@ -1581,6 +1586,7 @@ RealtimePreviewSession::RealtimePreviewSession(QObject *parent) : QObject(parent
 	connect(&m_thread, &QThread::finished, m_worker, &QObject::deleteLater);
 	connect(m_worker, &RealtimePreviewWorker::frameReady, this, &RealtimePreviewSession::frameReady);
 	connect(m_worker, &RealtimePreviewWorker::statusChanged, this, &RealtimePreviewSession::statusChanged);
+	connect(m_worker, &RealtimePreviewWorker::hoverPicked, this, &RealtimePreviewSession::hoverPicked);
 	m_thread.start();
 }
 
@@ -1643,6 +1649,10 @@ bool RealtimePreviewSession::exportArrangement(const QString &sceneId, const QSt
 	const bool ok = exportFn(sceneId.toStdString().c_str(), path.toUtf8().constData(), text, static_cast<int>(sizeof text));
 	if (message) *message = QString::fromUtf8(text);
 	return ok;
+}
+
+void RealtimePreviewSession::requestHover(double s, double t) {
+	QMetaObject::invokeMethod(m_worker, "hoverAt", Qt::QueuedConnection, Q_ARG(double, s), Q_ARG(double, t));
 }
 
 void RealtimePreviewSession::resetObjects() {

@@ -9,7 +9,9 @@
 // object_drag_math.h; the objects themselves live in the renderer (src/shared/realtime_api.h).
 
 #include <QObject>
+#include <QPointF>
 #include <QString>
+#include <QVector>
 
 #include "camera_math.h"
 #include "realtime_preview_session.h"
@@ -17,6 +19,7 @@
 class OrbitPreviewLabel;
 class QLabel;
 class QPushButton;
+class QTimer;
 class QWidget;
 
 class LiveObjectEditor : public QObject {
@@ -46,6 +49,10 @@ signals:
 
 private slots:
 	void onSaveClicked();
+	void onHovered(double s, double t);
+	void onHoverTimer();
+	void onHoverPicked(LiveObjectPick pick);
+	void onHoverEnded();
 	void onModeToggled(bool on);
 	void onPressed(double s, double t);
 	void onDragged(double s, double t, bool vertical);
@@ -54,6 +61,8 @@ private slots:
 
 private:
 	void showSelectionBox();
+	void showHoverBox();
+	static QVector<QPointF> boxSegments(const LiveObjectPick &pick, const camera_math::Vec3 &shift, const camera_math::CameraBasis &basis);
 	void currentBasis(camera_math::CameraBasis &basis) const;
 	void setHint(const QString &text);
 
@@ -67,6 +76,11 @@ private:
 	QLabel *m_hint = nullptr;
 	LiveObjectPick m_selected;   // the object grabbed or last grabbed: where it was when the drag began, and the camera that drew that picture
 	bool m_haveSelection = false;
+	LiveObjectPick m_hover;          // the object under the cursor, from the last hover pick
+	bool m_hovering = false;
+	bool m_hoverWanted = false, m_hoverBusy = false;
+	QPointF m_hoverAt;
+	QTimer *m_hoverTimer = nullptr;
 	bool m_dragging = false;
 	camera_math::Vec3 m_pending;   // how far the current drag has moved the object so far (added to m_selected when the mouse is released)
 };

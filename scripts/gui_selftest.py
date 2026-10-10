@@ -203,7 +203,7 @@ def main():
                 ok = False
             if mode in ("livepreview", "livepreview_objects"):
                 for line in text.splitlines():
-                    if any(k in line for k in ("frames=", "picture change", "RESULT", "changed by", "after Reset", "after the press", "objects ok", "Save arrangement", "listed as", "saved scene")):
+                    if any(k in line for k in ("frames=", "picture change", "RESULT", "changed by", "after Reset", "after the press", "objects ok", "Save arrangement", "listed as", "saved scene", "hovering")):
                         print("  " + line.strip())
     finally:
         shutil.rmtree(fake_home, ignore_errors=True)

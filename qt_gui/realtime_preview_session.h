@@ -18,6 +18,7 @@
 // though this file is never compiled by nvcc itself.
 #include "../src/shared/adaptive_sampling.h"
 #include "../src/shared/realtime_api.h"   // RealtimeBackendFeatures
+#include "live_object_pick.h"
 #include "../src/shared/live_spp_scheduler.h"
 #include "../src/shared/oidn_runtime.h"
 
@@ -53,18 +54,6 @@
 // cross-thread signal/slot connections already marshal these automatically
 // since the worker lives on a different QThread).
 // ============================================================================
-
-// What a click on the Live Preview picture found (RealtimePreviewSession::pickObjectAt()): the object under the cursor, where the click met its surface, and the
-// camera that drew the picture, so a drag can be turned into a move with the same camera. All positions are in the scene's own (pbrt) coordinates.
-struct LiveObjectPick {
-	bool valid = false;
-	int object = -1;
-	QString label;                 // "sphere", "3 shapes"
-	double hit[3] = {0, 0, 0};     // where the click met the surface
-	double lo[3] = {0, 0, 0}, hi[3] = {0, 0, 0};   // the object's box, where it is now
-	double offset[3] = {0, 0, 0};  // how far it already is from where the file puts it
-	double cameraBasis[12] = {0};  // origin, lower-left corner, horizontal, vertical of the camera that drew the picture
-};
 
 class RealtimePreviewWorker : public QObject {
 	Q_OBJECT
@@ -111,6 +100,8 @@ public slots:
 	// samples taken before the move show the old scene. No-op if not running.
 	void setObjectOffset(int object, double dx, double dy, double dz);
 	void resetObjects();
+	// Looks for the object under picture position (s, t) and answers with hoverPicked() (invalid when there is none): for highlighting what a click would grab.
+	void hoverAt(double s, double t);
 
 	// Toggles the OptiX AI denoiser (same one --denoise/--denoise-blend use
 	// for batch/video rendering, see optix_interface.h's own comment) for
@@ -299,6 +290,7 @@ signals:
 	// matching this project's own CPU/GPU display convention) and ready to
 	// hand straight to a QLabel/QPixmap on the GUI thread.
 	void frameReady(QImage image, int sampleCount);
+	void hoverPicked(LiveObjectPick pick);
 
 	// Human-readable one-liner for a status label (e.g. "128 samples" or an
 	// error message) - separate from frameReady so a failure can be reported
@@ -674,6 +666,8 @@ public:
 	bool cameraBasisNow(double out[12]) const;
 	void setObjectOffset(int object, double dx, double dy, double dz);
 	void resetObjects();
+	// Asks, without waiting, which object is at picture position (s, t); the answer comes as hoverPicked().
+	void requestHover(double s, double t);
 	// Writes `sceneId`'s pbrt file with the moved objects where they are now to `path` (realtime_export_arrangement()); `message` gets the library's one-line
 	// summary or the reason it failed. Does not wait for a frame, only for the one being drawn.
 	bool exportArrangement(const QString &sceneId, const QString &path, QString *message);
@@ -701,6 +695,7 @@ public:
 signals:
 	void frameReady(QImage image, int sampleCount);
 	void statusChanged(QString text);
+	void hoverPicked(LiveObjectPick pick);   // the answer to requestHover()
 
 private:
 	QThread m_thread;

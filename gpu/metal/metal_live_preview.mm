@@ -32,6 +32,10 @@ struct LiveSession {
     live_objects::PickIndex pick;   // of the scene as it was built (edits applied); filled by the scene-edit hook
     live_objects::ObjectList objects;                     // the scene's objects, and where each shape sits in the scene's text, for "Save arrangement"
     std::vector<pbrt_flatten::ShapeRange> ranges;
+    // The offsets this session was built with. A move only marks the session `stale` (the next frame rebuilds it), so until then it still describes the picture
+    // that is on screen, and a click on that picture is picked against the same scene it shows.
+    std::vector<std::array<double, 3>> builtOffsets;
+    bool stale = false;
 };
 
 // Object moves for the current scene: one offset (pbrt world units) per object (see live_object_edit.h), applied while the scene is built.
@@ -125,6 +129,7 @@ std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int h
             if (gEdits.offsets[i][0] != 0.0 || gEdits.offsets[i][1] != 0.0 || gEdits.offsets[i][2] != 0.0)
                 live_objects::translateObject(scene, objects, i, gEdits.offsets[i].data());
         session->pick = live_objects::buildPickIndex(scene, objects);
+        session->builtOffsets = gEdits.offsets;
         session->objects = objects;
         session->ranges = scene.shapeRanges;
     };
@@ -148,7 +153,7 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
     if (!scene_id || !out_rgb || width <= 0 || height <= 0) return fail("bad arguments");
     std::lock_guard<std::mutex> lock(gMutex);
     @autoreleasepool {
-        if (!gSession || gSession->sceneId != scene_id || gSession->width != width || gSession->height != height) {
+        if (!gSession || gSession->stale || gSession->sceneId != scene_id || gSession->width != width || gSession->height != height) {
             gSession.reset();   // free the old session's GPU memory before building the new one
             gSession = createSession(scene_id, width, height, spp, max_depth);
             if (!gSession) return false;
@@ -233,7 +238,7 @@ int metal_live_pick_object(const char* scene_id, double x, double y, double z,
                            double* out_lo, double* out_hi, double* out_offset, char* out_label, int label_size) {
     if (!scene_id) return -1;
     std::lock_guard<std::mutex> lock(gMutex);
-    if (!gSession || gSession->sceneId != scene_id) return -1;   // nothing has been drawn yet (or it is being rebuilt after a move)
+    if (!gSession || gSession->sceneId != scene_id) return -1;   // nothing has been drawn yet
     // A first-hit position lies on the surface up to the picture's rounding; half a percent of the scene's size covers that.
     const double tolerance = 0.005 / gSession->app->pbrtSceneScale;
     const double p[3] = {x, y, z};
@@ -241,9 +246,12 @@ int metal_live_pick_object(const char* scene_id, double x, double y, double z,
     if (hit.object < 0) return -1;
     const live_objects::PickShape& shape = gSession->pick.shapes[hit.slot];
     for (int a = 0; a < 3; ++a) {
-        if (out_lo) out_lo[a] = shape.lo[a];
-        if (out_hi) out_hi[a] = shape.hi[a];
-        if (out_offset) out_offset[a] = (size_t)hit.object < gEdits.offsets.size() ? gEdits.offsets[hit.object][a] : 0.0;
+        // The offset now, and the box where it will be once the pending move is drawn (the session still has the box where the picture on screen has it).
+        const double now = (size_t)hit.object < gEdits.offsets.size() ? gEdits.offsets[hit.object][a] : 0.0;
+        const double built = (size_t)hit.object < gSession->builtOffsets.size() ? gSession->builtOffsets[hit.object][a] : 0.0;
+        if (out_lo) out_lo[a] = shape.lo[a] + (now - built);
+        if (out_hi) out_hi[a] = shape.hi[a] + (now - built);
+        if (out_offset) out_offset[a] = now;
     }
     if (out_label && label_size > 0) snprintf(out_label, (size_t)label_size, "%s", shape.label.c_str());
     return hit.object;
@@ -256,7 +264,7 @@ bool metal_live_set_object_offset(const char* scene_id, int object, double dx, d
     std::array<double, 3>& o = gEdits.offsets[object];
     if (o[0] == dx && o[1] == dy && o[2] == dz) return true;
     o = {dx, dy, dz};
-    gSession.reset();   // the next frame rebuilds the scene with the new offsets
+    if (gSession) gSession->stale = true;   // the next frame rebuilds the scene with the new offsets
     return true;
 }
 
@@ -268,7 +276,7 @@ void metal_live_reset_objects(const char* scene_id) {
         any = any || o[0] != 0.0 || o[1] != 0.0 || o[2] != 0.0;
         o = {0.0, 0.0, 0.0};
     }
-    if (any) gSession.reset();
+    if (any && gSession) gSession->stale = true;
 }
 
 bool metal_live_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size) {
