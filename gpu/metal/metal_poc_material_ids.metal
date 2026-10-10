@@ -44,6 +44,7 @@
 #define METAL_MAT_MEDIUM_RGB_GRID            30u   // sphere whose interior is a per-voxel RGB grid medium
 #define METAL_MAT_HAIR                       31u   // Marschner/Chiang fiber scattering
 #define METAL_MAT_MEASURED                   32u   // tabulated (Dupuy-Jakob) measured BRDF
+#define METAL_MAT_SUBSURFACE                 34u   // pbrt SubsurfaceMaterial: dielectric interface + tabulated BSSRDF (table offset in conductorEta.x)
 #define METAL_MAT_MIX                        33u   // pbrt MixMaterial: two full materials in the shared float buffer (bumpOffset), roughness = P(second)
 
 #endif

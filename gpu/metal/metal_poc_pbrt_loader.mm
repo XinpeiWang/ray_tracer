@@ -427,7 +427,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             mat.alphaOffset = it->second[0];
             mat.alphaWidth = it->second[1];
             mat.alphaHeight = it->second[2];
-            havePbrtAlphaMasks = true;
+            havePbrtTriangleAnyHit = true;
         }
     };
     for (int i = 0; i < (int)scene.triangles.size(); ++i) {
@@ -471,6 +471,7 @@ void MetalPocApp::loadPbrtRemainingTriangles(const pbrt_flatten::FlatScene& scen
             uvs.push_back(PackedFloat2{0, 0}); uvs.push_back(PackedFloat2{1, 0}); uvs.push_back(PackedFloat2{0, 1});
         }
         TriangleMaterial mat = materialFor(t.material);
+        if (mat.materialType == METAL_MAT_SUBSURFACE) havePbrtTriangleAnyHit = true;   // shadow rays must pass through it: triangleAnyHitFunction
         if (t.material >= 0 && t.material < (int)scene.materials.size()) { applyImageBump(mat, scene.materials[t.material]); applyAlphaMask(mat, scene.materials[t.material]); }
         if (mat.materialType == METAL_MAT_HAIR) {
             auto tanIt = pbrtTriangleFiberTangent.find(i);

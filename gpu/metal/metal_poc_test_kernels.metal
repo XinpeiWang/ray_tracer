@@ -271,6 +271,22 @@ kernel void test_perlinNoise3D(
 // comment for why: gpuCloudDensity() is a deliberate GPU-only port that
 // never implements the CPU reference's own wispiness perturbation at
 // all - see GpuCloudMedium's own field comment, metal_poc_gpu_types.h).
+// The tabulated BSSRDF profile (metal_poc_bssrdf.metal): one thread per case, mode 0 = Sr(r), 1 = PDF_Sr(r), 2 = SampleSr(u) (x = r or u).
+kernel void test_bssrdfProfile(
+    device const float* table [[buffer(0)]],
+    device const float4* cases [[buffer(1)]],   // (sigma_t, rho, x, mode)
+    device float* outputs [[buffer(2)]],
+    uint tid [[thread_position_in_grid]])
+{
+    const BssrdfTableView tab = bssrdfTableAt(table);
+    const float4 c = cases[tid];
+    float v = 0.0;
+    if (c.w < 0.5)      v = bssrdfSr(tab, c.x, c.y, c.z);
+    else if (c.w < 1.5) v = bssrdfPdfSr(tab, c.x, c.y, c.z);
+    else                v = bssrdfSampleSr(tab, c.x, c.y, c.z);
+    outputs[tid] = v;
+}
+
 kernel void test_gpuCloudDensity(
     device const GpuCloudMedium* clouds [[buffer(0)]],
     device const float3* points [[buffer(1)]],

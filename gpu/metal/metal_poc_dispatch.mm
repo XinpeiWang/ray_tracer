@@ -164,7 +164,7 @@ bool MetalPocApp::dsLoadShaderLibrary(DispatchState& s) {
         [shaderSource appendString:fragSource];
     }
     MTLCompileOptions* compileOpts = [MTLCompileOptions new];
-    if (havePbrtAlphaMasks) compileOpts.preprocessorMacros = @{@"METAL_ALPHA_MASKS": @1};
+    if (havePbrtTriangleAnyHit) compileOpts.preprocessorMacros = @{@"METAL_TRIANGLE_ANY_HIT": @1};
     id<MTLLibrary> library = [device newLibraryWithSource:shaderSource options:compileOpts error:&error];
     if (!library) {
         fprintf(stderr, "Shader compile failed: %s\n", error.localizedDescription.UTF8String);
@@ -183,12 +183,12 @@ bool MetalPocApp::dsBuildPipeline(DispatchState& s) {
     id<MTLFunction> sphereIntersectFn = [library newFunctionWithName:@"sphereIntersectionFunction"];
     id<MTLFunction> diskIntersectFn = [library newFunctionWithName:@"diskIntersectionFunction"];
     id<MTLFunction> cylinderIntersectFn = [library newFunctionWithName:@"cylinderIntersectionFunction"];
-    id<MTLFunction> alphaTriangleFn = [library newFunctionWithName:@"alphaTriangleIntersectionFunction"];
+    id<MTLFunction> triangleAnyHitFn = [library newFunctionWithName:@"triangleAnyHitFunction"];
     // newFunctionWithName: returns nil (it doesn't throw) for a name that
     // isn't in the compiled library - and a nil inside the @[...] literal
     // below would then raise an uncaught NSInvalidArgumentException instead
     // of this function's normal print-and-return-false failure path.
-    if (!kernelFn || !sphereIntersectFn || !diskIntersectFn || !cylinderIntersectFn || !alphaTriangleFn) {
+    if (!kernelFn || !sphereIntersectFn || !diskIntersectFn || !cylinderIntersectFn || !triangleAnyHitFn) {
         fprintf(stderr, "Shader function lookup failed (nil): primaryRayKernel=%s "
                         "sphereIntersectionFunction=%s diskIntersectionFunction=%s "
                         "cylinderIntersectionFunction=%s - a function was renamed/removed "
@@ -207,7 +207,7 @@ bool MetalPocApp::dsBuildPipeline(DispatchState& s) {
     MTLComputePipelineDescriptor* pipelineDesc = [MTLComputePipelineDescriptor new];
     pipelineDesc.computeFunction = kernelFn;
     MTLLinkedFunctions* linkedFns = [MTLLinkedFunctions new];
-    linkedFns.functions = @[sphereIntersectFn, diskIntersectFn, cylinderIntersectFn, alphaTriangleFn];
+    linkedFns.functions = @[sphereIntersectFn, diskIntersectFn, cylinderIntersectFn, triangleAnyHitFn];
     pipelineDesc.linkedFunctions = linkedFns;
 
     id<MTLComputePipelineState> pipeline = [device newComputePipelineStateWithDescriptor:pipelineDesc
@@ -252,8 +252,8 @@ bool MetalPocApp::dsBuildPipeline(DispatchState& s) {
     [functionTable setFunction:cylinderHandle atIndex:2];
     // Slot 3: the alpha-cutout test for the main triangles (see buildTriangleAS). Used only when the scene has an alpha mask; it reads the
     // triangle materials, UVs and the shared float buffer (the masks) through this table's own buffers 5, 6 and 7.
-    id<MTLFunctionHandle> alphaTriangleHandle = [pipeline functionHandleWithFunction:alphaTriangleFn];
-    [functionTable setFunction:alphaTriangleHandle atIndex:3];
+    id<MTLFunctionHandle> triangleAnyHitHandle = [pipeline functionHandleWithFunction:triangleAnyHitFn];
+    [functionTable setFunction:triangleAnyHitHandle atIndex:3];
     [functionTable setBuffer:materialBuffer offset:0 atIndex:5];
     [functionTable setBuffer:uvBuffer offset:0 atIndex:6];
     [functionTable setBuffer:rgbGridDataBuffer offset:0 atIndex:7];

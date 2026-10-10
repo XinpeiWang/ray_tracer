@@ -17,7 +17,7 @@ This page is the overview. The detail lives in:
 | cones, paraboloids | Y | approx (tessellated) | approx (tessellated) | Y (tessellated to triangles at load) |
 | instancing (`ObjectInstance`) | Y | Y | Y | Y (hardware instancing) |
 | **Materials**: diffuse, conductor, dielectric (smooth, rough, thin), diffuse transmission, coated diffuse / coated conductor, hair, principled, mix | Y | Y | Y | Y |
-| subsurface (tabulated BSSRDF) | Y | Y | Y | - (the loader says so and uses a grey diffuse) |
+| subsurface (tabulated BSSRDF) | Y | Y | Y | Y (pbrt-v4's SubsurfaceMaterial: dielectric boundary + probe-walk BSSRDF, the table from the CPU's own code; subsurface-ball and layered-materials match the CPU within 1-2% where an area light lights it. Under a constant sky only, Metal comes out 15-20% darker than the CPU inside the ball (the CPU samples that light by NEE through the ball, Metal does not sample a constant sky). Triangle meshes and spheres; not instanced meshes) |
 | measured (`.bsdf`) | Y | Y | Y | Y (measured-brdf-showroom: means within 1% of the CPU) |
 | dispersion | Y | approx (3 wavelengths) | Y | approx (3 wavelengths, like OptiX recursive: B23's colour fan matches the CPU's `--spectral` render; each path picks one of three channels at its first dispersive hit) |
 | alpha cutout (a Shape's `"alpha"` / `"texture alpha"` mask, pbrt-v4's stochastic test) | Y | Y | Y | Y for ordinary (non-instanced) triangle meshes: an intersection function tests the mask (alpha-cutout: a square with a round hole and notches matches the CPU's picture; means within 3%). Not for an instanced mesh, and not for a mix's sub-material |

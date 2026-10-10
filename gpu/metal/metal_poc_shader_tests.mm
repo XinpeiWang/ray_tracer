@@ -65,6 +65,7 @@ int main() {
         testCauchyEta(device, library, queue);
         testPerlinNoise3D(device, library, queue);
         testGpuCloudDensity(device, library, queue);
+        testBssrdfProfile(device, library, queue);
         testGpuRgbGridTrilinear(device, library, queue);
         testSampleHenyeyGreensteinProperties(device, library, queue);
         testGgxD(device, library, queue);
