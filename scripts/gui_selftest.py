@@ -192,7 +192,9 @@ def main():
         modes.append("livepreview")
     if args.live_preview and "livepreview_objects" not in modes:
         modes.append("livepreview_objects")
-    waits = {"livepreview": 60, "livepreview_objects": 150}
+    if args.live_preview and IS_MAC and "livepreview_arrange" not in modes:
+        modes.append("livepreview_arrange")   # Save arrangement of a Scene Builder scene, opened again in the Builder
+    waits = {"livepreview": 60, "livepreview_objects": 150, "livepreview_arrange": 90}
     ok = True
     try:
         for mode in modes:
@@ -203,9 +205,9 @@ def main():
             if mode == "ui" and passed and args.live_preview and 'Live Preview (interactive)" enabled=1' not in text:
                 print("FAIL [ui]: no enabled Live Preview item")
                 ok = False
-            if mode in ("livepreview", "livepreview_objects"):
+            if mode in ("livepreview", "livepreview_objects", "livepreview_arrange"):
                 for line in text.splitlines():
-                    if any(k in line for k in ("frames=", "picture change", "RESULT", "changed by", "after Reset", "after the press", "objects ok", "Save arrangement", "listed as", "saved scene", "hovering")):
+                    if any(k in line for k in ("frames=", "picture change", "RESULT", "changed by", "after Reset", "after the press", "objects ok", "Save arrangement", "listed as", "saved scene", "hovering", "previewing the starter", "grabbed", "Scene Builder opened", "arrange ok")):
                         print("  " + line.strip())
     finally:
         shutil.rmtree(fake_home, ignore_errors=True)

@@ -128,6 +128,8 @@ void MainWindow::runSelfTest(const QString &mode, const QString &outPrefix) {
 
 	if (mode == "livepreview_objects") { runLivePreviewObjectsSelfTest(log, shot, outPrefix); return; }
 
+	if (mode == "livepreview_arrange") { runLivePreviewArrangeSelfTest(log, shot, outPrefix); return; }
+
 	if (mode == "livepreview") { runLivePreviewSelfTest(log, shot, outPrefix); return; }
 #endif
 	log("unknown or unavailable self-test mode: " + mode);
