@@ -53,10 +53,26 @@
 // since the worker lives on a different QThread).
 // ============================================================================
 
+// What a click on the Live Preview picture found (RealtimePreviewSession::pickObjectAt()): the object under the cursor, where the click met its surface, and the
+// camera that drew the picture, so a drag can be turned into a move with the same camera. All positions are in the scene's own (pbrt) coordinates.
+struct LiveObjectPick {
+	bool valid = false;
+	int object = -1;
+	QString label;                 // "sphere", "3 shapes"
+	double hit[3] = {0, 0, 0};     // where the click met the surface
+	double lo[3] = {0, 0, 0}, hi[3] = {0, 0, 0};   // the object's box, where it is now
+	double offset[3] = {0, 0, 0};  // how far it already is from where the file puts it
+	double cameraBasis[12] = {0};  // origin, lower-left corner, horizontal, vertical of the camera that drew the picture
+};
+
 class RealtimePreviewWorker : public QObject {
 	Q_OBJECT
 public:
 	explicit RealtimePreviewWorker(QObject *parent = nullptr) : QObject(parent) {}
+
+	// The object shown at picture position (s, t) (s left to right, t bottom to top, both in [0, 1]) in the frame drawn last, or an invalid pick. Called from the
+	// GUI thread through RealtimePreviewSession::pickObjectAt(), which runs it on this worker's thread between two frames.
+	LiveObjectPick pickObjectAt(double s, double t);
 
 public slots:
 	// Starts the render loop for sceneId at (camX,camY,camZ) looking at
@@ -86,6 +102,11 @@ public slots:
 	// reprojectAccumulation()'s own comment) instead of discarding
 	// everything. No-op if not currently running.
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
+
+	// Puts one object of the scene somewhere else / every object back (object editing, realtime_api.h); the picture then starts accumulating afresh, since
+	// samples taken before the move show the old scene. No-op if not running.
+	void setObjectOffset(int object, double dx, double dy, double dz);
+	void resetObjects();
 
 	// Toggles the OptiX AI denoiser (same one --denoise/--denoise-blend use
 	// for batch/video rendering, see optix_interface.h's own comment) for
@@ -638,6 +659,12 @@ public:
 			   bool dofEnabled, double aperture, double focusDistance);
 	void stop();
 	void setCamera(double camX, double camY, double camZ, double lookX, double lookY, double lookZ);
+	// Object editing (only where backendFeatures().objectEditing). pickObjectAt() waits for the worker to finish the frame it is drawing, so it costs a frame time
+	// at most; it is for one click, not for every mouse move.
+	static bool objectEditingAvailable();
+	LiveObjectPick pickObjectAt(double s, double t);
+	void setObjectOffset(int object, double dx, double dy, double dz);
+	void resetObjects();
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 	void setSvgf(bool svgf);
 	void setExposure(double exposure);

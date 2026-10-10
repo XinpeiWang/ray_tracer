@@ -21,6 +21,31 @@ the camera and watch the image sharpen. On Windows it is backed by OptiX; on mac
   ignored. The GUI hides those controls on macOS: the Live Preview Settings group shows only Depth of Field, Aperture/Focus Distance,
   Exposure, Samples/Frame, Max Bounces, Firefly Clamp, Smooth noisy pixels, Auto exposure and AI denoise, and the OptiX Live denoiser group is hidden.
 
+## Moving objects (Move objects button)
+
+Under the picture, **Move objects** switches the mouse to object mode: a press on an object grabs it, a drag slides it across the floor (the horizontal plane
+through the point you grabbed), a drag with **Shift** held lifts and lowers it, and a press on empty space orbits the camera as before. **Reset objects** puts
+everything back. Moves are for looking at a different arrangement: they are not saved, and each new Live Preview starts from the scene file again.
+
+* What an "object" is: the shapes of one `AttributeBegin`/`AttributeEnd` block of the pbrt file (a box written as six quads is one object), or a `Shape` outside any
+  block on its own. Only shapes that became triangles, spheres, disks or cylinders can be moved; instances, curves and the like cannot, and a click on one orbits.
+  A scene with everything in one block is one object.
+* How it works: the parser gives each `ShapeDecl` its block number (`group`), `flattenShapes()` records which primitives each shape made (`FlatScene::shapeRanges`),
+  and `src/shared/live_object_edit.h` (standard library only, so OptiX can use it too) groups ranges into objects, translates an object and finds the object
+  nearest a surface point. The library's session applies the offsets in `MetalPocApp::pbrtSceneEdit`, after the scene frame (scale, centre) is fixed, so a move
+  never rescales or recentres the picture, then rebuilds: a move costs one scene build (about 0.12 s for the Cornell box, 0.25 s for the 69k-triangle bunny, more for
+  big scenes), so a drag shows a few updates a second there rather than every mouse event.
+* A click is turned into an object by the first-hit world position of the pixel under the cursor (already returned for reprojection), which
+  `realtime_pick_object` matches to the nearest object surface within half a percent of the scene size. The GUI (`qt_gui/live_object_editor.cpp`) keeps the
+  camera that drew the picture and does the drag arithmetic itself (`qt_gui/object_drag_math.h`, unit-tested), so the object follows the cursor exactly.
+  The yellow box is the picked object's bounding box; it goes away when the camera moves.
+* C ABI (`src/shared/realtime_api.h`): `realtime_pick_object`, `realtime_set_object_offset`, `realtime_reset_objects`, and the feature flag
+  `RealtimeBackendFeatures::objectEditing` (appended; the OptiX library says false until it implements them, and the GUI then shows no button).
+* Tests: unit tests for the ranges, grouping, pick and translate (`live_object_edit_tests.cpp`) and the drag arithmetic (`object_drag_math_tests.cpp`);
+  `ctest -R metal_live_edit` (every visible surface point belongs to an object; a move changes the picture and the pick follows; a reset restores it exactly) and
+  `metal_realtime_dylib` (the same through the exported functions); `RT_GUI_SELFTEST=livepreview_objects` (real mouse events: press on the tall box of A1, drag,
+  the picture changes, Reset brings it back; part of `gui_selftest.py --live-preview` on a Mac).
+
 ## Samples per frame while still
 
 While the camera moves, a frame is one batch of "Samples/Frame" samples, so the picture follows the mouse. After three still frames the scheduler

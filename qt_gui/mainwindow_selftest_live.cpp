@@ -2,6 +2,7 @@
 
 #include "mainwindow.h"
 #include "live_ai_denoise.h"
+#include "live_object_editor.h"
 #include "app_log.h"
 #include "../src/shared/pbrt_asset_check.h"
 
@@ -143,6 +144,72 @@ void MainWindow::runLivePreviewKeysSelfTest(const std::function<void(const QStri
 		});
 	};
 	(*step)();
+}
+
+// Moves an object with the mouse: starts Live Preview (scene RT_GUI_SELFTEST_SCENE, default A1), switches on "Move objects", presses on the middle of the picture
+// and drags to the right, as real mouse events sent to the picture. The picture must change, the hint must say which object is being moved, and a "Reset objects"
+// click must bring the picture back. Writes <out>_objects_before.png / _moved.png / _reset.png; exits 1 on a failure.
+void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &, const QString &outPrefix) {
+	const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
+	if (idx < 0) { log("Live Preview mode missing"); QApplication::exit(2); return; }
+	m_modeCombo->setCurrentIndex(idx);
+	const QString scene = qEnvironmentVariable("RT_GUI_SELFTEST_SCENE", "A1");
+	selectSceneById(scene);
+	if (m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
+	startLivePreview();
+	auto shown = [this]() { return m_livePreviewLabel ? m_livePreviewLabel->pixmap().toImage() : QImage(); };
+	auto diff = [](const QImage &a, const QImage &b) {   // mean absolute difference per channel, 0..255
+		if (a.isNull() || b.isNull()) return -1.0;
+		// The picture is shown scaled to the label, and a hint line under it can change the label's size: compare at one size.
+		const QImage x = a.scaled(200, 200, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).convertToFormat(QImage::Format_RGB32);
+		const QImage y = b.scaled(200, 200, Qt::IgnoreAspectRatio, Qt::SmoothTransformation).convertToFormat(QImage::Format_RGB32);
+		double sum = 0;
+		for (int py = 0; py < x.height(); ++py)
+			for (int px = 0; px < x.width(); ++px) {
+				const QRgb p = x.pixel(px, py), q = y.pixel(px, py);
+				sum += std::abs(qRed(p) - qRed(q)) + std::abs(qGreen(p) - qGreen(q)) + std::abs(qBlue(p) - qBlue(q));
+			}
+		return sum / (3.0 * x.width() * x.height());
+	};
+	auto before = std::make_shared<QImage>();
+	auto moved = std::make_shared<QImage>();
+	auto fail = [log](const QString &why) { log("FAIL: " + why); QApplication::exit(1); };
+	QTimer::singleShot(4000, this, [this, shown, before, outPrefix, log, fail]() {
+		if (!m_livePreviewRunning || !m_livePreviewLabel || !m_liveObjectEditor) { fail("the preview did not start with object editing available"); return; }
+		*before = shown();
+		before->save(outPrefix + "_objects_before.png");
+		m_liveObjectEditor->setMode(true);
+		const QRect image = m_livePreviewLabel->displayedImageRect();
+		auto send = [this](QEvent::Type type, const QPoint &pos, Qt::MouseButton button, Qt::MouseButtons buttons) {
+			QMouseEvent event(type, QPointF(pos), QPointF(m_livePreviewLabel->mapToGlobal(pos)), button, buttons, Qt::NoModifier);
+			QApplication::sendEvent(m_livePreviewLabel, &event);
+		};
+		const QPoint start = image.center() + QPoint(0, image.height() / 5);   // a little below the middle: floor, a box or a ball rather than the back wall
+		send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+		log("after the press: \"" + m_liveObjectEditor->hint() + "\"");
+		if (!m_liveObjectEditor->hint().startsWith("Moving")) { fail("the press did not grab an object"); return; }
+		for (int i = 1; i <= 12; ++i) send(QEvent::MouseMove, start + QPoint(image.width() * i / 40, 0), Qt::NoButton, Qt::LeftButton);
+		send(QEvent::MouseButtonRelease, start + QPoint(image.width() * 12 / 40, 0), Qt::LeftButton, Qt::NoButton);
+	});
+	QTimer::singleShot(8000, this, [this, shown, before, moved, diff, outPrefix, log, fail]() {
+		*moved = shown();
+		moved->save(outPrefix + "_objects_moved.png");
+		const double change = diff(*before, *moved);
+		log(QString("the picture changed by %1 (of 255) after the drag").arg(change, 0, 'f', 3));
+		if (!(change > 1.0)) { fail("dragging an object did not change the picture"); return; }
+		m_liveObjectEditor->setMode(false);
+		if (auto *button = m_livePreviewPage->findChild<QPushButton *>("liveResetObjectsButton")) button->click();
+	});
+	QTimer::singleShot(12000, this, [this, shown, before, moved, diff, outPrefix, log, fail]() {
+		const QImage reset = shown();
+		reset.save(outPrefix + "_objects_reset.png");
+		const double back = diff(*before, reset), away = diff(*moved, reset);
+		log(QString("after Reset objects: %1 from the first picture, %2 from the moved one").arg(back, 0, 'f', 3).arg(away, 0, 'f', 3));
+		if (!(back < away)) { fail("Reset objects did not bring the first picture back"); return; }
+		stopLivePreview();
+		log("objects ok");
+		QApplication::exit(0);
+	});
 }
 
 void MainWindow::runLivePreviewDragSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &shot, const QString &outPrefix) {

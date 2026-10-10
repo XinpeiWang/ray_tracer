@@ -37,6 +37,12 @@
 #include <QMouseEvent>
 #include <QWheelEvent>
 #include <QKeyEvent>
+#include <QPainter>
+#include <QPaintEvent>
+#include <QPen>
+#include <QPointF>
+#include <QPointer>
+#include <QVector>
 #include <QTimer>
 #include <QDateTime>
 #include <QElapsedTimer>
@@ -692,6 +698,13 @@ public:
 		if (m_original.isNull()) setText(text);
 	}
 
+	// Where the image is drawn inside the label (it is scaled to fit and centred), in the label's own coordinates; an empty rectangle without an image.
+	QRect displayedImageRect() const {
+		if (m_original.isNull()) return QRect();
+		const QSize shown = m_original.size().scaled(size(), Qt::KeepAspectRatio);
+		return QRect(QPoint((width() - shown.width()) / 2, (height() - shown.height()) / 2), shown);
+	}
+
 protected:
 	void resizeEvent(QResizeEvent *event) override {
 		QLabel::resizeEvent(event);
@@ -751,9 +764,27 @@ public:
 	// currently dragging - releaseMouse() on a widget that isn't the
 	// current mouse grabber is a harmless no-op.
 	void cancelDrag() {
-		setCursor(Qt::OpenHandCursor);
+		m_objectGrabbed = false;
+		setCursor(m_objectMode ? Qt::PointingHandCursor : Qt::OpenHandCursor);
 		releaseMouse();
 	}
+
+	// Object mode: a press on the picture first asks MainWindow (objectPressed) whether an object is under the cursor. If MainWindow answers by calling
+	// setObjectGrabbed(true) while handling the signal, the drag moves that object (objectDragged) instead of orbiting; otherwise it orbits as usual.
+	void setObjectMode(bool on) {
+		m_objectMode = on;
+		if (!on) clearSelection();
+		setCursor(on ? Qt::PointingHandCursor : Qt::OpenHandCursor);
+	}
+	bool objectMode() const { return m_objectMode; }
+	void setObjectGrabbed(bool grabbed) { m_objectGrabbed = grabbed; }
+
+	// The box drawn round the selected object: line segments as pairs of picture positions (s left to right, t bottom to top, both in [0, 1]). Empty clears it.
+	void setSelectionSegments(const QVector<QPointF> &segmentEnds) {
+		m_selection = segmentEnds;
+		update();
+	}
+	void clearSelection() { setSelectionSegments({}); }
 
 signals:
 	// Raw pixel deltas since the last mouse-move event during an active
@@ -785,8 +816,38 @@ signals:
 	// no notion of the camera's current facing direction either.
 	void translateRequested(int forwardSteps, int rightSteps, int upSteps);
 
+	// Object mode, picture positions as in setSelectionSegments(). `vertical` is true while Shift is held.
+	void objectPressed(double s, double t);
+	void objectDragged(double s, double t, bool vertical);
+	void objectReleased();
+
 protected:
+	void paintEvent(QPaintEvent *event) override {
+		ScaledImageLabel::paintEvent(event);
+		const QRect image = displayedImageRect();
+		if (m_selection.size() < 2 || image.isEmpty()) return;
+		QPainter painter(this);
+		painter.setRenderHint(QPainter::Antialiasing);
+		auto toWidget = [&image](const QPointF &p) { return QPointF(image.left() + p.x() * image.width(), image.top() + (1.0 - p.y()) * image.height()); };
+		painter.setPen(QPen(QColor(0, 0, 0, 160), 4));   // a dark line under a bright one: readable on any picture
+		for (int i = 0; i + 1 < m_selection.size(); i += 2) painter.drawLine(toWidget(m_selection[i]), toWidget(m_selection[i + 1]));
+		painter.setPen(QPen(QColor(255, 220, 60), 2));
+		for (int i = 0; i + 1 < m_selection.size(); i += 2) painter.drawLine(toWidget(m_selection[i]), toWidget(m_selection[i + 1]));
+	}
+
 	void mousePressEvent(QMouseEvent *event) override {
+		if (event->button() == Qt::LeftButton && m_objectMode) {
+			const QRect image = displayedImageRect();
+			if (image.contains(event->pos())) {
+				m_objectGrabbed = false;
+				emit objectPressed((event->pos().x() - image.left() + 0.5) / image.width(), 1.0 - (event->pos().y() - image.top() + 0.5) / image.height());
+				if (m_objectGrabbed) {
+					setCursor(Qt::SizeAllCursor);
+					grabMouse();
+					return;
+				}
+			}
+		}
 		if (event->button() == Qt::LeftButton) {
 			m_lastPos = event->pos();
 			setCursor(Qt::ClosedHandCursor);
@@ -803,6 +864,13 @@ protected:
 	}
 
 	void mouseMoveEvent(QMouseEvent *event) override {
+		if (mouseGrabber() == this && m_objectGrabbed) {
+			const QRect image = displayedImageRect();
+			if (!image.isEmpty())
+				emit objectDragged((event->pos().x() - image.left() + 0.5) / image.width(), 1.0 - (event->pos().y() - image.top() + 0.5) / image.height(),
+				                   (event->modifiers() & Qt::ShiftModifier) != 0);
+			return;
+		}
 		if (mouseGrabber() == this) {
 			const QPoint delta = event->pos() - m_lastPos;
 			m_lastPos = event->pos();
@@ -813,7 +881,9 @@ protected:
 
 	void mouseReleaseEvent(QMouseEvent *event) override {
 		if (event->button() == Qt::LeftButton && mouseGrabber() == this) {
+			const bool wasObjectDrag = m_objectGrabbed;
 			cancelDrag();
+			if (wasObjectDrag) emit objectReleased();
 		}
 		ScaledImageLabel::mouseReleaseEvent(event);
 	}
@@ -856,6 +926,9 @@ protected:
 
 private:
 	QPoint m_lastPos;
+	bool m_objectMode = false;
+	bool m_objectGrabbed = false;
+	QVector<QPointF> m_selection;
 };
 
 // ============================================================================

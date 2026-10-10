@@ -82,6 +82,7 @@ SOURCES += \
 	scene_packs.cpp \
 	../src/external/miniz.c \
 	realtime_preview_session.cpp \
+	live_object_editor.cpp \
 	theme.cpp \
 	theme_switch.cpp \
 	language_switch.cpp \
@@ -127,6 +128,8 @@ HEADERS += \
 	asset_downloader.h \
 	scene_packs.h \
 	realtime_preview_session.h \
+	live_object_editor.h \
+	object_drag_math.h \
 	cross_abi_library.h \
 	error_handler.h \
 	scene_technique_notes.h \

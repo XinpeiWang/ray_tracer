@@ -520,6 +520,49 @@
     </message>
 </context>
 <context>
+    <name>LiveObjectEditor</name>
+    <message>
+        <location filename="../live_object_editor.cpp" line="22"/>
+        <source>Move objects</source>
+        <translation>Déplacer les objets</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="24"/>
+        <source>Click an object in the picture and drag it to move it. Hold Shift while dragging to lift or lower it. Drag on empty space to orbit as usual.</source>
+        <translation>Cliquez sur un objet de l&apos;image et faites-le glisser pour le déplacer. Maintenez Maj enfoncée pendant le glissement pour le monter ou le descendre. Faites glisser dans le vide pour orbiter comme d&apos;habitude.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="26"/>
+        <source>Reset objects</source>
+        <translation>Réinitialiser les objets</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="28"/>
+        <source>Put every object back where the scene file puts it.</source>
+        <translation>Remet chaque objet là où le fichier de scène le place.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="54"/>
+        <source>Click an object and drag it. Shift: up and down.</source>
+        <translation>Cliquez sur un objet et faites-le glisser. Maj : haut et bas.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="70"/>
+        <source>Nothing movable there: drag to orbit.</source>
+        <translation>Rien à déplacer ici : faites glisser pour orbiter.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="78"/>
+        <source>Moving: %1. Shift: up and down.</source>
+        <translation>Déplacement : %1. Maj : haut et bas.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="102"/>
+        <source>Every object is back where the scene file puts it.</source>
+        <translation>Tous les objets sont revenus là où le fichier de scène les place.</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <location filename="../mainwindow_actions.cpp" line="195"/>
@@ -1366,7 +1409,7 @@ Utilisez les commandes pause/arrêt si une catégorie s&apos;avère trop longue.
         <translation>Image unique</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="146"/>
+        <location filename="../mainwindow_live_preview.cpp" line="152"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
@@ -3347,10 +3390,6 @@ Débruiteur SVGF : un filtre de réduction de bruit alternatif et expérimental.
         <translation>Limitation des pixels aberrants (--maxcomponentvalue)</translation>
     </message>
     <message>
-        <source>OptiX AI denoiser (GPU only)</source>
-        <translation type="vanished">Débruiteur IA OptiX (GPU uniquement)</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="431"/>
         <source>Sampler:</source>
         <translation>Échantillonneur :</translation>
@@ -3825,15 +3864,6 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>Active des vérifications de justesse supplémentaires dans le processus de rendu GPU lui-même, qui détectent certains types de bogues qui produiraient sinon silencieusement une image fausse ou provoqueraient un plantage imprévisible. C&apos;est une aide au débogage pour les personnes qui travaillent sur le code GPU du moteur de rendu, pas quelque chose dont un rendu normal tire profit : cela a un coût de performance réel et ne change pas l&apos;aspect d&apos;un rendu correct. Spécifique au moteur GPU OptiX (Windows) ; il n&apos;a pas d&apos;équivalent Metal, donc il reste grisé même avec le Moteur de rendu réglé sur GPU sous macOS.</translation>
     </message>
     <message>
-        <source>Runs an AI denoiser on the finished render to smooth out
-graininess, using extra information about each pixel&apos;s base
-color and surface direction to do a better job than a plain
-blur. OptiX GPU only, both GPU modes (recursive and wavefront
-each have their own denoiser) - not available under Metal
-(macOS GPU rendering).</source>
-        <translation type="vanished">Exécute un débruiteur par IA sur le rendu terminé pour atténuer le grain, en s&apos;appuyant sur des informations supplémentaires sur la couleur de base et l&apos;orientation de la surface de chaque pixel pour faire mieux qu&apos;un simple flou. GPU OptiX uniquement, dans les deux modes GPU (le récursif et le wavefront ont chacun leur débruiteur) ; indisponible sous Metal (rendu GPU de macOS).</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1072"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
@@ -4278,7 +4308,7 @@ Désactivé par défaut (véritablement aléatoire à chaque rendu).</translatio
         <translation>Aperçu</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="116"/>
+        <location filename="../mainwindow_live_preview.cpp" line="117"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -4287,44 +4317,44 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut/Bas pour voler</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="142"/>
+        <location filename="../mainwindow_live_preview.cpp" line="148"/>
         <source>Live Preview — %1</source>
         <translation>Aperçu en direct — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="147"/>
+        <location filename="../mainwindow_live_preview.cpp" line="153"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>Aperçu GPU interactif - glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut/Bas pour voler, Gauche/Droite pour orbiter</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="173"/>
+        <location filename="../mainwindow_live_preview.cpp" line="179"/>
         <source>Select a scene first</source>
         <translation>Sélectionnez d&apos;abord une scène</translation>
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="270"/>
+        <location filename="../mainwindow_live_preview.cpp" line="257"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>Démarrage...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="286"/>
+        <location filename="../mainwindow_live_preview.cpp" line="273"/>
         <source>Stopped</source>
         <translation>Arrêté</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="312"/>
+        <location filename="../mainwindow_live_preview.cpp" line="299"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En direct (débruité, sans accumulation)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="314"/>
+        <location filename="../mainwindow_live_preview.cpp" line="301"/>
         <source>%1 samples</source>
         <translation>%1 échantillons</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="339"/>
+        <location filename="../mainwindow_live_preview.cpp" line="326"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[Aperçu en direct] ERREUR : %1</translation>
     </message>
@@ -5793,10 +5823,6 @@ Les scènes des autres catégories ne sont pas touchées. Vous pouvez les récup
         <location filename="../scene_builder_common.h" line="81"/>
         <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.</source>
         <translation>Faites glisser l&apos;arrière-plan : orbite (Maj + glisser : panoramique). Le glissement avec le clic droit fait aussi un panoramique. Molette : zoom. Choisissez Déplacer, Pivoter ou Redimensionner (W, E, R) et faites glisser les flèches, les anneaux ou les carrés ; faites glisser un objet pour le faire glisser sur le sol, Maj + glisser pour le soulever, et faites glisser le point blanc (ou maintenez %1 en glissant) pour le déplacer dans n&apos;importe quelle direction.</translation>
-    </message>
-    <message>
-        <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
-        <translation type="vanished">Faites glisser le fond : orbite (Maj + glisser : déplacer la vue). Le clic droit + glisser déplace aussi la vue. Molette : zoom. Choisissez Déplacer, Pivoter ou Redimensionner (W, E, R) et faites glisser les flèches, les anneaux ou les carrés ; Maj + glisser un objet le soulève.</translation>
     </message>
     <message>
         <location filename="../scene_builder_common.h" line="86"/>
@@ -7431,12 +7457,12 @@ La forme est une estimation : l&apos;arrière est inventé et les détails fins 
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1147"/>
+        <location filename="../mainwindow_widgets.h" line="1219"/>
         <source>No renders yet</source>
         <translation>Aucun rendu pour le moment</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1155"/>
+        <location filename="../mainwindow_widgets.h" line="1227"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>

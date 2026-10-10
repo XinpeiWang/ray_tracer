@@ -27,6 +27,9 @@ struct DllHandle {
 	RenderFrameFn renderFrameFn = nullptr;
 	GetLastErrorFn getLastErrorFn = nullptr;
 	RealtimeBackendFeaturesFn featuresFn = nullptr;
+	RealtimePickObjectFn pickObjectFn = nullptr;               // the three object editing functions: only in a library whose features say objectEditing
+	RealtimeSetObjectOffsetFn setObjectOffsetFn = nullptr;
+	RealtimeResetObjectsFn resetObjectsFn = nullptr;
 };
 
 #ifdef Q_OS_WIN
@@ -58,6 +61,12 @@ DllHandle& handle() {
 			cross_abi_library::lookupSymbol(h.module, "realtime_get_last_error"));
 		h.featuresFn = reinterpret_cast<RealtimeBackendFeaturesFn>(
 			cross_abi_library::lookupSymbol(h.module, "realtime_backend_features"));
+		h.pickObjectFn = reinterpret_cast<RealtimePickObjectFn>(
+			cross_abi_library::lookupSymbol(h.module, "realtime_pick_object"));
+		h.setObjectOffsetFn = reinterpret_cast<RealtimeSetObjectOffsetFn>(
+			cross_abi_library::lookupSymbol(h.module, "realtime_set_object_offset"));
+		h.resetObjectsFn = reinterpret_cast<RealtimeResetObjectsFn>(
+			cross_abi_library::lookupSymbol(h.module, "realtime_reset_objects"));
 	});
 	return h;
 }
@@ -66,6 +75,11 @@ DllHandle& handle() {
 
 bool RealtimePreviewSession::isAvailable() {
 	return handle().renderFrameFn != nullptr;
+}
+
+bool RealtimePreviewSession::objectEditingAvailable() {
+	const DllHandle& h = handle();
+	return h.pickObjectFn && h.setObjectOffsetFn && h.resetObjectsFn && backendFeatures().objectEditing;
 }
 
 RealtimeBackendFeatures RealtimePreviewSession::backendFeatures() {
@@ -458,6 +472,9 @@ void RealtimePreviewWorker::start(QString sceneId, int width, int height, double
 								   bool temporalUpscale, int temporalUpscaleFactor, bool nrc, bool neuralUpscale,
 								   bool dofEnabled, double aperture, double focusDistance) {
 	m_sceneId = sceneId;
+	// Every preview starts from the scene as its file has it: objects moved in an earlier preview of this scene (the renderer keeps them while the scene stays
+	// the same) are put back.
+	if (const auto reset = handle().resetObjectsFn) reset(sceneId.toStdString().c_str());
 	m_width = width;
 	m_height = height;
 	m_camX = camX;
@@ -516,6 +533,50 @@ void RealtimePreviewWorker::setCamera(double camX, double camY, double camZ, dou
 	m_lookY = lookY;
 	m_lookZ = lookZ;
 	m_cameraDirty = true;
+}
+
+LiveObjectPick RealtimePreviewWorker::pickObjectAt(double s, double t) {
+	LiveObjectPick pick;
+	const DllHandle& h = handle();
+	const size_t pixels = static_cast<size_t>(m_width) * m_height;
+	if (!m_running || !h.pickObjectFn || m_width <= 0 || m_height <= 0 || m_worldPos.size() < pixels * 4 || m_cameraBasis.size() < 12) return pick;
+	// The pixel under the cursor, or, at the edge of an object, the nearest one within two pixels that shows a surface.
+	const int cx = std::clamp(static_cast<int>(s * m_width), 0, m_width - 1);
+	const int cy = std::clamp(static_cast<int>((1.0 - t) * m_height), 0, m_height - 1);   // t is bottom to top, rows are top to bottom
+	const float* best = nullptr;
+	int bestDistance = 1 << 30;
+	for (int dy = -2; dy <= 2; ++dy)
+		for (int dx = -2; dx <= 2; ++dx) {
+			const int x = cx + dx, y = cy + dy;
+			if (x < 0 || y < 0 || x >= m_width || y >= m_height) continue;
+			const float* q = &m_worldPos[(static_cast<size_t>(y) * m_width + x) * 4];
+			if (q[3] == 0.0f || dx * dx + dy * dy >= bestDistance) continue;
+			best = q;
+			bestDistance = dx * dx + dy * dy;
+		}
+	if (!best) return pick;
+	char label[64] = {0};
+	const std::string sceneId = m_sceneId.toStdString();
+	pick.object = h.pickObjectFn(sceneId.c_str(), best[0], best[1], best[2], pick.lo, pick.hi, pick.offset, label, static_cast<int>(sizeof label));
+	if (pick.object < 0) return pick;
+	pick.valid = true;
+	pick.label = QString::fromUtf8(label);
+	for (int i = 0; i < 3; ++i) pick.hit[i] = best[i];
+	for (int i = 0; i < 12; ++i) pick.cameraBasis[i] = m_cameraBasis[i];
+	return pick;
+}
+
+void RealtimePreviewWorker::setObjectOffset(int object, double dx, double dy, double dz) {
+	const DllHandle& h = handle();
+	if (!m_running || !h.setObjectOffsetFn) return;
+	if (h.setObjectOffsetFn(m_sceneId.toStdString().c_str(), object, dx, dy, dz)) resetAccumulation();
+}
+
+void RealtimePreviewWorker::resetObjects() {
+	const DllHandle& h = handle();
+	if (!m_running || !h.resetObjectsFn) return;
+	h.resetObjectsFn(m_sceneId.toStdString().c_str());
+	resetAccumulation();
 }
 
 void RealtimePreviewWorker::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {
@@ -1542,6 +1603,22 @@ void RealtimePreviewSession::setCamera(double camX, double camY, double camZ, do
 	QMetaObject::invokeMethod(m_worker, "setCamera", Qt::QueuedConnection,
 		Q_ARG(double, camX), Q_ARG(double, camY), Q_ARG(double, camZ),
 		Q_ARG(double, lookX), Q_ARG(double, lookY), Q_ARG(double, lookZ));
+}
+
+LiveObjectPick RealtimePreviewSession::pickObjectAt(double s, double t) {
+	LiveObjectPick pick;
+	if (!m_thread.isRunning()) return pick;
+	QMetaObject::invokeMethod(m_worker, [this, s, t, &pick]() { pick = m_worker->pickObjectAt(s, t); }, Qt::BlockingQueuedConnection);
+	return pick;
+}
+
+void RealtimePreviewSession::setObjectOffset(int object, double dx, double dy, double dz) {
+	QMetaObject::invokeMethod(m_worker, "setObjectOffset", Qt::QueuedConnection,
+		Q_ARG(int, object), Q_ARG(double, dx), Q_ARG(double, dy), Q_ARG(double, dz));
+}
+
+void RealtimePreviewSession::resetObjects() {
+	QMetaObject::invokeMethod(m_worker, "resetObjects", Qt::QueuedConnection);
 }
 
 void RealtimePreviewSession::setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest) {

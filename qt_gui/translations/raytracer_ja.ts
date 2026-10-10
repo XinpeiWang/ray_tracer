@@ -520,6 +520,49 @@
     </message>
 </context>
 <context>
+    <name>LiveObjectEditor</name>
+    <message>
+        <location filename="../live_object_editor.cpp" line="22"/>
+        <source>Move objects</source>
+        <translation>オブジェクトを移動</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="24"/>
+        <source>Click an object in the picture and drag it to move it. Hold Shift while dragging to lift or lower it. Drag on empty space to orbit as usual.</source>
+        <translation>画像内のオブジェクトをクリックしてドラッグすると移動できます。Shift を押しながらドラッグすると上下に動かせます。何もない場所をドラッグすると、これまでどおりカメラが周回します。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="26"/>
+        <source>Reset objects</source>
+        <translation>オブジェクトをリセット</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="28"/>
+        <source>Put every object back where the scene file puts it.</source>
+        <translation>すべてのオブジェクトをシーンファイルの位置に戻します。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="54"/>
+        <source>Click an object and drag it. Shift: up and down.</source>
+        <translation>オブジェクトをクリックしてドラッグします。Shift：上下。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="70"/>
+        <source>Nothing movable there: drag to orbit.</source>
+        <translation>そこには動かせるものがありません。ドラッグでカメラを周回します。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="78"/>
+        <source>Moving: %1. Shift: up and down.</source>
+        <translation>移動中：%1。Shift：上下。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="102"/>
+        <source>Every object is back where the scene file puts it.</source>
+        <translation>すべてのオブジェクトをシーンファイルの位置に戻しました。</translation>
+    </message>
+</context>
+<context>
     <name>MainWindow</name>
     <message>
         <location filename="../mainwindow_actions.cpp" line="195"/>
@@ -1362,7 +1405,7 @@ Use the pause/stop controls if a category turns out to take too long.</source>
         <translation>単一画像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="146"/>
+        <location filename="../mainwindow_live_preview.cpp" line="152"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
@@ -3310,10 +3353,6 @@ SVGFデノイザー: もう一つの、実験的なノイズ低減フィルタ�
         <translation>ファイアフライクランプ(--maxcomponentvalue)</translation>
     </message>
     <message>
-        <source>OptiX AI denoiser (GPU only)</source>
-        <translation type="vanished">OptiX AIデノイザー(GPUのみ)</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="431"/>
         <source>Sampler:</source>
         <translation>サンプラー:</translation>
@@ -3755,15 +3794,6 @@ This is specific to the OptiX GPU backend (Windows); it has no Metal equivalent,
         <translation>GPU レンダリング処理そのものの内部で追加の正確性チェックを有効にし、放っておくと誤った画像を黙って生成したり予測できないクラッシュを起こしたりするような種類のバグを検出します。レンダラー自身の GPU コードを開発する人向けのデバッグ補助であり、通常のレンダリングには役立ちません。性能コストが実際にかかり、正しいレンダリングの見た目は変わりません。OptiX GPU バックエンド（Windows）専用で、Metal には相当する機能がないため、macOS でレンダラーを GPU にしてもグレーアウトのままです。</translation>
     </message>
     <message>
-        <source>Runs an AI denoiser on the finished render to smooth out
-graininess, using extra information about each pixel&apos;s base
-color and surface direction to do a better job than a plain
-blur. OptiX GPU only, both GPU modes (recursive and wavefront
-each have their own denoiser) - not available under Metal
-(macOS GPU rendering).</source>
-        <translation type="vanished">完成したレンダリングに AI デノイザーをかけて粒状感を滑らかにします。単純なぼかしよりうまく処理できるよう、各ピクセルの基本色や表面の向きに関する追加情報を使います。OptiX GPU 専用で、両方の GPU モードに対応します（再帰とウェーブフロントにはそれぞれ専用のデノイザーがあります）。Metal（macOS の GPU レンダリング）では利用できません。</translation>
-    </message>
-    <message>
         <location filename="../mainwindow_tabs_render_groups.cpp" line="1072"/>
         <source>Restricts rendering to a rectangle of the frame, given as
 fractions of the full image from 0 to 1. Default path tracer
@@ -4180,7 +4210,7 @@ Off by default (genuinely random every render).</source>
         <translation>プレビュー</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="116"/>
+        <location filename="../mainwindow_live_preview.cpp" line="117"/>
         <source>Waiting for first frame...
 
 Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
@@ -4189,44 +4219,44 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 ドラッグで視点回転、スクロールまたは +/- でズーム、WASD で移動、上/下で上昇・下降</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="142"/>
+        <location filename="../mainwindow_live_preview.cpp" line="148"/>
         <source>Live Preview — %1</source>
         <translation>ライブプレビュー — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="147"/>
+        <location filename="../mainwindow_live_preview.cpp" line="153"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>インタラクティブな GPU プレビュー——ドラッグで視点回転、スクロールまたは +/- でズーム、WASD で移動、上/下で上昇・下降、左/右で回転</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="173"/>
+        <location filename="../mainwindow_live_preview.cpp" line="179"/>
         <source>Select a scene first</source>
         <translation>先にシーンを選択してください</translation>
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="270"/>
+        <location filename="../mainwindow_live_preview.cpp" line="257"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>開始中...</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="286"/>
+        <location filename="../mainwindow_live_preview.cpp" line="273"/>
         <source>Stopped</source>
         <translation>停止しました</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="312"/>
+        <location filename="../mainwindow_live_preview.cpp" line="299"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>ライブ（デノイズ済み、累積なし）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="314"/>
+        <location filename="../mainwindow_live_preview.cpp" line="301"/>
         <source>%1 samples</source>
         <translation>%1 サンプル</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="339"/>
+        <location filename="../mainwindow_live_preview.cpp" line="326"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[ライブプレビュー] エラー: %1</translation>
     </message>
@@ -5690,10 +5720,6 @@ The scenes in the other categories are not touched. You can get them back from %
         <location filename="../scene_builder_common.h" line="81"/>
         <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; drag an object to slide it on the floor, Shift-drag to lift it, and drag the white dot (or hold %1 while dragging) to move it in any direction.</source>
         <translation>背景をドラッグ: 軌道回転 (Shift + ドラッグ: 平行移動)。右ドラッグでも平行移動します。ホイール: ズーム。移動・回転・拡大縮小 (W, E, R) を選び、矢印・リング・四角形をドラッグします。オブジェクトをドラッグすると床の上を滑らせ、Shift + ドラッグで持ち上げ、白い点をドラッグする (または %1 を押しながらドラッグする) と好きな方向に動かせます。</translation>
-    </message>
-    <message>
-        <source>Drag the background: orbit (Shift-drag: pan). Right-drag also pans. Wheel: zoom. Pick Move, Rotate or Scale (W, E, R) and drag the arrows, rings or squares; Shift-drag an object to lift it.</source>
-        <translation type="vanished">背景をドラッグ: 回転 (Shift + ドラッグ: 移動)。右ドラッグでも移動します。ホイール: ズーム。移動・回転・拡大縮小 (W, E, R) を選び、矢印・リング・四角をドラッグします。オブジェクトを Shift + ドラッグすると持ち上げます。</translation>
     </message>
     <message>
         <location filename="../scene_builder_common.h" line="86"/>
@@ -7328,12 +7354,12 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1147"/>
+        <location filename="../mainwindow_widgets.h" line="1219"/>
         <source>No renders yet</source>
         <translation>レンダリング結果はまだありません</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1155"/>
+        <location filename="../mainwindow_widgets.h" line="1227"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>
