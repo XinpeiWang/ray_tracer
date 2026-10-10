@@ -5884,13 +5884,13 @@ Output:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="552"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="607"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>等待中</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="570"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="625"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 秒</translation>
@@ -6267,7 +6267,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="446"/>
-        <location filename="../scene_builder_widget.cpp" line="605"/>
+        <location filename="../scene_builder_widget.cpp" line="606"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>网格 (*.ply *.obj)</translation>
     </message>
@@ -6485,9 +6485,55 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>名称：</translation>
     </message>
     <message>
+        <location filename="../scene_builder_models.cpp" line="67"/>
+        <source>Added %1 (%2 triangles). It stands on the floor, about 1.6 units across; use Scale to resize it.</source>
+        <translation>已添加 %1（%2 个三角形）。它立在地面上，宽约 1.6 个单位；可用“缩放”调整大小。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="75"/>
+        <location filename="../scene_builder_models.cpp" line="133"/>
+        <source>Model library</source>
+        <translation>模型库</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="80"/>
+        <source>Search by name</source>
+        <translation>按名称搜索</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="103"/>
+        <source>%1
+About %2 thousand triangles
+From: %3</source>
+        <translation>%1
+约 %2 千个三角形
+来源：%3</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="111"/>
+        <source>No models were found next to the app (a models folder). Use &quot;Choose another file...&quot; to add any .obj or .ply file.</source>
+        <translation>在应用旁边没有找到模型（models 文件夹）。可用“选择其他文件...”添加任意 .obj 或 .ply 文件。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="113"/>
+        <source>%1 models. A model is added standing on the floor, about 1.6 units across; use Scale to resize it. Each model keeps the licence of its source (docs/MODELS.md): check it before you publish pictures or scenes made with one.</source>
+        <translation>%1 个模型。模型会立在地面上添加，宽约 1.6 个单位；可用“缩放”调整大小。每个模型沿用其来源的许可（docs/MODELS.md）：用它制作的图片或场景在发布前请先查看。</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="118"/>
         <location filename="../scene_builder_widget.cpp" line="179"/>
         <source>Add</source>
         <translation>添加</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="119"/>
+        <source>Choose another file...</source>
+        <translation>选择其他文件...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="133"/>
+        <source>That model could not be read.</source>
+        <translation>无法读取该模型。</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="182"/>
@@ -6506,26 +6552,31 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="188"/>
+        <source>Model library...</source>
+        <translation>模型库...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="189"/>
         <source>Object from a photo...</source>
         <translation>由照片生成物体...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Light panel (emitting quad)</source>
         <translation>灯板（发光四边形）</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="198"/>
+        <location filename="../scene_builder_widget.cpp" line="199"/>
         <source>Lights</source>
         <translation>光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="202"/>
+        <location filename="../scene_builder_widget.cpp" line="203"/>
         <source>Duplicate</source>
         <translation>复制</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="203"/>
+        <location filename="../scene_builder_widget.cpp" line="204"/>
         <source>Delete</source>
         <translation>删除</translation>
     </message>
@@ -6580,7 +6631,7 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>从任意角度查看场景，并在 3D 中移动物体</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="353"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="408"/>
         <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Snap to grid</source>
         <translation>吸附到网格</translation>
@@ -6596,53 +6647,53 @@ Add shapes and lights with the Add button. Drag them in the layout view, then pr
         <translation>显示全部</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="265"/>
+        <location filename="../scene_builder_widget.cpp" line="266"/>
         <source>Draft</source>
         <translation>草稿</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="266"/>
+        <location filename="../scene_builder_widget.cpp" line="267"/>
         <source>Good</source>
         <translation>良好</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="267"/>
+        <location filename="../scene_builder_widget.cpp" line="268"/>
         <source>Best</source>
         <translation>最佳</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="270"/>
+        <location filename="../scene_builder_widget.cpp" line="271"/>
         <source>Use the GPU</source>
         <translation>使用 GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="271"/>
+        <location filename="../scene_builder_widget.cpp" line="272"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>在显卡上渲染（Windows 上为 NVIDIA OptiX，Mac 上为 Metal）。大幅面图像快得多，需要受支持的 GPU。</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="157"/>
-        <location filename="../scene_builder_widget.cpp" line="272"/>
+        <location filename="../scene_builder_widget.cpp" line="273"/>
         <source>Preview</source>
         <translation>预览</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="274"/>
+        <location filename="../scene_builder_widget.cpp" line="275"/>
         <source>Render picture...</source>
         <translation>渲染图像...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="276"/>
+        <location filename="../scene_builder_widget.cpp" line="277"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>按“相机”中设置的图像尺寸和采样数渲染，并将图像保存为 PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="278"/>
+        <location filename="../scene_builder_widget.cpp" line="279"/>
         <source>Quality:</source>
         <translation>质量：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="291"/>
+        <location filename="../scene_builder_widget.cpp" line="292"/>
         <source>Press Preview to see the scene.</source>
         <translation>点击“预览”查看场景。</translation>
     </message>
@@ -6738,12 +6789,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 它现在已在场景列表中（“设置”标签页，我的场景）。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="680"/>
+        <location filename="../scene_builder_widget.cpp" line="681"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 个物体，%4 个光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="605"/>
+        <location filename="../scene_builder_widget.cpp" line="606"/>
         <source>Choose a mesh</source>
         <translation>选择网格</translation>
     </message>
@@ -6768,7 +6819,7 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>重做 (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="269"/>
+        <location filename="../scene_builder_widget.cpp" line="270"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>草稿：宽 480 像素，16 个采样。良好：宽 720，64 个采样。最佳：宽 960，256 个采样。</translation>
     </message>
@@ -6778,32 +6829,32 @@ It is in the scene list now (Settings tab, My Scenes).</source>
         <translation>已添加到场景列表</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="474"/>
+        <location filename="../scene_builder_widget.cpp" line="475"/>
         <source>Camera and image</source>
         <translation>相机与画面</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="495"/>
+        <location filename="../scene_builder_widget.cpp" line="496"/>
         <source>, light</source>
         <translation>，光源</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="674"/>
+        <location filename="../scene_builder_widget.cpp" line="675"/>
         <source>not saved yet</source>
         <translation>尚未保存</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="708"/>
+        <location filename="../scene_builder_widget.cpp" line="709"/>
         <source>No problems found.</source>
         <translation>未发现问题。</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="714"/>
+        <location filename="../scene_builder_widget.cpp" line="715"/>
         <source>Fix this:</source>
         <translation>请修复：</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="714"/>
+        <location filename="../scene_builder_widget.cpp" line="715"/>
         <source>Note:</source>
         <translation>注意：</translation>
     </message>

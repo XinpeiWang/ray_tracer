@@ -5929,13 +5929,13 @@ Salida:
 <context>
     <name>RenderQueueModel</name>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="552"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="607"/>
         <location filename="../render_queue_model.cpp" line="114"/>
         <source>Waiting</source>
         <translation>En espera</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="570"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="625"/>
         <location filename="../render_queue_model.cpp" line="136"/>
         <source>%1 s</source>
         <translation>%1 s</translation>
@@ -6312,7 +6312,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_inspector.cpp" line="446"/>
-        <location filename="../scene_builder_widget.cpp" line="605"/>
+        <location filename="../scene_builder_widget.cpp" line="606"/>
         <source>Meshes (*.ply *.obj)</source>
         <translation>Mallas (*.ply *.obj)</translation>
     </message>
@@ -6530,9 +6530,55 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Nombre:</translation>
     </message>
     <message>
+        <location filename="../scene_builder_models.cpp" line="67"/>
+        <source>Added %1 (%2 triangles). It stands on the floor, about 1.6 units across; use Scale to resize it.</source>
+        <translation>Se añadió %1 (%2 triángulos). Está sobre el suelo y mide unas 1,6 unidades; usa Escala para cambiar su tamaño.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="75"/>
+        <location filename="../scene_builder_models.cpp" line="133"/>
+        <source>Model library</source>
+        <translation>Biblioteca de modelos</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="80"/>
+        <source>Search by name</source>
+        <translation>Buscar por nombre</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="103"/>
+        <source>%1
+About %2 thousand triangles
+From: %3</source>
+        <translation>%1
+Unos %2 mil triángulos
+Procedencia: %3</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="111"/>
+        <source>No models were found next to the app (a models folder). Use &quot;Choose another file...&quot; to add any .obj or .ply file.</source>
+        <translation>No se encontraron modelos junto a la aplicación (una carpeta models). Usa «Elegir otro archivo...» para añadir cualquier archivo .obj o .ply.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="113"/>
+        <source>%1 models. A model is added standing on the floor, about 1.6 units across; use Scale to resize it. Each model keeps the licence of its source (docs/MODELS.md): check it before you publish pictures or scenes made with one.</source>
+        <translation>%1 modelos. Un modelo se añade sobre el suelo y mide unas 1,6 unidades; usa Escala para cambiar su tamaño. Cada modelo conserva la licencia de su origen (docs/MODELS.md): consúltala antes de publicar imágenes o escenas hechas con uno.</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="118"/>
         <location filename="../scene_builder_widget.cpp" line="179"/>
         <source>Add</source>
         <translation>Añadir</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="119"/>
+        <source>Choose another file...</source>
+        <translation>Elegir otro archivo...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_models.cpp" line="133"/>
+        <source>That model could not be read.</source>
+        <translation>No se pudo leer ese modelo.</translation>
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="182"/>
@@ -6551,26 +6597,31 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
     </message>
     <message>
         <location filename="../scene_builder_widget.cpp" line="188"/>
+        <source>Model library...</source>
+        <translation>Biblioteca de modelos...</translation>
+    </message>
+    <message>
+        <location filename="../scene_builder_widget.cpp" line="189"/>
         <source>Object from a photo...</source>
         <translation>Objeto a partir de una foto...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="189"/>
+        <location filename="../scene_builder_widget.cpp" line="190"/>
         <source>Light panel (emitting quad)</source>
         <translation>Panel de luz (cuadrilátero emisor)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="198"/>
+        <location filename="../scene_builder_widget.cpp" line="199"/>
         <source>Lights</source>
         <translation>Luces</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="202"/>
+        <location filename="../scene_builder_widget.cpp" line="203"/>
         <source>Duplicate</source>
         <translation>Duplicar</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="203"/>
+        <location filename="../scene_builder_widget.cpp" line="204"/>
         <source>Delete</source>
         <translation>Eliminar</translation>
     </message>
@@ -6625,7 +6676,7 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Mira la escena desde cualquier lado y mueve las cosas en 3D</translation>
     </message>
     <message>
-        <location filename="../mainwindow_selftest_builder3d.cpp" line="353"/>
+        <location filename="../mainwindow_selftest_builder3d.cpp" line="408"/>
         <location filename="../scene_builder_views.cpp" line="94"/>
         <source>Snap to grid</source>
         <translation>Ajustar a la cuadrícula</translation>
@@ -6641,53 +6692,53 @@ Añade formas y luces con el botón Añadir. Arrástralas en la vista de disposi
         <translation>Encuadrar todo</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="265"/>
+        <location filename="../scene_builder_widget.cpp" line="266"/>
         <source>Draft</source>
         <translation>Borrador</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="266"/>
+        <location filename="../scene_builder_widget.cpp" line="267"/>
         <source>Good</source>
         <translation>Buena</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="267"/>
+        <location filename="../scene_builder_widget.cpp" line="268"/>
         <source>Best</source>
         <translation>Óptima</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="270"/>
+        <location filename="../scene_builder_widget.cpp" line="271"/>
         <source>Use the GPU</source>
         <translation>Usar la GPU</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="271"/>
+        <location filename="../scene_builder_widget.cpp" line="272"/>
         <source>Render on the graphics card (NVIDIA OptiX on Windows, Metal on a Mac). Much faster for large pictures; needs a supported GPU.</source>
         <translation>Renderizar en la tarjeta gráfica (NVIDIA OptiX en Windows, Metal en Mac). Mucho más rápido para imágenes grandes; requiere una GPU compatible.</translation>
     </message>
     <message>
         <location filename="../scene_builder_render.cpp" line="157"/>
-        <location filename="../scene_builder_widget.cpp" line="272"/>
+        <location filename="../scene_builder_widget.cpp" line="273"/>
         <source>Preview</source>
         <translation>Vista previa</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="274"/>
+        <location filename="../scene_builder_widget.cpp" line="275"/>
         <source>Render picture...</source>
         <translation>Renderizar imagen...</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="276"/>
+        <location filename="../scene_builder_widget.cpp" line="277"/>
         <source>Render at the image size and sample count set under Camera, and save the picture as a PNG</source>
         <translation>Renderizar con el tamaño de imagen y el número de muestras fijados en Cámara, y guardar la imagen como PNG</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="278"/>
+        <location filename="../scene_builder_widget.cpp" line="279"/>
         <source>Quality:</source>
         <translation>Calidad:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="291"/>
+        <location filename="../scene_builder_widget.cpp" line="292"/>
         <source>Press Preview to see the scene.</source>
         <translation>Pulsa Vista previa para ver la escena.</translation>
     </message>
@@ -6783,12 +6834,12 @@ It is in the scene list now (Settings tab, My Scenes).</source>
 Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="680"/>
+        <location filename="../scene_builder_widget.cpp" line="681"/>
         <source>(%1)%2  |  %3 objects, %4 lights</source>
         <translation>(%1)%2  |  %3 objetos, %4 luces</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="605"/>
+        <location filename="../scene_builder_widget.cpp" line="606"/>
         <source>Choose a mesh</source>
         <translation>Elegir una malla</translation>
     </message>
@@ -6813,7 +6864,7 @@ Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</transla
         <translation>Rehacer (%1)</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="269"/>
+        <location filename="../scene_builder_widget.cpp" line="270"/>
         <source>Draft: 480 pixels wide, 16 samples. Good: 720 wide, 64 samples. Best: 960 wide, 256 samples.</source>
         <translation>Borrador: 480 píxeles de ancho, 16 muestras. Buena: 720 de ancho, 64 muestras. Óptima: 960 de ancho, 256 muestras.</translation>
     </message>
@@ -6823,32 +6874,32 @@ Ya está en la lista de escenas (pestaña Configuración, Mis escenas).</transla
         <translation>Añadida a la lista de escenas</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="474"/>
+        <location filename="../scene_builder_widget.cpp" line="475"/>
         <source>Camera and image</source>
         <translation>Cámara e imagen</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="495"/>
+        <location filename="../scene_builder_widget.cpp" line="496"/>
         <source>, light</source>
         <translation>, luz</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="674"/>
+        <location filename="../scene_builder_widget.cpp" line="675"/>
         <source>not saved yet</source>
         <translation>sin guardar todavía</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="708"/>
+        <location filename="../scene_builder_widget.cpp" line="709"/>
         <source>No problems found.</source>
         <translation>No se encontraron problemas.</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="714"/>
+        <location filename="../scene_builder_widget.cpp" line="715"/>
         <source>Fix this:</source>
         <translation>Corrige esto:</translation>
     </message>
     <message>
-        <location filename="../scene_builder_widget.cpp" line="714"/>
+        <location filename="../scene_builder_widget.cpp" line="715"/>
         <source>Note:</source>
         <translation>Nota:</translation>
     </message>

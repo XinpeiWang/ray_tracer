@@ -12,12 +12,15 @@
 #include "render_queue_model.h"
 #include "denoiser_installer.h"
 #include "../src/shared/oidn_runtime.h"
+#include "../src/shared/mesh_preview.h"
 #include <random>
 #include "scene_metadata_client.h"
 #include "scene_builder_widget.h"
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QDialog>
+#include <QLineEdit>
 #include <QKeyEvent>
 #include <QListWidget>
 #include <QRegularExpression>
@@ -268,6 +271,58 @@ void MainWindow::selfTestShapes(SceneBuilderWidget *sb, const std::function<void
 		check(allUndone && sb->document().objects.size() == before, "undo removes them one by one");
 		for (size_t n = 0; n < added; ++n) sb->redo();
 		for (size_t n = 0; n < added; ++n) sb->undo();
+	}
+	// The model library: a bundled model is added at about 1.6 units across, standing on the floor under the drop point, as one undo step; an unknown one adds nothing.
+	{
+		const size_t before = sb->document().objects.size();
+		check(!sb->addLibraryModel("no-such-model") && sb->document().objects.size() == before, "an unknown library model adds nothing");
+		check(sb->addLibraryModel("spot") && sb->document().objects.size() == before + 1, "the model library adds Spot (one object)");
+		const scene_doc::Object &m = sb->document().objects.back();
+		const mesh_preview::MeshPreview box = mesh_preview::load(m.meshFile, 1);
+		check(m.shape == scene_doc::ShapeKind::Mesh && box.ok, "the added model is a readable mesh");
+		if (box.ok) {
+			const double largest = std::max({box.hi[0] - box.lo[0], box.hi[1] - box.lo[1], box.hi[2] - box.lo[2]}) * m.meshScale;
+			check(std::abs(largest - 1.6) < 0.01, QString("it is about 1.6 units across (%1)").arg(largest));
+			check(std::abs(m.position.y + box.lo[1] * m.meshScale) < 1e-6, "its lowest point stands on the floor");
+			const scene_doc::Float3 drop = sb->dropPointForTest();
+			check(std::abs(m.position.x + 0.5 * (box.lo[0] + box.hi[0]) * m.meshScale - drop.x) < 1e-6, "it is centred on the drop point");
+		}
+		check(sb->problemsText().isEmpty(), "the model gives no problems or notes");
+		check(sb->undo() && sb->document().objects.size() == before, "adding a model is one undo step");
+		sb->redo();
+		sb->undo();
+	}
+	// The model library dialog opens (it is modal, so a timer inspects it from inside its event loop), lists the bundled models with their pictures, narrows
+	// by the search text, and closes. RT_GUI_SELFTEST_MODEL_DIALOG_PNG=<file> also saves a picture of it.
+	{
+		bool inspected = false;
+		QTimer::singleShot(300, sb, [&inspected, check]() {
+			QDialog *d = qobject_cast<QDialog *>(QApplication::activeModalWidget());
+			check(d != nullptr && d->windowTitle() == QStringLiteral("Model library"), "Add > Model library... opens the library dialog");
+			if (d) {
+				QListWidget *list = d->findChild<QListWidget *>();
+				QLineEdit *filter = d->findChild<QLineEdit *>();
+				check(list && list->count() >= 3, QString("the library lists the bundled models (%1)").arg(list ? list->count() : 0));
+				if (list) {
+					int withPicture = 0;
+					for (int i = 0; i < list->count(); ++i) withPicture += list->item(i)->icon().isNull() ? 0 : 1;
+					check(withPicture == list->count(), "every listed model has a thumbnail");
+				}
+				if (list && filter) {
+					filter->setText(QStringLiteral("teapot"));
+					int shown = 0;
+					for (int i = 0; i < list->count(); ++i) shown += list->item(i)->isHidden() ? 0 : 1;
+					check(shown == 1, "searching for \"teapot\" leaves one model");
+					filter->clear();
+				}
+				const QString png = qEnvironmentVariable("RT_GUI_SELFTEST_MODEL_DIALOG_PNG");
+				if (!png.isEmpty()) d->grab().save(png);
+				d->reject();
+			}
+			inspected = true;
+		});
+		sb->showModelLibrary();
+		check(inspected, "the library dialog closed again");
 	}
 	// Sun & sky: ticking it in the sky light's properties makes a sky picture (a real file) and a Sun that follows the settings; changing the sun height through the
 	// real spin box moves both; one undo takes it back; unticking drops the picture.
