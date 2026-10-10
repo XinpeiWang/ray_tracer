@@ -55,6 +55,9 @@ everything back. Moves are for looking at a different arrangement: they are not 
   nearest a surface point. The library's session applies the offsets in `MetalPocApp::pbrtSceneEdit`, after the scene frame (scale, centre) is fixed, so a move
   never rescales or recentres the picture, then rebuilds: a move costs one scene build (about 0.12 s for the Cornell box, 0.25 s for the 69k-triangle bunny, more for
   big scenes), so a drag shows a few updates a second there rather than every mouse event.
+  Measured on an M2 (`metal_live_bench`, a floor, a ball and one mesh): 99k triangles 0.28 s, 250k triangles 0.20 s, 269k triangles 0.25 s per rebuild, so a drag of a quarter-million-triangle
+  mesh still updates 4 to 5 times a second. About 85 ms of that is `pbrt_load::loadFile` reading the mesh again (the loader is not cached for Live Preview, unlike OptiX's); caching it
+  would save a third of the time on such a scene and has not been done. Scenes of millions of triangles (Sponza, Bistro) were not measured: they are not bundled.
 * A click is turned into an object by the first-hit world position of the pixel under the cursor (already returned for reprojection), which
   `realtime_pick_object` matches to the nearest object surface within half a percent of the scene size. The GUI (`qt_gui/live_object_editor.cpp`) keeps the
   camera that drew the picture and does the drag arithmetic itself (`qt_gui/object_drag_math.h`, unit-tested), so the object follows the cursor exactly.
