@@ -132,6 +132,7 @@ HEADERS += \
 	scene_packs.h \
 	realtime_preview_session.h \
 	live_object_editor.h \
+	live_object_pick.h \
 	object_drag_math.h \
 	cross_abi_library.h \
 	error_handler.h \

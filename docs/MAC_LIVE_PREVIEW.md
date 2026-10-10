@@ -27,6 +27,10 @@ Under the picture, **Move objects** switches the mouse to object mode: a press o
 through the point you grabbed), a drag with **Shift** held lifts and lowers it, and a press on empty space orbits the camera as before. **Reset objects** puts
 everything back. Moves are for looking at a different arrangement: they are not saved, and each new Live Preview starts from the scene file again.
 
+* In object mode a thin white box shows round the object under the cursor, so you see what a click would grab. It is asked of the worker without waiting
+  (`requestHover` / `hoverPicked`, at most one pick every 70 ms), so a fast mouse never stalls the picture.
+* A move only marks the library's session stale: it keeps describing the picture on screen until the next frame rebuilds it, so a click in that gap is picked against
+  the scene the picture shows (and gets the box where the move will put it) instead of missing.
 * With an object selected (its yellow box shows), **W/S, A/D and Up/Down move the object** instead of the camera: forward, back, left and right as the picture shows
   them (forward is flattened onto the floor), up and down straight up and down, by the same step as the camera's free fly (`object_drag_math.h` `keyMove`).
   The selection survives camera moves: orbit, zoom or fly and the box follows the object (the GUI redraws it every frame from the camera basis of the

@@ -108,6 +108,13 @@ int main(int argc, char** argv) {
 
     const double dx = 0.8 * (hi[0] - lo[0]), dz = 0.8 * (hi[2] - lo[2]);   // sideways and back by most of its size
     if (!metal_live_set_object_offset(gScene.c_str(), target, dx, 0.0, dz)) return fail("set_object_offset refused");
+    // Between the move and the next frame the picture on screen is still the old one: a click on it finds the object where the picture shows it, and reports the
+    // box where the move will put it.
+    {
+        double lo3[3], hi3[3], off3[3];
+        if (metal_live_pick_object(gScene.c_str(), hit[0], hit[1], hit[2], lo3, hi3, off3, nullptr, 0) != target) return fail("a click right after a move did not find the object in the picture on screen");
+        if (std::fabs(lo3[0] - (lo[0] + dx)) > 1e-4 * (1 + std::fabs(dx)) || std::fabs(off3[0] - dx) > 1e-9) return fail("the pick right after a move did not report the pending position");
+    }
     Frame moved;
     if (!render(moved)) { fprintf(stderr, "%s\n", metal_live_last_error()); return fail("the frame after the move failed"); }
     dump(first, "first");
