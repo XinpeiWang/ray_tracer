@@ -240,7 +240,21 @@ inline bool flattenBilinearMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 	// through to the generic "shape not supported" warning below,
 	// same as every other shape kind this file does not build.
 	const pbrt_scene::Param *P = shape.params.find("P");
-	if (w.bilinearPatches && P && P->numbers.size() == 12) {
+	// "integer indices" with exactly four entries is still one patch, its corners p00 p10 p01 p11 picked from the four points in that order (found by
+	// scripts/consistency_sweep.py: a floor written that way was read in the order the points were listed, a twisted patch). More indices mean
+	// several patches, which fall through to the warning below.
+	const pbrt_scene::Param *indices = shape.params.find("indices");
+	int corner[4] = {0, 1, 2, 3};
+	bool singlePatch = true;
+	if (indices) {
+		singlePatch = indices->numbers.size() == 4;
+		for (std::size_t i = 0; singlePatch && i < 4; ++i) {
+			const double v = indices->numbers[i];
+			singlePatch = v >= 0.0 && v < 4.0 && v == static_cast<int>(v);
+			if (singlePatch) corner[i] = static_cast<int>(v);
+		}
+	}
+	if (w.bilinearPatches && P && P->numbers.size() == 12 && singlePatch) {
 		// OBJECT-space corners first (needed either way: the world
 		// bake below always runs, and the animated case just below
 		// needs these unbaked) - the ReverseOrientation swap is a
@@ -249,9 +263,9 @@ inline bool flattenBilinearMeshShape(const pbrt_scene::Scene &scene, FlatScene &
 		// bake) gives the identical result as applying it after.
 		double objP[4][3];
 		for (int i = 0; i < 4; ++i) {
-			objP[i][0] = P->numbers[i * 3 + 0];
-			objP[i][1] = P->numbers[i * 3 + 1];
-			objP[i][2] = P->numbers[i * 3 + 2];
+			objP[i][0] = P->numbers[corner[i] * 3 + 0];
+			objP[i][1] = P->numbers[corner[i] * 3 + 1];
+			objP[i][2] = P->numbers[corner[i] * 3 + 2];
 		}
 		// pbrt-v4 ReverseOrientation, same reverseOrientation XOR
 		// transformSwapsHandedness rule as the trianglemesh branch

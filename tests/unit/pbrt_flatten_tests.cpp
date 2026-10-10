@@ -1892,6 +1892,33 @@ TEST(FlattenTest, BilinearmeshWithoutActiveTransformHasNoMotion) {
 	EXPECT_FALSE(s.bilinearPatches[0].gpuOnlyStaticFallback);
 }
 
+TEST(FlattenTest, BilinearmeshWithFourIndicesPicksItsCornersByThem) {
+	// "integer indices" naming the four points is still one patch: p00 p10 p01 p11 are taken from the points in the order of the indices (a floor written
+	// 0 1 3 2 from a quad listed round its edge was read twisted when the indices were ignored).
+	const FlatScene s = flattenSource(
+		"Shape \"bilinearmesh\" \"integer indices\" [ 0 1 3 2 ] \"point3 P\" [ -1 -1 0  1 -1 0  1 1 0  -1 1 0 ]\n");
+	ASSERT_EQ(s.bilinearPatches.size(), 1u);
+	EXPECT_DOUBLE_EQ(s.bilinearPatches[0].p[2][0], -1.0);   // p01 = point 3
+	EXPECT_DOUBLE_EQ(s.bilinearPatches[0].p[2][1], 1.0);
+	EXPECT_DOUBLE_EQ(s.bilinearPatches[0].p[3][0], 1.0);    // p11 = point 2
+	EXPECT_DOUBLE_EQ(s.bilinearPatches[0].p[3][1], 1.0);
+	// more indices than one patch has are several patches, which this loader does not build
+	const FlatScene t = flattenSource(
+		"Shape \"bilinearmesh\" \"integer indices\" [ 0 1 3 2  0 1 3 2 ] \"point3 P\" [ -1 -1 0  1 -1 0  1 1 0  -1 1 0 ]\n");
+	EXPECT_TRUE(t.bilinearPatches.empty());
+}
+
+TEST(FlattenMaterialTest, MixTextureOfPlainColoursLeavesTheirBlendAsTheFlatColour) {
+	// A backend with no mix texture draws the flat colour: (1 - amount) * tex1 + amount * tex2.
+	const FlatScene s = flattenSource(
+		"Texture \"t\" \"spectrum\" \"mix\" \"rgb tex1\" [ 1 0 0 ] \"rgb tex2\" [ 0 1 0 ] \"float amount\" [ 0.25 ]\n"
+		"Material \"diffuse\" \"texture reflectance\" [ \"t\" ]\n" + std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].color[0], 0.75, 1e-12);
+	EXPECT_NEAR(s.materials[0].color[1], 0.25, 1e-12);
+	EXPECT_NEAR(s.materials[0].color[2], 0.0, 1e-12);
+}
+
 TEST(FlattenTest, EmissiveBilinearmeshObjectMotionBlurFallsBackToStaticAndWarns) {
 	const FlatScene s = flattenSource(
 		"AttributeBegin\n"

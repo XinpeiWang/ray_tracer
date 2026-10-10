@@ -13,6 +13,7 @@
 #include "../../src/shared/gpu_scene_materials.h"   // reflectanceToConductorK
 #include "../../src/shared/bssrdf.h"   // BSSRDFTable, ComputeBeamDiffusionBSSRDF
 #include "../../src/shared/srgb_decode.h"
+#include "../../src/shared/gpu_scene_textures.h"   // applyImagemapEncoding
 #include "../../src/shared/measured_bxdf_loader.h"   // MeasuredBRDFData + GetMeasuredBRDFDataCached (the CPU renderer's own cache)
 #include "../../src/shared/portal_image_infinite_light.h"   // PortalImageInfiniteLightData: rectified image + sampling tables for portal[4]
 #include <cstring>
@@ -166,6 +167,7 @@ TriangleMaterial MetalPocApp::mapPbrtDiffuseMaterial(const pbrt_flatten::Materia
                 if (pbrt_load::loadFileNear(pbrtScenePath, imgFile, bytes) &&
                     pbrt_load::detail::decodeInfiniteLightImage(imgFile, bytes,
                         pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                    gpu_scene_textures::applyImagemapEncoding(pbrtDiffuseImagePixels, imgFile, m.textureGamma, m.textureInvert);
                     havePbrtDiffuseImage = true;
                     pbrtDiffuseImageFilename = imgFile;
                 } else {
@@ -246,6 +248,7 @@ TriangleMaterial MetalPocApp::mapPbrtDiffuseMaterial(const pbrt_flatten::Materia
             if (pbrt_load::loadFileNear(pbrtScenePath, m.textureFilename, bytes) &&
                 pbrt_load::detail::decodeInfiniteLightImage(m.textureFilename, bytes,
                     pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                gpu_scene_textures::applyImagemapEncoding(pbrtDiffuseImagePixels, m.textureFilename, m.textureGamma, m.textureInvert);
                 havePbrtDiffuseImage = true;
                 pbrtDiffuseImageFilename = m.textureFilename;
             } else {
@@ -548,6 +551,7 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
                         if (pbrt_load::loadFileNear(pbrtScenePath, m.textureFilename, bytes) &&
                             pbrt_load::detail::decodeInfiniteLightImage(m.textureFilename, bytes,
                                 pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                            gpu_scene_textures::applyImagemapEncoding(pbrtDiffuseImagePixels, m.textureFilename, m.textureGamma, m.textureInvert);
                             havePbrtDiffuseImage = true;
                             pbrtDiffuseImageFilename = m.textureFilename;
                         }
@@ -561,6 +565,7 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
                         if (pbrt_load::loadFileNear(pbrtScenePath, m.transmittanceTextureFilename, bytes) &&
                             pbrt_load::detail::decodeInfiniteLightImage(m.transmittanceTextureFilename, bytes,
                                 pbrtTransmitImagePixels, pbrtTransmitImageWidth, pbrtTransmitImageHeight)) {
+                            gpu_scene_textures::applyImagemapEncoding(pbrtTransmitImagePixels, m.transmittanceTextureFilename, m.transmittanceTextureOptions.gamma, m.transmittanceTextureOptions.invert);
                             havePbrtTransmitImage = true;
                             pbrtTransmitImageFilename = m.transmittanceTextureFilename;
                         }
@@ -604,6 +609,7 @@ TriangleMaterial MetalPocApp::mapPbrtMaterial(PbrtMaterialMapState& st, const pb
                     if (pbrt_load::loadFileNear(pbrtScenePath, m.textureFilename, bytes) &&
                         pbrt_load::detail::decodeInfiniteLightImage(m.textureFilename, bytes,
                             pbrtDiffuseImagePixels, pbrtDiffuseImageWidth, pbrtDiffuseImageHeight)) {
+                        gpu_scene_textures::applyImagemapEncoding(pbrtDiffuseImagePixels, m.textureFilename, m.textureGamma, m.textureInvert);
                         havePbrtDiffuseImage = true;
                         pbrtDiffuseImageFilename = m.textureFilename;
                     } else {
