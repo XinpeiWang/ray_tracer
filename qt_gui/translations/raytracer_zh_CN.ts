@@ -522,42 +522,67 @@
 <context>
     <name>LiveObjectEditor</name>
     <message>
-        <location filename="../live_object_editor.cpp" line="22"/>
+        <location filename="../live_object_editor.cpp" line="27"/>
         <source>Move objects</source>
         <translation>移动物体</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="24"/>
+        <location filename="../live_object_editor.cpp" line="29"/>
         <source>Click an object in the picture and drag it to move it. Hold Shift while dragging to lift or lower it. Drag on empty space to orbit as usual.</source>
         <translation>在画面中点击物体并拖动即可移动它。拖动时按住 Shift 可上下移动。在空白处拖动仍然是环绕相机。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="26"/>
+        <location filename="../live_object_editor.cpp" line="31"/>
         <source>Reset objects</source>
         <translation>重置物体</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="28"/>
+        <location filename="../live_object_editor.cpp" line="33"/>
         <source>Put every object back where the scene file puts it.</source>
         <translation>把所有物体放回场景文件指定的位置。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="54"/>
+        <location filename="../live_object_editor.cpp" line="34"/>
+        <source>Save arrangement</source>
+        <translation>保存布置</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="36"/>
+        <source>Save the scene with the objects where they are now as a new scene in the scene list (My Scenes). The original scene is not changed.</source>
+        <translation>把物体当前所在位置的场景保存为场景列表（我的场景）中的新场景。原场景不会改变。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="64"/>
         <source>Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.</source>
         <translation>点击物体并拖动（Shift：上下移动）。之后 W A S D 和上/下方向键也可以移动它。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="104"/>
+        <location filename="../live_object_editor.cpp" line="113"/>
         <source>Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.</source>
         <translation>已选中：%1。拖动可移动（Shift：上下移动）；W A S D 和上/下方向键也可以移动它。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="95"/>
+        <location filename="../live_object_editor.cpp" line="156"/>
+        <source>Cannot save: there is no scenes folder to write to.</source>
+        <translation>无法保存：没有可写入的场景文件夹。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="166"/>
+        <source>Not saved: %1.</source>
+        <translation>未保存：%1。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="169"/>
+        <source>Saved as %1 (%2). It is in the scene list under My Scenes.</source>
+        <translation>已保存为 %1（%2）。它在场景列表的“我的场景”中。</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="104"/>
         <source>Nothing movable there: drag to orbit.</source>
         <translation>那里没有可移动的物体：拖动以环绕相机。</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="139"/>
+        <location filename="../live_object_editor.cpp" line="148"/>
         <source>Every object is back where the scene file puts it.</source>
         <translation>所有物体已回到场景文件指定的位置。</translation>
     </message>
@@ -1404,7 +1429,7 @@ Use the pause/stop controls if a category turns out to take too long.</source>
         <translation>单张图像</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="152"/>
+        <location filename="../mainwindow_live_preview.cpp" line="158"/>
         <location filename="../mainwindow_slots.cpp" line="359"/>
         <location filename="../mainwindow_tabs_render_live.cpp" line="47"/>
         <source>Live Preview</source>
@@ -4186,6 +4211,7 @@ Off by default (genuinely random every render).</source>
         <translation>渲染选项</translation>
     </message>
     <message>
+        <location filename="../mainwindow_live_preview.cpp" line="142"/>
         <location filename="../mainwindow_tabs_render.cpp" line="129"/>
         <source>Saved, but the scene list could not list it until the program is restarted.</source>
         <translation>已保存，但在重启程序之前场景列表无法列出它。</translation>
@@ -4225,44 +4251,49 @@ Drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly</source>
 拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="148"/>
+        <location filename="../mainwindow_live_preview.cpp" line="143"/>
+        <source>Saved the arrangement as scene %1 (Settings tab, My Scenes).</source>
+        <translation>已将布置保存为场景 %1（设置选项卡，我的场景）。</translation>
+    </message>
+    <message>
+        <location filename="../mainwindow_live_preview.cpp" line="154"/>
         <source>Live Preview — %1</source>
         <translation>实时预览 — %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="153"/>
+        <location filename="../mainwindow_live_preview.cpp" line="159"/>
         <source>Interactive GPU preview - drag to orbit, scroll or +/- to zoom, WASD to move, Up/Down to fly, Left/Right to orbit</source>
         <translation>交互式 GPU 预览——拖动以环绕，滚轮或 +/- 缩放，WASD 移动，上/下飞行，左/右环绕</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="179"/>
+        <location filename="../mainwindow_live_preview.cpp" line="185"/>
         <source>Select a scene first</source>
         <translation>请先选择一个场景</translation>
     </message>
     <message>
         <location filename="../mainwindow_denoiser.cpp" line="38"/>
-        <location filename="../mainwindow_live_preview.cpp" line="257"/>
+        <location filename="../mainwindow_live_preview.cpp" line="263"/>
         <location filename="../mainwindow_photo_install.cpp" line="72"/>
         <source>Starting...</source>
         <translation>正在启动…</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="273"/>
+        <location filename="../mainwindow_live_preview.cpp" line="279"/>
         <source>Stopped</source>
         <translation>已停止</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="300"/>
+        <location filename="../mainwindow_live_preview.cpp" line="306"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>实时（已降噪，不进行累积）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="302"/>
+        <location filename="../mainwindow_live_preview.cpp" line="308"/>
         <source>%1 samples</source>
         <translation>%1 个样本</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="327"/>
+        <location filename="../mainwindow_live_preview.cpp" line="333"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[实时预览] 错误：%1</translation>
     </message>
@@ -4571,7 +4602,7 @@ Speed 0.5x renders twice as many frames to cover the same journey more slowly an
         <translation>选择字体</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1261"/>
+        <location filename="../mainwindow_style.cpp" line="1263"/>
         <source>The general-purpose way this app simulates light, used everywhere else in the program. At each bounce it both aims a ray straight at a light (so straightforward lighting cleans up quickly) and sends a ray off in a direction chosen to match how the surface reflects light, then blends the two results together so the image converges with less speckly noise than either approach alone. It&apos;s the well-tested default; start here unless you have a specific reason not to.
 
 The alternates below trade that general-purpose approach for a specific technique - simulating light as bouncing particles, tracing extra paths starting from the light itself, or a handful of plain reference/debug modes used mainly for testing. All of them run on the CPU only except one (SPPM), and none can be combined with Generate Video mode. The Sampler/Spectral/Exposure/Tonemap/Stats settings above only affect this default Path Tracer.</source>
@@ -4580,7 +4611,7 @@ The alternates below trade that general-purpose approach for a specific techniqu
 下方的备选方式放弃了这种通用方式，换取某种特定技术——把光模拟成弹跳的粒子、从光源本身出发追踪额外的光路，或是几种主要用于测试的简单参考/调试模式。除了 SPPM 之外，它们都只能在 CPU 上运行，也都不能与“生成视频”模式同时使用。上方的采样器/光谱/曝光/色调映射/统计信息设置，只对这个默认的路径追踪器有效。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1279"/>
+        <location filename="../mainwindow_style.cpp" line="1281"/>
         <source>Simulates light as a spray of particles that bounce around the scene and settle near the camera. It&apos;s especially good at rendering the bright, focused patterns of light you see through glass or in water (like the shimmer at the bottom of a pool) - scenes ordinary path tracing has a hard time cleaning up.
 
 CPU: confirmed to work correctly on the Cornell Rough Glass scene; other scenes haven&apos;t been checked and only support matte surfaces plus perfectly mirror-like or glass-like materials.
@@ -4593,7 +4624,7 @@ CPU：已确认在“康奈尔粗糙玻璃”场景上能正确工作；其他�
 GPU：只支持部分经过逐场景验证的材质——哑光表面和普通光源，以及粗糙电介质、金属、电介质、导体、粗糙金属和漫透射这几种材质类型（并且只支持有实际大小或形状的光源，不支持点光源或天空光）。使用其他材质的场景会报错——请改用该模式的 CPU 版本。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1298"/>
+        <location filename="../mainwindow_style.cpp" line="1300"/>
         <source>Builds partial light paths starting from both the camera and the light source, then connects every pair of them together. This can handle some tricky lighting setups - like light squeezing through a narrow gap - better than tracing from the camera alone.
 
 CPU only. Only works with lights that have a physical size or shape (point lights and a sky/environment light aren&apos;t supported yet). Confirmed to work correctly on the Cornell Box scene only; other scenes haven&apos;t been checked.</source>
@@ -4602,7 +4633,7 @@ CPU only. Only works with lights that have a physical size or shape (point light
 仅限 CPU。只支持有实际大小或形状的光源（尚不支持点光源和天空/环境光）。仅确认在康奈尔盒场景上能正确工作；其他场景尚未验证。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1309"/>
+        <location filename="../mainwindow_style.cpp" line="1311"/>
         <source>Builds on the same path-connecting approach as Bidirectional Path Tracing above, but once it finds a light path that actually contributes, it keeps taking small random steps nearby to find more paths like it. Useful for scenes where most of the light arrives through just a few hard-to-find routes.
 
 CPU only. Same lights-must-have-a-physical-size-or-shape limitation and single-scene (Cornell Box) verification as Bidirectional Path Tracing above.</source>
@@ -4611,7 +4642,7 @@ CPU only. Same lights-must-have-a-physical-size-or-shape limitation and single-s
 仅限 CPU。与上方“双向路径追踪”一样，只支持有实际大小或形状的光源，且仅在康奈尔盒这一个场景上完成过验证。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1320"/>
+        <location filename="../mainwindow_style.cpp" line="1322"/>
         <source>A bare-bones renderer that bounces rays off surfaces in completely random directions, without any of the shortcuts the default Path Tracer uses to clean up noise faster. It&apos;s simpler, but the image stays grainy for much longer - useful mainly as a trustworthy reference to double-check that other modes are producing correct results.
 
 CPU only.</source>
@@ -4620,7 +4651,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1329"/>
+        <location filename="../mainwindow_style.cpp" line="1331"/>
         <source>A visualization/debug mode rather than a finished picture - it shows how enclosed or exposed each point on a surface is based on nearby objects blocking it, similar to the soft shadows you see in the corners of a room. It ignores material colors and any bounced light entirely.
 
 CPU only.</source>
@@ -4629,7 +4660,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1337"/>
+        <location filename="../mainwindow_style.cpp" line="1339"/>
         <source>A straightforward reference path tracer with two optional shortcuts, both on by default (see the toggles below): aiming some rays directly at lights to clean up noise faster, and biasing bounce directions toward the angles that matter most for how the surface reflects light.
 
 CPU only. When &quot;aim at lights&quot; is on, it only works with lights that have a physical size or shape - the same limitation as Bidirectional Path Tracing and Metropolis Light Transport above.</source>
@@ -4638,7 +4669,7 @@ CPU only. When &quot;aim at lights&quot; is on, it only works with lights that h
 仅限 CPU。当“瞄准光源”开启时，只支持有实际大小或形状的光源——这与上方“双向路径追踪”和“Metropolis 光传输”的限制相同。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1348"/>
+        <location filename="../mainwindow_style.cpp" line="1350"/>
         <source>The simplest mode for rendering see-through volumes like smoke or fog - it steps through empty space until it randomly hits something. It doesn&apos;t aim rays at lights, doesn&apos;t do any of the noise-cleanup blending the default Path Tracer uses, and doesn&apos;t handle solid surfaces at all.
 
 This app doesn&apos;t currently have any smoke/fog to render with it, so on ordinary solid-object scenes it mostly produces a black image, except where a camera ray happens to look straight at a light source - that matches the underlying renderer&apos;s normal behavior when there&apos;s nothing to render.
@@ -4651,7 +4682,7 @@ CPU only.</source>
 仅限 CPU。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1361"/>
+        <location filename="../mainwindow_style.cpp" line="1363"/>
         <source>Works backwards compared to every other mode here: instead of starting each ray at the camera, it starts at a light source and traces outward, adding its contribution to the image whenever a path happens to connect back to the camera.
 
 CPU only. Only works with lights that have a physical size or shape.</source>
@@ -4660,158 +4691,158 @@ CPU only. Only works with lights that have a physical size or shape.</source>
 仅限 CPU。只支持有实际大小或形状的光源。</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1382"/>
+        <location filename="../mainwindow_style.cpp" line="1384"/>
         <source>Denoiser: on (blend %1)</source>
         <translation>降噪器：开启（混合 %1）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1383"/>
+        <location filename="../mainwindow_style.cpp" line="1385"/>
         <source>Denoiser: on</source>
         <translation>降噪器: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1385"/>
+        <location filename="../mainwindow_style.cpp" line="1387"/>
         <source>Stats: on</source>
         <translation>统计信息: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1386"/>
+        <location filename="../mainwindow_style.cpp" line="1388"/>
         <source>OptiX validation: on</source>
         <translation>OptiX 验证: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1387"/>
+        <location filename="../mainwindow_style.cpp" line="1389"/>
         <source>Exposure: %1</source>
         <translation>曝光: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1393"/>
+        <location filename="../mainwindow_style.cpp" line="1395"/>
         <source>Sampler: %1</source>
         <translation>采样器: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1394"/>
+        <location filename="../mainwindow_style.cpp" line="1396"/>
         <source>Light Sampler: %1</source>
         <translation>光源采样器: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1395"/>
+        <location filename="../mainwindow_style.cpp" line="1397"/>
         <source>Accelerator: %1</source>
         <translation>加速结构：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1396"/>
+        <location filename="../mainwindow_style.cpp" line="1398"/>
         <source>Split method: %1</source>
         <translation>分割方法：%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1399"/>
+        <location filename="../mainwindow_style.cpp" line="1401"/>
         <source>Adaptive sampling: on (threshold %1)</source>
         <translation>自适应采样：开启（阈值 %1）</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1400"/>
+        <location filename="../mainwindow_style.cpp" line="1402"/>
         <source>Adaptive sampling: on</source>
         <translation>自适应采样：开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1402"/>
+        <location filename="../mainwindow_style.cpp" line="1404"/>
         <source>Time limit: %1s</source>
         <translation>时间限制：%1 秒</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1403"/>
+        <location filename="../mainwindow_style.cpp" line="1405"/>
         <source>Spectral: on</source>
         <translation>光谱: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1404"/>
+        <location filename="../mainwindow_style.cpp" line="1406"/>
         <source>Tonemap: %1</source>
         <translation>色调映射: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1405"/>
+        <location filename="../mainwindow_style.cpp" line="1407"/>
         <source>Regularize: on</source>
         <translation>正则化: 开启</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1406"/>
+        <location filename="../mainwindow_style.cpp" line="1408"/>
         <source>Firefly clamp: %1</source>
         <translation>萤火虫噪点截断: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1408"/>
+        <location filename="../mainwindow_style.cpp" line="1410"/>
         <source>Crop: (%1,%2)-(%3,%4)</source>
         <translation>裁剪: (%1,%2)-(%3,%4)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1411"/>
+        <location filename="../mainwindow_style.cpp" line="1413"/>
         <source>Seed: %1</source>
         <translation>种子: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1422"/>
+        <location filename="../mainwindow_style.cpp" line="1424"/>
         <source>Iterations: %1</source>
         <translation>迭代次数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1423"/>
+        <location filename="../mainwindow_style.cpp" line="1425"/>
         <source>Photons/iter: %1</source>
         <translation>每次迭代光子数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1426"/>
-        <location filename="../mainwindow_style.cpp" line="1431"/>
+        <location filename="../mainwindow_style.cpp" line="1428"/>
+        <location filename="../mainwindow_style.cpp" line="1433"/>
         <source>Max depth: %1</source>
         <translation>最大深度: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1429"/>
+        <location filename="../mainwindow_style.cpp" line="1431"/>
         <source>Bootstrap: %1</source>
         <translation>引导采样数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1430"/>
+        <location filename="../mainwindow_style.cpp" line="1432"/>
         <source>Mutations: %1</source>
         <translation>变异次数: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1437"/>
+        <location filename="../mainwindow_style.cpp" line="1439"/>
         <source>Max distance: %1</source>
         <translation>最大距离: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1438"/>
+        <location filename="../mainwindow_style.cpp" line="1440"/>
         <source>Uniform-hemisphere sampling</source>
         <translation>均匀半球采样</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1439"/>
+        <location filename="../mainwindow_style.cpp" line="1441"/>
         <source>Illumination scale: %1</source>
         <translation>照明强度倍率: %1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1441"/>
+        <location filename="../mainwindow_style.cpp" line="1443"/>
         <source>Occlusion color: (%1, %2, %3)</source>
         <translation>遮蔽颜色: (%1, %2, %3)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1444"/>
+        <location filename="../mainwindow_style.cpp" line="1446"/>
         <source>NEE disabled</source>
         <translation>已禁用 NEE</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1445"/>
+        <location filename="../mainwindow_style.cpp" line="1447"/>
         <source>BSDF importance sampling disabled</source>
         <translation>已禁用 BSDF 重要性采样</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1462"/>
+        <location filename="../mainwindow_style.cpp" line="1464"/>
         <source>&lt;b&gt;Rendering technique&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;b&gt;渲染技术&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
     <message>
-        <location filename="../mainwindow_style.cpp" line="1472"/>
+        <location filename="../mainwindow_style.cpp" line="1474"/>
         <source>&lt;br&gt;&lt;br&gt;&lt;b&gt;Settings used&lt;/b&gt;&lt;br&gt;%1</source>
         <translation>&lt;br&gt;&lt;br&gt;&lt;b&gt;使用的设置&lt;/b&gt;&lt;br&gt;%1</translation>
     </message>
@@ -7360,12 +7391,12 @@ The shape is a guess: the back is invented and fine detail is soft. It works bes
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1220"/>
+        <location filename="../mainwindow_widgets.h" line="953"/>
         <source>No renders yet</source>
         <translation>尚无渲染结果</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1228"/>
+        <location filename="../mainwindow_widgets.h" line="961"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>

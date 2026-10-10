@@ -1028,6 +1028,10 @@ inline void flattenShapes(const pbrt_scene::Scene &scene, FlatScene &out, const 
 		ShapeRange r;
 		r.type = openShape->shape->type;
 		r.group = openShape->shape->group;
+		r.srcFile = openShape->shape->srcFile;
+		r.srcBegin = openShape->shape->srcBegin;
+		r.srcEnd = openShape->shape->srcEnd;
+		for (int k = 0; k < 16; ++k) r.ctm[k] = openShape->shape->xform.m[k];
 		r.triBegin = openTri; r.triEnd = out.triangles.size();
 		r.sphereBegin = openSphere; r.sphereEnd = out.spheres.size();
 		r.diskBegin = openDisk; r.diskEnd = out.disks.size();

@@ -8,6 +8,8 @@
 #include <cstdio>
 #include <cstdlib>
 #include <filesystem>
+#include <fstream>
+#include <sstream>
 #include <cstring>
 #include <memory>
 #include <mutex>
@@ -16,6 +18,7 @@
 
 #include "metal_poc_app.h"
 #include "../../src/shared/live_object_edit.h"
+#include "../../src/shared/pbrt_arrangement.h"
 #include "../../cpu_renderer/cpu_interface.h"   // cpu_scene_pbrt_path_by_id
 
 namespace {
@@ -27,6 +30,8 @@ struct LiveSession {
     // MetalPocApp keeps pointers into the argv strings it was started with (outPath), so they live as long as it does.
     std::string widthStr, heightStr, sppStr, depthStr, pbrtPath;
     live_objects::PickIndex pick;   // of the scene as it was built (edits applied); filled by the scene-edit hook
+    live_objects::ObjectList objects;                     // the scene's objects, and where each shape sits in the scene's text, for "Save arrangement"
+    std::vector<pbrt_flatten::ShapeRange> ranges;
 };
 
 // Object moves for the current scene: one offset (pbrt world units) per object (see live_object_edit.h), applied while the scene is built.
@@ -120,6 +125,8 @@ std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int h
             if (gEdits.offsets[i][0] != 0.0 || gEdits.offsets[i][1] != 0.0 || gEdits.offsets[i][2] != 0.0)
                 live_objects::translateObject(scene, objects, i, gEdits.offsets[i].data());
         session->pick = live_objects::buildPickIndex(scene, objects);
+        session->objects = objects;
+        session->ranges = scene.shapeRanges;
     };
     app.buildScene();
     if (!app.pbrtMissingAssetsError.empty()) { fail(app.pbrtMissingAssetsError); return nullptr; }
@@ -262,6 +269,35 @@ void metal_live_reset_objects(const char* scene_id) {
         o = {0.0, 0.0, 0.0};
     }
     if (any) gSession.reset();
+}
+
+bool metal_live_export_arrangement(const char* scene_id, const char* out_path, char* message, int message_size) {
+    auto say = [&](const std::string& text) { if (message && message_size > 0) snprintf(message, (size_t)message_size, "%s", text.c_str()); };
+    if (!scene_id || !out_path) { say("bad arguments"); return false; }
+    std::lock_guard<std::mutex> lock(gMutex);
+    if (!gSession || gSession->sceneId != scene_id || gEdits.sceneId != scene_id) { say("nothing has been drawn yet, so there is nothing to save"); return false; }
+    namespace fs = std::filesystem;
+    std::ifstream in(gSession->pbrtPath, std::ios::binary);
+    if (!in) { say("cannot read the scene file " + gSession->pbrtPath); return false; }
+    std::ostringstream text;
+    text << in.rdbuf();
+    const fs::path original = fs::absolute(gSession->pbrtPath);
+    const std::string dir = original.parent_path().string() + "/";
+    int objectsMoved = 0;
+    for (const std::array<double, 3>& o : gEdits.offsets) objectsMoved += (o[0] != 0.0 || o[1] != 0.0 || o[2] != 0.0) ? 1 : 0;
+    const pbrt_arrangement::Result result = pbrt_arrangement::write(text.str(), gSession->ranges, gSession->objects, gEdits.offsets, dir,
+        [](const std::string& path) { std::error_code ec; return fs::exists(path, ec); },
+        "# " + original.filename().string() + " with " + std::to_string(objectsMoved) + " object(s) moved, saved from Live Preview.\n");
+    if (objectsMoved == 0) { say("no object has been moved"); return false; }
+    std::ofstream out(out_path, std::ios::binary);
+    if (!out) { say(std::string("cannot write ") + out_path); return false; }
+    out << result.text;
+    out.close();
+    if (!out) { say(std::string("cannot write ") + out_path); return false; }
+    std::string summary = std::to_string(objectsMoved) + " object(s) moved";
+    if (result.skippedShapes > 0) summary += "; " + std::to_string(result.skippedShapes) + " shape(s) sit in included files and stayed where they were";
+    say(summary);
+    return true;
 }
 
 const char* metal_live_last_error() { return tlsError.c_str(); }

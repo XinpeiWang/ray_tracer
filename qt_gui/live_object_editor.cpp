@@ -1,15 +1,20 @@
 #include "live_object_editor.h"
 
+#include <QDir>
+#include <QFileInfo>
 #include <QHBoxLayout>
+#include <QRegularExpression>
 #include <QLabel>
 #include <QPushButton>
 #include <QVector>
 
 #include "mainwindow_widgets.h"   // OrbitPreviewLabel
 #include "object_drag_math.h"
+#include "../src/shared/pbrt_asset_check.h"
 
-LiveObjectEditor::LiveObjectEditor(RealtimePreviewSession *session, OrbitPreviewLabel *label, double sceneSize, QObject *parent)
-	: QObject(parent), m_session(session), m_label(label), m_sceneSize(sceneSize) {
+LiveObjectEditor::LiveObjectEditor(RealtimePreviewSession *session, OrbitPreviewLabel *label, const QString &sceneId, const QString &sceneName, double sceneSize,
+                                   QObject *parent)
+	: QObject(parent), m_session(session), m_label(label), m_sceneId(sceneId), m_sceneName(sceneName), m_sceneSize(sceneSize) {
 	connect(label, &OrbitPreviewLabel::objectPressed, this, &LiveObjectEditor::onPressed);
 	connect(label, &OrbitPreviewLabel::objectDragged, this, &LiveObjectEditor::onDragged);
 	connect(label, &OrbitPreviewLabel::objectReleased, this, &LiveObjectEditor::onReleased);
@@ -26,13 +31,18 @@ QWidget *LiveObjectEditor::createControls(QWidget *parent) {
 	m_reset = new QPushButton(tr("Reset objects"), row);
 	m_reset->setObjectName("liveResetObjectsButton");   // the self-test finds the button by this, whatever the language
 	m_reset->setToolTip(tr("Put every object back where the scene file puts it."));
+	m_save = new QPushButton(tr("Save arrangement"), row);
+	m_save->setObjectName("liveSaveArrangementButton");
+	m_save->setToolTip(tr("Save the scene with the objects where they are now as a new scene in the scene list (My Scenes). The original scene is not changed."));
 	m_hint = new QLabel(row);
 	m_hint->setWordWrap(true);
 	layout->addWidget(m_toggle);
 	layout->addWidget(m_reset);
+	layout->addWidget(m_save);
 	layout->addWidget(m_hint, /*stretch=*/1);
 	connect(m_toggle, &QPushButton::toggled, this, &LiveObjectEditor::onModeToggled);
 	connect(m_reset, &QPushButton::clicked, this, &LiveObjectEditor::onResetClicked);
+	connect(m_save, &QPushButton::clicked, this, &LiveObjectEditor::onSaveClicked);
 	return row;
 }
 
@@ -136,6 +146,28 @@ void LiveObjectEditor::onResetClicked() {
 	m_haveSelection = false;
 	m_label->clearSelection();
 	setHint(tr("Every object is back where the scene file puts it."));
+}
+
+// Saves the scene with the moved objects as a new file in the per-user scenes folder (never over an existing one), and tells the main window to list it.
+void LiveObjectEditor::onSaveClicked() {
+	if (!m_session) return;
+	const QString folder = QString::fromStdString(pbrt_asset_check::userSceneDir());
+	if (folder.isEmpty() || !QDir().mkpath(folder)) {
+		setHint(tr("Cannot save: there is no scenes folder to write to."));
+		return;
+	}
+	QString name = m_sceneName.trimmed().toLower().replace(QRegularExpression("[^a-z0-9]+"), "-");
+	name.remove(QRegularExpression("^-+|-+$"));
+	if (name.isEmpty()) name = "scene";
+	QString path = folder + "/" + name + "-arranged.pbrt";
+	for (int n = 2; QFileInfo::exists(path); ++n) path = folder + "/" + name + "-arranged-" + QString::number(n) + ".pbrt";
+	QString message;
+	if (!m_session->exportArrangement(m_sceneId, path, &message)) {
+		setHint(tr("Not saved: %1.").arg(message));
+		return;
+	}
+	setHint(tr("Saved as %1 (%2). It is in the scene list under My Scenes.").arg(QFileInfo(path).completeBaseName(), message));
+	emit arrangementSaved(path);
 }
 
 // The 12 edges of the selected object's box (plus the drag so far), as the picture on screen shows them.
