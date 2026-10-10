@@ -8,6 +8,7 @@
 
 #include <QApplication>
 #include <QCheckBox>
+#include <QDir>
 #include <QComboBox>
 #include <QFile>
 #include <QFileInfo>
@@ -267,6 +268,81 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 		if (!(likeArranged < likeOriginal)) { fail("the saved scene does not show the arrangement"); return; }
 		stopLivePreview();
 		log("objects ok");
+		QApplication::exit(0);
+	});
+}
+
+// Save arrangement on a Scene Builder scene, end to end: the Builder's starter scene is added to the scene list, previewed, an object is dragged, the arrangement is saved, and the
+// Scene Builder opens the saved file: exactly the moved object's position must differ from the original document, by about the drag. Exits 1 on a failure.
+void MainWindow::runLivePreviewArrangeSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &, const QString &) {
+	const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
+	if (idx < 0 || !m_sceneBuilder) { log("Live Preview mode or the Scene Builder is missing"); QApplication::exit(2); return; }
+	auto fail = [log](const QString &why) { log("FAIL: " + why); QApplication::exit(1); };
+	m_sceneBuilder->newScene();
+	const scene_doc::Document original = m_sceneBuilder->document();
+	QString error;
+	const QString listed = m_sceneBuilder->addToSceneList(&error);
+	if (listed.isEmpty()) { fail("could not add the starter scene to the scene list: " + error); return; }
+	SceneMetadataClient::refreshUserScenes();
+	const QString id = SceneMetadataClient::sceneIdForFile(listed);
+	if (id.isEmpty()) { fail("the starter scene is not in the scene list"); return; }
+	m_modeCombo->setCurrentIndex(idx);
+	selectSceneById(id);
+	if (m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
+	startLivePreview();
+	log("previewing the starter scene as " + id);
+	QTimer::singleShot(4500, this, [this, log, fail]() {
+		if (!m_livePreviewRunning || !m_livePreviewLabel || !m_liveObjectEditor) { fail("the preview did not start with object editing available"); return; }
+		m_liveObjectEditor->setMode(true);
+		const QRect image = m_livePreviewLabel->displayedImageRect();
+		auto send = [this](QEvent::Type type, const QPoint &pos, Qt::MouseButton button, Qt::MouseButtons buttons) {
+			QMouseEvent event(type, QPointF(pos), QPointF(m_livePreviewLabel->mapToGlobal(pos)), button, buttons, Qt::NoModifier);
+			QApplication::sendEvent(m_livePreviewLabel, &event);
+		};
+		// Try a few places for an object (the starter scene has a floor, two balls, a box and a light): the first press that grabs one wins.
+		const QPoint spots[] = {image.center() + QPoint(-image.width() / 6, image.height() / 6), image.center() + QPoint(image.width() / 5, image.height() / 5),
+		                        image.center() + QPoint(0, image.height() / 3), image.center()};
+		QPoint start;
+		bool grabbed = false;
+		for (const QPoint &spot : spots) {
+			send(QEvent::MouseButtonPress, spot, Qt::LeftButton, Qt::LeftButton);
+			if (m_liveObjectEditor->hint().startsWith("Selected")) { start = spot; grabbed = true; break; }
+			send(QEvent::MouseButtonRelease, spot, Qt::LeftButton, Qt::NoButton);
+		}
+		if (!grabbed) { fail("no press on the starter scene grabbed an object"); return; }
+		log("grabbed: \"" + m_liveObjectEditor->hint() + "\"");
+		for (int i = 1; i <= 10; ++i) send(QEvent::MouseMove, start + QPoint(image.width() * i / 40, 0), Qt::NoButton, Qt::LeftButton);
+		send(QEvent::MouseButtonRelease, start + QPoint(image.width() * 10 / 40, 0), Qt::LeftButton, Qt::NoButton);
+	});
+	QTimer::singleShot(8000, this, [this, original, listed, log, fail]() {
+		if (auto *button = m_livePreviewPage->findChild<QPushButton *>("liveSaveArrangementButton")) button->click();
+		const QString hint = m_liveObjectEditor->hint();
+		log("after Save arrangement: \"" + hint + "\"");
+		if (!hint.startsWith("Saved as")) { fail("Save arrangement did not save"); return; }
+		if (!hint.contains("Scene Builder opens it")) { fail("the summary does not say the Scene Builder can open the copy"); return; }
+		const QDir folder = QFileInfo(listed).absoluteDir();
+		const QStringList arranged = folder.entryList(QStringList() << "*-arranged*.pbrt", QDir::Files, QDir::Time);
+		if (arranged.isEmpty()) { fail("no arranged file in " + folder.path()); return; }
+		const QString saved = folder.filePath(arranged.first());
+		QString error;
+		if (!m_sceneBuilder->openFile(saved, &error)) { fail("the Scene Builder cannot open the arrangement: " + error); return; }
+		const scene_doc::Document &now = m_sceneBuilder->document();
+		if (now.objects.size() != original.objects.size()) { fail("the arrangement has a different number of objects"); return; }
+		int moved = 0;
+		double shift = 0.0;
+		for (std::size_t i = 0; i < now.objects.size(); ++i) {
+			const double dx = now.objects[i].position.x - original.objects[i].position.x, dy = now.objects[i].position.y - original.objects[i].position.y,
+			             dz = now.objects[i].position.z - original.objects[i].position.z;
+			const double d = std::sqrt(dx * dx + dy * dy + dz * dz);
+			if (d > 1e-6) { ++moved; shift = d; }
+		}
+		log(QString("the Scene Builder opened %1: %2 object(s) moved, by %3").arg(QFileInfo(saved).fileName()).arg(moved).arg(shift, 0, 'f', 3));
+		if (moved != 1) { fail("expected exactly one moved object in the opened arrangement"); return; }
+		if (!(shift > 0.05)) { fail("the object moved by almost nothing"); return; }
+		for (const QString &name : arranged) QFile::remove(folder.filePath(name));
+		QFile::remove(listed);
+		stopLivePreview();
+		log("arrange ok");
 		QApplication::exit(0);
 	});
 }
