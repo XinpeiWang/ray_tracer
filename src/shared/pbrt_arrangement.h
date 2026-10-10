@@ -110,6 +110,14 @@ inline Result write(const std::string& text, const std::vector<pbrt_flatten::Sha
 					doc.objects[o].position.y += offsets[o][1];
 					doc.objects[o].position.z += offsets[o][2];
 				}
+				// The copy is a scene of its own: "<name> (arranged)", never the original's name (nor "<name> (live preview)" when it is an arrangement of a Preview live copy).
+				const std::string oldTitle = doc.title, previewSuffix = " (live preview)";
+				std::string base = oldTitle;
+				if (base.size() > previewSuffix.size() && base.compare(base.size() - previewSuffix.size(), previewSuffix.size(), previewSuffix) == 0) base.resize(base.size() - previewSuffix.size());
+				doc.title = base + " (arranged)";
+				const std::string firstLine = "# " + oldTitle;   // the Builder writes the title as the file's first comment line too
+				if (text.compare(0, firstLine.size(), firstLine) == 0 && (text.size() == firstLine.size() || text[firstLine.size()] == '\n' || text[firstLine.size()] == '\r'))
+					events.push_back({0, firstLine.size(), 1, "# " + doc.title});
 				events.push_back({jsonBegin, jsonEnd, 1, scene_doc::toJson(doc)});
 				result.builderDocumentUpdated = true;
 			} else {

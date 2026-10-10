@@ -142,6 +142,12 @@ void MainWindow::addLivePreviewTab(const QString &sceneId, const QString &sceneN
 			statusBar()->showMessage(id.isEmpty() ? tr("Saved, but the scene list could not list it until the program is restarted.")
 			                                      : tr("Saved the arrangement as scene %1 (Settings tab, My Scenes).").arg(id), 8000);
 		});
+		connect(m_liveObjectEditor, &LiveObjectEditor::editInBuilderRequested, this, [this](const QString &path) {
+			if (m_sceneBuilder && m_sceneBuilder->openForEditing(path)) {
+				const int builderIndex = m_tabWidget->indexOf(m_sceneBuilder);
+				if (builderIndex >= 0) m_tabWidget->setCurrentIndex(builderIndex);
+			}
+		});
 		layout->addWidget(m_liveObjectEditor->createControls(page));
 	}
 

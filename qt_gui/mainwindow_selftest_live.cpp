@@ -272,25 +272,24 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 	});
 }
 
-// Save arrangement on a Scene Builder scene, end to end: the Builder's starter scene is added to the scene list, previewed, an object is dragged, the arrangement is saved, and the
-// Scene Builder opens the saved file: exactly the moved object's position must differ from the original document, by about the drag. Exits 1 on a failure.
+// The Scene Builder <-> Live Preview round trip, end to end: the Builder's starter scene is opened in Live Preview with the "Preview live" button, an object is dragged with real
+// mouse events, Save arrangement is pressed, and "Edit in Builder" brings the arrangement back into the Scene Builder: exactly the moved object's position differs from the original
+// document, by about the drag. Also checks that clicking "Preview live" again after a change shows the new scene (the running preview restarts on the changed file). Exits 1 on a failure.
 void MainWindow::runLivePreviewArrangeSelfTest(const std::function<void(const QString &)> &log, const std::function<void(const QString &)> &, const QString &) {
 	const int idx = m_modeCombo->findData(static_cast<int>(OutputMode::LivePreview));
 	if (idx < 0 || !m_sceneBuilder) { log("Live Preview mode or the Scene Builder is missing"); QApplication::exit(2); return; }
 	auto fail = [log](const QString &why) { log("FAIL: " + why); QApplication::exit(1); };
+	if (!m_livePreviewSession) { fail("no Live Preview session: the Live Preview library is missing"); return; }
 	m_sceneBuilder->newScene();
 	const scene_doc::Document original = m_sceneBuilder->document();
-	QString error;
-	const QString listed = m_sceneBuilder->addToSceneList(&error);
-	if (listed.isEmpty()) { fail("could not add the starter scene to the scene list: " + error); return; }
-	SceneMetadataClient::refreshUserScenes();
-	const QString id = SceneMetadataClient::sceneIdForFile(listed);
-	if (id.isEmpty()) { fail("the starter scene is not in the scene list"); return; }
-	m_modeCombo->setCurrentIndex(idx);
-	selectSceneById(id);
+	auto *previewLive = m_sceneBuilder->findChild<QPushButton *>("builderPreviewLiveButton");
+	if (!previewLive || previewLive->isHidden()) { fail("the Scene Builder has no visible \"Preview live\" button"); return; }
 	if (m_liveSmoothNoiseCheck) m_liveSmoothNoiseCheck->setChecked(false);
-	startLivePreview();
-	log("previewing the starter scene as " + id);
+	previewLive->click();
+	const QString id = m_sceneCombo ? m_sceneCombo->currentData().toString() : QString();
+	log("previewing the starter scene as " + id + " (" + SceneMetadataClient::sceneName(id) + ")");
+	if (!SceneMetadataClient::sceneName(id).endsWith("(live preview)")) { fail("Preview live did not select its own preview copy"); return; }
+	if (!m_livePreviewRunning) { fail("Preview live did not start Live Preview"); return; }
 	QTimer::singleShot(4500, this, [this, log, fail]() {
 		if (!m_livePreviewRunning || !m_livePreviewLabel || !m_liveObjectEditor) { fail("the preview did not start with object editing available"); return; }
 		m_liveObjectEditor->setMode(true);
@@ -314,18 +313,16 @@ void MainWindow::runLivePreviewArrangeSelfTest(const std::function<void(const QS
 		for (int i = 1; i <= 10; ++i) send(QEvent::MouseMove, start + QPoint(image.width() * i / 40, 0), Qt::NoButton, Qt::LeftButton);
 		send(QEvent::MouseButtonRelease, start + QPoint(image.width() * 10 / 40, 0), Qt::LeftButton, Qt::NoButton);
 	});
-	QTimer::singleShot(8000, this, [this, original, listed, log, fail]() {
+	QTimer::singleShot(8000, this, [this, original, log, fail]() {
 		if (auto *button = m_livePreviewPage->findChild<QPushButton *>("liveSaveArrangementButton")) button->click();
 		const QString hint = m_liveObjectEditor->hint();
 		log("after Save arrangement: \"" + hint + "\"");
 		if (!hint.startsWith("Saved as")) { fail("Save arrangement did not save"); return; }
 		if (!hint.contains("Scene Builder opens it")) { fail("the summary does not say the Scene Builder can open the copy"); return; }
-		const QDir folder = QFileInfo(listed).absoluteDir();
-		const QStringList arranged = folder.entryList(QStringList() << "*-arranged*.pbrt", QDir::Files, QDir::Time);
-		if (arranged.isEmpty()) { fail("no arranged file in " + folder.path()); return; }
-		const QString saved = folder.filePath(arranged.first());
-		QString error;
-		if (!m_sceneBuilder->openFile(saved, &error)) { fail("the Scene Builder cannot open the arrangement: " + error); return; }
+		auto *edit = m_livePreviewPage->findChild<QPushButton *>("liveEditInBuilderButton");
+		if (!edit || edit->isHidden()) { fail("no visible \"Edit in Builder\" button after the save"); return; }
+		edit->click();
+		if (m_tabWidget->currentWidget() != m_sceneBuilder) { fail("Edit in Builder did not bring up the Scene Builder tab"); return; }
 		const scene_doc::Document &now = m_sceneBuilder->document();
 		if (now.objects.size() != original.objects.size()) { fail("the arrangement has a different number of objects"); return; }
 		int moved = 0;
@@ -336,14 +333,24 @@ void MainWindow::runLivePreviewArrangeSelfTest(const std::function<void(const QS
 			const double d = std::sqrt(dx * dx + dy * dy + dz * dz);
 			if (d > 1e-6) { ++moved; shift = d; }
 		}
-		log(QString("the Scene Builder opened %1: %2 object(s) moved, by %3").arg(QFileInfo(saved).fileName()).arg(moved).arg(shift, 0, 'f', 3));
+		log(QString("the Scene Builder opened the arrangement: %1 object(s) moved, by %2").arg(moved).arg(shift, 0, 'f', 3));
 		if (moved != 1) { fail("expected exactly one moved object in the opened arrangement"); return; }
 		if (!(shift > 0.05)) { fail("the object moved by almost nothing"); return; }
-		for (const QString &name : arranged) QFile::remove(folder.filePath(name));
-		QFile::remove(listed);
-		stopLivePreview();
-		log("arrange ok");
-		QApplication::exit(0);
+		// Change the scene in the Builder (a new name) and preview live again: the running preview restarts on the changed preview copy.
+		m_sceneBuilder->setSceneName("Round trip");
+		if (auto *previewLive = m_sceneBuilder->findChild<QPushButton *>("builderPreviewLiveButton")) previewLive->click();
+		const QString newId = m_sceneCombo->currentData().toString();
+		log("previewing again as " + newId + " (" + SceneMetadataClient::sceneName(newId) + ")");
+		if (SceneMetadataClient::sceneName(newId) != QString("Round trip (live preview)")) { fail("the second Preview live did not use the changed scene"); return; }
+		if (!m_livePreviewRunning) { fail("the second Preview live did not start Live Preview"); return; }
+		QTimer::singleShot(2500, this, [this, log, fail]() {
+			stopLivePreview();
+			// Tidy: the files this test made in the (throwaway) scene-list folder.
+			const QString folder = QString::fromStdString(pbrt_asset_check::userSceneDir());
+			for (const QString &name : QDir(folder).entryList(QStringList() << "*-live-preview.pbrt" << "*-arranged*.pbrt", QDir::Files)) QFile::remove(folder + "/" + name);
+			log("arrange ok");
+			QApplication::exit(0);
+		});
 	});
 }
 

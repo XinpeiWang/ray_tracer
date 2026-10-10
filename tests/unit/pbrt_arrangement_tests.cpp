@@ -154,6 +154,9 @@ TEST(PbrtArrangementTest, ASceneBuilderSceneKeepsItsDocumentInStepWithTheDirecti
 	std::string err;
 	ASSERT_TRUE(scene_doc::fromPbrt(saved.text, reread, err)) << err;
 	ASSERT_EQ(reread.objects.size(), doc.objects.size());
+	EXPECT_EQ(reread.title, doc.title + " (arranged)") << "the copy is a scene of its own";
+	const std::string firstLine = "# " + doc.title + " (arranged)";
+	EXPECT_EQ(saved.text.compare(0, firstLine.size(), firstLine), 0) << "and the file's first comment line says so";
 	for (std::size_t i = 0; i < doc.objects.size(); ++i) {
 		EXPECT_NEAR(reread.objects[i].position.x, doc.objects[i].position.x + offsets[i][0], 1e-9) << "object " << i;
 		EXPECT_NEAR(reread.objects[i].position.y, doc.objects[i].position.y + offsets[i][1], 1e-9);
@@ -187,4 +190,19 @@ TEST(PbrtArrangementTest, ABuilderDocumentThatDoesNotLineUpIsRemovedSoTheBuilder
 	std::string err;
 	EXPECT_FALSE(scene_doc::fromPbrt(saved.text, reread, err)) << "the Builder must not open a copy whose document is stale";
 	EXPECT_EQ(saved.text.find("@rt-builder-doc"), std::string::npos);
+}
+
+TEST(PbrtArrangementTest, AnArrangementOfAPreviewLiveCopyIsNamedAfterTheScene) {
+	scene_doc::Document doc = scene_doc::makeStarterScene();
+	doc.title = "Garden (live preview)";
+	const std::string original = scene_doc::toPbrt(doc);
+	const pbrt_flatten::FlatScene flat = flattenText(original);
+	const live_objects::ObjectList objects = live_objects::objectsOf(flat);
+	std::vector<std::array<double, 3>> offsets(objects.size(), {0.0, 0.0, 0.0});
+	offsets[0] = {1.0, 0.0, 0.0};
+	const Result saved = write(original, flat.shapeRanges, objects, offsets, "", [](const std::string&) { return false; }, "");
+	scene_doc::Document reread;
+	std::string err;
+	ASSERT_TRUE(scene_doc::fromPbrt(saved.text, reread, err)) << err;
+	EXPECT_EQ(reread.title, "Garden (arranged)");
 }
