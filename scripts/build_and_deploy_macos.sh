@@ -239,6 +239,14 @@ cp "$REPO_ROOT/tools/photo_to_mesh/photo_to_mesh.py" "$APP_BUNDLE/Contents/MacOS
 cp "$REPO_ROOT/scripts/setup_photo_to_mesh.sh" "$APP_BUNDLE/Contents/MacOS/scripts/setup_photo_to_mesh.sh"
 chmod +x "$APP_BUNDLE/Contents/MacOS/scripts/setup_photo_to_mesh.sh"
 
+# Seal the bundle LAST. macdeployqt signs the app ad hoc, but everything copied in after it (the Metal shaders, translations, scenes, photo tool) is
+# not in that seal, so `codesign --verify` fails with "a sealed resource is missing or invalid" - and a disk image downloaded through a browser or a chat
+# app (which adds the quarantine flag) then opens with "RayTracerGUI is damaged and can't be opened". Signed again here, ad hoc, after the last copy,
+# the bundle verifies. (It is still not notarized, so a first launch still needs right-click > Open; that is a different, normal prompt.)
+echo "Sealing the bundle (ad hoc signature)..."
+codesign --force --deep --sign - "$APP_BUNDLE" || { echo "ERROR: codesign failed" >&2; exit 1; }
+codesign --verify --deep --strict "$APP_BUNDLE" || { echo "ERROR: the sealed bundle does not verify" >&2; exit 1; }
+
 echo
 echo "[5/5] Collecting output..."
 rm -rf "$DEPLOY_DIR"
