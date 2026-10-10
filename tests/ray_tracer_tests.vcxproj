@@ -209,6 +209,7 @@
     <ClCompile Include="unit\scene_blocks_tests.cpp" />
     <ClCompile Include="unit\live_object_edit_tests.cpp" />
     <ClCompile Include="unit\object_drag_math_tests.cpp" />
+    <ClCompile Include="unit\pbrt_arrangement_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_textures_tests.cpp" />
     <ClCompile Include="unit\gpu_scene_materials_tests.cpp" />
     <ClCompile Include="unit\nanovdb_dense_tests.cpp" />

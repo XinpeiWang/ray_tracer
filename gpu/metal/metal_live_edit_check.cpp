@@ -7,10 +7,15 @@
 #include <cstdio>
 #include <cstdlib>
 #include <cstring>
+#include <fstream>
+#include <sstream>
 #include <string>
 #include <vector>
 #include "metal_live_preview.h"
 #include "../../cpu_renderer/cpu_interface.h"
+#include "../../src/shared/live_object_edit.h"
+#include "../../src/shared/pbrt_flatten.h"
+#include "../../src/shared/pbrt_scene.h"
 
 namespace {
 
@@ -123,6 +128,29 @@ int main(int argc, char** argv) {
     if (again != target) return fail("the object is not found at its new place");
     if (std::fabs(off2[0] - dx) > 1e-9 || std::fabs(off2[2] - dz) > 1e-9) return fail("the reported offset is not the one set");
     if (std::fabs((lo2[0] - lo[0]) - dx) > 1e-4 * (1 + std::fabs(dx))) return fail("the box did not move by the offset");
+
+    // 3b. Save arrangement: the saved file, read afresh, has the object where the live picture has it.
+    {
+        const std::string path = "/private/tmp/metal_live_edit_check_arranged.pbrt";
+        char message[256] = {0};
+        if (!metal_live_export_arrangement(gScene.c_str(), path.c_str(), message, sizeof message)) { fprintf(stderr, "export: %s\n", message); return fail("the arrangement could not be saved"); }
+        printf("saved: %s\n", message);
+        std::ifstream in(path, std::ios::binary);
+        std::ostringstream text;
+        text << in.rdbuf();
+        const pbrt_scene::ParseResult parsed = pbrt_scene::parse(text.str());
+        if (!parsed.ok) { fprintf(stderr, "%s\n", parsed.error.c_str()); return fail("the saved scene does not parse"); }
+        const pbrt_flatten::FlatScene flat = pbrt_flatten::flatten(parsed.scene, {});
+        const live_objects::ObjectList objects = live_objects::objectsOf(flat);
+        const live_objects::PickIndex index = live_objects::buildPickIndex(flat, objects);
+        const live_objects::PickShape* saved = nullptr;
+        for (const live_objects::PickShape& shape : index.shapes) if (shape.object == target) saved = &shape;
+        if (!saved) return fail("the moved object is missing from the saved scene");
+        for (int a = 0; a < 3; ++a)
+            if (std::fabs(saved->lo[a] - lo2[a]) > 1e-3 * (1 + std::fabs(lo2[a])) || std::fabs(saved->hi[a] - hi2[a]) > 1e-3 * (1 + std::fabs(hi2[a])))
+                return fail("the saved scene has the object somewhere else than the live picture");
+        std::remove(path.c_str());
+    }
 
     // 4. Reset: the first picture comes back exactly (same seed, same scene).
     metal_live_reset_objects(gScene.c_str());

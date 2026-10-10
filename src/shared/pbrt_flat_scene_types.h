@@ -378,6 +378,9 @@ struct ShapeRange {
 	std::string type;                  // the pbrt shape name: "sphere", "trianglemesh", "plymesh", ...
 	int material = -1;                 // index into FlatScene::materials of the first primitive it made
 	int group = -1;                    // ShapeDecl::group: the AttributeBegin/End block the Shape sat in, -1 outside any
+	int srcFile = 0;                   // where the Shape directive is in the scene's text (ShapeDecl::srcFile/srcBegin/srcEnd) ...
+	std::size_t srcBegin = 0, srcEnd = 0;
+	double ctm[16] = {1,0,0,0, 0,1,0,0, 0,0,1,0, 0,0,0,1};   // ... and the transform in force at it (object -> world, row major)
 	std::size_t triBegin = 0, triEnd = 0, sphereBegin = 0, sphereEnd = 0, diskBegin = 0, diskEnd = 0, cylinderBegin = 0, cylinderEnd = 0;
 };
 

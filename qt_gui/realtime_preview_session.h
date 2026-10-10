@@ -674,6 +674,9 @@ public:
 	bool cameraBasisNow(double out[12]) const;
 	void setObjectOffset(int object, double dx, double dy, double dz);
 	void resetObjects();
+	// Writes `sceneId`'s pbrt file with the moved objects where they are now to `path` (realtime_export_arrangement()); `message` gets the library's one-line
+	// summary or the reason it failed. Does not wait for a frame, only for the one being drawn.
+	bool exportArrangement(const QString &sceneId, const QString &path, QString *message);
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);
 	void setSvgf(bool svgf);
 	void setExposure(double exposure);

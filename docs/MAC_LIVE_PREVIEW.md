@@ -31,6 +31,15 @@ everything back. Moves are for looking at a different arrangement: they are not 
   them (forward is flattened onto the floor), up and down straight up and down, by the same step as the camera's free fly (`object_drag_math.h` `keyMove`).
   The selection survives camera moves: orbit, zoom or fly and the box follows the object (the GUI redraws it every frame from the camera basis of the
   picture on screen, `RealtimePreviewSession::cameraBasisNow()`); it ends when you press on empty space or another object, switch Move objects off, or Reset.
+* **Save arrangement** (button in the same row) saves the scene with the objects where they are now as a new scene in the per-user scenes folder (`<name>-arranged.pbrt`,
+  never over an existing file), listed under My Scenes at once (`realtime_export_arrangement`; the original scene is not changed). The original text is kept byte
+  for byte: each shape of a moved object is wrapped as `AttributeBegin  Translate t  <the Shape>  AttributeEnd` (`src/shared/pbrt_arrangement.h`), where `t` is the world
+  offset turned into the frame the shape's own transform is in (`t = A^-1 d`, A the linear part of the transform in force at the Shape, recorded by the parser as
+  `ShapeDecl::srcBegin/srcEnd` and `ShapeRange::ctm`), so a scaled or rotated scene moves the same way in the saved file. A relative file name (`"string filename"`,
+  `Include`) that names an existing file is made absolute so the copy works from another folder. Shapes that live in an included file cannot be edited (the summary says
+  how many were left). Tested by flattening the saved text and comparing every coordinate with the moved flattened scene (`pbrt_arrangement_tests.cpp`), by
+  `metal_live_edit` (the saved scene has the object where the live picture has it), and by the GUI self-test, which saves, lists, opens the saved scene in Live Preview
+  and checks the picture is the arrangement, not the original.
 * What an "object" is: the shapes of one `AttributeBegin`/`AttributeEnd` block of the pbrt file (a box written as six quads is one object), or a `Shape` outside any
   block on its own. Only shapes that became triangles, spheres, disks or cylinders can be moved; instances, curves and the like cannot, and a click on one orbits.
   A scene with everything in one block is one object.

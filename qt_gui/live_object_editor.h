@@ -23,7 +23,7 @@ class LiveObjectEditor : public QObject {
 	Q_OBJECT
 public:
 	// `sceneSize`: roughly how big the scene is (0 = unknown), which limits how far one drag may throw an object.
-	LiveObjectEditor(RealtimePreviewSession *session, OrbitPreviewLabel *label, double sceneSize, QObject *parent);
+	LiveObjectEditor(RealtimePreviewSession *session, OrbitPreviewLabel *label, const QString &sceneId, const QString &sceneName, double sceneSize, QObject *parent);
 
 	// The row of controls to put under the picture (the toggle, the reset button, and a hint line); owned by `parent`.
 	QWidget *createControls(QWidget *parent);
@@ -40,7 +40,12 @@ public:
 	// `step` world units per step, in the directions the camera currently shows; true when it took the key (then the camera must not move).
 	bool nudge(int forwardSteps, int rightSteps, int upSteps, double step);
 
+signals:
+	// "Save arrangement" wrote a scene file (into the per-user scenes folder); the main window lists it.
+	void arrangementSaved(QString path);
+
 private slots:
+	void onSaveClicked();
 	void onModeToggled(bool on);
 	void onPressed(double s, double t);
 	void onDragged(double s, double t, bool vertical);
@@ -49,14 +54,16 @@ private slots:
 
 private:
 	void showSelectionBox();
-	bool currentBasis(camera_math::CameraBasis &basis) const;
+	void currentBasis(camera_math::CameraBasis &basis) const;
 	void setHint(const QString &text);
 
 	RealtimePreviewSession *m_session;
 	OrbitPreviewLabel *m_label;
+	QString m_sceneId, m_sceneName;
 	double m_sceneSize;
 	QPushButton *m_toggle = nullptr;
 	QPushButton *m_reset = nullptr;
+	QPushButton *m_save = nullptr;
 	QLabel *m_hint = nullptr;
 	LiveObjectPick m_selected;   // the object grabbed or last grabbed: where it was when the drag began, and the camera that drew that picture
 	bool m_haveSelection = false;

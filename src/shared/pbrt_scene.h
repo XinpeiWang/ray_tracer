@@ -327,6 +327,10 @@ struct ShapeDecl {
 	// different between blocks, -1 outside any block. The Live Preview treats the shapes of one block as one object (a box drawn as six
 	// quads moves as a box).
 	int group = -1;
+	// Where the directive is in the scene's text, for tools that edit the file (the Live Preview's "Save arrangement"): the file it came from (0 = the top-level
+	// scene, see TokenStream::files) and the byte range from the start of `Shape` to the end of its last parameter.
+	int srcFile = 0;
+	std::size_t srcBegin = 0, srcEnd = 0;
 };
 
 struct Warning {
@@ -569,6 +573,7 @@ struct Token {
 	int line = 0;
 	bool quoted = false;
 	int file = 0;      // index into TokenStream::files; 0 = the top-level scene
+	std::size_t begin = 0, end = 0;   // byte range of the token in its file's text (a quoted token: both quotes included)
 };
 
 inline void tokenizeInto(const std::string &src, int fileIndex, std::vector<Token> &out) {
@@ -583,12 +588,13 @@ inline void tokenizeInto(const std::string &src, int fileIndex, std::vector<Toke
 			continue;
 		}
 		if (c == '[' || c == ']') {
-			out.push_back({std::string(1, c), line, false, fileIndex});
+			out.push_back({std::string(1, c), line, false, fileIndex, i, i + 1});
 			++i;
 			continue;
 		}
 		if (c == '"') {
 			const int start = line;
+			const std::size_t from = i;
 			std::string text;
 			++i;
 			while (i < src.size() && src[i] != '"') {
@@ -596,15 +602,16 @@ inline void tokenizeInto(const std::string &src, int fileIndex, std::vector<Toke
 				text += src[i++];
 			}
 			if (i < src.size()) ++i;
-			out.push_back({text, start, true, fileIndex});
+			out.push_back({text, start, true, fileIndex, from, i});
 			continue;
 		}
+		const std::size_t from = i;
 		std::string word;
 		while (i < src.size() && !std::isspace(static_cast<unsigned char>(src[i]))
 			   && src[i] != '"' && src[i] != '[' && src[i] != ']' && src[i] != '#') {
 			word += src[i++];
 		}
-		out.push_back({word, line, false, fileIndex});
+		out.push_back({word, line, false, fileIndex, from, i});
 	}
 }
 
@@ -928,6 +935,7 @@ private:
 	bool dispatch() {
 		const std::string d = t_[pos_].text;
 		const int line = t_[pos_].line;
+		const std::size_t directiveBegin = t_[pos_].begin;
 		++pos_;
 
 		// Identity/Translate/Scale/Rotate/LookAt/Transform/ConcatTransform all
@@ -1289,6 +1297,9 @@ private:
 			sh.insideMedium = gs_.insideMedium;
 			sh.reverseOrientation = gs_.reverseOrientation;
 			sh.group = gs_.group;
+			sh.srcFile = t_[pos_ - 1].file;
+			sh.srcEnd = t_[pos_ - 1].end;   // the last token readParams() consumed (the Shape's type if it has no parameters)
+			sh.srcBegin = directiveBegin;
 			if (recordingObject_ >= 0)
 				s_.objects[static_cast<std::size_t>(recordingObject_)].shapes.push_back(sh);
 			else
