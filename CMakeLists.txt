@@ -711,6 +711,17 @@ if(RT_BUILD_METAL)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "MEDIA_LIGHTS_TEST_OK")
 
+    # A cloud whose box sticks out of its interface sphere, in a white furnace: invisible everywhere, not only on average (metal_poc_clipped_medium_test.sh).
+    add_executable(metal_poc_furnace_blocks_check gpu/metal/metal_poc_furnace_blocks_check.cpp)
+    target_include_directories(metal_poc_furnace_blocks_check PRIVATE ${CMAKE_SOURCE_DIR})
+    target_link_libraries(metal_poc_furnace_blocks_check PRIVATE cpu_renderer)   # tinyexr's implementation
+    add_test(NAME metal_poc_clipped_medium
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_clipped_medium_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_furnace_blocks_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_clipped_medium PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "CLIPPED_MEDIUM_TEST_OK")
+
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
             $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")
