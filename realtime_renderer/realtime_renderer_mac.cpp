@@ -36,5 +36,18 @@ RT_REALTIME_API const char* realtime_get_last_error() {
 
 // The Metal library has the thin-lens depth-of-field override and nothing else of the optional set yet.
 RT_REALTIME_API void realtime_backend_features(RealtimeBackendFeatures* out) {
-	if (out) *out = RealtimeBackendFeatures{false, false, false, false, false, false, false, false, false, false, true};
+	if (out) *out = RealtimeBackendFeatures{false, false, false, false, false, false, false, false, false, false, true, true};
+}
+
+RT_REALTIME_API int realtime_pick_object(const char* scene_id, double x, double y, double z,
+	double* out_lo, double* out_hi, double* out_offset, char* out_label, int label_size) {
+	return metal_live_pick_object(scene_id, x, y, z, out_lo, out_hi, out_offset, out_label, label_size);
+}
+
+RT_REALTIME_API bool realtime_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz) {
+	return metal_live_set_object_offset(scene_id, object, dx, dy, dz);
+}
+
+RT_REALTIME_API void realtime_reset_objects(const char* scene_id) {
+	metal_live_reset_objects(scene_id);
 }

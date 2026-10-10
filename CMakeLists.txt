@@ -495,6 +495,14 @@ if(RT_BUILD_METAL)
     target_include_directories(metal_live_bench PRIVATE ${CMAKE_SOURCE_DIR})
     target_link_libraries(metal_live_bench PRIVATE metal_renderer cpu_renderer)
 
+    # Live Preview object editing (pick, move, reset) through the same API: see the file's header for what it checks.
+    add_executable(metal_live_edit_check gpu/metal/metal_live_edit_check.cpp src/external/image_writer.cpp)
+    target_include_directories(metal_live_edit_check PRIVATE ${CMAKE_SOURCE_DIR})
+    target_link_libraries(metal_live_edit_check PRIVATE metal_renderer cpu_renderer)
+    add_test(NAME metal_live_edit COMMAND metal_live_edit_check)
+    set_tests_properties(metal_live_edit PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "LIVE_EDIT_OK|SKIP: no usable Metal device")
+
     # macOS Live Preview library: the C ABI qt_gui/realtime_preview_session.cpp loads (realtime_renderer.dylib next to the
     # GUI executable), backed by the Metal live session. PREFIX "" so the file is exactly "realtime_renderer.dylib".
     add_library(realtime_renderer SHARED realtime_renderer/realtime_renderer_mac.cpp src/external/image_writer.cpp)

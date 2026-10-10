@@ -28,6 +28,16 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
                              double aperture, double focus_distance);
 
 // Detail for the most recent failed metal_live_render_frame() on this thread.
+// Object editing (pbrt scenes). An "object" is the shapes of one AttributeBegin/End block of the scene file (or one Shape outside any block), numbered in file order.
+// The object whose surface contains the world point (pbrt coordinates, e.g. a pixel's first-hit position from the last frame), or -1.
+// Fills the object's box (lo, hi), its current offset from where the file puts it, and a short name, for whichever are not null.
+int metal_live_pick_object(const char* scene_id, double x, double y, double z,
+                           double* out_lo /*3*/, double* out_hi /*3*/, double* out_offset /*3*/, char* out_label, int label_size);
+// Puts the object at `offset` from where the file puts it (absolute, not a step); the next frame draws the scene so. False for an unknown object.
+bool metal_live_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz);
+// Puts every object back.
+void metal_live_reset_objects(const char* scene_id);
+
 const char* metal_live_last_error();
 
 // Drops the session and its GPU resources (the next frame rebuilds it).

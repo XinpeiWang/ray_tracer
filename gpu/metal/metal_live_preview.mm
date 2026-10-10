@@ -3,6 +3,7 @@
 
 #include <dlfcn.h>
 #include <mach-o/dyld.h>
+#include <array>
 #include <climits>
 #include <cstdio>
 #include <cstdlib>
@@ -14,6 +15,7 @@
 #include <vector>
 
 #include "metal_poc_app.h"
+#include "../../src/shared/live_object_edit.h"
 #include "../../cpu_renderer/cpu_interface.h"   // cpu_scene_pbrt_path_by_id
 
 namespace {
@@ -24,7 +26,16 @@ struct LiveSession {
     int width = 0, height = 0;
     // MetalPocApp keeps pointers into the argv strings it was started with (outPath), so they live as long as it does.
     std::string widthStr, heightStr, sppStr, depthStr, pbrtPath;
+    live_objects::PickIndex pick;   // of the scene as it was built (edits applied); filled by the scene-edit hook
 };
+
+// Object moves for the current scene: one offset (pbrt world units) per object (see live_object_edit.h), applied while the scene is built.
+// They outlive a session (a new picture size rebuilds the session, not the edits) and end with a different scene or a reset.
+struct ObjectEdits {
+    std::string sceneId;
+    std::vector<std::array<double, 3>> offsets;
+};
+ObjectEdits gEdits;
 
 std::mutex gMutex;
 std::unique_ptr<LiveSession> gSession;
@@ -100,6 +111,16 @@ std::unique_ptr<LiveSession> createSession(const char* sceneId, int width, int h
     app.skipDemoRoom = true;
     app.liveSession = true;
     app.pbrtRequireAllMeshes = cpu_scene_requires_files_by_id(sceneId) != 0;
+    if (gEdits.sceneId != sceneId) gEdits = ObjectEdits{sceneId, {}};
+    LiveSession* const session = s.get();
+    app.pbrtSceneEdit = [session](pbrt_flatten::FlatScene& scene) {
+        const live_objects::ObjectList objects = live_objects::objectsOf(scene);
+        gEdits.offsets.resize(objects.size(), {0.0, 0.0, 0.0});
+        for (size_t i = 0; i < objects.size(); ++i)
+            if (gEdits.offsets[i][0] != 0.0 || gEdits.offsets[i][1] != 0.0 || gEdits.offsets[i][2] != 0.0)
+                live_objects::translateObject(scene, objects, i, gEdits.offsets[i].data());
+        session->pick = live_objects::buildPickIndex(scene, objects);
+    };
     app.buildScene();
     if (!app.pbrtMissingAssetsError.empty()) { fail(app.pbrtMissingAssetsError); return nullptr; }
     if (!app.havePbrtCamera) { fail("the pbrt scene failed to load (see the loader's message above)"); return nullptr; }
@@ -132,6 +153,7 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
         const PackedFloat3 right{app.pbrtCameraRight.x, app.pbrtCameraRight.y, app.pbrtCameraRight.z};
         const PackedFloat3 up{app.pbrtCameraUp.x, app.pbrtCameraUp.y, app.pbrtCameraUp.z};
         const float sceneScale = app.pbrtSceneScale;
+        const float sceneLensRadius = app.pbrtLensRadius, sceneFocusDistance = app.pbrtFocusDistance;
         // A well-mixed seed: the kernel derives each pixel's stream from frameSeed linearly, so consecutive small
         // integers would give strongly correlated noise between frames.
         const uint32_t seed = (frame_seed + 1u) * 2654435761u;
@@ -145,9 +167,14 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
             u.frameSeed = seed;
             u.adaptiveSampling = 0u;   // a fixed few samples per frame; the GUI does the accumulating
             if (max_component_value > 0.0f) u.fireflyClamp = max_component_value;
+            // The dispatch keeps its own copy of the uniforms from frame to frame, so a frame without an override must put the scene's own lens
+            // back, not leave the last override in place.
             if (aperture >= 0.0) {   // thin-lens depth of field, scene units -> this scene's internal units
                 u.lensRadius = (float)(0.5 * aperture) * sceneScale;
                 u.focusDistance = (float)focus_distance * sceneScale;
+            } else {
+                u.lensRadius = sceneLensRadius;
+                u.focusDistance = sceneFocusDistance;
             }
         });
         if (!ok) return fail("the frame failed to render");
@@ -193,6 +220,48 @@ bool metal_live_render_frame(const char* scene_id, int width, int height, int sp
         }
     }
     return true;
+}
+
+int metal_live_pick_object(const char* scene_id, double x, double y, double z,
+                           double* out_lo, double* out_hi, double* out_offset, char* out_label, int label_size) {
+    if (!scene_id) return -1;
+    std::lock_guard<std::mutex> lock(gMutex);
+    if (!gSession || gSession->sceneId != scene_id) return -1;   // nothing has been drawn yet (or it is being rebuilt after a move)
+    // A first-hit position lies on the surface up to the picture's rounding; half a percent of the scene's size covers that.
+    const double tolerance = 0.005 / gSession->app->pbrtSceneScale;
+    const double p[3] = {x, y, z};
+    const live_objects::PickResult hit = live_objects::pick(gSession->pick, p, tolerance);
+    if (hit.object < 0) return -1;
+    const live_objects::PickShape& shape = gSession->pick.shapes[hit.slot];
+    for (int a = 0; a < 3; ++a) {
+        if (out_lo) out_lo[a] = shape.lo[a];
+        if (out_hi) out_hi[a] = shape.hi[a];
+        if (out_offset) out_offset[a] = (size_t)hit.object < gEdits.offsets.size() ? gEdits.offsets[hit.object][a] : 0.0;
+    }
+    if (out_label && label_size > 0) snprintf(out_label, (size_t)label_size, "%s", shape.label.c_str());
+    return hit.object;
+}
+
+bool metal_live_set_object_offset(const char* scene_id, int object, double dx, double dy, double dz) {
+    if (!scene_id || object < 0) return false;
+    std::lock_guard<std::mutex> lock(gMutex);
+    if (gEdits.sceneId != scene_id || (size_t)object >= gEdits.offsets.size()) return false;
+    std::array<double, 3>& o = gEdits.offsets[object];
+    if (o[0] == dx && o[1] == dy && o[2] == dz) return true;
+    o = {dx, dy, dz};
+    gSession.reset();   // the next frame rebuilds the scene with the new offsets
+    return true;
+}
+
+void metal_live_reset_objects(const char* scene_id) {
+    std::lock_guard<std::mutex> lock(gMutex);
+    if (!scene_id || gEdits.sceneId != scene_id) return;
+    bool any = false;
+    for (std::array<double, 3>& o : gEdits.offsets) {
+        any = any || o[0] != 0.0 || o[1] != 0.0 || o[2] != 0.0;
+        o = {0.0, 0.0, 0.0};
+    }
+    if (any) gSession.reset();
 }
 
 const char* metal_live_last_error() { return tlsError.c_str(); }

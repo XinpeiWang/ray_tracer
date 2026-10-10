@@ -20,6 +20,10 @@ typedef bool (*RenderFrameFn)(const char*, int, int, int, int, double, double, d
                                double, double,
                                bool, const unsigned char*);
 typedef const char* (*GetLastErrorFn)();
+// Must stay identical to qt_gui/realtime_preview_session.cpp's object editing types (src/shared/realtime_api.h).
+typedef int (*PickObjectFn)(const char*, double, double, double, double*, double*, double*, char*, int);
+typedef bool (*SetObjectOffsetFn)(const char*, int, double, double, double);
+typedef void (*ResetObjectsFn)(const char*);
 
 static double meanOf(const std::vector<float>& v) { double s = 0; for (float x : v) s += x; return v.empty() ? 0 : s / v.size(); }
 static double meanAbsDiff(const std::vector<float>& a, const std::vector<float>& b) {
@@ -84,6 +88,51 @@ int main(int argc, char** argv) {
 		const double dofChange = meanAbsDiff(pin, blur), baseline = meanAbsDiff(blur, blur2);
 		printf("depth of field: change %.4f vs noise %.4f\n", dofChange, baseline);
 		if (!(dofChange > baseline * 1.3)) { fprintf(stderr, "FAIL: an aperture override did not change the picture\n"); return 1; }
+		// And a frame without the override puts the scene's own (pinhole) lens back: it looks like the first pinhole frame, not the blurred one.
+		std::vector<float> off(pin.size());
+		if (!frame(off, 278.0, true)) { fprintf(stderr, "FAIL: frame without the override: %s\n", lastError()); return 1; }
+		const double offChange = meanAbsDiff(pin, off);
+		printf("depth of field: pinhole again %.4f\n", offChange);
+		if (!(offChange < dofChange * 0.7)) { fprintf(stderr, "FAIL: a frame without an aperture override kept the last override's blur\n"); return 1; }
+	}
+	// Object editing, through the exported functions: pick what the centre pixel shows, move it, and the picture must change; a reset brings it back.
+	{
+		auto pick = reinterpret_cast<PickObjectFn>(dlsym(lib, "realtime_pick_object"));
+		auto setOffset = reinterpret_cast<SetObjectOffsetFn>(dlsym(lib, "realtime_set_object_offset"));
+		auto reset = reinterpret_cast<ResetObjectsFn>(dlsym(lib, "realtime_reset_objects"));
+		if (!pick || !setOffset || !reset) { fprintf(stderr, "FAIL: missing object editing export(s)\n"); return 1; }
+		std::vector<float> before((size_t)w * h * 3), after(before.size()), restored(before.size());
+		if (!frame(before, 278.0, true)) { fprintf(stderr, "FAIL: frame before the move: %s\n", lastError()); return 1; }
+		const std::vector<float> beforeWorld = worldPos;
+		const float* centre = &beforeWorld[((size_t)(h / 2) * w + w / 2) * 4];
+		if (centre[3] == 0.0f) { fprintf(stderr, "FAIL: the centre pixel shows no surface\n"); return 1; }
+		double lo[3], hi[3], off[3];
+		char label[64];
+		const int object = pick("A1", centre[0], centre[1], centre[2], lo, hi, off, label, sizeof label);
+		if (object < 0) { fprintf(stderr, "FAIL: the surface at the centre pixel belongs to no object\n"); return 1; }
+		printf("object editing: the centre pixel shows object %d (%s)\n", object, label);
+		if (!setOffset("A1", object, 150.0, 0.0, 0.0)) { fprintf(stderr, "FAIL: set_object_offset refused\n"); return 1; }
+		if (!frame(after, 278.0, true)) { fprintf(stderr, "FAIL: frame after the move: %s\n", lastError()); return 1; }
+		reset("A1");
+		if (!frame(restored, 278.0, true)) { fprintf(stderr, "FAIL: frame after the reset: %s\n", lastError()); return 1; }
+		// Compare only where the object was: that is where a move shows, and the rest of the picture is just noise.
+		std::vector<char> inObject((size_t)w * h, 0);
+		for (int y = 0; y < h; ++y)
+			for (int x = 0; x < w; ++x) {
+				const float* q = &beforeWorld[((size_t)y * w + x) * 4];
+				inObject[(size_t)y * w + x] = q[3] != 0.0f && pick("A1", q[0], q[1], q[2], nullptr, nullptr, nullptr, nullptr, 0) == object;
+			}
+		auto diffInObject = [&](const std::vector<float>& p, const std::vector<float>& q, int& count) {
+			double sum = 0; count = 0;
+			for (size_t px = 0; px < inObject.size(); ++px)
+				if (inObject[px]) { ++count; for (int c = 0; c < 3; ++c) sum += std::fabs(p[px * 3 + c] - q[px * 3 + c]); }
+			return count ? sum / (3.0 * count) : 0.0;
+		};
+		int count = 0;
+		const double moveChange = diffInObject(before, after, count), resetChange = diffInObject(before, restored, count);
+		printf("object editing: over its %d pixels, a move changes the picture by %.4f, after a reset %.4f\n", count, moveChange, resetChange);
+		if (count < 20) { fprintf(stderr, "FAIL: the object covers too few pixels to judge\n"); return 1; }
+		if (!(moveChange > resetChange * 2.0)) { fprintf(stderr, "FAIL: moving an object did not change the picture where it was\n"); return 1; }
 	}
 	printf("REALTIME_DYLIB_OK\n");
 	dlclose(lib);
