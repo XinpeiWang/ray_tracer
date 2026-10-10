@@ -64,6 +64,13 @@ inline bool anyMoved(const Offsets& o) {
 	return false;
 }
 
+// "@<when the file was last written>", or nothing if it cannot be read: part of a cache key, so a file saved again is read again.
+inline std::string writeStamp(const char* path) {
+	std::error_code ec;
+	const auto written = std::filesystem::last_write_time(path, ec);
+	return ec ? std::string() : "@" + std::to_string(written.time_since_epoch().count());
+}
+
 // A key for a build: the unmoved scene is just its path (the same key as before editing existed); a moved one adds every nonzero offset exactly.
 inline std::string keyFor(const std::string& path, const Offsets& offsets) {
 	if (!anyMoved(offsets)) return path;

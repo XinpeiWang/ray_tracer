@@ -34,6 +34,19 @@ static std::unique_ptr<OptiXRenderer, LeakedAtExit> g_renderer;
 // a valid id - every real id has a category letter and a number).
 static std::string g_uploaded_scene_id;
 
+// What "the scene already on the GPU" is compared by: the scene id AND, for a scene read from a pbrt file, that file and when it was last written. An id alone is not
+// enough: a file saved over (the Scene Builder does) keeps its id, and would otherwise be drawn from the old upload.
+static std::string uploadKeyFor(const char* scene_id) {
+	std::string key = scene_id ? scene_id : "";
+	const char* path = scene_id ? cpu_scene_pbrt_path_by_id(scene_id) : nullptr;
+	if (path && *path) {
+		key += '|';
+		key += path;
+		key += optix_live_edit::writeStamp(path);
+	}
+	return key;
+}
+
 // Detail for the most recent rt_realtime_render_frame() failure on THIS
 // thread - see rt_realtime_get_last_error()'s own comment. thread_local
 // (not a plain static) since Live Preview always calls both functions from
@@ -136,7 +149,7 @@ static bool prepareSceneAndCamera(
 	// build_scene()'s own mesh-loading helpers can skip their expensive work
 	// entirely. A single shared local also means the two checks can't
 	// silently drift apart if either is ever extended independently.
-	const bool sceneAlreadyUploaded = (scene_id == g_uploaded_scene_id);
+	const bool sceneAlreadyUploaded = (uploadKeyFor(scene_id) == g_uploaded_scene_id);
 	scene.skipExpensiveGeometryLoad = sceneAlreadyUploaded;
 	float camera_params[12];  // origin(3) + lower_left(3) + horizontal(3) + vertical(3)
 	cameraExtra = GpuCameraParams{};  // zero-init: kind=Perspective, DOF/spherical fields all zero
@@ -243,7 +256,7 @@ static bool prepareSceneAndCamera(
 			errorCode = ERR_GPU_MEMORY_COPY_FAILED;
 			return false;
 		}
-		g_uploaded_scene_id = scene_id;
+		g_uploaded_scene_id = uploadKeyFor(scene_id);
 		// A previous scene's reservoirs/light samples must never be reused
 		// into this new scene's ReSTIR temporal reuse (its light indices/
 		// kinds mean something entirely different now) - see
@@ -743,8 +756,9 @@ extern "C" bool rt_realtime_render_frame(
 			s_haveCache = false;
 		}
 
-		const bool cacheHit = s_haveCache && s_cachedSceneId == scene_id &&
-			scene_id == g_uploaded_scene_id &&
+		const std::string uploadKey = uploadKeyFor(scene_id);
+		const bool cacheHit = s_haveCache && s_cachedSceneId == uploadKey &&
+			uploadKey == g_uploaded_scene_id &&
 			s_cachedWidth == image_width && s_cachedHeight == image_height &&
 			s_cachedCamX == cam_x && s_cachedCamY == cam_y && s_cachedCamZ == cam_z &&
 			s_cachedHasCustomLookAt == has_custom_lookat &&
@@ -774,7 +788,7 @@ extern "C" bool rt_realtime_render_frame(
 				return false;
 			}
 
-			s_cachedSceneId = scene_id;
+			s_cachedSceneId = uploadKey;
 			s_cachedWidth = image_width;
 			s_cachedHeight = image_height;
 			s_cachedCamX = cam_x; s_cachedCamY = cam_y; s_cachedCamZ = cam_z;
@@ -1305,7 +1319,7 @@ extern "C" int optix_render_main_sppm(
 			cameraExtra.vertical = make_float3(camera_params[9], camera_params[10], camera_params[11]);
 		}
 
-		if (scene_id != g_uploaded_scene_id) {
+		if (uploadKeyFor(scene_id) != g_uploaded_scene_id) {
 			// Instanced geometry travels separately - see setInstanceData().
 			// Called inside this same cache-skip guard as buildScene() itself,
 			// so instance data is part of what "this scene is already
@@ -1340,7 +1354,7 @@ extern "C" int optix_render_main_sppm(
 				std::cerr << "[OptiX] Failed to upload scene to GPU\n";
 				return ERR_GPU_MEMORY_COPY_FAILED;
 			}
-			g_uploaded_scene_id = scene_id;
+			g_uploaded_scene_id = uploadKeyFor(scene_id);
 		} else {
 			std::cout << "[OptiX] Reusing already-uploaded scene " << scene_id << " (skipping GPU rebuild)\n";
 		}

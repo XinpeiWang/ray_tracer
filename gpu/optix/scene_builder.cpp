@@ -21,6 +21,7 @@
 #include <cstring>
 #include <algorithm>
 #include <cassert>
+#include <filesystem>
 #include <iostream>
 #include <random>
 #include <string>
@@ -989,7 +990,9 @@ static bool build_loaded_pbrt_scene(
 	// to be back when this function was slow enough that repeat calls were
 	// rare.
 	static SharedLruCache<pbrt_load::LoadResult> s_pbrtLoadCache(2);   // bounded: see SharedLruCache
-	const std::shared_ptr<const pbrt_load::LoadResult> loadedPtr = s_pbrtLoadCache.get_or_build(std::string(path),
+	// The file's write time is part of both cache keys, so a scene file saved again mid-session is read again (the Scene Builder saves over the same path).
+	const std::string stamp = optix_live_edit::writeStamp(path);
+	const std::shared_ptr<const pbrt_load::LoadResult> loadedPtr = s_pbrtLoadCache.get_or_build(std::string(path) + stamp,
 		[&](pbrt_load::LoadResult& out) -> bool {
 			out = pbrt_load::loadFile(path);
 			if (!out.ok) {
@@ -1030,7 +1033,7 @@ static bool build_loaded_pbrt_scene(
 	// scene has its own cache entry (the key names the offsets), so moving something neither evicts nor reuses the unmoved build.
 	const optix_live_edit::Offsets offsets = optix_live_edit::Edits::get().offsetsFor(path);
 	const bool moved = optix_live_edit::anyMoved(offsets), livePreview = optix_live_edit::g_liveFrame;
-	const std::string builtKey = optix_live_edit::keyFor(path, offsets);
+	const std::string builtKey = optix_live_edit::keyFor(std::string(path) + stamp, offsets);
 
 	const std::shared_ptr<const PbrtBuiltScene> built = s_pbrtBuiltSceneCache.get_or_build(builtKey,
 		[&](PbrtBuiltScene& out) -> bool {
@@ -1044,9 +1047,7 @@ static bool build_loaded_pbrt_scene(
 			}
 			if (moved || livePreview) {
 				live_objects::ObjectList objects = live_objects::objectsOf(loaded.scene);
-				if (moved)
-					for (std::size_t i = 0; i < objects.size() && i < offsets.size(); ++i)
-						live_objects::translateObject(edited, objects, i, offsets[i].data());
+				for (std::size_t i = 0; moved && i < objects.size() && i < offsets.size(); ++i) live_objects::translateObject(edited, objects, i, offsets[i].data());
 				if (livePreview) out.edit = optix_live_edit::makeBuilt(loaded.scene, *source, std::move(objects), offsets, builtKey);
 			}
 			// OptiX has no cone or paraboloid intersection, so those two shapes are rewritten as triangles first (gpu_tessellate.h, shared with Metal): a close

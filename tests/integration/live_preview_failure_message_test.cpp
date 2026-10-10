@@ -6,6 +6,7 @@
 
 #include <gtest/gtest.h>
 
+#include <chrono>
 #include <cstdlib>
 #include <filesystem>
 #include <fstream>
@@ -109,4 +110,19 @@ TEST_F(LivePreviewFailureMessageTest, AnUnknownSceneStillGetsAnExplanation) {
 	std::vector<float> rgb(32 * 32 * 3);
 	EXPECT_FALSE(renderFrame("ZZ9999", rgb));
 	EXPECT_NE(std::string(rt_realtime_get_last_error()), "") << "even the fallback reason is better than nothing";
+}
+
+// The renderer keeps the scene it has uploaded, and used to know it by id alone. A scene file saved over (the Scene Builder does) keeps its id, so the picture must come
+// from the file as it is now.
+TEST_F(LivePreviewFailureMessageTest, ASceneFileSavedAgainIsDrawnFromTheNewFile) {
+	const std::string id = addScene("saved-twice", "Shape \"sphere\" \"float radius\" [ 1 ]\n");
+	ASSERT_FALSE(id.empty());
+	std::vector<float> rgb(32 * 32 * 3);
+	ASSERT_TRUE(renderFrame(id, rgb)) << rt_realtime_get_last_error();
+
+	const fs::path file = root_ / "user_scenes" / "saved-twice.pbrt";
+	std::ofstream(file) << kHeader;   // the same file, now with nothing in it
+	fs::last_write_time(file, fs::last_write_time(file) + std::chrono::seconds(2));
+	EXPECT_FALSE(renderFrame(id, rgb)) << "the old upload was drawn instead of the file as it is now";
+	EXPECT_NE(std::string(rt_realtime_get_last_error()).find("no geometry"), std::string::npos) << rt_realtime_get_last_error();
 }

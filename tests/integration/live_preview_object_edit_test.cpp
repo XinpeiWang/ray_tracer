@@ -82,10 +82,6 @@ protected:
 		const char* found = cpu_scene_id_for_file(file.string().c_str());
 		id_ = found ? found : "";
 		ASSERT_FALSE(id_.empty()) << "the scene list did not pick up the new scene";
-		// Per-user scenes are numbered from the same start in every test, and the renderer keeps the scene it has uploaded by id: draw another scene first, or a scene
-		// an earlier test left under the same id would be drawn instead of this one.
-		Frame other;
-		rt_realtime_render_frame("A1", kSize, kSize, 1, 2, 278.0, 278.0, -800.0, false, 0.0, 0.0, 0.0, false, 0.0, nullptr, nullptr, other.rgb.data(), false);
 	}
 	void TearDown() override {
 		if (!id_.empty() && optix_is_available()) rt_realtime_reset_objects(id_.c_str());
