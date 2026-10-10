@@ -184,6 +184,11 @@ void SceneBuilderWidget::buildUi() {
 		addMenu->addAction(shapeLabel(k), this, [this, k]() { addObject(k); });
 	addMenu->addSection(tr("Props (several objects at once)"));
 	for (scene_doc::PropKind k : scene_doc::allPropKinds()) addMenu->addAction(propLabel(k), this, [this, k]() { addProp(k); });
+	// Blocky objects (scene_blocks.h): coloured blocks, creatures and things, each a few dozen boxes added together, in three submenus.
+	addMenu->addSection(tr("Blocky (several objects at once)"));
+	QMenu *blockMenus[3] = {addMenu->addMenu(tr("Blocks")), addMenu->addMenu(tr("Creatures")), addMenu->addMenu(tr("Things"))};
+	for (scene_doc::BlockyKind k : scene_doc::allBlockyKinds())
+		blockMenus[static_cast<int>(scene_doc::blockyGroup(k))]->addAction(blockyLabel(k), this, [this, k]() { addBlocky(k); });
 	addMenu->addSection(tr("More"));
 	addMenu->addAction(tr("Model library..."), this, [this]() { showModelLibrary(); });
 	addMenu->addAction(tr("Object from a photo..."), this, [this]() { addObjectFromPhoto(); });
@@ -574,9 +579,11 @@ void SceneBuilderWidget::selectLight(int index) {
 
 // The prop's objects go in together at the drop point, named alike ("Table top", "Table leg 1", ...; a second table gets "Table top 2"...), and the first
 // is selected. They are ordinary objects from then on.
-void SceneBuilderWidget::addProp(scene_doc::PropKind kind) {
+void SceneBuilderWidget::addProp(scene_doc::PropKind kind) { addParts(scene_doc::makeProp(kind)); }
+void SceneBuilderWidget::addBlocky(scene_doc::BlockyKind kind) { addParts(scene_doc::makeBlocky(kind)); }
+
+void SceneBuilderWidget::addParts(std::vector<Object> parts) {
 	edit(QString(), [&]() {
-		std::vector<Object> parts = scene_doc::makeProp(kind);
 		QStringList names;
 		for (const Object &existing : m_doc.objects) names << QString::fromStdString(existing.name);
 		int copy = 1;   // the first number whose suffix leaves every part's name free
