@@ -49,7 +49,7 @@ private slots:
 
 private:
 	void showSelectionBox();
-	bool currentBasis(camera_math::CameraBasis &basis) const;
+	void currentBasis(camera_math::CameraBasis &basis) const;
 	void setHint(const QString &text);
 
 	RealtimePreviewSession *m_session;

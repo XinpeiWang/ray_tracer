@@ -764,9 +764,12 @@ public:
 	// currently dragging - releaseMouse() on a widget that isn't the
 	// current mouse grabber is a harmless no-op.
 	void cancelDrag() {
+		const bool wasObjectDrag = m_objectGrabbed;
 		m_objectGrabbed = false;
 		setCursor(m_objectMode ? Qt::PointingHandCursor : Qt::OpenHandCursor);
 		releaseMouse();
+		// A drag ended without a mouse release (the tab was switched mid-drag): whoever follows an object drag must hear that it is over, or it keeps waiting.
+		if (wasObjectDrag) emit objectReleased();
 	}
 
 	// Object mode: a press on the picture first asks MainWindow (objectPressed) whether an object is under the cursor. If MainWindow answers by calling
@@ -881,9 +884,7 @@ protected:
 
 	void mouseReleaseEvent(QMouseEvent *event) override {
 		if (event->button() == Qt::LeftButton && mouseGrabber() == this) {
-			const bool wasObjectDrag = m_objectGrabbed;
 			cancelDrag();
-			if (wasObjectDrag) emit objectReleased();
 		}
 		ScaledImageLabel::mouseReleaseEvent(event);
 	}
