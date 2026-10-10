@@ -699,6 +699,18 @@ if(RT_BUILD_METAL)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "NANOVDB_TEST_OK")
 
+    # Light sampling inside media: a homogeneous medium and a cloud lit by one distant light and by one point light must match the CPU's picture
+    # (metal_poc_media_lights_test.sh drives it; the scenes are gpu/metal/test_scenes/media-*.pbrt, not in the scene list).
+    add_executable(metal_poc_media_lights_check gpu/metal/metal_poc_media_lights_check.cpp)
+    target_include_directories(metal_poc_media_lights_check PRIVATE ${CMAKE_SOURCE_DIR})
+    target_link_libraries(metal_poc_media_lights_check PRIVATE cpu_renderer)   # tinyexr's implementation
+    add_test(NAME metal_poc_media_lights
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_media_lights_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_media_lights_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_media_lights PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "MEDIA_LIGHTS_TEST_OK")
+
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
             $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")

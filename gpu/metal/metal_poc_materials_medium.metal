@@ -25,13 +25,18 @@
 // parameters (mutated here by reference) are all it needs to decide
 // what happens next.
 
+// How far past a grid box's exit a pass-through step goes, and the shortest box segment that counts. A ray that leaves the box exactly on its face and stays inside the
+// loose trigger sphere would otherwise meet the same face again within float rounding of the (recentred, +60 in X) scene coordinates, and stall there, spending its depth
+// budget one hair's breadth at a time until the pixel went black (a ray grazing the face of a NanoVDB grid placed at the origin did exactly that).
+constant float kGridBoxEdgeEps = 1e-4;
+
 // materialType 28 (A8, section 176) - bounded, homogeneous free-flight
 // scattering sphere. See metal_poc_scenes_a.mm's own buildCornellSmoke()
 // comment and this function's own inline comments (unchanged from the
 // original inline kernel code) for the full algorithm.
 inline void shadeHomogeneousMediumSpan(
     TriangleMaterial mediumMat, float entryT, float exitT,
-    device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
+    device const AreaLight* lights, device const PointLight* pointLights, device const DirectionalLight* directionalLights, constant Uniforms& uniforms,
     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
     intersector<instancing, triangle_data> isect,
     instance_acceleration_structure accelStructure,
@@ -77,6 +82,21 @@ inline void shadeHomogeneousMediumSpan(
                 float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
                 radiance += throughput * float3(mediumMat.color) * plPhase * float3(pl.emission) * plSpot / plDistSq;
             }
+        }
+
+        // Distant lights: summed, no pdf (a delta light); the shadow ray is attenuated by the medium spheres it crosses in sphereIntersectionFunction, as above.
+        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+            DirectionalLight dl = directionalLights[dli];
+            const float3 dlWi = normalize(-float3(dl.direction));
+            ray dlShadowRay;
+            dlShadowRay.origin = scatterPoint;
+            dlShadowRay.direction = dlWi;
+            dlShadowRay.min_distance = 0.001f;
+            dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+            intersection_result<instancing, triangle_data> dlShadowResult =
+                traceShadowAnyP(isect, dlShadowRay, accelStructure, functionTable, shadowSpherePayload);
+            if (dlShadowResult.type == intersection_type::none)
+                radiance += throughput * float3(mediumMat.color) * henyeyGreensteinPhase(dot(wo, dlWi), mediumMat.roughness) * float3(dl.emission);
         }
 
         if (uniforms.lightCount > 0u) {
@@ -164,7 +184,7 @@ inline void shadeHomogeneousMediumSpan(
 inline void shadeHomogeneousMediumSphere(
     TriangleMaterial mediumMat, uint mediumPrimId, float entryDistance,
     device const SphereData* spheres, float shutterT,
-    device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
+    device const AreaLight* lights, device const PointLight* pointLights, device const DirectionalLight* directionalLights, constant Uniforms& uniforms,
     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
     intersector<instancing, triangle_data> isect,
     instance_acceleration_structure accelStructure,
@@ -191,7 +211,7 @@ inline void shadeHomogeneousMediumSphere(
         exitT = entryDistance;
         entryT = 0.0;
     }
-    shadeHomogeneousMediumSpan(mediumMat, entryT, exitT, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
+    shadeHomogeneousMediumSpan(mediumMat, entryT, exitT, lights, pointLights, directionalLights, uniforms, pbrtAreaLightTexture, textureSampler,
         isect, accelStructure, functionTable, shadowSpherePayload,
         rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
         scatteredInMedium, passedThroughMediumSphere);
@@ -201,7 +221,7 @@ inline void shadeHomogeneousMediumSphere(
 // so a ray may enter or leave through an open end as well as the wall.
 inline void shadeHomogeneousMediumCylinder(
     TriangleMaterial mediumMat, CylinderData cyl,
-    device const AreaLight* lights, device const PointLight* pointLights, constant Uniforms& uniforms,
+    device const AreaLight* lights, device const PointLight* pointLights, device const DirectionalLight* directionalLights, constant Uniforms& uniforms,
     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
     intersector<instancing, triangle_data> isect,
     instance_acceleration_structure accelStructure,
@@ -213,10 +233,33 @@ inline void shadeHomogeneousMediumCylinder(
     thread bool& scatteredInMedium, thread bool& passedThroughMediumSphere) {
     float s0 = 0.0, s1 = 0.0;
     if (!cylinderSolidInterval(rayOrigin, rayDir, cyl, s0, s1)) return;
-    shadeHomogeneousMediumSpan(mediumMat, max(s0, 0.0f), s1, lights, pointLights, uniforms, pbrtAreaLightTexture, textureSampler,
+    shadeHomogeneousMediumSpan(mediumMat, max(s0, 0.0f), s1, lights, pointLights, directionalLights, uniforms, pbrtAreaLightTexture, textureSampler,
         isect, accelStructure, functionTable, shadowSpherePayload,
         rayDir, rayOrigin, throughput, radiance, bsdfPdf, specularBounce, rngState,
         scatteredInMedium, passedThroughMediumSphere);
+}
+
+// Ratio-tracked transmittance of a shadow ray that leaves the cloud from `mediumPoint` along `wi`, for at most `maxDist`: every majorant collision multiplies by the
+// probability of a null collision, 1 - density (CPU's src/shared/ratio_tracking.h). The cloud's own trigger sphere is transparent to shadow rays, so this is the only
+// attenuation the cloud itself gives a light sampled from inside it.
+inline float cloudShadowTransmittance(GpuCloudMedium cloud, float3 mediumPoint, float3 wi, float maxDist, float sigmaMaj, thread uint& rngState) {
+    const float3 mo = worldToMediumPoint(cloud, mediumPoint);
+    const float3 md = float3(
+        cloud.worldToMediumMat[0]*wi.x + cloud.worldToMediumMat[1]*wi.y + cloud.worldToMediumMat[2]*wi.z,
+        cloud.worldToMediumMat[3]*wi.x + cloud.worldToMediumMat[4]*wi.y + cloud.worldToMediumMat[5]*wi.z,
+        cloud.worldToMediumMat[6]*wi.x + cloud.worldToMediumMat[7]*wi.y + cloud.worldToMediumMat[8]*wi.z);
+    float segMin, segMax;
+    float transmittance = 1.0;
+    if (!cloudAabbSlabIntersect(cloud, mo, md, segMin, segMax) || !(sigmaMaj > 0.0) || segMax <= 0.0) return transmittance;
+    const float tEnd = min(segMax, maxDist);
+    float t = max(segMin, 0.0);
+    for (int iter = 0; iter < 256 && transmittance > 1e-3; ++iter) {
+        t += -log(max(1.0 - randFloat(rngState), 1e-8)) / sigmaMaj;
+        if (t >= tEnd) break;
+        const float3 p = mo + t * md;
+        transmittance *= 1.0 - gpuCloudDensity(cloud, p.x, p.y, p.z);
+    }
+    return transmittance;
 }
 
 // materialType 29 (E2, section 178) - heterogeneous, procedural
@@ -227,7 +270,7 @@ inline void shadeHomogeneousMediumCylinder(
 inline void shadeCloudMediumSphere(
     TriangleMaterial mediumMat, float entryDistance,
     device const GpuCloudMedium* cloudMediums,
-    device const AreaLight* lights, constant Uniforms& uniforms,
+    device const AreaLight* lights, device const PointLight* pointLights, device const DirectionalLight* directionalLights, constant Uniforms& uniforms,
     texture2d<float, access::sample> pbrtAreaLightTexture, sampler textureSampler,
     intersector<instancing, triangle_data> isect,
     instance_acceleration_structure accelStructure,
@@ -353,6 +396,43 @@ inline void shadeCloudMediumSphere(
                             / pdfSolidAngle * weight;
             }
         }
+        }
+
+        // Point / spot and distant lights: summed (delta lights, no pdf), the shadow ray ratio-tracked through the rest of the cloud.
+        for (uint pli = 0; pli < uniforms.pointLightCount; ++pli) {
+            PointLight pl = pointLights[pli];
+            float3 toPl = float3(pl.position) - mediumPoint;
+            float plDistSq = dot(toPl, toPl);
+            float plDist = sqrt(plDistSq);
+            float3 plWi = toPl / plDist;
+            ray plShadowRay;
+            plShadowRay.origin = mediumPoint;
+            plShadowRay.direction = plWi;
+            plShadowRay.min_distance = 0.001f;
+            plShadowRay.max_distance = plDist - 0.002f;
+            intersection_result<instancing, triangle_data> plShadowResult =
+                traceShadowAnyP(isect, plShadowRay, accelStructure, functionTable, shadowSpherePayload);
+            if (plShadowResult.type == intersection_type::none) {
+                const float plPhase = henyeyGreensteinPhase(dot(wo, plWi), mediumMat.roughness);
+                const float plSpot = spotLightFalloff(-plWi, float3(pl.direction), pl.cosOuterAngle, pl.cosInnerAngle);
+                const float tr = cloudShadowTransmittance(cloud, mediumPoint, plWi, plDist, sigmaMaj, rngState);
+                radiance += throughput * float3(mediumMat.color) * plPhase * float3(pl.emission) * plSpot * tr / plDistSq;
+            }
+        }
+        for (uint dli = 0; dli < uniforms.directionalLightCount; ++dli) {
+            DirectionalLight dl = directionalLights[dli];
+            const float3 dlWi = normalize(-float3(dl.direction));
+            ray dlShadowRay;
+            dlShadowRay.origin = mediumPoint;
+            dlShadowRay.direction = dlWi;
+            dlShadowRay.min_distance = 0.001f;
+            dlShadowRay.max_distance = kDirectionalLightMaxDistance;
+            intersection_result<instancing, triangle_data> dlShadowResult =
+                traceShadowAnyP(isect, dlShadowRay, accelStructure, functionTable, shadowSpherePayload);
+            if (dlShadowResult.type == intersection_type::none) {
+                const float tr = cloudShadowTransmittance(cloud, mediumPoint, dlWi, kDirectionalLightMaxDistance, sigmaMaj, rngState);
+                radiance += throughput * float3(mediumMat.color) * henyeyGreensteinPhase(dot(wo, dlWi), mediumMat.roughness) * float3(dl.emission) * tr;
+            }
         }
 
         // NEE toward the constant background/environment
@@ -533,11 +613,6 @@ inline float3 rgbGridShadowTransmittance(GpuRgbGridMedium grid, device const flo
     }
     return tr;
 }
-
-// How far past a grid box's exit a pass-through step goes, and the shortest box segment that counts. A ray that leaves the box exactly on its face and stays inside the
-// loose trigger sphere would otherwise meet the same face again within float rounding of the (recentred, +60 in X) scene coordinates, and stall there, spending its depth
-// budget one hair's breadth at a time until the pixel went black (a ray grazing the face of a NanoVDB grid placed at the origin did exactly that).
-constant float kGridBoxEdgeEps = 1e-4;
 
 // materialType 30 (E4, section 179) - heterogeneous per-voxel R/G/B RgbGridMedium: spectral tracking against one scalar
 // majorant, the same model as the CPU's rgb_grid_medium_hittable.h and OptiX's heterogeneous_tracking_step
