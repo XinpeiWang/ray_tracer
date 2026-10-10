@@ -488,3 +488,6 @@ baselines/
 
 # Scratch folder the measured-BxDF unit tests write into the working directory.
 measured_bxdf_pbrt_tests/
+
+# Scratch EXRs the Metal CPU/GPU parity ctest writes into the working directory.
+mcparity_*.exr
