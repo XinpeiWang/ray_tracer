@@ -3,6 +3,7 @@
 #include "../../qt_gui/camera_math.h"
 
 #include <cmath>
+#include <limits>
 
 using namespace camera_math;
 
@@ -337,4 +338,30 @@ TEST(CameraMathSceneScaleTest, TheDeclaredSizeWinsThenTheCameraDistance) {
 TEST(CameraMathSceneScaleTest, AFewPressesCrossAnyScene) {
 	// The point of the change: about 50 presses cross a scene of any size, where the old flat 20 units took 5 presses in a 100-unit room and 1000 in a 20000-unit one.
 	for (double size : {0.4, 6.0, 555.0, 11500.0}) EXPECT_NEAR(size / keyboardStep(size, 1.0), 50.0, 1e-9) << size;
+}
+
+// ---- the Live Preview's picture size ------------------------------------------------------------------------------------------------
+
+TEST(CameraMathPreviewSizeTest, ThePreviewKeepsTheResolutionsAspectWithTheLongerSideAt400) {
+	EXPECT_EQ(previewSizeFor(800, 800).width, 400);
+	EXPECT_EQ(previewSizeFor(800, 800).height, 400) << "a square scene (the Cornell boxes) gets a square preview, not 4:3";
+	EXPECT_EQ(previewSizeFor(1920, 1080).width, 400);
+	EXPECT_EQ(previewSizeFor(1920, 1080).height, 225);
+	EXPECT_EQ(previewSizeFor(1080, 1920).width, 225);
+	EXPECT_EQ(previewSizeFor(1080, 1920).height, 400);
+	EXPECT_EQ(previewSizeFor(640, 480).width, 400);
+	EXPECT_EQ(previewSizeFor(640, 480).height, 300) << "4:3 stays exactly what it was";
+	EXPECT_EQ(previewSizeFor(200, 100).width, 400) << "a small render is scaled up to the preview size too, as on the Mac";
+	EXPECT_EQ(previewSizeFor(200, 100).height, 200);
+}
+
+TEST(CameraMathPreviewSizeTest, ASillyResolutionStillGivesAUsablePreview) {
+	for (double bad : {0.0, -5.0, std::nan(""), std::numeric_limits<double>::infinity()}) {
+		EXPECT_EQ(previewSizeFor(bad, 600).width, 400) << bad;
+		EXPECT_EQ(previewSizeFor(600, bad).height, 300) << bad;
+	}
+	const PreviewSize thin = previewSizeFor(4000, 10);
+	EXPECT_EQ(thin.width, 400);
+	EXPECT_EQ(thin.height, 16) << "never thinner than 16 pixels";
+	EXPECT_EQ(previewSizeFor(800, 800, 256).width, 256) << "the long side is a parameter";
 }

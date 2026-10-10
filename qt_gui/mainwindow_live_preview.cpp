@@ -173,30 +173,11 @@ void MainWindow::startLivePreview() {
 		m_statusLabel->setText(tr("Select a scene first"));
 		return;
 	}
-	// Fixed, modest resolution - keeps per-frame cost low regardless of the
-	// Settings tab's own width/height fields (this preview is about
-	// interactive feedback, not a final-quality render at the requested
-	// output size). Matches this pass's "progressive refinement only, no
-	// per-resolution controls yet" scope.
-#ifdef Q_OS_MAC
-	// Same framing as the image render: keep the Resolution (Settings tab) aspect ratio - the scene's camera is set up for the
-	// picture it will be rendered into (e.g. the Cornell boxes frame a SQUARE image, so a 4:3 preview showed them small with black
-	// bars at the sides) - scaled down so the longer side is kPreviewLongSide pixels, which keeps frames fast.
-	constexpr int kPreviewLongSide = 400;
-	int kPreviewWidth = 400, kPreviewHeight = 300;
-	{
-		const double rw = m_widthSpinBox ? m_widthSpinBox->value() : 0.0;
-		const double rh = m_heightSpinBox ? m_heightSpinBox->value() : 0.0;
-		if (rw > 0.0 && rh > 0.0) {
-			const double s = kPreviewLongSide / std::max(rw, rh);
-			kPreviewWidth = std::max(16, static_cast<int>(std::lround(rw * s)));
-			kPreviewHeight = std::max(16, static_cast<int>(std::lround(rh * s)));
-		}
-	}
-#else
-	constexpr int kPreviewWidth = 400;
-	constexpr int kPreviewHeight = 300;
-#endif
+	// A modest size keeps the per-frame cost low regardless of the Settings tab's own width/height (this preview is about interactive feedback, not a final-quality
+	// render at the requested output size), but it keeps that setting's ASPECT RATIO, so the preview frames the scene like the image render will (camera_math::
+	// previewSizeFor(): the longer side is 400 pixels). On every platform; Windows used a fixed 400x300, which showed a square scene small with bars at the sides.
+	const camera_math::PreviewSize previewSize = camera_math::previewSizeFor(m_widthSpinBox ? m_widthSpinBox->value() : 0.0, m_heightSpinBox ? m_heightSpinBox->value() : 0.0);
+	const int kPreviewWidth = previewSize.width, kPreviewHeight = previewSize.height;
 	// Seed both the orbit state AND the free-fly pivot from wherever the
 	// camera spinboxes currently point, around the CURRENT scene's own
 	// lookAt point (currentLookAt()) - a fresh starting pivot every

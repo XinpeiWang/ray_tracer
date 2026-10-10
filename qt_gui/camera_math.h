@@ -1,6 +1,7 @@
 #ifndef CAMERA_MATH_H
 #define CAMERA_MATH_H
 
+#include <algorithm>
 #include <cmath>
 
 // ============================================================================
@@ -57,6 +58,25 @@ inline Vec3 cross(const Vec3 &a, const Vec3 &b) {
 inline double dot(const Vec3 &a, const Vec3 &b) { return a.x * b.x + a.y * b.y + a.z * b.z; }
 
 // Distance from the look-at point to the camera.
+// ---------------------------------------------------------------------------
+// The Live Preview's picture size
+// ---------------------------------------------------------------------------
+// The scene's camera is set up for the picture it will be rendered into (the Cornell boxes frame a SQUARE image), so the preview keeps the aspect ratio of the
+// Resolution setting and only scales it down so that its longer side is `longSide` pixels - which keeps frames fast. A 4:3 preview of a square scene framed it small
+// with black bars at the sides. (macOS did this already; Windows used a fixed 400x300 until now.) An unset or nonsensical Resolution gives 4:3.
+struct PreviewSize {
+	int width = 400;
+	int height = 300;
+};
+inline PreviewSize previewSizeFor(double renderWidth, double renderHeight, int longSide = 400) {
+	PreviewSize out;
+	if (!(renderWidth > 0.0) || !(renderHeight > 0.0) || !std::isfinite(renderWidth) || !std::isfinite(renderHeight)) return out;
+	const double s = longSide / std::max(renderWidth, renderHeight);
+	out.width = std::max(16, static_cast<int>(std::lround(renderWidth * s)));
+	out.height = std::max(16, static_cast<int>(std::lround(renderHeight * s)));
+	return out;
+}
+
 // ---------------------------------------------------------------------------
 // Free-fly step and closest zoom, in proportion to the scene
 // ---------------------------------------------------------------------------
