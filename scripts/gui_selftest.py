@@ -190,7 +190,7 @@ def main():
         modes.append("livepreview")
     if args.live_preview and IS_MAC and "livepreview_objects" not in modes:
         modes.append("livepreview_objects")   # object editing is in the Metal library only so far
-    waits = {"livepreview": 60, "livepreview_objects": 90}
+    waits = {"livepreview": 60, "livepreview_objects": 120}
     ok = True
     try:
         for mode in modes:

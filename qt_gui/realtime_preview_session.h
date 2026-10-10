@@ -6,6 +6,7 @@
 #include <QString>
 #include <QThread>
 #include <cstdint>
+#include <mutex>
 #include <vector>
 
 // pixel_convergence::{luminance, has_converged} and VarianceEstimator
@@ -73,6 +74,9 @@ public:
 	// The object shown at picture position (s, t) (s left to right, t bottom to top, both in [0, 1]) in the frame drawn last, or an invalid pick. Called from the
 	// GUI thread through RealtimePreviewSession::pickObjectAt(), which runs it on this worker's thread between two frames.
 	LiveObjectPick pickObjectAt(double s, double t);
+	// The camera basis (origin, lower-left corner, horizontal, vertical: 12 doubles) of the frame drawn last, readable from any thread without waiting for the
+	// worker. False before the first frame.
+	bool cameraBasisNow(double out[12]) const;
 
 public slots:
 	// Starts the render loop for sceneId at (camX,camY,camZ) looking at
@@ -535,6 +539,9 @@ private:
 	std::vector<float> m_worldPosPrev;     // same layout, previous frame's
 	std::vector<float> m_cameraBasis;      // origin/lowerLeft/horiz/vert, 12 floats
 	std::vector<float> m_prevCameraBasis;  // same layout, previous frame's
+	mutable std::mutex m_publishedBasisMutex;   // the basis of the last successful frame, for the GUI thread (cameraBasisNow())
+	double m_publishedBasis[12] = {0};
+	bool m_publishedBasisValid = false;
 	// Per-pixel effective BATCH count - NOT uniform once reprojection is in
 	// play (a freshly-disoccluded pixel starts over at 0 while a
 	// successfully-reprojected neighbor carries its whole history forward),
@@ -663,6 +670,8 @@ public:
 	// at most; it is for one click, not for every mouse move.
 	static bool objectEditingAvailable();
 	LiveObjectPick pickObjectAt(double s, double t);
+	// The camera basis of the picture on screen (see the worker's cameraBasisNow()); does not wait for the worker.
+	bool cameraBasisNow(double out[12]) const;
 	void setObjectOffset(int object, double dx, double dy, double dz);
 	void resetObjects();
 	void setDenoise(bool denoise, double denoiseBlend, bool denoiseShowLatest);

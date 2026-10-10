@@ -187,7 +187,7 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 		const QPoint start = image.center() + QPoint(0, image.height() / 5);   // a little below the middle: floor, a box or a ball rather than the back wall
 		send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
 		log("after the press: \"" + m_liveObjectEditor->hint() + "\"");
-		if (!m_liveObjectEditor->hint().startsWith("Moving")) { fail("the press did not grab an object"); return; }
+		if (!m_liveObjectEditor->hint().startsWith("Selected")) { fail("the press did not grab an object"); return; }
 		for (int i = 1; i <= 12; ++i) send(QEvent::MouseMove, start + QPoint(image.width() * i / 40, 0), Qt::NoButton, Qt::LeftButton);
 		send(QEvent::MouseButtonRelease, start + QPoint(image.width() * 12 / 40, 0), Qt::LeftButton, Qt::NoButton);
 	});
@@ -197,10 +197,31 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 		const double change = diff(*before, *moved);
 		log(QString("the picture changed by %1 (of 255) after the drag").arg(change, 0, 'f', 3));
 		if (!(change > 1.0)) { fail("dragging an object did not change the picture"); return; }
+		// The camera moves with the object still selected: the selection must survive it.
+		m_orbit.azimuth += 0.3;
+		updateLivePreviewCameraFromOrbit();
+	});
+	auto beforeKeys = std::make_shared<QImage>();
+	auto lookAtBefore = std::make_shared<camera_math::Vec3>();
+	QTimer::singleShot(9500, this, [this, shown, beforeKeys, lookAtBefore, outPrefix, fail]() {
+		if (!m_liveObjectEditor->hasSelection()) { fail("moving the camera cleared the selection"); return; }
+		*beforeKeys = shown();
+		m_livePreviewLabel->grab().save(outPrefix + "_objects_selection.png");   // the picture as the window shows it, with the box drawn over it
+		*lookAtBefore = m_livePreviewLookAt;
+		for (int i = 0; i < 4; ++i) onLivePreviewTranslate(1, 0, 0);   // the W key: with an object selected it moves the object, not the camera
+	});
+	QTimer::singleShot(11500, this, [this, shown, beforeKeys, lookAtBefore, diff, log, fail]() {
+		const double keyChange = diff(*beforeKeys, shown());
+		const double cameraMoved = camera_math::length(m_livePreviewLookAt - *lookAtBefore);
+		log(QString("W key with the object selected: the picture changed by %1, the camera moved %2").arg(keyChange, 0, 'f', 3).arg(cameraMoved, 0, 'g', 4));
+		if (cameraMoved > 1e-9) { fail("a W key press moved the camera although an object was selected"); return; }
+		if (!(keyChange > 1.0)) { fail("a W key press did not move the selected object"); return; }
+		m_orbit.azimuth -= 0.3;   // back to the camera of the first picture
+		updateLivePreviewCameraFromOrbit();
 		m_liveObjectEditor->setMode(false);
 		if (auto *button = m_livePreviewPage->findChild<QPushButton *>("liveResetObjectsButton")) button->click();
 	});
-	QTimer::singleShot(12000, this, [this, shown, before, moved, diff, outPrefix, log, fail]() {
+	QTimer::singleShot(15000, this, [this, shown, before, moved, diff, outPrefix, log, fail]() {
 		const QImage reset = shown();
 		reset.save(outPrefix + "_objects_reset.png");
 		const double back = diff(*before, reset), away = diff(*moved, reset);

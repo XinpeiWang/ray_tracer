@@ -4,7 +4,8 @@
 //
 // The Live Preview tab owns one of these while a preview runs (MainWindow::addLivePreviewTab()), beside its OrbitPreviewLabel. Switched on with the "Move objects"
 // button, a press on an object grabs it (the picture's pick comes from the renderer, RealtimePreviewSession::pickObjectAt()), a drag slides it across the floor, a
-// drag with Shift held lifts and lowers it, and a press on empty space orbits the camera as before. "Reset objects" puts everything back. The arithmetic is
+// drag with Shift held lifts and lowers it, W/A/S/D and Up/Down move it in the camera's own directions while it is selected (the keys that otherwise fly the
+// camera), and a press on empty space orbits the camera as before. The selection, and its box, survive camera moves. "Reset objects" puts everything back. The arithmetic is
 // object_drag_math.h; the objects themselves live in the renderer (src/shared/realtime_api.h).
 
 #include <QObject>
@@ -32,8 +33,12 @@ public:
 	// What the hint line says now (the self-test reads it).
 	QString hint() const;
 
-	// The camera moved: a box drawn for the old view would be in the wrong place, so it goes.
-	void cameraMoved();
+	// A new picture is on screen: redraw the selection's box for the camera that drew it (so it follows the object while the camera moves).
+	void frameShown();
+	bool hasSelection() const { return m_haveSelection; }
+	// A free-fly key (W/S forward/back, A/D left/right, Up/Down up/down, as steps of -1/0/+1) while an object is selected in object mode moves the object, by
+	// `step` world units per step, in the directions the camera currently shows; true when it took the key (then the camera must not move).
+	bool nudge(int forwardSteps, int rightSteps, int upSteps, double step);
 
 private slots:
 	void onModeToggled(bool on);
@@ -43,7 +48,8 @@ private slots:
 	void onResetClicked();
 
 private:
-	void showSelectionBox(const camera_math::Vec3 &shift);
+	void showSelectionBox();
+	bool currentBasis(camera_math::CameraBasis &basis) const;
 	void setHint(const QString &text);
 
 	RealtimePreviewSession *m_session;
@@ -55,6 +61,7 @@ private:
 	LiveObjectPick m_selected;   // the object grabbed or last grabbed: where it was when the drag began, and the camera that drew that picture
 	bool m_haveSelection = false;
 	bool m_dragging = false;
+	camera_math::Vec3 m_pending;   // how far the current drag has moved the object so far (added to m_selected when the mouse is released)
 };
 
 #endif  // LIVE_OBJECT_EDITOR_H

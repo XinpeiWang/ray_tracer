@@ -543,21 +543,21 @@
     </message>
     <message>
         <location filename="../live_object_editor.cpp" line="54"/>
-        <source>Click an object and drag it. Shift: up and down.</source>
-        <translation>Cliquez sur un objet et faites-le glisser. Maj : haut et bas.</translation>
+        <source>Click an object and drag it (Shift: up and down). Then W A S D and Up/Down move it too.</source>
+        <translation>Cliquez sur un objet et faites-le glisser (Maj : haut et bas). Ensuite, W A S D et Haut/Bas le déplacent aussi.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="70"/>
+        <location filename="../live_object_editor.cpp" line="104"/>
+        <source>Selected: %1. Drag to move it (Shift: up and down); W A S D and Up/Down move it too.</source>
+        <translation>Sélectionné : %1. Faites-le glisser pour le déplacer (Maj : haut et bas) ; W A S D et Haut/Bas le déplacent aussi.</translation>
+    </message>
+    <message>
+        <location filename="../live_object_editor.cpp" line="95"/>
         <source>Nothing movable there: drag to orbit.</source>
         <translation>Rien à déplacer ici : faites glisser pour orbiter.</translation>
     </message>
     <message>
-        <location filename="../live_object_editor.cpp" line="78"/>
-        <source>Moving: %1. Shift: up and down.</source>
-        <translation>Déplacement : %1. Maj : haut et bas.</translation>
-    </message>
-    <message>
-        <location filename="../live_object_editor.cpp" line="102"/>
+        <location filename="../live_object_editor.cpp" line="139"/>
         <source>Every object is back where the scene file puts it.</source>
         <translation>Tous les objets sont revenus là où le fichier de scène les place.</translation>
     </message>
@@ -4344,17 +4344,17 @@ Glissez pour orbiter, molette ou +/- pour zoomer, WASD pour vous déplacer, Haut
         <translation>Arrêté</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="299"/>
+        <location filename="../mainwindow_live_preview.cpp" line="300"/>
         <source>Live (denoised, not accumulating)</source>
         <translation>En direct (débruité, sans accumulation)</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="301"/>
+        <location filename="../mainwindow_live_preview.cpp" line="302"/>
         <source>%1 samples</source>
         <translation>%1 échantillons</translation>
     </message>
     <message>
-        <location filename="../mainwindow_live_preview.cpp" line="326"/>
+        <location filename="../mainwindow_live_preview.cpp" line="327"/>
         <source>[Live Preview] ERROR: %1</source>
         <translation>[Aperçu en direct] ERREUR : %1</translation>
     </message>
@@ -7457,12 +7457,12 @@ La forme est une estimation : l&apos;arrière est inventé et les détails fins 
 <context>
     <name>SplitPreviewTabs</name>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1219"/>
+        <location filename="../mainwindow_widgets.h" line="1220"/>
         <source>No renders yet</source>
         <translation>Aucun rendu pour le moment</translation>
     </message>
     <message>
-        <location filename="../mainwindow_widgets.h" line="1227"/>
+        <location filename="../mainwindow_widgets.h" line="1228"/>
         <source>Start a render from Settings - each finished image
 or video opens in its own tab here, so past renders stay
 around while you compare or tweak settings.</source>
