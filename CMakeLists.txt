@@ -722,6 +722,14 @@ if(RT_BUILD_METAL)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "CLIPPED_MEDIUM_TEST_OK")
 
+    # A subsurface ball under a uniform sky (a constant and a white picture): Metal matches the CPU and its own two skies agree (metal_poc_subsurface_sky_test.sh).
+    add_test(NAME metal_poc_subsurface_sky
+        COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_subsurface_sky_test.sh"
+            $<TARGET_FILE:ray_tracer> $<TARGET_FILE:metal_poc_media_lights_check> "${CMAKE_BINARY_DIR}")
+    set_tests_properties(metal_poc_subsurface_sky PROPERTIES
+        WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
+        PASS_REGULAR_EXPRESSION "SUBSURFACE_SKY_TEST_OK")
+
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
             $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")

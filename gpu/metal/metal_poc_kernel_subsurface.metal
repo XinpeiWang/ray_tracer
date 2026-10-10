@@ -81,7 +81,7 @@ inline bool subsurfaceProbeWalk(thread const KernelRes& R, thread PathState& P, 
             ++candidateCount;
             if (randFloat(P.rngState) < 1.0 / float(candidateCount)) {
                 chosenPos = probeB.hitPoint;
-                chosenNormal = probeB.facingNormal;
+                chosenNormal = probeB.normal;   // the surface's OUTWARD normal (see the comment above shadeSubsurface)
             }
         }
         const float step = hit.distance + 1e-4;
@@ -119,6 +119,10 @@ inline bool subsurfaceProbeWalk(thread const KernelRes& R, thread PathState& P, 
     return true;
 }
 
+// The exit point's normal is the surface's outward normal, as pbrt's exit BSDF has it (SubsurfaceInteraction carries the shape's own normal). A probe ray that finds the far
+// side of a closed shape hits it from inside, where a normal flipped to face the ray would point INTO the object: the exit BSDF's hemisphere would then be the inside, the
+// light sent out would go into the object instead of the room, and the picture came out dark and disagreed with itself (a ball under a constant sky read 0.31, the same
+// ball under an image sky 0.38). The CPU renderer had the same convention and was fixed with this.
 // The whole material at one hit: the smooth dielectric interface (reflect, or refract in); on refraction the probe walk, then the exit point
 // shaded by NormalizedFresnel (Sw) with the path weighted by Sp / (selection probability * pdf). Returns false when the path ends.
 inline bool shadeSubsurface(thread const KernelRes& R, thread PathState& P, thread BounceState& B) {

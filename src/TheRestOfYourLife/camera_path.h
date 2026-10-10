@@ -152,7 +152,10 @@ inline bool camera::sample_bssrdf_exit(hit_record& rec, scatter_record& srec,
     beta = new_beta;
 
     rec.p          = exit_hit.p;
-    rec.normal     = exit_hit.normal;
+    // The exit BSDF (Sw) works in the surface's OUTWARD normal, as pbrt's does (SubsurfaceInteraction carries the shape's own normal). exit_hit.normal is flipped to face the
+    // probe ray, which for a probe that finds the far side of a closed shape (it hits it from inside) points into the object: Sw's hemisphere was then the inside and the
+    // exit's light went into the object. Un-flip it.
+    rec.normal     = exit_hit.front_face ? exit_hit.normal : -exit_hit.normal;
     rec.dpdu       = exit_hit.dpdu;
     rec.u          = exit_hit.u;
     rec.v          = exit_hit.v;

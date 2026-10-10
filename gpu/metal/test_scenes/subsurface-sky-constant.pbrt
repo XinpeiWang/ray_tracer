@@ -1,0 +1,15 @@
+# subsurface-sky-constant.pbrt -- a ball of pbrt's subsurface material filling the picture, lit only by a uniform white sky (constant). The two scenes differ only in how the sky is
+# given (a constant, or a white picture), so a renderer that handles subsurface light consistently draws them alike, and the CPU renderer is the reference for the value
+# (gpu/metal/metal_poc_subsurface_sky_test.sh; not in the scene list). A renderer whose exit normal faces the probe ray (into the ball for a far-side exit) draws the
+# constant sky 12% darker than the CPU and 20% darker than the picture sky.
+LookAt 0 0 5   0 0 0   0 1 0
+Camera "perspective" "float fov" [ 10 ]
+Film "rgb" "integer xresolution" [ 48 ] "integer yresolution" [ 48 ]
+Sampler "halton" "integer pixelsamples" [ 64 ]
+Integrator "volpath" "integer maxdepth" [ 30 ]
+WorldBegin
+LightSource "infinite" "rgb L" [ 1 1 1 ]
+AttributeBegin
+  Material "subsurface" "rgb mfp" [ 0.4 0.4 0.4 ] "rgb reflectance" [ 0.8 0.8 0.8 ] "float eta" [ 1.33 ] "float roughness" [ 0 ]
+  Shape "sphere" "float radius" [ 1 ]
+AttributeEnd
