@@ -3022,6 +3022,28 @@ TEST(FlattenMaterialTest, SubsurfaceNamedGlassSpectrumWarnsAndUsesSubsurfaceDefa
 	EXPECT_TRUE(warnedAbout(s, "subsurface"));
 }
 
+TEST(FlattenMaterialTest, SubsurfaceReflectanceAndMfpAreInvertedToCoefficients) {
+	// reflectance + mfp (pbrt-v4's fourth way to give a subsurface material):
+	// sigma_s + sigma_a = 1/mfp (a length), and the albedo between them is the
+	// one whose effective albedo is the reflectance. Measured with the same
+	// table by bssrdf_tests: rho_eff 0.8, mfp 0.4, eta 1.33 -> sigma_a 0.005035,
+	// sigma_s 2.495.
+	const FlatScene s = flattenSource(
+		"Material \"subsurface\" \"rgb reflectance\" [ 0.8 0.8 0.8 ] \"rgb mfp\" [ 0.4 0.4 0.4 ]\n" +
+		std::string(kQuadMesh));
+	ASSERT_EQ(s.materials.size(), 1u);
+	EXPECT_NEAR(s.materials[0].sigma_a[0], 0.00503485, 1e-4);
+	EXPECT_NEAR(s.materials[0].sigma_s[0], 2.49497, 1e-3);
+	EXPECT_FALSE(warnedAbout(s, "reflectance"));
+
+	// "scale" multiplies the mean free path, so the coefficients shrink by it.
+	const FlatScene t = flattenSource(
+		"Material \"subsurface\" \"rgb reflectance\" [ 0.8 0.8 0.8 ] \"rgb mfp\" [ 0.4 0.4 0.4 ] \"float scale\" 2\n" +
+		std::string(kQuadMesh));
+	ASSERT_EQ(t.materials.size(), 1u);
+	EXPECT_NEAR(t.materials[0].sigma_s[0], s.materials[0].sigma_s[0] / 2, 1e-3);
+}
+
 TEST(FlattenMaterialTest, HairNamedGlassSpectrumWarnsAndUsesHairDefault) {
 	const FlatScene s = flattenSource(
 		"Material \"hair\" \"spectrum eta\" [ \"glass-BK7\" ]\n" + std::string(kQuadMesh));

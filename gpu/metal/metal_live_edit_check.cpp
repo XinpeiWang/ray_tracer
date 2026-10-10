@@ -23,23 +23,23 @@ constexpr int W = 240, H = 180;
 std::string gScene;
 double gCam[3], gLook[3];
 
-struct Frame {
+struct LiveFrame {
     std::vector<float> rgb = std::vector<float>(W * H * 3), world = std::vector<float>(W * H * 4);
 };
 
-bool render(Frame& f) {
+bool render(LiveFrame& f) {
     return metal_live_render_frame(gScene.c_str(), W, H, 4, 6, gCam[0], gCam[1], gCam[2], true, gLook[0], gLook[1], gLook[2], 50.0f, 7u,
                                    f.rgb.data(), f.world.data(), nullptr, -1.0, -1.0);
 }
 
-double meanAbsDiff(const Frame& a, const Frame& b) {
+double meanAbsDiff(const LiveFrame& a, const LiveFrame& b) {
     double sum = 0;
     for (size_t i = 0; i < a.rgb.size(); ++i) sum += std::fabs(a.rgb[i] - b.rgb[i]);
     return sum / a.rgb.size();
 }
 
 // LIVE_EDIT_DUMP=<prefix> also writes the pictures as <prefix>_<name>.ppm, to look at them.
-void dump(const Frame& f, const char* name) {
+void dump(const LiveFrame& f, const char* name) {
     const char* prefix = getenv("LIVE_EDIT_DUMP");
     if (!prefix) return;
     const std::string path = std::string(prefix) + "_" + name + ".ppm";
@@ -63,7 +63,7 @@ int fail(const char* what) {
 int main(int argc, char** argv) {
     gScene = argc > 1 ? argv[1] : "A1";
     if (!cpu_scene_recommended_camera(gScene.c_str(), &gCam[0], &gCam[1], &gCam[2], &gLook[0], &gLook[1], &gLook[2])) return fail("no camera for the scene");
-    Frame first;
+    LiveFrame first;
     if (!render(first)) {
         if (strstr(metal_live_last_error(), "Metal device")) { printf("SKIP: no usable Metal device\n"); return 0; }
         fprintf(stderr, "first frame: %s\n", metal_live_last_error());
@@ -115,7 +115,7 @@ int main(int argc, char** argv) {
         if (metal_live_pick_object(gScene.c_str(), hit[0], hit[1], hit[2], lo3, hi3, off3, nullptr, 0) != target) return fail("a click right after a move did not find the object in the picture on screen");
         if (std::fabs(lo3[0] - (lo[0] + dx)) > 1e-4 * (1 + std::fabs(dx)) || std::fabs(off3[0] - dx) > 1e-9) return fail("the pick right after a move did not report the pending position");
     }
-    Frame moved;
+    LiveFrame moved;
     if (!render(moved)) { fprintf(stderr, "%s\n", metal_live_last_error()); return fail("the frame after the move failed"); }
     dump(first, "first");
     dump(moved, "moved");
@@ -161,7 +161,7 @@ int main(int argc, char** argv) {
 
     // 4. Reset: the first picture comes back exactly (same seed, same scene).
     metal_live_reset_objects(gScene.c_str());
-    Frame back;
+    LiveFrame back;
     if (!render(back)) return fail("the frame after the reset failed");
     const double restored = meanAbsDiff(first, back);
     printf("mean absolute difference from the first picture after the reset: %.7f\n", restored);

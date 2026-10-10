@@ -26,7 +26,7 @@ void addBox(pbrt_flatten::FlatScene& s, double x0, double y0, double z0, double 
 TEST(GpuSceneFrameTest, ACornellBoxSizedSceneIsScaledToTwoUnitsAndCentred) {
 	pbrt_flatten::FlatScene s;
 	addBox(s, 0, 0, 0, 555, 555, 555);
-	const Frame f = computeSceneFrame(s);
+	const gpu_scene_frame::Frame f = computeSceneFrame(s);
 	EXPECT_NEAR(f.extent, 555.0f, 1e-3f);
 	EXPECT_NEAR(f.scale, 2.0f / 555.0f, 1e-7f);
 	for (int a = 0; a < 3; ++a) EXPECT_NEAR(f.centre[a], 277.5f, 1e-3f);
@@ -43,7 +43,7 @@ TEST(GpuSceneFrameTest, ACornellBoxSizedSceneIsScaledToTwoUnitsAndCentred) {
 TEST(GpuSceneFrameTest, FromWorldIsTheInverseOfToWorld) {
 	pbrt_flatten::FlatScene s;
 	addBox(s, -3, 1, 40, 17, 9, 90);
-	const Frame f = computeSceneFrame(s);
+	const gpu_scene_frame::Frame f = computeSceneFrame(s);
 	float w[3], back[3];
 	f.toWorld(5.0f, 2.5f, 61.0f, w);
 	f.fromWorld(w[0], w[1], w[2], back);
@@ -59,7 +59,7 @@ TEST(GpuSceneFrameTest, AHugeGroundSphereDoesNotSetTheScale) {
 	ground.center[1] = -1000.0;  // the radius-1000 ground idiom
 	ground.radius = 1000.0;
 	s.spheres = {small, ground};
-	const Frame f = computeSceneFrame(s);
+	const gpu_scene_frame::Frame f = computeSceneFrame(s);
 	EXPECT_TRUE(f.ignoredGiantSphere);
 	EXPECT_NEAR(f.extent, 2.0f, 1e-4f) << "the small sphere's own box";
 	EXPECT_GT(f.fullExtent, 1000.0f);
@@ -72,13 +72,13 @@ TEST(GpuSceneFrameTest, ABigSphereThatIsMostOfTheSceneIsKept) {
 	big.radius = 100.0;
 	s.spheres = {big};
 	addBox(s, -90, -90, -90, 90, 90, 90);   // dropping the sphere would not shrink the extent 4x
-	const Frame f = computeSceneFrame(s);
+	const gpu_scene_frame::Frame f = computeSceneFrame(s);
 	EXPECT_FALSE(f.ignoredGiantSphere);
 	EXPECT_NEAR(f.extent, 200.0f, 1e-3f);
 }
 
 TEST(GpuSceneFrameTest, AnEmptySceneIsLeftAlone) {
-	const Frame f = computeSceneFrame(pbrt_flatten::FlatScene{});
+	const gpu_scene_frame::Frame f = computeSceneFrame(pbrt_flatten::FlatScene{});
 	EXPECT_EQ(f.scale, 1.0f);
 	for (int a = 0; a < 3; ++a) EXPECT_EQ(f.centre[a], 0.0f);
 	EXPECT_EQ(f.offset[0], 60.0f);

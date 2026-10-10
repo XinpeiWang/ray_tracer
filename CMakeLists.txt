@@ -730,6 +730,16 @@ if(RT_BUILD_METAL)
         WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}"
         PASS_REGULAR_EXPRESSION "SUBSURFACE_SKY_TEST_OK")
 
+    # The same scene written two ways must give the same picture, for every material: constant against picture sky, moved, scaled, mirrored, other
+    # picture size and sample count, point against sphere light (scripts/consistency_sweep.py, docs/CONSISTENCY_SWEEP.md). Needs python3.
+    find_package(Python3 COMPONENTS Interpreter)
+    if(Python3_FOUND)
+        add_test(NAME metal_poc_consistency
+            COMMAND ${Python3_EXECUTABLE} "${CMAKE_SOURCE_DIR}/scripts/consistency_sweep.py"
+                --exe $<TARGET_FILE:ray_tracer> --backends gpu --tolerance 6)
+        set_tests_properties(metal_poc_consistency PROPERTIES WORKING_DIRECTORY "${CMAKE_SOURCE_DIR}" TIMEOUT 900)
+    endif()
+
     add_test(NAME metal_poc_seed_reproducible
         COMMAND sh "${CMAKE_SOURCE_DIR}/gpu/metal/metal_poc_seed_test.sh"
             $<TARGET_FILE:ray_tracer> "${CMAKE_BINARY_DIR}")

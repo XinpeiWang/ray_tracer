@@ -781,14 +781,14 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 
 	// Subsurface: resolve sigma_a/sigma_s the way pbrt-v4's own
 	// SubsurfaceMaterial::Create does (materials.cpp) - "4 mutually
-	// exclusive ways to specify the subsurface properties", of which this
-	// supports the first three (named preset, explicit sigma_a+sigma_s,
-	// and "nothing specified" defaults). The fourth (reflectance+mfp,
-	// inverted through the diffusion table via SubsurfaceFromDiffuse)
-	// would need a BSSRDFTable built here at PARSE time just to invert
-	// one number, for a form no scene in this loader's corpus uses; it
-	// warns and falls back to the default coefficients instead.
+	// exclusive ways to specify the subsurface properties": a named preset,
+	// explicit sigma_a+sigma_s, reflectance+mfp (inverted through the
+	// diffusion table by SubsurfaceFromDiffuse, after eta is known, at the
+	// end of this block: a texture-bound reflectance is not supported and
+	// warns), and "nothing specified" defaults.
 	if (m.kind == MaterialKind::Subsurface) {
+		bool reflectanceMode = false;
+		double reflectance[3] = {1.0, 1.0, 1.0}, mfp[3] = {1.0, 1.0, 1.0};
 		const double scale = md.params.getFloat("scale", 1.0);
 		double g = md.params.getFloat("g", 0.0);
 		double sigA[3] = {m.sigma_a[0], m.sigma_a[1], m.sigma_a[2]};
@@ -824,10 +824,17 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 		} else if (hasSigmaA != hasSigmaS) {
 			warn("material 'subsurface' gives only one of \"sigma_a\"/\"sigma_s\"; "
 				 "both are required together, so the default coefficients are used instead");
-		} else if (md.params.find("reflectance")) {
-			warn("material 'subsurface' gives \"reflectance\" without \"sigma_a\"/"
-				 "\"sigma_s\"; this loader does not invert reflectance+mfp into "
-				 "scattering coefficients, so the default coefficients are used instead");
+		} else if (const pbrt_scene::Param *reflP = md.params.find("reflectance")) {
+			if (reflP->type == "texture") {
+				warn("material 'subsurface' binds \"reflectance\" to a texture; this loader inverts a constant "
+					 "reflectance+mfp into scattering coefficients, so the default coefficients are used instead");
+			} else {
+				reflectanceMode = true;
+				const pbrt_scene::Vec3 r = md.params.getVec3("reflectance", pbrt_scene::Vec3{1.0, 1.0, 1.0});
+				const pbrt_scene::Vec3 f = md.params.getVec3("mfp", pbrt_scene::Vec3{1.0, 1.0, 1.0});   // pbrt's default mean free path is 1
+				reflectance[0] = r.x; reflectance[1] = r.y; reflectance[2] = r.z;
+				mfp[0] = f.x; mfp[1] = f.y; mfp[2] = f.z;
+			}
 		}
 		// else: nothing specified at all -- m.sigma_a/sigma_s's own
 		// defaults (already pbrt-v4's "nothing specified" preset) stand.
@@ -860,6 +867,18 @@ inline void readMaterialKindParams(const pbrt_scene::Scene &scene, FlatScene &ou
 				 "eta as a plain float only); the default eta (1.33) is "
 				 "used instead");
 			m.ior = 1.33;
+		}
+
+		// reflectance + mfp (pbrt-v4 SubsurfaceMaterial::GetBSSRDF): the mean free path is a length scaled by "scale" (so sigma is 1/scale of what it would be
+		// for explicit coefficients), and the single-scattering albedo is the one whose effective albedo through the diffusion table (for this g and eta) is
+		// the reflectance asked for.
+		if (reflectanceMode) {
+			const BSSRDFTable &table = flatten_detail::beamDiffusionTable(g, m.ior);
+			for (int c = 0; c < 3; ++c) {
+				const double rho = std::min(std::max(reflectance[c], 0.0), 1.0);
+				const double length = std::max(scale * mfp[c], 1e-9);
+				SubsurfaceFromDiffuse(table, rho, length, m.sigma_a[c], m.sigma_s[c]);
+			}
 		}
 	}
 
