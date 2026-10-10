@@ -186,11 +186,20 @@ void MainWindow::runLivePreviewObjectsSelfTest(const std::function<void(const QS
 			QApplication::sendEvent(m_livePreviewLabel, &event);
 		};
 		const QPoint start = image.center() + QPoint(0, image.height() / 5);   // a little below the middle: floor, a box or a ball rather than the back wall
-		send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
-		log("after the press: \"" + m_liveObjectEditor->hint() + "\"");
-		if (!m_liveObjectEditor->hint().startsWith("Selected")) { fail("the press did not grab an object"); return; }
-		for (int i = 1; i <= 12; ++i) send(QEvent::MouseMove, start + QPoint(image.width() * i / 40, 0), Qt::NoButton, Qt::LeftButton);
-		send(QEvent::MouseButtonRelease, start + QPoint(image.width() * 12 / 40, 0), Qt::LeftButton, Qt::NoButton);
+		// Hovering first: with no button held, a box shows round the object under the cursor, and goes when the cursor leaves the picture.
+		send(QEvent::MouseMove, start, Qt::NoButton, Qt::NoButton);
+		QTimer::singleShot(900, this, [this, send, start, image, log, fail]() {
+			if (!m_livePreviewLabel->hasHover()) { fail("hovering over an object did not highlight it"); return; }
+			log("hovering highlights the object under the cursor");
+			QEvent leave(QEvent::Leave);
+			QApplication::sendEvent(m_livePreviewLabel, &leave);
+			if (m_livePreviewLabel->hasHover()) { fail("the highlight stayed after the cursor left the picture"); return; }
+			send(QEvent::MouseButtonPress, start, Qt::LeftButton, Qt::LeftButton);
+			log("after the press: \"" + m_liveObjectEditor->hint() + "\"");
+			if (!m_liveObjectEditor->hint().startsWith("Selected")) { fail("the press did not grab an object"); return; }
+			for (int i = 1; i <= 12; ++i) send(QEvent::MouseMove, start + QPoint(image.width() * i / 40, 0), Qt::NoButton, Qt::LeftButton);
+			send(QEvent::MouseButtonRelease, start + QPoint(image.width() * 12 / 40, 0), Qt::LeftButton, Qt::NoButton);
+		});
 	});
 	QTimer::singleShot(8000, this, [this, shown, before, moved, diff, outPrefix, log, fail]() {
 		*moved = shown();

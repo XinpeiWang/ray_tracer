@@ -3,6 +3,7 @@
 // orbit_preview_label.h -- the Live Preview's picture widget: ScaledImageLabel (an image scaled to fit its label) and OrbitPreviewLabel (mouse and key input for
 // orbiting the camera, plus the Move objects mode). Split out of mainwindow_widgets.h, which includes it, so existing includes keep working.
 
+#include <QEvent>
 #include <QKeyEvent>
 #include <QLabel>
 #include <QMouseEvent>
@@ -128,7 +129,8 @@ public:
 	// setObjectGrabbed(true) while handling the signal, the drag moves that object (objectDragged) instead of orbiting; otherwise it orbits as usual.
 	void setObjectMode(bool on) {
 		m_objectMode = on;
-		if (!on) clearSelection();
+		setMouseTracking(on);   // hover highlighting needs moves without a button held
+		if (!on) { clearSelection(); clearHover(); }
 		setCursor(on ? Qt::PointingHandCursor : Qt::OpenHandCursor);
 	}
 	bool objectMode() const { return m_objectMode; }
@@ -140,6 +142,14 @@ public:
 		update();
 	}
 	void clearSelection() { setSelectionSegments({}); }
+	// The thinner box round the object a click would grab (same convention).
+	void setHoverSegments(const QVector<QPointF> &segmentEnds) {
+		if (m_hover == segmentEnds) return;
+		m_hover = segmentEnds;
+		update();
+	}
+	void clearHover() { setHoverSegments({}); }
+	bool hasHover() const { return m_hover.size() >= 2; }
 
 signals:
 	// Raw pixel deltas since the last mouse-move event during an active
@@ -175,15 +185,22 @@ signals:
 	void objectPressed(double s, double t);
 	void objectDragged(double s, double t, bool vertical);
 	void objectReleased();
+	// Object mode, no button held: the cursor is over the picture at (s, t), or has left it.
+	void objectHovered(double s, double t);
+	void objectHoverEnded();
 
 protected:
 	void paintEvent(QPaintEvent *event) override {
 		ScaledImageLabel::paintEvent(event);
 		const QRect image = displayedImageRect();
-		if (m_selection.size() < 2 || image.isEmpty()) return;
+		if ((m_selection.size() < 2 && m_hover.size() < 2) || image.isEmpty()) return;
 		QPainter painter(this);
 		painter.setRenderHint(QPainter::Antialiasing);
 		auto toWidget = [&image](const QPointF &p) { return QPointF(image.left() + p.x() * image.width(), image.top() + (1.0 - p.y()) * image.height()); };
+		painter.setPen(QPen(QColor(0, 0, 0, 120), 3));   // the hovered object: a thinner white box
+		for (int i = 0; i + 1 < m_hover.size(); i += 2) painter.drawLine(toWidget(m_hover[i]), toWidget(m_hover[i + 1]));
+		painter.setPen(QPen(QColor(255, 255, 255, 220), 1));
+		for (int i = 0; i + 1 < m_hover.size(); i += 2) painter.drawLine(toWidget(m_hover[i]), toWidget(m_hover[i + 1]));
 		painter.setPen(QPen(QColor(0, 0, 0, 160), 4));   // a dark line under a bright one: readable on any picture
 		for (int i = 0; i + 1 < m_selection.size(); i += 2) painter.drawLine(toWidget(m_selection[i]), toWidget(m_selection[i + 1]));
 		painter.setPen(QPen(QColor(255, 220, 60), 2));
@@ -218,7 +235,19 @@ protected:
 		ScaledImageLabel::mousePressEvent(event);
 	}
 
+	void leaveEvent(QEvent *event) override {
+		if (m_objectMode) emit objectHoverEnded();
+		ScaledImageLabel::leaveEvent(event);
+	}
+
 	void mouseMoveEvent(QMouseEvent *event) override {
+		if (m_objectMode && mouseGrabber() != this) {
+			const QRect image = displayedImageRect();
+			if (image.contains(event->pos()))
+				emit objectHovered((event->pos().x() - image.left() + 0.5) / image.width(), 1.0 - (event->pos().y() - image.top() + 0.5) / image.height());
+			else
+				emit objectHoverEnded();
+		}
 		if (mouseGrabber() == this && m_objectGrabbed) {
 			const QRect image = displayedImageRect();
 			if (!image.isEmpty())
@@ -281,7 +310,7 @@ private:
 	QPoint m_lastPos;
 	bool m_objectMode = false;
 	bool m_objectGrabbed = false;
-	QVector<QPointF> m_selection;
+	QVector<QPointF> m_selection, m_hover;
 };
 
 #endif // ORBIT_PREVIEW_LABEL_H
