@@ -19,8 +19,12 @@
 #include <sstream>
 #include <vector>
 
-// Global renderer instance
-static std::unique_ptr<OptiXRenderer> g_renderer;
+// Global renderer instance. Deliberately never destroyed: its destructor would run during static destruction at process exit (or when the library is unloaded),
+// when the CUDA runtime has often been torn down already (cudaErrorCudartUnloading, "Failed to query current CUDA context"), and destroying OptiX objects then
+// aborted the program with 0xC0000409 after every Live Preview session (and in any host that loads realtime_renderer.dll). The OS and the driver release the
+// GPU memory when the process ends, which is all that destruction was for.
+struct LeakedAtExit { void operator()(OptiXRenderer*) const noexcept {} };
+static std::unique_ptr<OptiXRenderer, LeakedAtExit> g_renderer;
 
 // Which scene_id is currently uploaded to the GPU (materials/geometry/BVH/SBT
 // all live in g_renderer's device memory, keyed only by scene_id - see the
@@ -262,7 +266,7 @@ extern "C" int optix_render_main(
 		// Initialize renderer on first call
 		if (!g_renderer) {
 			std::cout << "[OptiX] Initializing renderer...\n";
-			g_renderer = std::make_unique<OptiXRenderer>();
+			g_renderer.reset(new OptiXRenderer());
 			if (!g_renderer->initialize()) {
 				std::cerr << "[OptiX] Failed to initialize renderer\n";
 				return ERR_GPU_DEVICE_INIT_FAILED;
@@ -654,7 +658,7 @@ extern "C" bool rt_realtime_render_frame(
 
 	try {
 		if (!g_renderer) {
-			g_renderer = std::make_unique<OptiXRenderer>();
+			g_renderer.reset(new OptiXRenderer());
 			if (!g_renderer->initialize()) return false;
 		}
 
@@ -1195,7 +1199,7 @@ extern "C" int optix_render_main_sppm(
 
 		if (!g_renderer) {
 			std::cout << "[OptiX] Initializing renderer...\n";
-			g_renderer = std::make_unique<OptiXRenderer>();
+			g_renderer.reset(new OptiXRenderer());
 			if (!g_renderer->initialize()) {
 				std::cerr << "[OptiX] Failed to initialize renderer\n";
 				return ERR_GPU_DEVICE_INIT_FAILED;
