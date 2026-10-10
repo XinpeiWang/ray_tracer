@@ -118,6 +118,7 @@ HEADERS += \
 	wheel_guard.h \
 	mainwindow.h \
 	mainwindow_widgets.h \
+	orbit_preview_label.h \
 	mainwindow_jobtypes.h \
 	camera_math.h \
 	icon_tint.h \
