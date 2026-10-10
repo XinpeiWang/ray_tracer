@@ -1,4 +1,0 @@
-MakeNamedMaterial "m" "string type" [ "measured" ] "string filename" [ "mini.bsdf" ]
-NamedMaterial "m"
-Shape "trianglemesh" "integer indices" [ 0 1 2 ]
-  "point3 P" [ -10 -10 0   10 -10 0   0 10 0 ]
